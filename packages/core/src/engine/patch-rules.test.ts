@@ -209,4 +209,18 @@ rename to ${to}
       'patch contains an unrecognized or incomplete file change',
     ]);
   });
+
+  it('fails closed when a quoted file header is malformed', () => {
+    const malformed = `diff --git "a/src/foo.test.ts" "b/src/foo.test.ts"
+--- "a/src/foo.test.ts
++++ "b/src/foo.test.ts"
+@@ -1 +1 @@
+-expect(value).toBe(1);
++expect(value).toBe(2);
+`;
+
+    expect(vetPatch(malformed, diagnosis('test-bug')).violations).toEqual([
+      'patch contains an unrecognized or incomplete file change',
+    ]);
+  });
 });

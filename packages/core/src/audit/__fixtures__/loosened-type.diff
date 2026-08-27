@@ -1,0 +1,7 @@
+diff --git a/src/cart.ts b/src/cart.ts
+index 1111111..2222222 100644
+--- a/src/cart.ts
++++ b/src/cart.ts
+@@ -1 +1 @@
+-export const total = (cart: Cart) => cart.total;
++export const total = (cart: Cart) => (cart as any).total;

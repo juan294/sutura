@@ -1,9 +1,8 @@
-import { Buffer } from 'node:buffer';
-
 import type { Diagnosis, FailureClass } from '../domain.js';
 import { extractJson } from '../llm/json.js';
 import type { TierLlm } from '../llm/types.js';
 import { FAILURE_TAXONOMY } from '../taxonomy.js';
+import { boundedTail } from '../text/bounded-tail.js';
 
 const FAILURE_CLASSES = Object.freeze(
   Object.keys(FAILURE_TAXONOMY) as FailureClass[],
@@ -24,38 +23,11 @@ export class ClassificationError extends Error {
 }
 
 function finalLines(log: string, count: number): string {
-  let start = Math.max(0, log.length - MAX_LOG_CHARACTERS);
-
-  if (Buffer.byteLength(log.slice(start), 'utf8') > MAX_LOG_BYTES) {
-    let low = start;
-    let high = log.length;
-    while (low < high) {
-      const middle = Math.floor((low + high) / 2);
-      if (Buffer.byteLength(log.slice(middle), 'utf8') <= MAX_LOG_BYTES) {
-        high = middle;
-      } else {
-        low = middle + 1;
-      }
-    }
-    start = low;
-    if (
-      start < log.length &&
-      start > 0 &&
-      /[\uDC00-\uDFFF]/.test(log[start] ?? '')
-    ) {
-      start += 1;
-    }
-  }
-
-  let lines = 1;
-  for (let index = log.length - 1; index >= start; index -= 1) {
-    if (log[index] === '\n' && ++lines > count) {
-      start = index + 1;
-      break;
-    }
-  }
-
-  return log.slice(start);
+  return boundedTail(log, {
+    maxLines: count,
+    maxCharacters: MAX_LOG_CHARACTERS,
+    maxBytes: MAX_LOG_BYTES,
+  });
 }
 
 function githubLogPayload(line: string): string {
