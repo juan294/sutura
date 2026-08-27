@@ -1,0 +1,3 @@
+Run pnpm lint
+src/index.ts
+  4:1  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any

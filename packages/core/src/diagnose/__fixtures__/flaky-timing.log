@@ -1,0 +1,3 @@
+Run pnpm test
+FAIL src/server.test.ts > starts server
+Error: listen EADDRINUSE: address already in use 127.0.0.1:4173

@@ -1,0 +1,4 @@
+Run pnpm test
+FAIL src/parser.test.ts > parses input
+TypeError: Cannot read properties of undefined (reading 'kind')
+  at src/parser.test.ts:18:12

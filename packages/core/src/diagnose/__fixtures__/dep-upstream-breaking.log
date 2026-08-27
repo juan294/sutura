@@ -1,0 +1,2 @@
+Run pnpm test
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'widget-kit' imported from src/widget.ts

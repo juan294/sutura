@@ -29,6 +29,8 @@ describe('domain model', () => {
     expectTypeOf<Grounding>().toEqualTypeOf<{
       query: string;
       citations: Array<{ title: string; url: string; snippet: string }>;
+      skipped: boolean;
+      reason?: 'disabled' | 'not-applicable';
     }>();
     expectTypeOf<Diagnosis>().toEqualTypeOf<{
       class: FailureClass;

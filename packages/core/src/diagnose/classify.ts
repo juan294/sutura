@@ -1,0 +1,252 @@
+import { Buffer } from 'node:buffer';
+
+import type { Diagnosis, FailureClass } from '../domain.js';
+import { extractJson } from '../llm/json.js';
+import type { ChatMessage, ChatOptions } from '../llm/nebius.js';
+import { FAILURE_TAXONOMY } from '../taxonomy.js';
+
+const FAILURE_CLASSES = Object.freeze(
+  Object.keys(FAILURE_TAXONOMY) as FailureClass[],
+);
+const MAX_LOG_LINES = 200;
+const MAX_LOG_CHARACTERS = 20_000;
+const MAX_LOG_BYTES = 20_000;
+
+export interface DiagnosisLlm {
+  chat(
+    tier: 'nano',
+    messages: readonly ChatMessage[],
+    options?: ChatOptions,
+  ): Promise<{ text: string }>;
+}
+
+export type MechanicalDiagnosis = Omit<Diagnosis, 'grounding'>;
+
+export class ClassificationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ClassificationError';
+  }
+}
+
+function finalLines(log: string, count: number): string {
+  let start = Math.max(0, log.length - MAX_LOG_CHARACTERS);
+
+  if (Buffer.byteLength(log.slice(start), 'utf8') > MAX_LOG_BYTES) {
+    let low = start;
+    let high = log.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (Buffer.byteLength(log.slice(middle), 'utf8') <= MAX_LOG_BYTES) {
+        high = middle;
+      } else {
+        low = middle + 1;
+      }
+    }
+    start = low;
+    if (
+      start < log.length &&
+      start > 0 &&
+      /[\uDC00-\uDFFF]/.test(log[start] ?? '')
+    ) {
+      start += 1;
+    }
+  }
+
+  let lines = 1;
+  for (let index = log.length - 1; index >= start; index -= 1) {
+    if (log[index] === '\n' && ++lines > count) {
+      start = index + 1;
+      break;
+    }
+  }
+
+  return log.slice(start);
+}
+
+function githubLogPayload(line: string): string {
+  const finalField = line.slice(line.lastIndexOf('\t') + 1).trim();
+  return finalField
+    .replace(/^\d{4}-\d{2}-\d{2}T\S+Z\s+/, '')
+    .replace(/^##\[(?:group|endgroup)\]/, '')
+    .trim();
+}
+
+function failingCommand(log: string): string {
+  const lines = log.split(/\r?\n/);
+  let command = '';
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = githubLogPayload(lines[index] ?? '');
+    const runMatch = /^(?:Run|\$)\s+(.+)$/.exec(line);
+    if (runMatch?.[1]) {
+      command = runMatch[1].trim();
+      continue;
+    }
+
+    if (/^>\s+\S+@\S+\s+(?:typecheck|lint|test|build)(?:\s+\S+)?$/.test(line)) {
+      const nextLine = lines
+        .slice(index + 1)
+        .map(githubLogPayload)
+        .find(Boolean);
+      const nestedCommand = /^>\s+(.+)$/.exec(nextLine ?? '');
+      if (nestedCommand?.[1]) {
+        command = nestedCommand[1].trim();
+      }
+    }
+  }
+
+  return command || 'unknown';
+}
+
+function bestTaxonomyMatch(log: string): {
+  failureClass: FailureClass;
+  matched: string[];
+} {
+  let bestClass: FailureClass = 'infra';
+  let bestMatches: string[] = [];
+
+  for (const failureClass of FAILURE_CLASSES) {
+    const matched = FAILURE_TAXONOMY[failureClass].signatures
+      .filter((signature) => signature.test(log))
+      .map((signature) => signature.source);
+    if (matched.length > bestMatches.length) {
+      bestClass = failureClass;
+      bestMatches = matched;
+    }
+  }
+
+  return { failureClass: bestClass, matched: bestMatches };
+}
+
+export function classifyMechanically(logExcerpt: string): MechanicalDiagnosis {
+  const boundedLog = finalLines(logExcerpt, MAX_LOG_LINES);
+  const { failureClass, matched } = bestTaxonomyMatch(boundedLog);
+
+  return {
+    class: failureClass,
+    confidence: matched.length === 0 ? 0 : Math.min(0.95, 0.65 + matched.length * 0.1),
+    signals: [
+      `mechanical:${failureClass}`,
+      ...matched.map((signature) => `signature:${signature}`),
+    ],
+    failingCmd: failingCommand(boundedLog),
+    errorExcerpt: finalLines(boundedLog, 20).trim(),
+  };
+}
+
+function taxonomyPrompt(): string {
+  const taxonomy = Object.fromEntries(
+    FAILURE_CLASSES.map((failureClass) => [
+      failureClass,
+      {
+        signatures: FAILURE_TAXONOMY[failureClass].signatures.map(
+          (signature) => signature.source,
+        ),
+        repairable: FAILURE_TAXONOMY[failureClass].repairable,
+        notes: FAILURE_TAXONOMY[failureClass].notes,
+      },
+    ]),
+  );
+
+  return [
+    'Classify the CI failure using only this public taxonomy.',
+    'Return one JSON object with class, confidence, signals, failingCmd, and errorExcerpt.',
+    'confidence must be from 0 to 1. Do not include hidden reasoning.',
+    JSON.stringify(taxonomy),
+  ].join('\n');
+}
+
+const PUBLIC_TAXONOMY_PROMPT = taxonomyPrompt();
+
+function validateDiagnosis(value: unknown): Diagnosis {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('diagnosis must be an object');
+  }
+
+  const candidate = value as Record<string, unknown>;
+  if (!FAILURE_CLASSES.includes(candidate.class as FailureClass)) {
+    throw new Error('class is not in the public failure taxonomy');
+  }
+  if (
+    typeof candidate.confidence !== 'number' ||
+    !Number.isFinite(candidate.confidence) ||
+    candidate.confidence < 0 ||
+    candidate.confidence > 1
+  ) {
+    throw new Error('confidence must be a number from 0 to 1');
+  }
+  if (
+    !Array.isArray(candidate.signals) ||
+    !candidate.signals.every((signal) => typeof signal === 'string')
+  ) {
+    throw new Error('signals must be an array of strings');
+  }
+  if (typeof candidate.failingCmd !== 'string' || !candidate.failingCmd.trim()) {
+    throw new Error('failingCmd must be a non-empty string');
+  }
+  if (typeof candidate.errorExcerpt !== 'string' || !candidate.errorExcerpt.trim()) {
+    throw new Error('errorExcerpt must be a non-empty string');
+  }
+
+  return {
+    class: candidate.class as FailureClass,
+    confidence: candidate.confidence,
+    signals: candidate.signals,
+    failingCmd: candidate.failingCmd,
+    errorExcerpt: candidate.errorExcerpt,
+  };
+}
+
+export async function classify(
+  llm: DiagnosisLlm,
+  logExcerpt: string,
+): Promise<Diagnosis> {
+  const boundedLog = finalLines(logExcerpt, MAX_LOG_LINES);
+  const mechanical = classifyMechanically(boundedLog);
+  if (mechanical.failingCmd === 'unknown') {
+    throw new ClassificationError(
+      'CI log does not contain an observed failing command',
+    );
+  }
+  let reply: { text: string };
+
+  try {
+    reply = await llm.chat(
+      'nano',
+      [
+        { role: 'system', content: PUBLIC_TAXONOMY_PROMPT },
+        { role: 'user', content: boundedLog },
+      ],
+      { maxTokens: 2_048, temperature: 0, responseFormat: { type: 'json_object' } },
+    );
+  } catch {
+    throw new ClassificationError('Diagnosis model request failed');
+  }
+
+  let model: Diagnosis;
+  try {
+    model = extractJson(reply, validateDiagnosis);
+  } catch {
+    throw new ClassificationError('Diagnosis model returned an invalid response');
+  }
+  if (model.failingCmd !== mechanical.failingCmd) {
+    throw new ClassificationError(
+      'Diagnosis model command was not observed in the CI log',
+    );
+  }
+
+  const agrees = mechanical.class === model.class;
+  return {
+    ...model,
+    confidence: agrees ? model.confidence : Math.min(model.confidence, 0.49),
+    failingCmd: mechanical.failingCmd,
+    signals: Array.from(
+      new Set([
+        ...model.signals,
+        ...mechanical.signals,
+        ...(agrees ? [] : [`llm:${model.class}`]),
+      ]),
+    ),
+  };
+}

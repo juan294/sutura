@@ -16,6 +16,8 @@ export interface Grounding {
     url: string;
     snippet: string;
   }>;
+  skipped: boolean;
+  reason?: 'disabled' | 'not-applicable';
 }
 
 export interface Diagnosis {

@@ -1,10 +1,15 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import {
+  FAILURE_TAXONOMY,
   ContreeError,
   ContreeExecutor,
   InMemoryExecutor,
+  TavilyClient,
   VERSION,
+  classify,
+  classifyMechanically,
+  ground,
 } from '@sutura/core';
 import type {
   ContreeExecutorConfig,
@@ -16,6 +21,7 @@ import type {
   RunMetrics,
   RunOptions,
   RunResult,
+  TaxonomyEntry,
 } from '@sutura/core';
 
 describe('@sutura/core entry point', () => {
@@ -37,5 +43,14 @@ describe('@sutura/core entry point', () => {
     expectTypeOf<RunMetrics>().toBeObject();
     expectTypeOf<RunOptions>().toBeObject();
     expectTypeOf<RunResult>().toBeObject();
+  });
+
+  it('exports the diagnosis and grounding API from the package root', () => {
+    expect(FAILURE_TAXONOMY.typecheck.repairable).toBe(true);
+    expect(classify).toBeTypeOf('function');
+    expect(classifyMechanically).toBeTypeOf('function');
+    expect(TavilyClient).toBeTypeOf('function');
+    expect(ground).toBeTypeOf('function');
+    expectTypeOf<TaxonomyEntry>().toBeObject();
   });
 });
