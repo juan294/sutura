@@ -22,7 +22,17 @@ const buildDiagnosis: Diagnosis = {
 };
 
 function candidate(id: string, diff: string): Candidate {
-  return { id, rationale: `strategy ${id}`, diff };
+  return {
+    id,
+    rationale: `strategy ${id}`,
+    diff: `diff --git a/src/${id}.ts b/src/${id}.ts
+--- a/src/${id}.ts
++++ b/src/${id}.ts
+@@ -1 +1 @@
+-${diff}
++${diff} repaired
+`,
+  };
 }
 
 describe('generateCandidates', () => {
@@ -120,6 +130,31 @@ describe('generateCandidates', () => {
     await expect(generateCandidates(llm, buildDiagnosis, 3)).rejects.toThrow(
       'candidate rationales must be distinct',
     );
+  });
+
+  it('repairs candidates whose diffs omit git headers and numbered hunks once', async () => {
+    const repaired = [
+      candidate('source-fix', 'source diff'),
+      candidate('config-fix', 'configuration diff'),
+      candidate('dependency-fix', 'dependency diff'),
+    ];
+    const chat = vi.fn()
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          candidates: repaired.map((value) => ({ ...value, diff: '--- a/src/value.ts\n+++ b/src/value.ts\n@@\n-old\n+new' })),
+        }),
+      })
+      .mockResolvedValueOnce({ text: JSON.stringify({ candidates: repaired }) });
+
+    await expect(generateCandidates({ chat }, buildDiagnosis, 3)).resolves.toEqual(repaired);
+    expect(chat).toHaveBeenCalledTimes(2);
+    expect(chat.mock.calls[1]?.[1]).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'assistant' }),
+      expect.objectContaining({
+        role: 'user',
+        content: expect.stringContaining('complete git unified diff with numbered hunks'),
+      }),
+    ]));
   });
 });
 
