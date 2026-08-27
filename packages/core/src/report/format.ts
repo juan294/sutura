@@ -66,6 +66,9 @@ export function outcomeLabel(outcome: CaseFile['outcome']): string {
 
 export function triageSentence(caseFile: CaseFile): string {
   if (caseFile.outcome === 'infra-stop') {
+    if (caseFile.diagnosis.signals.includes('sandbox-preparation:failed')) {
+      return 'Sandbox dependency preparation failed. Sutura stopped before reproduction and inference.';
+    }
     return 'The failing command passed in a clean sandbox reproduction. Sutura stopped before inference.';
   }
   const { reproduced, of, status } = caseFile.triage;

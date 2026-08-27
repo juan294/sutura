@@ -21,8 +21,13 @@ export function runtimeEvidence(
   if (grounding && !grounding.skipped) {
     lines.push(`Tavily runtime: queries=1; citations=${grounding.citations.length}`);
   }
+  const contreeStage = caseFile.diagnosis.signals.includes(
+    'sandbox-preparation:failed',
+  )
+    ? 'sandbox preparation failed before reproduction'
+    : 'sandbox reproduction attempted';
   lines.push(
-    `ConTree runtime: sandbox reproduction attempted; triage=${caseFile.triage.reproduced}/${caseFile.triage.of}; raced=${caseFile.race.length}; outcome=${caseFile.outcome}`,
+    `ConTree runtime: ${contreeStage}; triage=${caseFile.triage.reproduced}/${caseFile.triage.of}; raced=${caseFile.race.length}; outcome=${caseFile.outcome}`,
   );
   return lines;
 }

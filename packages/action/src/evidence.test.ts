@@ -50,4 +50,23 @@ describe('runtimeEvidence', () => {
     expect(evidence).not.toContain('sensitive source text');
     expect(evidence).not.toContain('private snippet');
   });
+
+  it('does not claim reproduction when dependency preparation failed', () => {
+    const value = caseFile({
+      outcome: 'infra-stop',
+      diagnosis: {
+        class: 'infra',
+        confidence: 1,
+        signals: ['sandbox-preparation:failed'],
+        failingCmd: 'pnpm test',
+        errorExcerpt: 'pnpm install failed',
+      },
+      triage: { status: 'not-run', reproduced: 0, of: 0 },
+      cost: { entries: [], totalUsd: () => 0 },
+    });
+
+    expect(runtimeEvidence(value, { nano: 'nemotron-nano' })).toEqual([
+      'ConTree runtime: sandbox preparation failed before reproduction; triage=0/0; raced=0; outcome=infra-stop',
+    ]);
+  });
 });

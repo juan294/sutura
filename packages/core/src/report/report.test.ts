@@ -234,6 +234,22 @@ describe('markdown report contract', () => {
     expect(report).not.toContain('### Discharge');
   });
 
+  it('reports a preparation failure before reproduction honestly', async () => {
+    const caseFile = await loadFixture('gave-up');
+    caseFile.outcome = 'infra-stop';
+    caseFile.diagnosis.class = 'infra';
+    caseFile.diagnosis.signals = ['sandbox-preparation:failed'];
+    caseFile.triage = { status: 'not-run', reproduced: 0, of: 0 };
+    caseFile.race = [];
+
+    const report = renderComment(caseFile);
+
+    expect(report).toContain(
+      'Sandbox dependency preparation failed. Sutura stopped before reproduction and inference.',
+    );
+    expect(report).not.toContain('passed in a clean sandbox reproduction');
+  });
+
   it('shows refused evidence and the ledger-derived inference cost', async () => {
     const caseFile = await loadFixture('refused');
     const report = renderComment(caseFile);
