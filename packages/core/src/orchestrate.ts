@@ -33,7 +33,8 @@ const MAX_SOURCE_FILES = 8;
 const MAX_SOURCE_LINES = 120;
 const MAX_SOURCE_CHARACTERS = 12_000;
 const MAX_SOURCE_BYTES = 12_000;
-const SOURCE_PATH_PATTERN = /(?:^|[\s("'`])(?<path>(?:\.\/)?(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+\.(?:[cm]?[jt]sx?|json|ya?ml|toml))(?:(?:\(|:)(?<line>\d+))?/g;
+const SOURCE_PATH_PATTERN = /(?:^|[\s("'`])(?<path>(?:\.\/)?(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+\.(?:json|[cm]?[jt]sx?|ya?ml|toml))(?![A-Za-z0-9_.-])(?:(?:\(|:)(?<line>\d+))?/g;
+const GITHUB_WORKSPACE_PREFIX_PATTERN = /(^|[\s("'`])(?:(?:file:\/\/)?\/home\/runner\/work|(?:file:\/\/)?\/__w)\/([A-Za-z0-9_.-]+)\/\2\//gm;
 const FALLBACK_SOURCE_PATHS: Readonly<Partial<Record<FailureClass, readonly string[]>>> = {
   typecheck: ['tsconfig.json', 'package.json'],
   lint: ['eslint.config.js', 'package.json'],
@@ -216,6 +217,7 @@ export function collectFailedLogs(steps: readonly FailedStepLog[]): string {
 function safeSourcePath(path: string): string | null {
   const normalized = path.replace(/^\.\//, '');
   const segments = normalized.split('/');
+  const basename = segments.at(-1)?.toLowerCase() ?? '';
   if (
     normalized.length === 0 ||
     normalized.length > 240 ||
@@ -229,7 +231,16 @@ function safeSourcePath(path: string): string | null {
         segment === '..' ||
         segment === '.git' ||
         segment === 'node_modules',
-    )
+    ) ||
+    basename === '.env' ||
+    basename.startsWith('.env.') ||
+    basename === '.netrc' ||
+    basename === '.npmrc' ||
+    basename === '.pypirc' ||
+    basename === 'credentials.json' ||
+    basename === 'id_rsa' ||
+    basename === 'id_ed25519' ||
+    /\.(?:key|pem|p12|pfx)$/u.test(basename)
   ) {
     return null;
   }
@@ -239,7 +250,8 @@ function safeSourcePath(path: string): string | null {
 export function extractSourceReferences(log: string): SourceReference[] {
   const normalizedLog = log
     .replaceAll('file:///workspace/', '')
-    .replaceAll('/workspace/', '');
+    .replaceAll('/workspace/', '')
+    .replace(GITHUB_WORKSPACE_PREFIX_PATTERN, '$1');
   const references = new Map<string, SourceReference>();
 
   for (const match of normalizedLog.matchAll(SOURCE_PATH_PATTERN)) {

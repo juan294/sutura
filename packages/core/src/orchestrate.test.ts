@@ -810,6 +810,61 @@ describe('repair source context', () => {
     ).toEqual([{ path: 'src/large.ts', line: 500 }]);
   });
 
+  it('extracts exact JSON paths without accepting partial extensions', () => {
+    expect(
+      extractSourceReferences([
+        'package.json:14:2 invalid package metadata',
+        'tsconfig.json(7,1): invalid compiler option',
+        'archive.json.backup:2 must not be read',
+        'module.jsonish:3 must not be read',
+      ].join('\n')),
+    ).toEqual([
+      { path: 'package.json', line: 14 },
+      { path: 'tsconfig.json', line: 7 },
+    ]);
+  });
+
+  it('normalizes only validated duplicated GitHub workspace prefixes', () => {
+    expect(
+      extractSourceReferences([
+        '/home/runner/work/widget/widget/src/linux.ts:12:3 error',
+        'file:///home/runner/work/widget/widget/src/file-url.ts(8,2): error',
+        '/__w/widget/widget/src/container.ts:4:1 error',
+        '/home/runner/work/widget/other/src/mismatch.ts:1:1 rejected',
+        'file:///home/runner/work/widget/other/src/file-mismatch.ts:1:1 rejected',
+        'prefix/home/runner/work/widget/widget/src/embedded.ts:1:1 rejected',
+        '/etc/private.ts:1:1 rejected',
+      ].join('\n')),
+    ).toEqual([
+      { path: 'src/linux.ts', line: 12 },
+      { path: 'src/file-url.ts', line: 8 },
+      { path: 'src/container.ts', line: 4 },
+      {
+        path: 'prefix/home/runner/work/widget/widget/src/embedded.ts',
+        line: 1,
+      },
+    ]);
+  });
+
+  it('never requests sensitive source files from the repository port', async () => {
+    const repository = new FakeRepository();
+
+    await readRepairSourceContext(
+      repository,
+      '/tmp/exact-pr-head',
+      [
+        'src/value.ts:1:1 error TS2322',
+        'credentials.json:2:1 must remain private',
+      ].join('\n'),
+      { class: 'typecheck' },
+    );
+
+    expect(repository.sourceReads).toEqual([{
+      checkoutDir: '/tmp/exact-pr-head',
+      paths: ['src/value.ts', 'tsconfig.json', 'package.json'],
+    }]);
+  });
+
   it('rejects source-port responses that exceed bounds or return unrequested files', async () => {
     const repository = new FakeRepository();
     const largeSource = Array.from(

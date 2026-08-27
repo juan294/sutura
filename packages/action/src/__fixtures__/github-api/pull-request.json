@@ -1,0 +1,10 @@
+{
+  "number": 42,
+  "head": {
+    "sha": "0123456789abcdef0123456789abcdef01234567",
+    "ref": "feature/broken-build",
+    "repo": {
+      "full_name": "acme/widget"
+    }
+  }
+}
