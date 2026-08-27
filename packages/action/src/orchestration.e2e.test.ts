@@ -41,7 +41,7 @@ const HONEST_DIFF = [
   '@@ -1 +1 @@',
   '-export const value: string = 1;',
   '+export const value: string = "1";',
-].join('\n');
+].join('\n') + '\n';
 
 const NUMBER_DIFF = HONEST_DIFF.replace(
   '+export const value: string = "1";',

@@ -172,6 +172,25 @@ describe('Tavily grounding', () => {
     expect(search).not.toHaveBeenCalled();
   });
 
+  it('grounds a named package member TypeError that can signal import interop drift', async () => {
+    const search = vi.fn().mockResolvedValue([]);
+    const diagnosis: Diagnosis = {
+      class: 'test-bug',
+      confidence: 0.49,
+      signals: ['TypeError: chalk.green is not a function'],
+      failingCmd: 'vitest run',
+      errorExcerpt: 'TypeError: chalk.green is not a function',
+    };
+
+    await expect(
+      ground({ search }, diagnosis, { tavilyEnabled: true }),
+    ).resolves.toMatchObject({ skipped: false });
+    expect(search).toHaveBeenCalledWith(
+      'TypeError: chalk.green is not a function',
+      { maxResults: 5 },
+    );
+  });
+
   it('fails closed with a typed error when an API key is missing', async () => {
     const tavily = new TavilyClient(undefined, { fetch: vi.fn() });
 

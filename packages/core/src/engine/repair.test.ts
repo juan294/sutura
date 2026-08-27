@@ -185,6 +185,18 @@ export function pageCount(items, size) {
     ]);
     expect(chat).toHaveBeenCalledTimes(1);
   });
+
+  it('adds the final patch-file newline required by git apply', async () => {
+    const unterminated = candidate('source-fix', 'source diff');
+    unterminated.diff = unterminated.diff.trimEnd();
+    const chat = vi.fn().mockResolvedValue({
+      text: JSON.stringify({ candidates: [unterminated] }),
+    });
+
+    const [generated] = await generateCandidates({ chat }, buildDiagnosis, 1);
+
+    expect(generated?.diff).toBe(`${unterminated.diff}\n`);
+  });
 });
 
 describe('prepareRepair', () => {

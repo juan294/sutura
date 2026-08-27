@@ -3,6 +3,7 @@ import type { HttpRequestInit, HttpResponse } from '../llm/nebius.js';
 
 const DEFAULT_BASE_URL = 'https://api.tavily.com';
 const WEB_HELPFUL_CLASSES = new Set(['dep-upstream-breaking', 'env-config', 'build']);
+const MEMBER_NOT_FUNCTION = /\bTypeError:\s+[@\w./-]+\.[\w$]+\s+is not a function\b/i;
 const VERSION_PATTERN_SOURCE = '[~^]?\\d+\\.\\d+\\.\\d+(?:-[\\w.-]+)?';
 const NESTED_SPECIFIER = new RegExp(
   `^specifier:\\s*(?<version>${VERSION_PATTERN_SOURCE})$`,
@@ -263,7 +264,9 @@ export async function ground(
   if (!options.tavilyEnabled) {
     return { query: '', citations: [], skipped: true, reason: 'disabled' };
   }
-  if (!WEB_HELPFUL_CLASSES.has(diagnosis.class)) {
+  const webHelpful = WEB_HELPFUL_CLASSES.has(diagnosis.class) ||
+    (diagnosis.class === 'test-bug' && MEMBER_NOT_FUNCTION.test(diagnosis.errorExcerpt));
+  if (!webHelpful) {
     return { query: '', citations: [], skipped: true, reason: 'not-applicable' };
   }
 

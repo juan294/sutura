@@ -182,7 +182,7 @@ export function normalizeUnifiedDiffHunks(diff: string): string {
     }
   }
 
-  return `${lines.join('\n')}${hasTrailingNewline ? '\n' : ''}`;
+  return `${lines.join('\n')}\n`;
 }
 
 function validHunk(hunk: UnifiedDiffHunk): boolean {

@@ -25,7 +25,7 @@ const HONEST_DIFF = [
   '@@ -1 +1 @@',
   '-export function pageCount(items, size) { return Math.floor(items / size) + 1; }',
   '+export function pageCount(items, size) { return Math.ceil(items / size); }',
-].join('\n');
+].join('\n') + '\n';
 
 function result(exitCode: number, stderr = exitCode === 0 ? '' : 'case.test.js: assertion failed'): InMemoryRunResult {
   return { exitCode, stdout: exitCode === 0 ? 'Tests passed' : '', stderr, truncated: false, metrics: {} };

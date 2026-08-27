@@ -223,7 +223,7 @@ diff --git a/src/two.ts b/src/two.ts
     expect(parseUnifiedDiff(diff)).toMatchObject({ valid: true, files: [{}, {}] });
   });
 
-  it('preserves valid multi-hunk and no-newline forms without a trailing newline', () => {
+  it('adds the patch-file terminator while preserving no-newline markers', () => {
     const diff = `diff --git a/src/value.ts b/src/value.ts
 --- a/src/value.ts
 +++ b/src/value.ts
@@ -236,8 +236,10 @@ diff --git a/src/two.ts b/src/two.ts
 +last new
 \\ No newline at end of file`;
 
-    expect(normalizeUnifiedDiffHunks(diff)).toBe(diff);
-    expect(parseUnifiedDiff(diff).valid).toBe(true);
+    const normalized = normalizeUnifiedDiffHunks(diff);
+
+    expect(normalized).toBe(`${diff}\n`);
+    expect(parseUnifiedDiff(normalized).valid).toBe(true);
   });
 });
 
