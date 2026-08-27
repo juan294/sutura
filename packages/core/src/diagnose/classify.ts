@@ -208,13 +208,9 @@ export async function classify(
   } catch {
     throw new ClassificationError('Diagnosis model returned an invalid response');
   }
-  if (model.failingCmd !== mechanical.failingCmd) {
-    throw new ClassificationError(
-      'Diagnosis model command was not observed in the CI log',
-    );
-  }
-
-  const agrees = mechanical.class === model.class;
+  const classAgrees = mechanical.class === model.class;
+  const commandAgrees = mechanical.failingCmd === model.failingCmd;
+  const agrees = classAgrees && commandAgrees;
   return {
     ...model,
     confidence: agrees ? model.confidence : Math.min(model.confidence, 0.49),
@@ -223,7 +219,8 @@ export async function classify(
       new Set([
         ...model.signals,
         ...mechanical.signals,
-        ...(agrees ? [] : [`llm:${model.class}`]),
+        ...(classAgrees ? [] : [`llm:${model.class}`]),
+        ...(commandAgrees ? [] : ['llm-command-mismatch']),
       ]),
     ),
   };
