@@ -1,38 +1,145 @@
-# Sutura — Self-healing CI
+# Sutura
 
 [![CI](https://github.com/juan294/sutura/actions/workflows/ci.yml/badge.svg)](https://github.com/juan294/sutura/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6)
-![Node](https://img.shields.io/badge/Node-22-339933)
+![Node](https://img.shields.io/badge/Node-22%2B-339933)
 
-An agent that treats a red build like a wound: it diagnoses the failing CI
-run, reproduces it in a sandbox, patches the cause, and opens a fix PR with
-its full reasoning trace. Powered by NVIDIA Nemotron models on
-[Nebius Token Factory](https://tokenfactory.nebius.com), with
-[Tavily](https://tavily.com) grounding for error research.
+Sutura is a self-healing CI agent. It reads one failed pull-request run,
+reproduces the failure in isolated sandboxes, races candidate repairs, audits
+the winner, and opens a fix pull request. It does not auto-merge.
 
----
+Sutura is built for the Nebius x NVIDIA Global AI Hackathon. Try the public
+[judge demo](https://github.com/juan294/sutura-demo): run the break-me workflow
+and watch the repair pull request and surgical report arrive.
 
-## Status
+## How it works
 
-Early scaffold. Built for the
-[Nebius x NVIDIA Global AI Hackathon](https://nebiusglobalaihackathon.devpost.com/)
-(Coding and Agentic Engineering track). All substantive development happens
-inside the hackathon submission window (2026-08-26 to 2026-10-30) — see the
-commit history.
+```mermaid
+flowchart LR
+  A[Failed GitHub Actions run] --> B[Exact PR head SHA and failed-step log]
+  B --> C[Nemotron Nano diagnosis]
+  C --> D[ConTree dependency-prepared snapshot]
+  D -->|Branching use 1| E1[Triage reproduction 1]
+  D -->|Same image| E2[Triage reproduction N]
+  E1 --> F[Nemotron Super candidates]
+  E2 --> F
+  D -->|Branching use 2| G1[Candidate 1]
+  D -->|Same image| G2[Candidate K]
+  F --> G1
+  F --> G2
+  G1 --> H[Deterministic winner]
+  G2 --> H
+  D -->|Branching use 3| I[Clean audit branch]
+  H --> I
+  I --> J[Mechanical checks and Nemotron Ultra review]
+  J -->|Approved| K[Fix PR and HTML case file]
+  J -->|Rejected| L[Refusal report]
+```
 
-## Development
+ConTree branching has three distinct jobs: independent triage reproductions,
+parallel candidate races from one immutable parent image, and a clean rerun of
+the selected patch for adversarial audit. A passing command is necessary, but
+it is not enough. Sutura also rejects deleted or skipped tests, weakened
+assertions, relaxed compiler or linter settings, and similar green-wash fixes.
 
+Every run ends as `fixed`, `flaky-no-patch`, `refused`, `gave-up`, or
+`infra-stop`. The PR comment uses a surgical report with Diagnosis, Triage,
+Procedure, Pathology, and Discharge sections. The full HTML case file is a
+workflow artifact.
+
+## Runtime roles
+
+| Service | Runtime role |
+| --- | --- |
+| NVIDIA Nemotron on Nebius Token Factory | Nano classifies the failure, Super proposes repairs, and Ultra audits evidence that static checks cannot judge. |
+| Nebius ConTree Sandboxes | Prepares dependencies once, snapshots the filesystem, and runs isolated triage, race, and audit branches. |
+| Tavily | Grounds upstream dependency diagnoses in release and migration sources. It is optional for non-upstream cases and for the benchmark ablation. |
+
+The report identifies the model calls that actually occurred. Cost is reported
+as **inference cost** from the token ledger. It is not presented as total
+operating cost.
+
+## Evidence, with claims discipline
+
+Sutura is measured by [Placebo](packages/placebo/README.md), a
+placebo-controlled benchmark for CI-repair agents. Results are versioned and
+dated. Catch-rate claims use the form “refused X/X placebos in Placebo vN.”
+Fix rate includes every failed case ID, and flaky accuracy states the corpus
+sample size. The internal ship gate is zero false approvals.
+
+No dated Placebo v0.1 live result is published in this branch yet. Until its
+machine-readable result is linked here, this README makes no numeric catch,
+fix, flaky-accuracy, or Tavily-ablation claim.
+
+The public dogfood repair and its exact failing run, Sutura attempt, and merged
+fix PR will be linked here after that run exists. No dogfood claim is made
+before those public records are available.
+
+## Security boundary
+
+- The action runs trusted code from the repository default branch. It repairs
+  only a same-repository pull request tied to the failed run and exact head SHA.
+- Repository secrets are not copied into ConTree. Sandbox commands receive only
+  `CI=true` and `NODE_ENV=test`.
+- Log-derived source reads are bounded, stay inside the checkout, reject
+  sensitive paths, and do not follow symlinks.
+- Sutura claims a run before spending inference or sandbox capacity, so a
+  repeated delivery cannot create a second repair attempt.
+- The selected diff is rerun and audited before publication. Sutura never
+  auto-merges a fix.
+
+Treat every generated patch as untrusted until its audit and repository checks
+pass. Keep branch protection and human merge review enabled.
+
+## Clean-machine setup
+
+Prerequisites: Git, Node.js 22 or later, and pnpm 11.22.0. The following block
+is extracted and executed in a fresh local clone by CI on every change.
+
+<!-- sutura:verify-setup -->
 ```bash
-pnpm install
-pnpm run test        # Vitest
-pnpm run typecheck   # tsc --noEmit
-pnpm run lint        # ESLint
+git clone https://github.com/juan294/sutura.git
+cd sutura
+pnpm install --frozen-lockfile
 pnpm run build
 ```
 
-Requires Node 22+ and pnpm. Runtime configuration uses `NEBIUS_API_KEY` and
-`TAVILY_API_KEY` environment variables (never committed).
+Run the complete local gate before you open a pull request:
+
+| Check | Command |
+| --- | --- |
+| Types | `pnpm run typecheck` |
+| Lint | `pnpm run lint` |
+| Tests | `pnpm run test` |
+| Build | `pnpm run build` |
+
+Live tests are opt-in with `SUTURA_LIVE=1` and require the corresponding
+credentials. Normal tests use recorded fixtures and do not spend API credit.
+
+## GitHub Action configuration
+
+The action needs `actions: read`, `contents: write`, and `pull-requests: write`.
+Configure `NEBIUS_API_KEY`, `CONTREE_TOKEN`, and optional `TAVILY_API_KEY` as
+repository secrets. Configure `CONTREE_PROJECT` as a repository variable. The
+checked-in [workflow](.github/workflows/sutura.yml) shows the complete wiring.
+Pin external use to an immutable release tag or commit SHA.
+
+Defaults are five triage reproductions and three repair candidates. Model IDs
+and those limits are configurable action inputs.
+
+## Placebo
+
+Build and run the standalone benchmark from the repository checkout:
+
+```text
+pnpm --filter placebo run build
+pnpm --filter placebo exec placebo run --adapter sutura
+pnpm --filter placebo exec placebo run --adapter sutura --only upstream --no-tavily
+```
+
+Placebo keeps unsuccessful cases in the denominator and emits the failed IDs.
+See its README for the corpus contract, scorer rules, and publication format.
 
 ## License
 

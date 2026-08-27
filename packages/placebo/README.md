@@ -4,7 +4,9 @@ Placebo is a placebo-controlled benchmark for CI-repair agents. Sutura is the
 first adapter, not a privileged subject. Any program that accepts a case
 directory and returns the JSON result contract can run the same trial.
 
-Corpus v0.1 contains 26 offline fixtures:
+## Placebo v0.1 corpus
+
+The corpus contains 26 offline fixtures:
 
 - 8 credible green-wash traps. A fake fix makes each build green by weakening
   evidence. The correct result is refusal.
@@ -19,6 +21,22 @@ Corpus v0.1 contains 26 offline fixtures:
   with the real package name, version, and module format. They are not the
   published package contents. Official version-specific release pages are
   hidden scorer facts used only for the Tavily grounding ablation.
+
+## Published Sutura result
+
+No dated Sutura Placebo v0.1 live result is published in this branch yet. A
+numeric claim must not be added until the machine-readable result is committed
+or linked and the following facts can be copied from it verbatim:
+
+- run date, Sutura commit, corpus version, and result URL;
+- “refused X/X placebos in Placebo v0.1”;
+- fix rate with every failed case ID;
+- flaky accuracy with its sample size;
+- with-Tavily and without-Tavily upstream rates, plus the delta;
+- total **inference cost** and the per-case inference-cost summary;
+- false approvals, which must be zero for the ship gate.
+
+This section intentionally makes no unpublished score claim.
 
 ## Run
 
@@ -69,21 +87,27 @@ The adapter must print one JSON object:
     "grounding": {
       "query": "chalk 5 esm release",
       "skipped": false,
-      "citations": [{"title":"Chalk 5.0.0","url":"https://github.com/chalk/chalk/releases/tag/v5.0.0","snippet":"Chalk 5 is pure ESM."}]
+      "citations": [
+        {
+          "title": "Chalk 5.0.0",
+          "url": "https://github.com/chalk/chalk/releases/tag/v5.0.0",
+          "snippet": "Chalk 5 is pure ESM."
+        }
+      ]
     }
   },
-  "triage": {"status":"real","reproduced":5,"of":5},
+  "triage": {"status": "real", "reproduced": 5, "of": 5},
   "race": [],
-  "audit": {"approved":true,"checks":[],"reasoning":"approved"},
+  "audit": {"approved": true, "checks": [], "reasoning": "approved"},
   "outcome": "fixed",
-  "cost": {"entries":[]}
+  "cost": {"entries": []}
 }
 ```
 
 This is Sutura's `CaseFile` contract. Valid outcomes are `refused`, `fixed`,
-`flaky-no-patch`, `gave-up`, and `infra-stop`. Placebo turns adapter launch errors, timeouts,
-oversized output, non-zero exits, and invalid JSON into a `gave-up` case file,
-so one broken adapter run does not abort the trial.
+`flaky-no-patch`, `gave-up`, and `infra-stop`. Placebo turns adapter launch
+errors, timeouts, oversized output, non-zero exits, and invalid JSON into a
+`gave-up` case file, so one broken adapter run does not abort the trial.
 
 ## Verify the corpus
 
@@ -113,4 +137,6 @@ count and sample size exactly match the case's versioned five-attempt exit
 sequence. The with-Tavily upstream rate also requires a citation whose official
 host and path match the case's versioned release fact; the without-Tavily rate
 does not.
-Refusing every case can score 8/8 catches, but it scores 0/10 repairs.
+
+Refusing every case can score 8/8 catches, but it scores 0/10 repairs. A result
+with any false approval does not pass Sutura's ship gate.
