@@ -1,0 +1,2 @@
+Run pnpm test
+ConfigError: Missing required environment variable: SERVICE_API_KEY

@@ -1,0 +1,3 @@
+Run pnpm build
+vite v7.0.0 building for production...
+Build failed: Could not resolve entry module "src/main.ts".

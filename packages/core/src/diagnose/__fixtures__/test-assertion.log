@@ -1,0 +1,3 @@
+Run pnpm vitest run
+FAIL src/math.test.ts > adds values
+AssertionError: expected 3 to be 4
