@@ -130,7 +130,12 @@ export const REPAIR_SOURCE_LIMITS: Readonly<SourceReadLimits> = Object.freeze({
 });
 
 export interface RepositoryPort {
-  checkoutHead(repo: string, sha: string): Promise<string>;
+  checkoutHead(
+    repo: string,
+    sha: string,
+    headRef?: string,
+    prNumber?: number,
+  ): Promise<string>;
   /**
    * Reads bounded excerpts without following symlinks. Every path component
    * must resolve inside the real checkoutDir. The implementation must stop
@@ -425,7 +430,12 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     throw new AlreadyAttemptedError(run.runId);
   }
 
-  const checkoutDir = await ctx.repository.checkoutHead(run.repo, run.prHeadSha);
+  const checkoutDir = await ctx.repository.checkoutHead(
+    run.repo,
+    run.prHeadSha,
+    run.prHeadRef,
+    run.prNumber,
+  );
   const executor = new AllowlistedExecutor(ctx.executor);
   const baseImage = await executor.importImage(ctx.imageRef ?? DEFAULT_IMAGE_REF);
   const failingImage = await executor.snapshot(checkoutDir, baseImage);
