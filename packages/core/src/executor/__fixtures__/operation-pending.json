@@ -1,0 +1,12 @@
+{
+  "uuid": "operation-1",
+  "kind": "instance",
+  "status": "EXECUTING",
+  "error": null,
+  "result_image_uuid": null,
+  "metadata": {
+    "image": "image-parent",
+    "command": "echo $GREETING",
+    "result": null
+  }
+}

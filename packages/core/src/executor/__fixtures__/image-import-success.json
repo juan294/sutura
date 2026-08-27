@@ -1,0 +1,16 @@
+{
+  "uuid": "import-operation",
+  "kind": "image_import",
+  "status": "SUCCESS",
+  "error": null,
+  "result_image_uuid": "image-imported",
+  "metadata": {
+    "registry": {
+      "url": "docker://docker.io/library/node:22-slim"
+    }
+  },
+  "result": {
+    "image": "image-imported",
+    "tag": null
+  }
+}
