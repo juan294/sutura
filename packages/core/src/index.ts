@@ -38,6 +38,17 @@ export {
   selectWinner,
 } from './engine/repair.js';
 export { triage } from './engine/triage.js';
+export {
+  AlreadyAttemptedError,
+  OrchestrationError,
+  REPAIR_SOURCE_LIMITS,
+  SUTURA_SANDBOX_ENV,
+  attemptMarker,
+  collectFailedLogs,
+  extractSourceReferences,
+  orchestrate,
+  readRepairSourceContext,
+} from './orchestrate.js';
 export { FAILURE_TAXONOMY } from './taxonomy.js';
 export { renderCaseFile } from './report/casefile.js';
 export { renderComment } from './report/markdown.js';
@@ -82,7 +93,25 @@ export type {
   TavilySearchOptions,
 } from './diagnose/tavily.js';
 export type { PatchVerdict } from './engine/patch-rules.js';
-export type { RepairLlm, RepairPreparation } from './engine/repair.js';
+export type {
+  RepairLlm,
+  RepairPreparation,
+  RepairSourceContext,
+  RepairSourceExcerpt,
+} from './engine/repair.js';
+export type {
+  CreateFixPullRequestInput,
+  FailedStepLog,
+  FailingWorkflowRun,
+  GitHubOrchestrationPort,
+  OrchestrationContext,
+  OrchestratorLlm,
+  PublishFixInput,
+  RepositorySourceExcerpt,
+  RepositoryPort,
+  SourceReadLimits,
+  SourceReference,
+} from './orchestrate.js';
 export type { TaxonomyEntry } from './taxonomy.js';
 export type {
   AuditVerdict,

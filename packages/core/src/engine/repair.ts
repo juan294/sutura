@@ -26,6 +26,17 @@ export interface RepairPreparation {
   candidates: Candidate[];
 }
 
+export interface RepairSourceExcerpt {
+  path: string;
+  startLine: number;
+  content: string;
+  truncated: boolean;
+}
+
+export interface RepairSourceContext {
+  sources: RepairSourceExcerpt[];
+}
+
 function positiveCount(value: number, name: string): void {
   if (
     !Number.isSafeInteger(value) ||
@@ -91,6 +102,7 @@ function generationPrompt(K: number): string {
     `Return exactly ${K} independent CI repair candidates as one JSON object.`,
     'Use distinct strategies. Consider, in order: fix source; fix config; fix dependency pin.',
     'Each candidate must have a distinct id, a concise rationale, and a complete unified diff.',
+    'When sourceContext contains sources, use only those repository paths and make every hunk match that source exactly.',
     'Do not weaken, skip, or delete tests. Do not include hidden reasoning.',
     'Schema: {"candidates":[{"id":"...","rationale":"...","diff":"..."}]}',
   ].join('\n');
@@ -100,6 +112,7 @@ export async function generateCandidates(
   llm: RepairLlm,
   diagnosis: Diagnosis,
   K = DEFAULT_RACE_CANDIDATES,
+  sourceContext: RepairSourceContext = { sources: [] },
 ): Promise<Candidate[]> {
   positiveCount(K, 'K');
 
@@ -107,7 +120,10 @@ export async function generateCandidates(
     'super',
     [
       { role: 'system', content: generationPrompt(K) },
-      { role: 'user', content: JSON.stringify(diagnosis) },
+      {
+        role: 'user',
+        content: JSON.stringify({ diagnosis, sourceContext }),
+      },
     ],
     {
       maxTokens: 8_192,
@@ -126,6 +142,7 @@ export async function prepareRepair(
   diagnosis: Diagnosis,
   N = 5,
   K = DEFAULT_RACE_CANDIDATES,
+  sourceContext: RepairSourceContext = { sources: [] },
 ): Promise<RepairPreparation> {
   positiveCount(K, 'K');
   const verdict = await triage(executor, failingImage, diagnosis.failingCmd, N);
@@ -135,7 +152,7 @@ export async function prepareRepair(
 
   return {
     triage: verdict,
-    candidates: await generateCandidates(llm, diagnosis, K),
+    candidates: await generateCandidates(llm, diagnosis, K, sourceContext),
   };
 }
 

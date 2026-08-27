@@ -60,10 +60,14 @@ export function outcomeLabel(outcome: CaseFile['outcome']): string {
     'flaky-no-patch': 'FLAKY — NO PATCH',
     refused: 'PATCH REFUSED',
     'gave-up': 'NO PATCH HELD',
+    'infra-stop': 'INFRA — STOPPED',
   }[outcome];
 }
 
 export function triageSentence(caseFile: CaseFile): string {
+  if (caseFile.outcome === 'infra-stop') {
+    return 'The failing command passed in a clean sandbox reproduction. Sutura stopped before inference.';
+  }
   const { reproduced, of, status } = caseFile.triage;
   if (status === 'flaky') {
     return `Reproduced ${reproduced}/${of} across forked sandbox states — flaky. No patch proposed.`;
@@ -75,6 +79,7 @@ export function triageSentence(caseFile: CaseFile): string {
 }
 
 export function raceNote(result: RaceResult): string {
+  if (result.note) return result.note;
   if (result.held) return 'Survived the verification race';
   if (result.exitCode === 0) return 'Rolled back after comparison';
   return `Rolled back; verification exited ${result.exitCode}`;
@@ -104,5 +109,7 @@ export function mergeGuidance(caseFile: CaseFile): string {
       return 'No candidate is safe to merge. Inspect the diagnosis and start a new repair cycle with more evidence.';
     case 'flaky-no-patch':
       return 'No patch exists to merge. Investigate the timing boundary and rerun with the same commit.';
+    case 'infra-stop':
+      return 'No patch exists to merge. Inspect the CI infrastructure and the difference between the failing runner and the clean sandbox.';
   }
 }

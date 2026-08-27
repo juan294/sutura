@@ -207,7 +207,7 @@ h1 { max-width: 760px; margin: 0; font-size: clamp(3rem, 8vw, 7.4rem); line-heig
 .verdict p { margin: 13px 0 0; font-size: 0.9rem; line-height: 1.45; }
 .outcome-fixed { --outcome-color: var(--accent); }
 .outcome-refused, .outcome-gave-up { --outcome-color: var(--danger); }
-.outcome-flaky-no-patch { --outcome-color: #976812; }
+.outcome-flaky-no-patch, .outcome-infra-stop { --outcome-color: #976812; }
 .sheet { display: grid; grid-template-columns: 170px minmax(0, 1fr); border-bottom: 1px solid var(--rule); }
 .section-label { padding: 34px 24px 34px 8px; color: var(--ink-soft); }
 .section-label span { display: block; width: 28px; height: 28px; border: 1px solid currentColor; text-align: center; line-height: 27px; font-size: 0.68rem; }
@@ -291,7 +291,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
 
 export function renderCaseFile(caseFile: CaseFile): string {
   const patchSections =
-    caseFile.outcome === 'flaky-no-patch'
+    caseFile.outcome === 'flaky-no-patch' || caseFile.outcome === 'infra-stop'
       ? ''
       : `${renderProcedure(caseFile)}${renderPathology(caseFile)}${renderDischarge(caseFile)}`;
   const risk =

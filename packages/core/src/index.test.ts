@@ -6,6 +6,8 @@ import {
   ContreeError,
   ContreeExecutor,
   InMemoryExecutor,
+  OrchestrationError,
+  SUTURA_SANDBOX_ENV,
   TavilyClient,
   VERSION,
   adjudicate,
@@ -20,6 +22,7 @@ import {
   classifyMechanically,
   generateCandidates,
   ground,
+  orchestrate,
   prepareRepair,
   race,
   renderCaseFile,
@@ -109,5 +112,11 @@ describe('@sutura/core entry point', () => {
     expectTypeOf<AuditLlm>().toBeObject();
     expectTypeOf<AdjudicationContext>().toBeObject();
     expectTypeOf<AdjudicationResult>().toBeObject();
+  });
+
+  it('exports the runtime-independent orchestrator from the package root', () => {
+    expect(orchestrate).toBeTypeOf('function');
+    expect(OrchestrationError).toBeTypeOf('function');
+    expect(SUTURA_SANDBOX_ENV).toEqual({ CI: 'true', NODE_ENV: 'test' });
   });
 });

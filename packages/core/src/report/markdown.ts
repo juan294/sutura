@@ -122,7 +122,10 @@ export function renderComment(caseFile: CaseFile, artifactUrl?: string): string 
     `**${triageSentence(caseFile)}**`,
   ];
 
-  if (caseFile.outcome !== 'flaky-no-patch') {
+  if (
+    caseFile.outcome !== 'flaky-no-patch' &&
+    caseFile.outcome !== 'infra-stop'
+  ) {
     sections.push(
       '',
       ...renderProcedure(caseFile),

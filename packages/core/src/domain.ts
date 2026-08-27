@@ -30,7 +30,7 @@ export interface Diagnosis {
 }
 
 export interface TriageVerdict {
-  status: 'real' | 'flaky' | 'intermittent';
+  status: 'real' | 'flaky' | 'intermittent' | 'not-run';
   reproduced: number;
   of: number;
 }
@@ -46,6 +46,7 @@ export interface RaceResult {
   imageId: string;
   exitCode: number;
   held: boolean;
+  note?: string;
 }
 
 export type GreenwashCheck =
@@ -85,6 +86,6 @@ export interface CaseFile {
   triage: TriageVerdict;
   race: RaceResult[];
   audit?: AuditVerdict;
-  outcome: 'fixed' | 'flaky-no-patch' | 'refused' | 'gave-up';
+  outcome: 'fixed' | 'flaky-no-patch' | 'refused' | 'gave-up' | 'infra-stop';
   cost: CostLedger;
 }

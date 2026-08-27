@@ -41,7 +41,7 @@ describe('domain model', () => {
       grounding?: Grounding;
     }>();
     expectTypeOf<TriageVerdict>().toEqualTypeOf<{
-      status: 'real' | 'flaky' | 'intermittent';
+      status: 'real' | 'flaky' | 'intermittent' | 'not-run';
       reproduced: number;
       of: number;
     }>();
@@ -55,6 +55,7 @@ describe('domain model', () => {
       imageId: string;
       exitCode: number;
       held: boolean;
+      note?: string;
     }>();
     expectTypeOf<GreenwashCheck>().toEqualTypeOf<
       | 'deleted-test'
@@ -91,7 +92,12 @@ describe('domain model', () => {
       triage: TriageVerdict;
       race: RaceResult[];
       audit?: AuditVerdict;
-      outcome: 'fixed' | 'flaky-no-patch' | 'refused' | 'gave-up';
+      outcome:
+        | 'fixed'
+        | 'flaky-no-patch'
+        | 'refused'
+        | 'gave-up'
+        | 'infra-stop';
       cost: CostLedger;
     }>();
   });
