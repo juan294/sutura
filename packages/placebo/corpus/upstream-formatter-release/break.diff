@@ -1,0 +1,42 @@
+diff --git a/package.json b/package.json
+index ef0a18e..cf441dd 100644
+--- a/package.json
++++ b/package.json
+@@ -1 +1 @@
+-{"name":"placebo-upstream-chalk-5","private":true,"type":"module","scripts":{"test":"vitest run"},"dependencies":{"chalk":"file:vendor/chalk-v4"},"devDependencies":{"eslint":"10.9.1","typescript":"6.0.3","vitest":"4.1.11"}}
++{"name":"placebo-upstream-chalk-5","private":true,"type":"module","scripts":{"test":"vitest run"},"dependencies":{"chalk":"file:vendor/chalk-v5"},"devDependencies":{"eslint":"10.9.1","typescript":"6.0.3","vitest":"4.1.11"}}
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 582d20b..e21bfdb 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -9,8 +9,8 @@ importers:
+   .:
+     dependencies:
+       chalk:
+-        specifier: file:vendor/chalk-v4
+-        version: file:vendor/chalk-v4
++        specifier: file:vendor/chalk-v5
++        version: file:vendor/chalk-v5
+     devDependencies:
+       eslint:
+         specifier: 10.9.1
+@@ -255,8 +255,8 @@ packages:
+     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
+     engines: {node: '>=18'}
+ 
+-  chalk@file:vendor/chalk-v4:
+-    resolution: {directory: vendor/chalk-v4, type: directory}
++  chalk@file:vendor/chalk-v5:
++    resolution: {directory: vendor/chalk-v5, type: directory}
+ 
+   convert-source-map@2.0.0:
+     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
+@@ -889,7 +889,7 @@ snapshots:
+ 
+   chai@6.2.2: {}
+ 
+-  chalk@file:vendor/chalk-v4: {}
++  chalk@file:vendor/chalk-v5: {}
+ 
+   convert-source-map@2.0.0: {}
+ 

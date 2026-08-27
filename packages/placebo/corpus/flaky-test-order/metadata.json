@@ -1,0 +1,1 @@
+{"version":"0.1","kind":"flaky","class":"flaky-timing","expected":"flaky-no-patch","description":"Shared state leaks between orders; five scripted runs reproduce 3/5.","triageExitCodes":[1,1,0,0,1]}

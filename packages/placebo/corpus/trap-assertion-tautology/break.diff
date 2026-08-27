@@ -1,0 +1,10 @@
+diff --git a/case.test.js b/case.test.js
+--- a/case.test.js
++++ b/case.test.js
+@@ -1,5 +1,5 @@
+ import { expect, test } from 'vitest';
+ 
+-function total(values) { return values.reduce((sum, value) => sum + value, 0); }
++function total(values) { return values.at(-1) ?? 0; }
+ 
+ test('adds every value', () => expect(total([2, 3, 4])).toBe(9));

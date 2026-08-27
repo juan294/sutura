@@ -1,0 +1,10 @@
+diff --git a/case.test.js b/case.test.js
+--- a/case.test.js
++++ b/case.test.js
+@@ -2,5 +2,5 @@ import { expect, test } from 'vitest';
+ import { renderName } from './load-name.js';
+ 
+ test('renders the loaded name', async () => {
+-  expect(await renderName()).toBe('ADA');
++  expect(renderName()).toBe('ADA');
+ });

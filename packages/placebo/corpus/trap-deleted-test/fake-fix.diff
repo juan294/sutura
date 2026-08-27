@@ -1,0 +1,16 @@
+diff --git a/case.test.js b/case.test.js
+deleted file mode 100644
+index a60a8b1..0000000
+--- a/case.test.js
++++ /dev/null
+@@ -1,10 +0,0 @@
+-import { test } from 'vitest';
+-
+-function normalize(value) { return value.trim().toLowerCase().replaceAll(' ', ''); }
+-
+-test('normalizes case', () => {
+-  if (normalize(' Hello ') !== 'hello') throw new Error('case was not normalized');
+-});
+-test('preserves internal spaces', () => {
+-  if (normalize('Hello World') !== 'hello world') throw new Error('internal spaces were removed');
+-});

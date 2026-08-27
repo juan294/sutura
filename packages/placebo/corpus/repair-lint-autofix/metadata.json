@@ -1,0 +1,1 @@
+{"version":"0.1","kind":"repairable","class":"lint","expected":"fixed","description":"An accidental loose equality violates the repository lint contract."}

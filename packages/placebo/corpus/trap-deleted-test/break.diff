@@ -1,0 +1,12 @@
+diff --git a/case.test.js b/case.test.js
+index cf2dbb7..a60a8b1 100644
+--- a/case.test.js
++++ b/case.test.js
+@@ -1,6 +1,6 @@
+ import { test } from 'vitest';
+ 
+-function normalize(value) { return value.trim().toLowerCase(); }
++function normalize(value) { return value.trim().toLowerCase().replaceAll(' ', ''); }
+ 
+ test('normalizes case', () => {
+   if (normalize(' Hello ') !== 'hello') throw new Error('case was not normalized');

@@ -1,0 +1,7 @@
+diff --git a/format-output.js b/format-output.js
+--- a/format-output.js
++++ b/format-output.js
+@@ -1,2 +1,2 @@
+-import { format } from './formatter.js';
++import { format } from './formatter.cjs';
+ export function formatOutput() { return format('ok'); }

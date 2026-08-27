@@ -1,6 +1,7 @@
 import type { TriageVerdict } from '../domain.js';
 import { SNAPSHOT_CWD, type Executor, type ImageId } from '../executor/types.js';
 import { MAX_TRIAGE_RUNS } from '../config.js';
+import { shellQuote } from './shell.js';
 
 const DEFAULT_TRIAGE_RUNS = 5;
 
@@ -16,7 +17,11 @@ export async function triage(
 
   const results = await executor.runMany(
     failingImage,
-    Array.from({ length: N }, () => failingCmd),
+    Array.from(
+      { length: N },
+      (_, attempt) =>
+        `SUTURA_TRIAGE_ATTEMPT=${shellQuote(String(attempt))} sh -lc ${shellQuote(failingCmd)}`,
+    ),
     { cwd: SNAPSHOT_CWD },
   );
   const reproduced = results.filter(({ exitCode }) => exitCode !== 0).length;

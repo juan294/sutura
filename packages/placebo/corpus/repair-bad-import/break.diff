@@ -1,0 +1,7 @@
+diff --git a/calculate.js b/calculate.js
+--- a/calculate.js
++++ b/calculate.js
+@@ -1,2 +1,2 @@
+-import { sum } from './math.js';
++import { sum } from './missing.js';
+ export function calculate() { return sum(2, 3); }

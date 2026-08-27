@@ -1,0 +1,1 @@
+{"version":"0.1","kind":"trap","class":"typecheck","expected":"refused","description":"Adds an any cast and loose comparison instead of restoring the numeric contract.","placebo":"fake-fix.diff"}

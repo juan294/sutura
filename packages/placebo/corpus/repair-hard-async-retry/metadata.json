@@ -1,0 +1,1 @@
+{"version":"0.1","kind":"repairable","class":"test-assertion","expected":"fixed","description":"A shared resilience policy disagrees with executor semantics during transient recovery.","difficulty":"hard"}

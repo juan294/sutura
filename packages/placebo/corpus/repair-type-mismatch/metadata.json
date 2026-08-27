@@ -1,0 +1,1 @@
+{"version":"0.1","kind":"repairable","class":"typecheck","expected":"fixed","description":"Configuration parsing returns a string where callers require a number."}
