@@ -240,8 +240,11 @@ function context(
 } {
   const github = new FakeGitHub(run);
   const repository = new FakeRepository();
-  const executor = new InMemoryExecutor((_cmd, _parent, callIndex) =>
-    runResult(exits[callIndex] ?? 1),
+  let scenarioIndex = 0;
+  const executor = new InMemoryExecutor((command) =>
+    command.includes('if [ ! -d node_modules ]')
+      ? runResult(0)
+      : runResult(exits[scenarioIndex++] ?? 1),
   );
   const { llm, chat } = scriptedLlm(auditVerdict);
   return {
@@ -308,7 +311,37 @@ describe('orchestrate', () => {
       'super',
       'ultra',
     ]);
-    expect(runCalls(executor)).toHaveLength(7);
+    expect(runCalls(executor)).toHaveLength(8);
+  });
+
+  it('publishes the same smallest held candidate that the audit approved', async () => {
+    const { ctx, repository, chat } = context([1, 1, 1, 0, 0, 1, 0]);
+    const largerDiff = HONEST_DIFF.replaceAll(
+      'src/value.ts',
+      'src/a-very-long-value-module.ts',
+    );
+    chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
+      if (tier === 'nano') return { text: JSON.stringify(diagnosisReply()) };
+      if (tier === 'super') {
+        return { text: JSON.stringify({ candidates: [
+          { id: 'larger', rationale: 'repair a longer module path', diff: largerDiff },
+          { id: 'smallest', rationale: 'repair the observed source', diff: HONEST_DIFF },
+          { id: 'third', rationale: 'try a different binding', diff: THIRD_DIFF },
+        ] }) };
+      }
+      return { text: JSON.stringify({ approved: true, reasoning: 'The smallest held repair is correct.' }) };
+    });
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(caseFile.outcome).toBe('fixed');
+    expect(repository.fixes[0]?.diff).toBe(HONEST_DIFF);
+    const auditCall = chat.mock.calls.find(([tier]) => tier === 'ultra');
+    const auditMessages = auditCall?.[1] as Array<{ content: string }> | undefined;
+    const auditInput = JSON.parse(auditMessages?.[1]?.content ?? '{}') as {
+      candidateDiff?: string;
+    };
+    expect(auditInput.candidateDiff).toBe(HONEST_DIFF);
   });
 
   it('comments only when triage finds a flaky failure', async () => {
@@ -378,7 +411,7 @@ describe('orchestrate', () => {
     expect(caseFile.race.every(({ note }) => note?.startsWith('Patch vet refused:')))
       .toBe(true);
     expect(github.comments[0]?.body).toContain('Patch vet refused');
-    expect(runCalls(executor)).toHaveLength(3);
+    expect(runCalls(executor)).toHaveLength(4);
   });
 
   it('does not spend or mutate twice for the same failing run id', async () => {
@@ -458,11 +491,38 @@ describe('orchestrate', () => {
   it('reproduces before the first paid model call', async () => {
     const { ctx, executor, chat } = context([1, 0, 0]);
     chat.mockImplementationOnce(async () => {
-      expect(runCalls(executor)).toHaveLength(1);
+      expect(runCalls(executor)).toHaveLength(2);
       return { text: JSON.stringify(diagnosisReply()) };
     });
 
     await orchestrate(ctx);
+  });
+
+  it('installs in a clean image before reproduction and forks triage from that prepared image', async () => {
+    const { ctx, executor } = context([1, 0, 0]);
+
+    await orchestrate(ctx);
+
+    const calls = runCalls(executor);
+    expect(calls[0]?.cmd).toContain('corepack pnpm install --frozen-lockfile');
+    expect(calls[1]?.parent).toBe(calls[0]?.imageId);
+    expect(calls.slice(2).every(({ parent }) => parent === calls[0]?.imageId)).toBe(true);
+  });
+
+  it('reports preparation failure before reproduction or paid inference', async () => {
+    const { ctx, github, chat } = context([]);
+    const executor = new InMemoryExecutor(() => runResult(1));
+    ctx.executor = executor;
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(caseFile).toMatchObject({
+      outcome: 'infra-stop',
+      diagnosis: { class: 'infra', signals: ['sandbox-preparation:failed'] },
+    });
+    expect(runCalls(executor)).toHaveLength(1);
+    expect(github.comments[0]?.body).toContain('INFRA — STOPPED');
+    expect(chat).not.toHaveBeenCalled();
   });
 
   it('grounds a web-helpful diagnosis between classification and triage', async () => {

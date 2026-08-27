@@ -22,6 +22,7 @@
     "prepare": "husky"
   },
   "devDependencies": {
+    "@sutura/cli": "workspace:*",
     "@types/node": "^26.3.0",
     "eslint": "^10.9.1",
     "husky": "^9.1.7",

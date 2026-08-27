@@ -8,6 +8,15 @@ export {
 export { ContreeError, ContreeExecutor } from './executor/contree.js';
 export { InMemoryExecutor } from './executor/memory.js';
 export {
+  AllowlistedExecutor,
+  HealCaseError,
+  SUTURA_SANDBOX_ENV,
+  healCase,
+  repairFailure,
+} from './heal.js';
+export { DEFAULT_MODEL_PRICES, Ledger } from './llm/cost.js';
+export { NebiusApiError, NebiusClient, NebiusResponseError } from './llm/nebius.js';
+export {
   ClassificationError,
   classify,
   classifyMechanically,
@@ -44,7 +53,6 @@ export {
   AlreadyAttemptedError,
   OrchestrationError,
   REPAIR_SOURCE_LIMITS,
-  SUTURA_SANDBOX_ENV,
   attemptMarker,
   collectFailedLogs,
   extractSourceReferences,
@@ -63,6 +71,23 @@ export { renderComment } from './report/markdown.js';
 
 export const VERSION = '0.1.0';
 
+export type {
+  HealCaseContext,
+  HealLlm,
+  RepairFailureContext,
+} from './heal.js';
+export type {
+  ModelPrice,
+  ModelPrices,
+  ModelTier,
+  TokenUsage,
+} from './llm/cost.js';
+export type {
+  ChatMessage,
+  ChatOptions,
+  LlmReply,
+  NebiusClientConfig,
+} from './llm/nebius.js';
 export type {
   Config,
   ConfigEnvironment,

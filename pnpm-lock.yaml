@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@sutura/cli':
+        specifier: workspace:*
+        version: link:packages/cli
       '@types/node':
         specifier: ^26.3.0
         version: 26.3.0
@@ -48,6 +51,12 @@ importers:
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
+
+  packages/cli:
+    dependencies:
+      '@sutura/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/core:
     dependencies:

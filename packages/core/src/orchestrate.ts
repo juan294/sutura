@@ -1,37 +1,33 @@
 import { Buffer } from 'node:buffer';
 
-import { audit, type AuditLlm } from './audit/audit.js';
-import { classify, classifyMechanically, type DiagnosisLlm } from './diagnose/classify.js';
-import { ground, type TavilySearch } from './diagnose/tavily.js';
+import { classifyMechanically } from './diagnose/classify.js';
+import type { TavilySearch } from './diagnose/tavily.js';
 import type {
-  Candidate,
   CaseFile,
   CostLedger,
   Diagnosis,
-  RaceResult,
   FailureClass,
 } from './domain.js';
-import { vetPatch } from './engine/patch-rules.js';
-import {
-  generateCandidates,
-  race,
-  selectWinner,
-  type RepairSourceContext,
-  type RepairLlm,
-} from './engine/repair.js';
-import { shellQuote } from './engine/shell.js';
-import { triage } from './engine/triage.js';
+import { selectWinner, type RepairSourceContext } from './engine/repair.js';
 import {
   SNAPSHOT_CWD,
   type Executor,
-  type ImageId,
-  type RunOptions,
-  type RunResult,
 } from './executor/types.js';
+import {
+  AllowlistedExecutor,
+  SUTURA_DEFAULT_IMAGE_REF,
+  noReproductionCaseFile,
+  preparationFailureCaseFile,
+  repairFailure,
+  sandboxPreparationCommand,
+  sandboxTargetCommand,
+  type HealLlm,
+} from './heal.js';
+
+export { SUTURA_SANDBOX_ENV } from './heal.js';
 import { renderCaseFile } from './report/casefile.js';
 import { renderComment } from './report/markdown.js';
 
-const DEFAULT_IMAGE_REF = 'node:22';
 const FAILED_STEP_LINES = 200;
 const MAX_SOURCE_FILES = 8;
 const MAX_SOURCE_LINES = 120;
@@ -55,11 +51,6 @@ const FIX_COMMIT_MESSAGE = [
   '',
   'Co-Authored-By: Sutura <sutura@users.noreply.github.com>',
 ].join('\n');
-
-export const SUTURA_SANDBOX_ENV = Object.freeze({
-  CI: 'true',
-  NODE_ENV: 'test',
-});
 
 export interface FailedStepLog {
   jobName: string;
@@ -149,7 +140,7 @@ export interface RepositoryPort {
   publishFix(input: PublishFixInput): Promise<void>;
 }
 
-export type OrchestratorLlm = DiagnosisLlm & RepairLlm & AuditLlm;
+export type OrchestratorLlm = HealLlm;
 
 export interface OrchestrationContext {
   runId: string;
@@ -272,7 +263,7 @@ export function extractSourceReferences(log: string): SourceReference[] {
 }
 
 export async function readRepairSourceContext(
-  repository: RepositoryPort,
+  repository: Pick<RepositoryPort, 'readSourceExcerpts'>,
   checkoutDir: string,
   log: string,
   diagnosis?: Pick<Diagnosis, 'class'>,
@@ -331,44 +322,6 @@ export async function readRepairSourceContext(
   };
 }
 
-function sandboxOptions(opts?: RunOptions): RunOptions {
-  return { ...opts, env: SUTURA_SANDBOX_ENV };
-}
-
-class AllowlistedExecutor implements Executor {
-  constructor(private readonly delegate: Executor) {}
-
-  importImage(ref: string): Promise<ImageId> {
-    return this.delegate.importImage(ref);
-  }
-
-  snapshot(dir: string, base: ImageId): Promise<ImageId> {
-    return this.delegate.snapshot(dir, base);
-  }
-
-  run(parent: ImageId, cmd: string, opts?: RunOptions): Promise<RunResult> {
-    return this.delegate.run(parent, cmd, sandboxOptions(opts));
-  }
-
-  runMany(
-    parent: ImageId,
-    cmds: string[],
-    opts?: RunOptions,
-  ): Promise<RunResult[]> {
-    return this.delegate.runMany(parent, cmds, sandboxOptions(opts));
-  }
-}
-
-function vettedRaceResult(candidate: Candidate, violations: readonly string[]): RaceResult {
-  return {
-    candidate,
-    imageId: `not-run:vet-refused:${violations.join(',')}`,
-    exitCode: 1,
-    held: false,
-    note: `Patch vet refused: ${violations.join('; ')}`,
-  };
-}
-
 async function prepareReport(
   github: GitHubOrchestrationPort,
   run: FailingWorkflowRun,
@@ -395,25 +348,6 @@ async function publishReport(
   await github.updateAttempt(claimId, report.body);
 }
 
-function noReproductionDiagnosis(
-  mechanical: Diagnosis,
-): Diagnosis {
-  return {
-    ...mechanical,
-    class: 'infra',
-    confidence: 1,
-    signals: [...mechanical.signals, 'reproduction:passed'],
-    errorExcerpt: 'The failing command passed in a clean sandbox reproduction.',
-  };
-}
-
-function withGrounding(
-  diagnosis: Diagnosis,
-  grounding: Awaited<ReturnType<typeof ground>>,
-): Diagnosis {
-  return { ...diagnosis, grounding };
-}
-
 export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> {
   const run = await ctx.github.getFailingRun(ctx.runId);
   validateRun(run, ctx.runId);
@@ -437,151 +371,74 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     run.prNumber,
   );
   const executor = new AllowlistedExecutor(ctx.executor);
-  const baseImage = await executor.importImage(ctx.imageRef ?? DEFAULT_IMAGE_REF);
+  const baseImage = await executor.importImage(
+    ctx.imageRef ?? SUTURA_DEFAULT_IMAGE_REF,
+  );
   const failingImage = await executor.snapshot(checkoutDir, baseImage);
+  let preparedImage = failingImage;
+  const preparationCommand = sandboxPreparationCommand(mechanical.failingCmd);
+  if (preparationCommand) {
+    const preparation = await executor.run(
+      failingImage,
+      preparationCommand,
+      { cwd: SNAPSHOT_CWD },
+    );
+    if (preparation.exitCode !== 0) {
+      const caseFile = preparationFailureCaseFile(
+        { runId: run.runId, repo: run.repo, cost: ctx.cost },
+        mechanical.failingCmd,
+        preparation,
+      );
+      await publishReport(ctx.github, run, caseFile, marker, claimId);
+      return caseFile;
+    }
+    preparedImage = preparation.imageId;
+  }
   const reproduction = await executor.run(
-    failingImage,
-    `sh -lc ${shellQuote(mechanical.failingCmd)}`,
+    preparedImage,
+    sandboxTargetCommand(mechanical.failingCmd),
     { cwd: SNAPSHOT_CWD },
   );
 
   if (reproduction.exitCode === 0) {
-    const caseFile: CaseFile = {
-      runId: run.runId,
-      repo: run.repo,
-      diagnosis: noReproductionDiagnosis(mechanical),
-      triage: { status: 'not-run', reproduced: 0, of: 0 },
-      race: [],
-      outcome: 'infra-stop',
-      cost: ctx.cost,
-    };
+    const caseFile = noReproductionCaseFile(
+      { runId: run.runId, repo: run.repo, cost: ctx.cost },
+      mechanical,
+    );
     await publishReport(ctx.github, run, caseFile, marker, claimId);
     return caseFile;
   }
 
-  let diagnosis = await classify(ctx.llm, failedLog);
-  const grounding = await ground(
-    ctx.tavily ?? { search: async () => [] },
-    diagnosis,
-    {
-      tavilyEnabled: ctx.tavily !== undefined,
-      ...(ctx.lockfileDiff === undefined
-        ? {}
-        : { lockfileDiff: ctx.lockfileDiff }),
-    },
-  );
-  diagnosis = withGrounding(diagnosis, grounding);
-
-  const triageVerdict = await triage(
-    executor,
-    failingImage,
-    diagnosis.failingCmd,
-    ctx.triageN,
-  );
-
-  if (triageVerdict.status !== 'real') {
-    const caseFile: CaseFile = {
-      runId: run.runId,
-      repo: run.repo,
-      diagnosis,
-      triage: triageVerdict,
-      race: [],
-      outcome: 'flaky-no-patch',
-      cost: ctx.cost,
-    };
-    await publishReport(ctx.github, run, caseFile, marker, claimId);
-    return caseFile;
-  }
-
-  const sourceContext = await readRepairSourceContext(
-    ctx.repository,
-    checkoutDir,
-    failedLog,
-    diagnosis,
-  );
-  const candidates = sourceContext.sources.length === 0
-    ? []
-    : await generateCandidates(
-        ctx.llm,
-        diagnosis,
-        ctx.raceK,
-        sourceContext,
-      );
-
-  const approvedCandidates: Candidate[] = [];
-  const refusedCandidates = new Map<string, RaceResult>();
-  for (const candidate of candidates) {
-    const verdict = vetPatch(candidate.diff, diagnosis);
-    if (verdict.ok) {
-      approvedCandidates.push(candidate);
-    } else {
-      refusedCandidates.set(
-        candidate.id,
-        vettedRaceResult(candidate, verdict.violations),
-      );
-    }
-  }
-
-  const raced = await race(
-    executor,
-    failingImage,
-    approvedCandidates,
-    diagnosis.failingCmd,
-  );
-  const racedById = new Map(raced.map((result) => [result.candidate.id, result]));
-  const raceResults = candidates.map((candidate) => {
-    const result = racedById.get(candidate.id) ?? refusedCandidates.get(candidate.id);
-    if (!result) {
-      throw new OrchestrationError(`Missing race result for candidate ${candidate.id}`);
-    }
-    return result;
-  });
-  const winner = selectWinner(raceResults);
-
-  if (!winner) {
-    const caseFile: CaseFile = {
-      runId: run.runId,
-      repo: run.repo,
-      diagnosis,
-      triage: triageVerdict,
-      race: raceResults,
-      outcome: 'gave-up',
-      cost: ctx.cost,
-    };
-    await publishReport(ctx.github, run, caseFile, marker, claimId);
-    return caseFile;
-  }
-
-  const auditVerdict = await audit(executor, ctx.llm, winner, {
-    diagnosis,
-    beforeLog: failedLog,
-    suiteCommand: diagnosis.failingCmd,
-  });
-  if (!auditVerdict.approved) {
-    const caseFile: CaseFile = {
-      runId: run.runId,
-      repo: run.repo,
-      diagnosis,
-      triage: triageVerdict,
-      race: raceResults,
-      audit: auditVerdict,
-      outcome: 'refused',
-      cost: ctx.cost,
-    };
-    await publishReport(ctx.github, run, caseFile, marker, claimId);
-    return caseFile;
-  }
-
-  const caseFile: CaseFile = {
+  const caseFile = await repairFailure({
     runId: run.runId,
     repo: run.repo,
-    diagnosis,
-    triage: triageVerdict,
-    race: raceResults,
-    audit: auditVerdict,
-    outcome: 'fixed',
+    failedLog,
+    failingImage: preparedImage,
+    executor,
+    llm: ctx.llm,
     cost: ctx.cost,
-  };
+    triageN: ctx.triageN,
+    raceK: ctx.raceK,
+    readSourceContext: (_log, diagnosis) => readRepairSourceContext(
+      ctx.repository,
+      checkoutDir,
+      failedLog,
+      diagnosis,
+    ),
+    ...(ctx.tavily ? { tavily: ctx.tavily } : {}),
+    ...(ctx.lockfileDiff === undefined
+      ? {}
+      : { lockfileDiff: ctx.lockfileDiff }),
+  });
+  if (caseFile.outcome !== 'fixed') {
+    await publishReport(ctx.github, run, caseFile, marker, claimId);
+    return caseFile;
+  }
+
+  const winner = selectWinner(caseFile.race);
+  if (!winner) {
+    throw new OrchestrationError('Fixed case file does not contain a held candidate');
+  }
   const branch = `sutura/fix-${run.runId}`;
   const report = await prepareReport(ctx.github, run, caseFile, marker);
   await ctx.repository.publishFix({
