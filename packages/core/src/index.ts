@@ -16,6 +16,14 @@ export {
   TavilyRequestError,
   ground,
 } from './diagnose/tavily.js';
+export { vetPatch } from './engine/patch-rules.js';
+export {
+  generateCandidates,
+  prepareRepair,
+  race,
+  selectWinner,
+} from './engine/repair.js';
+export { triage } from './engine/triage.js';
 export { FAILURE_TAXONOMY } from './taxonomy.js';
 
 export const VERSION = '0.1.0';
@@ -50,6 +58,8 @@ export type {
   TavilySearch,
   TavilySearchOptions,
 } from './diagnose/tavily.js';
+export type { PatchVerdict } from './engine/patch-rules.js';
+export type { RepairLlm, RepairPreparation } from './engine/repair.js';
 export type { TaxonomyEntry } from './taxonomy.js';
 export type {
   AuditVerdict,

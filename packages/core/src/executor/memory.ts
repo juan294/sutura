@@ -74,8 +74,12 @@ export class InMemoryExecutor implements Executor {
     };
   }
 
-  async runMany(parent: ImageId, cmds: string[]): Promise<RunResult[]> {
-    return Promise.all(cmds.map((cmd) => this.run(parent, cmd)));
+  async runMany(
+    parent: ImageId,
+    cmds: string[],
+    opts?: RunOptions,
+  ): Promise<RunResult[]> {
+    return Promise.all(cmds.map((cmd) => this.run(parent, cmd, opts)));
   }
 
   private nextImageId(): ImageId {

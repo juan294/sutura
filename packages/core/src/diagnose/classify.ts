@@ -2,7 +2,7 @@ import { Buffer } from 'node:buffer';
 
 import type { Diagnosis, FailureClass } from '../domain.js';
 import { extractJson } from '../llm/json.js';
-import type { ChatMessage, ChatOptions } from '../llm/nebius.js';
+import type { TierLlm } from '../llm/types.js';
 import { FAILURE_TAXONOMY } from '../taxonomy.js';
 
 const FAILURE_CLASSES = Object.freeze(
@@ -12,13 +12,7 @@ const MAX_LOG_LINES = 200;
 const MAX_LOG_CHARACTERS = 20_000;
 const MAX_LOG_BYTES = 20_000;
 
-export interface DiagnosisLlm {
-  chat(
-    tier: 'nano',
-    messages: readonly ChatMessage[],
-    options?: ChatOptions,
-  ): Promise<{ text: string }>;
-}
+export type DiagnosisLlm = TierLlm<'nano'>;
 
 export type MechanicalDiagnosis = Omit<Diagnosis, 'grounding'>;
 

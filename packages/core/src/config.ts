@@ -4,6 +4,9 @@ export const DEFAULT_MODELS = {
   ultra: 'nvidia/Nemotron-3-Ultra-550b-a55b',
 } as const;
 
+export const MAX_TRIAGE_RUNS = 20;
+export const MAX_RACE_CANDIDATES = 10;
+
 export interface Config {
   nebiusApiKey: string;
   tavilyApiKey?: string;
@@ -56,11 +59,34 @@ function positiveInteger(
   return parsed;
 }
 
+function boundedPositiveInteger(
+  env: ConfigEnvironment,
+  name: string,
+  fallback: number,
+  maximum: number,
+): number {
+  const value = positiveInteger(env, name, fallback);
+  if (value > maximum) {
+    throw new ConfigError(`${name} must be at most ${maximum}`);
+  }
+  return value;
+}
+
 export function loadConfig(env: ConfigEnvironment): Config {
   const config: Config = {
     nebiusApiKey: required(env, 'NEBIUS_API_KEY'),
-    triageN: positiveInteger(env, 'SUTURA_TRIAGE_N', 5),
-    raceK: positiveInteger(env, 'SUTURA_RACE_K', 3),
+    triageN: boundedPositiveInteger(
+      env,
+      'SUTURA_TRIAGE_N',
+      5,
+      MAX_TRIAGE_RUNS,
+    ),
+    raceK: boundedPositiveInteger(
+      env,
+      'SUTURA_RACE_K',
+      3,
+      MAX_RACE_CANDIDATES,
+    ),
     models: {
       nano: optional(env, 'SUTURA_MODEL_NANO') ?? DEFAULT_MODELS.nano,
       super: optional(env, 'SUTURA_MODEL_SUPER') ?? DEFAULT_MODELS.super,

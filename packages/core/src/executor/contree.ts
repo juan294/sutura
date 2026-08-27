@@ -9,12 +9,13 @@ import { Readable } from 'node:stream';
 
 import pLimit, { type LimitFunction } from 'p-limit';
 
-import type {
-  Executor,
-  ImageId,
-  RunMetrics,
-  RunOptions,
-  RunResult,
+import {
+  SNAPSHOT_CWD,
+  type Executor,
+  type ImageId,
+  type RunMetrics,
+  type RunOptions,
+  type RunResult,
 } from './types.js';
 
 const DEFAULT_BASE_URL = 'https://api.tokenfactory.nebius.com/sandboxes/v1/';
@@ -24,7 +25,6 @@ const MAX_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_OPERATION_TIMEOUT_MS = 10 * 60 * 1_000;
 const DEFAULT_CANCEL_TIMEOUT_MS = 5_000;
 const SNAPSHOT_PATH = '/tmp/sutura-snapshot.tar';
-const SNAPSHOT_CWD = '/workspace';
 const MAX_PROCESS_STDERR_BYTES = 64 * 1_024;
 
 interface StreamResponse {
@@ -200,8 +200,12 @@ export class ContreeExecutor implements Executor {
     return this.instanceLimit(() => this.spawn(body));
   }
 
-  async runMany(parent: ImageId, cmds: string[]): Promise<RunResult[]> {
-    return Promise.all(cmds.map((cmd) => this.run(parent, cmd)));
+  async runMany(
+    parent: ImageId,
+    cmds: string[],
+    opts?: RunOptions,
+  ): Promise<RunResult[]> {
+    return Promise.all(cmds.map((cmd) => this.run(parent, cmd, opts)));
   }
 
   private async spawn(body: SpawnBody): Promise<RunResult> {
