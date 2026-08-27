@@ -1,10 +1,21 @@
 export {
   ConfigError,
   DEFAULT_MODELS,
+  MAX_RACE_CANDIDATES,
+  MAX_TRIAGE_RUNS,
   loadConfig,
 } from './config.js';
 export { ContreeError, ContreeExecutor } from './executor/contree.js';
 export { InMemoryExecutor } from './executor/memory.js';
+export {
+  AllowlistedExecutor,
+  HealCaseError,
+  SUTURA_SANDBOX_ENV,
+  healCase,
+  repairFailure,
+} from './heal.js';
+export { DEFAULT_MODEL_PRICES, Ledger } from './llm/cost.js';
+export { NebiusApiError, NebiusClient, NebiusResponseError } from './llm/nebius.js';
 export {
   ClassificationError,
   classify,
@@ -38,12 +49,41 @@ export {
   selectWinner,
 } from './engine/repair.js';
 export { triage } from './engine/triage.js';
+export {
+  AlreadyAttemptedError,
+  OrchestrationError,
+  REPAIR_SOURCE_LIMITS,
+  attemptMarker,
+  collectFailedLogs,
+  extractSourceReferences,
+  orchestrate,
+  readRepairSourceContext,
+} from './orchestrate.js';
 export { FAILURE_TAXONOMY } from './taxonomy.js';
 export { renderCaseFile } from './report/casefile.js';
 export { renderComment } from './report/markdown.js';
+export { isSensitiveRepositoryPath } from './security/repository-path.js';
 
 export const VERSION = '0.1.0';
 
+export type {
+  HealCaseContext,
+  HealLlm,
+  RepairFailureContext,
+} from './heal.js';
+export type {
+  ModelPrice,
+  ModelPrices,
+  ModelTier,
+  TokenUsage,
+} from './llm/cost.js';
+export type {
+  ChatMessage,
+  ChatOptions,
+  LlmReply,
+  NebiusClientConfig,
+  NebiusClientDependencies,
+} from './llm/nebius.js';
 export type {
   Config,
   ConfigEnvironment,
@@ -82,7 +122,25 @@ export type {
   TavilySearchOptions,
 } from './diagnose/tavily.js';
 export type { PatchVerdict } from './engine/patch-rules.js';
-export type { RepairLlm, RepairPreparation } from './engine/repair.js';
+export type {
+  RepairLlm,
+  RepairPreparation,
+  RepairSourceContext,
+  RepairSourceExcerpt,
+} from './engine/repair.js';
+export type {
+  CreateFixPullRequestInput,
+  FailedStepLog,
+  FailingWorkflowRun,
+  GitHubOrchestrationPort,
+  OrchestrationContext,
+  OrchestratorLlm,
+  PublishFixInput,
+  RepositorySourceExcerpt,
+  RepositoryPort,
+  SourceReadLimits,
+  SourceReference,
+} from './orchestrate.js';
 export type { TaxonomyEntry } from './taxonomy.js';
 export type {
   AuditVerdict,
@@ -96,3 +154,4 @@ export type {
   RaceResult,
   TriageVerdict,
 } from './domain.js';
+export type { SensitiveRepositoryPathOptions } from './security/repository-path.js';

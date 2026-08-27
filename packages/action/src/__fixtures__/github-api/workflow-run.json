@@ -1,0 +1,14 @@
+{
+  "id": 77001,
+  "head_sha": "0123456789abcdef0123456789abcdef01234567",
+  "repository": {
+    "full_name": "acme/widget"
+  },
+  "event": "pull_request",
+  "conclusion": "failure",
+  "pull_requests": [
+    {
+      "number": 42
+    }
+  ]
+}

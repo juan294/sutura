@@ -1,9 +1,10 @@
 /// <reference types="node" />
 
 import { execFile, spawn } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -559,6 +560,152 @@ describe('ContreeExecutor', () => {
       );
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('uploads a bounded non-git Placebo directory with its portable runtime', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sutura-contree-placebo-'));
+    try {
+      await writeFile(join(dir, 'package.json'), '{"scripts":{"test":"vitest run"}}\n');
+      await writeFile(join(dir, '.env'), 'TOKEN=never-upload\n');
+      await mkdir(join(dir, 'node_modules', 'vitest'), { recursive: true });
+      await writeFile(join(dir, 'node_modules', 'vitest', 'index.js'), 'export const test = true;\n');
+
+      let uploaded: Uint8Array | undefined;
+      const fetch = vi.fn<typeof globalThis.fetch>(async (url, init) => {
+        if (String(url).endsWith('/files')) {
+          uploaded = new Uint8Array(await new Response(init?.body).arrayBuffer());
+          return jsonResponse({ uuid: 'file-uuid' }, 201);
+        }
+        if (String(url).endsWith('/instances')) {
+          return jsonResponse({ uuid: 'snapshot-operation' }, 201, {
+            Location: '/sandboxes/v1/operations/snapshot-operation',
+          });
+        }
+        return jsonResponse({
+          status: 'SUCCESS',
+          result_image_uuid: 'snapshot-image',
+          metadata: {
+            result: {
+              state: { exit_code: 0 },
+              stdout: { value: '', encoding: 'ascii' },
+              stderr: { value: '', encoding: 'ascii' },
+              resources: {},
+            },
+          },
+        });
+      });
+
+      await expect(new ContreeExecutor(config(fetch)).snapshot(dir, 'base-image'))
+        .resolves.toBe('snapshot-image');
+      const entries = await listTar(uploaded ?? new Uint8Array());
+      expect(entries).toContain('package.json');
+      expect(entries).toContain('node_modules/vitest/index.js');
+      expect(entries).not.toContain('.env');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('uploads the real vendored Placebo runtime with safe relative links intact', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sutura-contree-real-placebo-'));
+    const runtimeArchive = fileURLToPath(new URL(
+      '../../../placebo/vendor/placebo-test-runtime-darwin-arm64-node_modules.tgz',
+      import.meta.url,
+    ));
+    try {
+      await execFileAsync('tar', ['-xzf', runtimeArchive, '-C', dir]);
+      await writeFile(join(dir, 'package.json'), '{"scripts":{"test":"vitest run"}}\n');
+      let uploadedBytes = 0;
+      const fetch = vi.fn<typeof globalThis.fetch>(async (url, init) => {
+        if (String(url).endsWith('/files')) {
+          uploadedBytes = (await new Response(init?.body).arrayBuffer()).byteLength;
+          return jsonResponse({ uuid: 'file-uuid' }, 201);
+        }
+        if (String(url).endsWith('/instances')) {
+          return jsonResponse({ uuid: 'snapshot-operation' }, 201, {
+            Location: '/sandboxes/v1/operations/snapshot-operation',
+          });
+        }
+        return jsonResponse({
+          status: 'SUCCESS',
+          result_image_uuid: 'snapshot-image',
+          metadata: {
+            result: {
+              state: { exit_code: 0 },
+              stdout: { value: '', encoding: 'ascii' },
+              stderr: { value: '', encoding: 'ascii' },
+              resources: {},
+            },
+          },
+        });
+      });
+
+      await expect(new ContreeExecutor(config(fetch)).snapshot(dir, 'base-image'))
+        .resolves.toBe('snapshot-image');
+      expect(uploadedBytes).toBeGreaterThan(1_000_000);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('rejects oversized and symlinked non-git snapshots before upload', async () => {
+    const oversized = await mkdtemp(join(tmpdir(), 'sutura-contree-oversized-'));
+    const gitOversized = await mkdtemp(join(tmpdir(), 'sutura-contree-git-oversized-'));
+    const linked = await mkdtemp(join(tmpdir(), 'sutura-contree-linked-'));
+    const outside = await mkdtemp(join(tmpdir(), 'sutura-contree-outside-'));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    try {
+      await writeFile(join(oversized, 'huge.bin'), '');
+      await truncate(join(oversized, 'huge.bin'), 256 * 1_024 * 1_024 + 1);
+      await execFileAsync('git', ['init', '--quiet'], { cwd: gitOversized });
+      await writeFile(join(gitOversized, 'huge.bin'), '');
+      await truncate(join(gitOversized, 'huge.bin'), 256 * 1_024 * 1_024 + 1);
+      await writeFile(join(outside, 'source.js'), 'export const value = 1;\n');
+      await symlink(relative(linked, join(outside, 'source.js')), join(linked, 'source.js'));
+
+      const executor = new ContreeExecutor(config(fetch));
+      await expect(executor.snapshot(oversized, 'base-image')).rejects.toThrow(/source bytes/);
+      await expect(executor.snapshot(gitOversized, 'base-image')).rejects.toThrow(/source bytes/);
+      await expect(executor.snapshot(linked, 'base-image')).rejects.toThrow(/escaping or sensitive symlink/);
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      await rm(oversized, { recursive: true, force: true });
+      await rm(gitOversized, { recursive: true, force: true });
+      await rm(linked, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects absolute, dangling, cyclic, and sensitive non-git symlinks', async () => {
+    const absolute = await mkdtemp(join(tmpdir(), 'sutura-contree-absolute-'));
+    const dangling = await mkdtemp(join(tmpdir(), 'sutura-contree-dangling-'));
+    const cyclic = await mkdtemp(join(tmpdir(), 'sutura-contree-cyclic-'));
+    const sensitive = await mkdtemp(join(tmpdir(), 'sutura-contree-sensitive-'));
+    const outside = await mkdtemp(join(tmpdir(), 'sutura-contree-target-'));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    try {
+      const outsideFile = join(outside, 'outside.js');
+      await writeFile(outsideFile, 'export const outside = true;\n');
+      await symlink(outsideFile, join(absolute, 'absolute.js'));
+      await symlink('missing.js', join(dangling, 'dangling.js'));
+      await symlink('b.js', join(cyclic, 'a.js'));
+      await symlink('a.js', join(cyclic, 'b.js'));
+      await writeFile(join(sensitive, '.env'), 'TOKEN=secret\n');
+      await symlink('.env', join(sensitive, 'config.js'));
+
+      const executor = new ContreeExecutor(config(fetch));
+      await expect(executor.snapshot(absolute, 'base-image')).rejects.toThrow(/absolute symlink/);
+      await expect(executor.snapshot(dangling, 'base-image')).rejects.toThrow(/dangling or cyclic symlink/);
+      await expect(executor.snapshot(cyclic, 'base-image')).rejects.toThrow(/dangling or cyclic symlink/);
+      await expect(executor.snapshot(sensitive, 'base-image')).rejects.toThrow(/escaping or sensitive symlink/);
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      await rm(absolute, { recursive: true, force: true });
+      await rm(dangling, { recursive: true, force: true });
+      await rm(cyclic, { recursive: true, force: true });
+      await rm(sensitive, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
     }
   });
 });

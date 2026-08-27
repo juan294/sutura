@@ -2,13 +2,14 @@
 
 import { spawn } from 'node:child_process';
 import { createReadStream } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { lstat, mkdtemp, readdir, readlink, realpath, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
 
 import pLimit, { type LimitFunction } from 'p-limit';
 
+import { isSensitiveRepositoryPath } from '../security/repository-path.js';
 import {
   SNAPSHOT_CWD,
   type Executor,
@@ -26,6 +27,9 @@ const DEFAULT_OPERATION_TIMEOUT_MS = 10 * 60 * 1_000;
 const DEFAULT_CANCEL_TIMEOUT_MS = 5_000;
 const SNAPSHOT_PATH = '/tmp/sutura-snapshot.tar';
 const MAX_PROCESS_STDERR_BYTES = 64 * 1_024;
+const MAX_SNAPSHOT_FILES = 10_000;
+const MAX_SNAPSHOT_SOURCE_BYTES = 256 * 1_024 * 1_024;
+const MAX_SNAPSHOT_ARCHIVE_BYTES = 300 * 1_024 * 1_024;
 
 interface StreamResponse {
   value?: unknown;
@@ -502,22 +506,153 @@ function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function isSensitivePath(path: string): boolean {
-  const segments = path.split('/');
-  if (segments.includes('.git') || segments.includes('node_modules')) return true;
+async function listNonGitFiles(dir: string): Promise<string[]> {
+  const root = await realpath(dir);
+  const files: string[] = [];
+  const directories = [''];
+  let directoryIndex = 0;
+  let sourceBytes = 0;
+  while (directoryIndex < directories.length) {
+    const directory = directories[directoryIndex] as string;
+    directoryIndex += 1;
+    const entries = await readdir(join(root, directory), { withFileTypes: true });
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      const path = directory ? `${directory}/${entry.name}` : entry.name;
+      if (isSensitiveRepositoryPath(path, { includeDependencies: true })) continue;
+      const absolute = join(root, path);
+      const metadata = await lstat(absolute);
+      if (metadata.isSymbolicLink()) {
+        const link = await readlink(absolute);
+        if (isAbsolute(link)) {
+          throw new ContreeError(
+            `ConTree snapshot refuses absolute symlink: ${path}`,
+          );
+        }
+        const lexicalTarget = resolve(dirname(absolute), link);
+        const lexicalRelative = relative(root, lexicalTarget).split(sep).join('/');
+        if (
+          lexicalRelative.startsWith('../') ||
+          lexicalRelative === '..' ||
+          isSensitiveRepositoryPath(lexicalRelative, { includeDependencies: true })
+        ) {
+          throw new ContreeError(
+            `ConTree snapshot refuses escaping or sensitive symlink: ${path}`,
+          );
+        }
+        let canonicalTarget: string;
+        try {
+          canonicalTarget = await realpath(absolute);
+        } catch {
+          throw new ContreeError(
+            `ConTree snapshot refuses dangling or cyclic symlink: ${path}`,
+          );
+        }
+        const canonicalRelative = relative(root, canonicalTarget).split(sep).join('/');
+        if (
+          canonicalRelative.startsWith('../') ||
+          canonicalRelative === '..' ||
+          isSensitiveRepositoryPath(canonicalRelative, { includeDependencies: true })
+        ) {
+          throw new ContreeError(
+            `ConTree snapshot refuses escaping or sensitive symlink: ${path}`,
+          );
+        }
+        const targetMetadata = await lstat(canonicalTarget);
+        if (!targetMetadata.isFile() && !targetMetadata.isDirectory()) {
+          throw new ContreeError(
+            `ConTree snapshot refuses symlink to non-regular entry: ${path}`,
+          );
+        }
+        if (files.length >= MAX_SNAPSHOT_FILES) {
+          throw new ContreeError(
+            `ConTree snapshot exceeds ${MAX_SNAPSHOT_FILES} files`,
+          );
+        }
+        files.push(path);
+      } else if (metadata.isDirectory()) {
+        directories.push(path);
+      } else if (metadata.isFile()) {
+        if (files.length >= MAX_SNAPSHOT_FILES) {
+          throw new ContreeError(
+            `ConTree snapshot exceeds ${MAX_SNAPSHOT_FILES} files`,
+          );
+        }
+        sourceBytes += metadata.size;
+        if (sourceBytes > MAX_SNAPSHOT_SOURCE_BYTES) {
+          throw new ContreeError(
+            `ConTree snapshot exceeds ${MAX_SNAPSHOT_SOURCE_BYTES} source bytes`,
+          );
+        }
+        files.push(path);
+      } else {
+        throw new ContreeError(
+          `ConTree snapshot refuses non-regular entry: ${path}`,
+        );
+      }
+    }
+  }
+  return files;
+}
 
-  const basename = segments.at(-1)?.toLowerCase() ?? '';
-  return (
-    basename === '.env' ||
-    basename.startsWith('.env.') ||
-    basename === '.netrc' ||
-    basename === '.npmrc' ||
-    basename === '.pypirc' ||
-    basename === 'credentials.json' ||
-    basename === 'id_rsa' ||
-    basename === 'id_ed25519' ||
-    /\.(?:key|pem|p12|pfx)$/u.test(basename)
-  );
+async function listSnapshotFiles(dir: string): Promise<string[]> {
+  try {
+    const listed = await runProcess('git', [
+      '-C',
+      dir,
+      'ls-files',
+      '-co',
+      '--exclude-standard',
+      '-z',
+    ]);
+    const deleted = await runProcess('git', [
+      '-C',
+      dir,
+      'ls-files',
+      '--deleted',
+      '-z',
+    ]);
+    const deletedPaths = new Set(
+      deleted.stdout.toString('utf8').split('\0').filter(Boolean),
+    );
+    const files = listed.stdout
+      .toString('utf8')
+      .split('\0')
+      .filter(
+        (path) =>
+          path.length > 0 &&
+          !deletedPaths.has(path) &&
+          !isSensitiveRepositoryPath(path),
+      );
+    await validateSnapshotFiles(dir, files);
+    return files;
+  } catch (error) {
+    if (error instanceof Error && /not a git repository/iu.test(error.message)) {
+      return listNonGitFiles(dir);
+    }
+    throw error;
+  }
+}
+
+async function validateSnapshotFiles(
+  dir: string,
+  files: readonly string[],
+): Promise<void> {
+  if (files.length > MAX_SNAPSHOT_FILES) {
+    throw new ContreeError(
+      `ConTree snapshot exceeds ${MAX_SNAPSHOT_FILES} files`,
+    );
+  }
+  let sourceBytes = 0;
+  for (const path of files) {
+    const metadata = await lstat(join(dir, path));
+    if (!metadata.isFile()) continue;
+    sourceBytes += metadata.size;
+    if (sourceBytes > MAX_SNAPSHOT_SOURCE_BYTES) {
+      throw new ContreeError(
+        `ConTree snapshot exceeds ${MAX_SNAPSHOT_SOURCE_BYTES} source bytes`,
+      );
+    }
+  }
 }
 
 interface SnapshotArchive {
@@ -526,33 +661,7 @@ interface SnapshotArchive {
 }
 
 async function createSnapshotArchive(dir: string): Promise<SnapshotArchive> {
-  const listed = await runProcess('git', [
-    '-C',
-    dir,
-    'ls-files',
-    '-co',
-    '--exclude-standard',
-    '-z',
-  ]);
-  const deleted = await runProcess('git', [
-    '-C',
-    dir,
-    'ls-files',
-    '--deleted',
-    '-z',
-  ]);
-  const deletedPaths = new Set(
-    deleted.stdout.toString('utf8').split('\0').filter(Boolean),
-  );
-  const files = listed.stdout
-    .toString('utf8')
-    .split('\0')
-    .filter(
-      (path) =>
-        path.length > 0 &&
-        !deletedPaths.has(path) &&
-        !isSensitivePath(path),
-    );
+  const files = await listSnapshotFiles(dir);
   const input = Buffer.from(files.map((path) => `${path}\0`).join(''));
   const archiveDir = await mkdtemp(join(tmpdir(), 'sutura-contree-'));
   const archivePath = join(archiveDir, 'snapshot.tar');
@@ -564,6 +673,12 @@ async function createSnapshotArchive(dir: string): Promise<SnapshotArchive> {
       input,
       { ...process.env, COPYFILE_DISABLE: '1' },
     );
+    const archive = await stat(archivePath);
+    if (archive.size > MAX_SNAPSHOT_ARCHIVE_BYTES) {
+      throw new ContreeError(
+        `ConTree snapshot archive exceeds ${MAX_SNAPSHOT_ARCHIVE_BYTES} bytes`,
+      );
+    }
     return {
       path: archivePath,
       cleanup: () => rm(archiveDir, { recursive: true, force: true }),

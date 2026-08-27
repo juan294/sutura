@@ -33,9 +33,10 @@ npx placebo run --adapter dummy
 Run Sutura, one kind, or the no-Tavily ablation:
 
 ```bash
-npx placebo run --adapter sutura
-npx placebo run --adapter sutura --only trap
-npx placebo run --adapter sutura --only upstream --no-tavily
+pnpm --filter @sutura/cli run build
+pnpm --filter placebo exec placebo run --adapter sutura
+pnpm --filter placebo exec placebo run --adapter sutura --only trap
+pnpm --filter placebo exec placebo run --adapter sutura --only upstream --no-tavily
 ```
 
 The harness creates and later removes a fresh temporary copy for every run. It
@@ -80,7 +81,7 @@ The adapter must print one JSON object:
 ```
 
 This is Sutura's `CaseFile` contract. Valid outcomes are `refused`, `fixed`,
-`flaky-no-patch`, and `gave-up`. Placebo turns adapter launch errors, timeouts,
+`flaky-no-patch`, `gave-up`, and `infra-stop`. Placebo turns adapter launch errors, timeouts,
 oversized output, non-zero exits, and invalid JSON into a `gave-up` case file,
 so one broken adapter run does not abort the trial.
 

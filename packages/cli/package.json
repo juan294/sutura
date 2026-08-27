@@ -1,0 +1,23 @@
+{
+  "name": "@sutura/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sutura command-line interface",
+  "type": "module",
+  "bin": {
+    "sutura": "./bin/sutura.js"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": ["bin", "dist"],
+  "dependencies": {
+    "@sutura/core": "workspace:*"
+  },
+  "scripts": {
+    "build": "pnpm --filter @sutura/core build && tsc -p tsconfig.build.json",
+    "lint": "eslint src bin",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

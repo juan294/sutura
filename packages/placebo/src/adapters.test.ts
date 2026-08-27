@@ -55,6 +55,17 @@ describe('CLI adapters', () => {
     await expect(new CliAdapter({ command: 'agent', execute }).heal('/tmp/case')).resolves.toMatchObject({ outcome: 'gave-up', diagnosis: { class: 'infra' } });
   });
 
+  it('accepts a fail-closed infra-stop with triage not run', async () => {
+    const value = JSON.parse(VALID_CASE_FILE) as Record<string, unknown>;
+    value.outcome = 'infra-stop';
+    value.triage = { status: 'not-run', reproduced: 0, of: 0 };
+    delete value.audit;
+    const execute = vi.fn().mockResolvedValue({ stdout: JSON.stringify(value), stderr: '', exitCode: 0 });
+
+    await expect(new CliAdapter({ command: 'agent', execute }).heal('/tmp/case'))
+      .resolves.toMatchObject({ outcome: 'infra-stop', triage: { status: 'not-run' } });
+  });
+
   it('turns ENOENT, timeout, and oversized output into gave-up case files', async () => {
     await expect(new CliAdapter({ command: '/definitely/missing/placebo-agent' }).heal('/tmp/case')).resolves.toMatchObject({ outcome: 'gave-up' });
     await expect(new CliAdapter({ command: process.execPath, args: ['-e', 'setTimeout(() => {}, 10_000)', '--'], timeoutMs: 20 }).heal('/tmp/case')).resolves.toMatchObject({ outcome: 'gave-up', diagnosis: { errorExcerpt: expect.stringContaining('timed out') } });

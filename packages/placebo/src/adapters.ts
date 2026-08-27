@@ -8,7 +8,7 @@ export type Execute = (command: string, args: string[], options: ExecuteOptions)
 
 const DEFAULT_TIMEOUT_MS = 10 * 60_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 1024 * 1024;
-const OUTCOMES = new Set(['fixed', 'flaky-no-patch', 'refused', 'gave-up']);
+const OUTCOMES = new Set(['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop']);
 const FAILURE_CLASSES = new Set(['typecheck', 'lint', 'build', 'test-assertion', 'test-bug', 'flaky-timing', 'dep-upstream-breaking', 'env-config', 'infra']);
 
 function failureCaseFile(reason: string): CaseFile {
@@ -79,9 +79,11 @@ function validDiagnosis(value: unknown): boolean {
 
 function validTriage(value: unknown): boolean {
   const triage = record(value);
-  if (!triage || !['real', 'flaky', 'intermittent'].includes(String(triage.status)) ||
+  if (!triage || !['real', 'flaky', 'intermittent', 'not-run'].includes(String(triage.status)) ||
       !Number.isSafeInteger(triage.reproduced) || !Number.isSafeInteger(triage.of) ||
-      Number(triage.of) <= 0 || Number(triage.reproduced) < 0 || Number(triage.reproduced) > Number(triage.of)) return false;
+      Number(triage.reproduced) < 0 || Number(triage.reproduced) > Number(triage.of)) return false;
+  if (triage.status === 'not-run') return triage.reproduced === 0 && triage.of === 0;
+  if (Number(triage.of) <= 0) return false;
   if (triage.status === 'real') return triage.reproduced === triage.of;
   if (triage.status === 'flaky') return triage.reproduced === 0;
   return Number(triage.reproduced) > 0 && Number(triage.reproduced) < Number(triage.of);

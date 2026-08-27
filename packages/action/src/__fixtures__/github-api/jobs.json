@@ -1,0 +1,24 @@
+{
+  "total_count": 1,
+  "jobs": [
+    {
+      "id": 501,
+      "name": "CI / test",
+      "conclusion": "failure",
+      "steps": [
+        {
+          "name": "Install dependencies",
+          "conclusion": "success",
+          "started_at": "2026-08-27T10:00:00Z",
+          "completed_at": "2026-08-27T10:00:09Z"
+        },
+        {
+          "name": "Run tests",
+          "conclusion": "failure",
+          "started_at": "2026-08-27T10:00:10Z",
+          "completed_at": "2026-08-27T10:00:20Z"
+        }
+      ]
+    }
+  ]
+}

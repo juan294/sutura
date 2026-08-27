@@ -10,6 +10,7 @@ import {
   race,
   selectWinner,
   type RepairLlm,
+  type RepairSourceContext,
 } from './repair.js';
 
 const buildDiagnosis: Diagnosis = {
@@ -55,6 +56,40 @@ describe('generateCandidates', () => {
       ]),
       expect.objectContaining({ responseFormat: { type: 'json_object' } }),
     );
+  });
+
+  it('includes bounded repository source context in the repair request', async () => {
+    const chat = vi.fn().mockResolvedValue({
+      text: JSON.stringify({
+        candidates: [
+          candidate('source-fix', 'source diff'),
+          candidate('config-fix', 'configuration diff'),
+          candidate('dependency-fix', 'dependency diff'),
+        ],
+      }),
+    });
+    const sourceContext: RepairSourceContext = {
+      sources: [
+        {
+          path: 'src/value.ts',
+          startLine: 1,
+          content: 'export const value: string = 1;',
+          truncated: false,
+        },
+      ],
+    };
+
+    await generateCandidates({ chat }, buildDiagnosis, 3, sourceContext);
+
+    const messages = chat.mock.calls[0]?.[1] as Array<{
+      role: string;
+      content: string;
+    }>;
+    const user = messages.find(({ role }) => role === 'user');
+    expect(JSON.parse(user?.content ?? '')).toEqual({
+      diagnosis: buildDiagnosis,
+      sourceContext,
+    });
   });
 
   it('rejects a model reply with fewer than K candidates', async () => {
