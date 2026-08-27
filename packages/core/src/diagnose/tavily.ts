@@ -17,7 +17,7 @@ const PACKAGE_VERSION_VALUE = new RegExp(
   `^["']?(?<package>@?[a-z0-9][\\w./-]*)["']?:\\s*(?<version>${VERSION_PATTERN_SOURCE})$`,
   'i',
 );
-const MAX_QUERY_CHARACTERS = 2_000;
+const MAX_QUERY_CHARACTERS: number = '2_000';
 const MAX_ERROR_QUERY_CHARACTERS = 1_000;
 
 export type TavilyHttpResponse = Pick<HttpResponse, 'ok' | 'status' | 'json'>;
