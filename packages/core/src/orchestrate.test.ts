@@ -35,8 +35,14 @@ const HONEST_DIFF = [
   '+export const value: string = "1";',
 ].join('\n') + '\n';
 
-const SECOND_DIFF = HONEST_DIFF.replace('value: string', 'value: number');
-const THIRD_DIFF = HONEST_DIFF.replace('const value', 'const result');
+const SECOND_DIFF = HONEST_DIFF.replace(
+  '+export const value: string = "1";',
+  '+export const value: string = String(1);',
+);
+const THIRD_DIFF = HONEST_DIFF.replace(
+  '+export const value: string = "1";',
+  '+export const result: string = "1";',
+);
 
 const RUN: FailingWorkflowRun = {
   runId: '98765',
@@ -316,9 +322,9 @@ describe('orchestrate', () => {
 
   it('publishes the same smallest held candidate that the audit approved', async () => {
     const { ctx, repository, chat } = context([1, 1, 1, 0, 0, 1, 0]);
-    const largerDiff = HONEST_DIFF.replaceAll(
-      'src/value.ts',
-      'src/a-very-long-value-module.ts',
+    const largerDiff = HONEST_DIFF.replace(
+      '+export const value: string = "1";',
+      '+export const value: string = String(1);',
     );
     chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
       if (tier === 'nano') return { text: JSON.stringify(diagnosisReply()) };
@@ -389,7 +395,21 @@ describe('orchestrate', () => {
   });
 
   it('vets every candidate before race and reports deterministic refusals', async () => {
-    const { ctx, executor, github, chat } = context([1, 1, 1]);
+    const testPathRun: FailingWorkflowRun = {
+      ...RUN,
+      failedSteps: [{
+        ...RUN.failedSteps[0]!,
+        log: `${RUN.failedSteps[0]!.log}\nsrc/value-0.test.ts(1,1)\nsrc/value-1.test.ts(1,1)\nsrc/value-2.test.ts(1,1)`,
+      }],
+    };
+    const { ctx, executor, github, repository, chat } = context(
+      [1, 1, 1],
+      true,
+      testPathRun,
+    );
+    for (let index = 0; index < 3; index += 1) {
+      repository.sources.set(`src/value-${index}.test.ts`, 'export const value: string = 1;');
+    }
     const invalidCandidates = candidates().map((candidate, index) => ({
       ...candidate,
       diff: candidate.diff.replaceAll(
@@ -621,8 +641,16 @@ describe('orchestrate', () => {
         text: JSON.stringify({
           candidates: [
             { id: 'placebo-fix', rationale: 'restore numeric conversion', diff: repairDiff },
-            { id: 'alternate-a', rationale: 'alternate source repair', diff: SECOND_DIFF },
-            { id: 'alternate-b', rationale: 'second source repair', diff: THIRD_DIFF },
+            {
+              id: 'alternate-a',
+              rationale: 'use unary numeric conversion',
+              diff: repairDiff.replace('Number(value)', '+value'),
+            },
+            {
+              id: 'alternate-b',
+              rationale: 'use integer parsing',
+              diff: repairDiff.replace('Number(value)', 'Number.parseInt(value, 10)'),
+            },
           ],
         }),
       };

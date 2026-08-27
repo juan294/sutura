@@ -28,10 +28,28 @@ describe('extractJson', () => {
     expect(extractJson(reply, validateVerdict)).toEqual({ approved: true });
   });
 
+  it('ignores an unmatched prose quote before a JSON object', () => {
+    const reply = 'Prefix with an unmatched " quote before JSON\n{"approved":true}';
+
+    expect(extractJson(reply, validateVerdict)).toEqual({ approved: true });
+  });
+
   it('handles braces and escaped quotes inside JSON strings', () => {
     const reply = 'Result: {"approved":true,"note":"a {brace} and \\"quote\\""}';
 
     expect(extractJson(reply, validateVerdict)).toEqual({ approved: true });
+  });
+
+  it('recovers a valid nested object from a malformed outer object', () => {
+    const reply = '{"wrapper":[{"approved":true}}';
+
+    expect(extractJson(reply, validateVerdict)).toEqual({ approved: true });
+  });
+
+  it('does not bypass validation through a nested object in valid JSON', () => {
+    const reply = '{"wrapper":{"approved":true}}';
+
+    expect(() => extractJson(reply, validateVerdict)).toThrow(JsonExtractionError);
   });
 
   it('re-prompts once with the validation error and validates the repair', async () => {

@@ -27,6 +27,17 @@ const HONEST_DIFF = [
   '+export function pageCount(items, size) { return Math.ceil(items / size); }',
 ].join('\n') + '\n';
 
+const UPSTREAM_DIFF = [
+  'diff --git a/app.cjs b/app.cjs',
+  '--- a/app.cjs',
+  '+++ b/app.cjs',
+  '@@ -1,2 +1,2 @@',
+  "-const fetch = require('node-fetch');",
+  "-exports.fetchName = () => fetch('data:Juan').then((response) => response.text());",
+  "+const fetchClient = require('node-fetch');",
+  "+exports.fetchName = () => fetchClient('data:Juan').then((response) => response.text());",
+].join('\n') + '\n';
+
 function result(exitCode: number, stderr = exitCode === 0 ? '' : 'case.test.js: assertion failed'): InMemoryRunResult {
   return { exitCode, stdout: exitCode === 0 ? 'Tests passed' : '', stderr, truncated: false, metrics: {} };
 }
@@ -74,7 +85,10 @@ function context(
       ? result(0)
       : result(exits[scenarioIndex++] ?? 1),
   );
-  const { llm, chat } = scriptedLlm(failureClass);
+  const repairCandidates = caseId.startsWith('upstream-')
+    ? [{ id: 'repair', rationale: 'rename the source binding', diff: UPSTREAM_DIFF }]
+    : undefined;
+  const { llm, chat } = scriptedLlm(failureClass, repairCandidates);
   return {
     executor,
     chat,
@@ -93,7 +107,9 @@ function context(
           sources: [{
             path,
             startLine: 1,
-            content: await readFile(join(ROOT, caseId, 'fixture', path), 'utf8'),
+            content: caseId === 'repair-off-by-one'
+              ? 'export function pageCount(items, size) { return Math.floor(items / size) + 1; }\n'
+              : await readFile(join(ROOT, caseId, 'fixture', path), 'utf8'),
             truncated: false,
           }],
         };

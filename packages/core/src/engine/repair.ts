@@ -55,12 +55,224 @@ function positiveCount(value: number, name: string): void {
   }
 }
 
-function candidateReply(value: unknown, expected: number): CandidateReply {
+function oldHunkSequence(lines: readonly string[]): string[] {
+  const body = lines.slice(1);
+  while (body.at(-1) === '') body.pop();
+  return body.flatMap((line) =>
+    line.startsWith(' ') || line.startsWith('-') ? [line.slice(1)] : [],
+  );
+}
+
+function containsSequence(source: readonly string[], sequence: readonly string[]): boolean {
+  if (sequence.length === 0 || sequence.length > source.length) return false;
+  for (let start = 0; start <= source.length - sequence.length; start += 1) {
+    if (sequence.every((line, offset) => source[start + offset] === line)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function validateSourceContext(
+  candidateIndex: number,
+  parsed: ReturnType<typeof parseUnifiedDiff>,
+  sourceContext: RepairSourceContext,
+): void {
+  if (sourceContext.sources.length === 0) return;
+
+  for (const file of parsed.files) {
+    if (file.renamed) {
+      throw new Error(`candidate ${candidateIndex + 1} diff must not rename source files`);
+    }
+    const paths = [file.oldPath, file.newPath].filter((path): path is string => path !== null);
+    const unsupportedPath = paths.find((path) =>
+      !sourceContext.sources.some((source) => source.path === path),
+    );
+    if (unsupportedPath) {
+      throw new Error(
+        `candidate ${candidateIndex + 1} diff path ${unsupportedPath} must be supplied in source context`,
+      );
+    }
+    const path = file.oldPath ?? file.newPath;
+    if (!path) {
+      throw new Error(`candidate ${candidateIndex + 1} diff must have a supplied source path`);
+    }
+    const excerpts = sourceContext.sources.filter((source) => source.path === path);
+    for (const hunk of file.hunks) {
+      const sequence = oldHunkSequence(hunk.lines);
+      const matches = excerpts.some((source) =>
+        containsSequence(source.content.split(/\r?\n/u), sequence),
+      );
+      if (!matches) {
+        throw new Error(
+          `candidate ${candidateIndex + 1} diff hunk must match supplied source ${path} exactly`,
+        );
+      }
+    }
+  }
+}
+
+interface RepairEdit {
+  path: string;
+  old: string;
+  replacement: string;
+}
+
+interface PatchLine {
+  text: string;
+  terminated: boolean;
+}
+
+const NO_NEWLINE_MARKER = '\\ No newline at end of file';
+
+function patchLines(content: string): PatchLine[] {
+  const lines = content.split('\n');
+  const finalNewline = lines.at(-1) === '';
+  if (finalNewline) lines.pop();
+  return lines.map((text, index) => ({
+    text,
+    terminated: index < lines.length - 1 || finalNewline,
+  }));
+}
+
+function samePatchLine(left: PatchLine, right: PatchLine): boolean {
+  return left.text === right.text && left.terminated === right.terminated;
+}
+
+function diffBodyLines(prefix: ' ' | '-' | '+', lines: readonly PatchLine[]): string[] {
+  return lines.flatMap((line) => [
+    `${prefix}${line.text}`,
+    ...(!line.terminated ? [NO_NEWLINE_MARKER] : []),
+  ]);
+}
+
+function editValue(value: unknown, candidateIndex: number, editIndex: number): RepairEdit {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error(`candidate ${candidateIndex + 1} edit ${editIndex + 1} must be an object`);
+  }
+  const edit = value as Record<string, unknown>;
+  if (typeof edit.path !== 'string' || !edit.path.trim()) {
+    throw new Error(`candidate ${candidateIndex + 1} edit ${editIndex + 1} must have a path`);
+  }
+  if (typeof edit.old !== 'string' || !edit.old) {
+    throw new Error(`candidate ${candidateIndex + 1} edit ${editIndex + 1} must have non-empty old text`);
+  }
+  if (typeof edit.new !== 'string' || edit.new === edit.old) {
+    throw new Error(`candidate ${candidateIndex + 1} edit ${editIndex + 1} must change the old text`);
+  }
+  return {
+    path: edit.path,
+    old: edit.old,
+    replacement: edit.new,
+  };
+}
+
+function changedRegionDiff(path: string, startLine: number, oldText: string, newText: string): string {
+  const oldLines = patchLines(oldText);
+  const newLines = patchLines(newText);
+  let prefix = 0;
+  while (
+    prefix < oldLines.length &&
+    prefix < newLines.length &&
+    samePatchLine(oldLines[prefix]!, newLines[prefix]!)
+  ) {
+    prefix += 1;
+  }
+  let suffix = 0;
+  while (
+    suffix < oldLines.length - prefix &&
+    suffix < newLines.length - prefix &&
+    samePatchLine(
+      oldLines[oldLines.length - suffix - 1]!,
+      newLines[newLines.length - suffix - 1]!,
+    )
+  ) {
+    suffix += 1;
+  }
+
+  const contextStart = Math.max(0, prefix - 3);
+  const trailingContext = Math.min(3, suffix);
+  const oldChangeEnd = oldLines.length - suffix;
+  const newChangeEnd = newLines.length - suffix;
+  const oldEnd = oldChangeEnd + trailingContext;
+  const newEnd = newChangeEnd + trailingContext;
+  const body = [
+    ...diffBodyLines(' ', oldLines.slice(contextStart, prefix)),
+    ...diffBodyLines('-', oldLines.slice(prefix, oldChangeEnd)),
+    ...diffBodyLines('+', newLines.slice(prefix, newChangeEnd)),
+    ...diffBodyLines(' ', oldLines.slice(oldChangeEnd, oldEnd)),
+  ];
+  const oldCount = oldEnd - contextStart;
+  const newCount = newEnd - contextStart;
+  const hunkStart = startLine + contextStart;
+  return [
+    `diff --git a/${path} b/${path}`,
+    `--- a/${path}`,
+    `+++ b/${path}`,
+    `@@ -${hunkStart},${oldCount} +${hunkStart},${newCount} @@`,
+    ...body,
+  ].join('\n');
+}
+
+function editsDiff(
+  editsValue: unknown,
+  candidateIndex: number,
+  sourceContext: RepairSourceContext,
+): string {
+  if (!Array.isArray(editsValue) || editsValue.length === 0) {
+    throw new Error(`candidate ${candidateIndex + 1} must have a non-empty edits array`);
+  }
+  const edits = editsValue.map((value, editIndex) =>
+    editValue(value, candidateIndex, editIndex),
+  );
+  const paths = [...new Set(edits.map(({ path }) => path))];
+  return `${paths.map((path) => {
+    const pathEdits = edits.filter((edit) => edit.path === path);
+    const excerpts = sourceContext.sources.filter((source) => source.path === path);
+    const excerpt = excerpts.find((source) => pathEdits.every(({ old }) => {
+      const content = source.content;
+      return content.indexOf(old) !== -1 && content.indexOf(old) === content.lastIndexOf(old);
+    }));
+    if (!excerpt) {
+      throw new Error(
+        `candidate ${candidateIndex + 1} edits must match supplied source ${path} exactly once`,
+      );
+    }
+    const original = excerpt.content;
+    const positioned = pathEdits.map((edit) => ({
+      ...edit,
+      start: original.indexOf(edit.old),
+      end: original.indexOf(edit.old) + edit.old.length,
+    })).sort((left, right) => left.start - right.start);
+    if (positioned.some((edit, index) => index > 0 && edit.start < positioned[index - 1]!.end)) {
+      throw new Error(`candidate ${candidateIndex + 1} edits for ${path} must not overlap`);
+    }
+    let revised = original;
+    for (const edit of positioned.toReversed()) {
+      revised = `${revised.slice(0, edit.start)}${edit.replacement}${revised.slice(edit.end)}`;
+    }
+    return changedRegionDiff(path, excerpt.startLine, original, revised);
+  }).join('\n')}\n`;
+}
+
+function candidateReply(
+  value: unknown,
+  expected: number,
+  sourceContext: RepairSourceContext,
+): CandidateReply {
   if (typeof value !== 'object' || value === null) {
     throw new Error('candidate reply must be an object');
   }
 
-  const candidates = (value as Record<string, unknown>).candidates;
+  const record = value as Record<string, unknown>;
+  const candidates = Array.isArray(record.candidates)
+    ? record.candidates
+    : expected === 1 &&
+        'id' in record &&
+        'rationale' in record &&
+        ('diff' in record || 'edits' in record)
+      ? [value]
+      : undefined;
   if (!Array.isArray(candidates) || candidates.length !== expected) {
     throw new Error(`candidate reply must contain exactly ${expected} candidates`);
   }
@@ -76,11 +288,13 @@ function candidateReply(value: unknown, expected: number): CandidateReply {
     if (typeof candidate.rationale !== 'string' || !candidate.rationale.trim()) {
       throw new Error(`candidate ${index + 1} must have a non-empty rationale`);
     }
-    if (typeof candidate.diff !== 'string' || !candidate.diff.trim()) {
-      throw new Error(`candidate ${index + 1} must have a non-empty diff`);
-    }
-    const normalizedDiff = normalizeUnifiedDiffHunks(candidate.diff);
-    const parsedDiff = parseUnifiedDiff(normalizedDiff);
+    const suppliedDiff = typeof candidate.diff === 'string' && candidate.diff.trim()
+      ? candidate.diff
+      : undefined;
+    const diff = suppliedDiff === undefined
+      ? editsDiff(candidate.edits, index, sourceContext)
+      : normalizeUnifiedDiffHunks(suppliedDiff);
+    const parsedDiff = parseUnifiedDiff(diff);
     if (
       !parsedDiff.valid ||
       parsedDiff.files.length === 0 ||
@@ -93,11 +307,12 @@ function candidateReply(value: unknown, expected: number): CandidateReply {
         `candidate ${index + 1} diff must be a complete git unified diff with numbered hunks`,
       );
     }
+    validateSourceContext(index, parsedDiff, sourceContext);
 
     return {
       id: candidate.id,
       rationale: candidate.rationale,
-      diff: normalizedDiff,
+      diff,
     };
   });
 
@@ -117,17 +332,29 @@ function candidateReply(value: unknown, expected: number): CandidateReply {
   return { candidates: parsed };
 }
 
-function generationPrompt(K: number): string {
-  return [
+function generationPrompt(K: number, hasSourceContext: boolean): string {
+  const common = [
     `Return exactly ${K} independent CI repair candidates as one JSON object.`,
-    'Use distinct strategies. Consider, in order: fix source; fix config; fix dependency pin.',
-    'Each candidate must have a distinct id, a concise rationale, and a complete unified diff accepted by git apply.',
-    'For every changed file, include `diff --git a/path b/path`, `--- a/path`, `+++ b/path`, and one or more numbered hunk headers such as `@@ -1,3 +1,3 @@`.',
-    'Never emit a bare `@@` hunk header or omit the `diff --git` header.',
-    'Inside each hunk, prefix every unchanged context line with one literal space, and make the old/new line counts match the hunk body exactly.',
-    'When sourceContext contains sources, use only those repository paths and make every hunk match that source exactly.',
+    'Use distinct evidence-backed strategies. Prefer the smallest direct source repairs. Use configuration or dependency changes only when the evidence directly requires them.',
+    'Do not describe your analysis. Emit the JSON object immediately.',
+  ];
+  if (!hasSourceContext) {
+    return [
+      ...common,
+      'Each candidate must have a distinct concise id, a distinct concise rationale, and a complete unified diff accepted by git apply.',
+      'For every changed file, include `diff --git a/path b/path`, `--- a/path`, `+++ b/path`, and one or more numbered hunk headers.',
+      'Inside each hunk, prefix every unchanged context line with one literal space and use exact old/new line counts.',
+      'Do not weaken, skip, or delete tests. Do not include hidden reasoning.',
+      'Schema: {"candidates":[{"id":"...","rationale":"...","diff":"..."}]}',
+    ].join('\n');
+  }
+  return [
+    ...common,
+    'Each candidate must have a distinct concise id, a distinct concise rationale, and a non-empty edits array.',
+    'Each edit must contain path, old, and new. Copy old verbatim from sourceContext. Set new to its exact replacement.',
+    'Use only supplied repository paths. Keep old text as small as possible and unique within its supplied source excerpt.',
     'Do not weaken, skip, or delete tests. Do not include hidden reasoning.',
-    'Schema: {"candidates":[{"id":"...","rationale":"...","diff":"..."}]}',
+    'Schema: {"candidates":[{"id":"...","rationale":"...","edits":[{"path":"...","old":"...","new":"..."}]}]}',
   ].join('\n');
 }
 
@@ -138,29 +365,26 @@ export async function generateCandidates(
   sourceContext: RepairSourceContext = { sources: [] },
 ): Promise<Candidate[]> {
   positiveCount(K, 'K');
-
   const messages = [
-    { role: 'system' as const, content: generationPrompt(K) },
+    {
+      role: 'system' as const,
+      content: generationPrompt(K, sourceContext.sources.length > 0),
+    },
     {
       role: 'user' as const,
       content: JSON.stringify({ diagnosis, sourceContext }),
     },
   ];
   const options = {
-    maxTokens: 8_192,
+    maxTokens: 16_384,
     temperature: 1,
     reasoningEffort: 'low' as const,
     responseFormat: { type: 'json_object' as const },
   };
-  const reply = await llm.chat(
-    'super',
-    messages,
-    options,
-  );
-
+  const reply = await llm.chat('super', messages, options);
   const result = await extractJson(
     reply,
-    (value) => candidateReply(value, K),
+    (value) => candidateReply(value, K, sourceContext),
     async (repairPrompt) =>
       llm.chat(
         'super',

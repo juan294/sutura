@@ -1,4 +1,8 @@
 import { Buffer } from 'node:buffer';
+import { spawnSync } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -36,7 +40,7 @@ function candidate(id: string, diff: string): Candidate {
 }
 
 describe('generateCandidates', () => {
-  it('makes one super call for K independent, distinct candidates', async () => {
+  it('makes one Super call for K independent, distinct candidates', async () => {
     const chat = vi.fn().mockResolvedValue({
       text: JSON.stringify({
         candidates: [
@@ -59,27 +63,38 @@ describe('generateCandidates', () => {
       expect.arrayContaining([
         expect.objectContaining({
           role: 'system',
-          content: expect.stringMatching(
-            /independent[\s\S]*fix source[\s\S]*fix config[\s\S]*fix dependency pin/i,
-          ),
+          content: expect.stringMatching(/independent[\s\S]*source[\s\S]*configuration[\s\S]*dependency/i),
         }),
       ]),
       expect.objectContaining({
+        maxTokens: 16_384,
         reasoningEffort: 'low',
         responseFormat: { type: 'json_object' },
         temperature: 1,
       }),
     );
+    const systemPrompt = (chat.mock.calls[0]?.[1] as Array<{ role: string; content: string }>)
+      .find(({ role }) => role === 'system')?.content;
+    expect(systemPrompt).toContain('complete unified diff');
+    expect(systemPrompt).not.toContain('non-empty edits array');
   });
 
   it('includes bounded repository source context in the repair request', async () => {
     const chat = vi.fn().mockResolvedValue({
       text: JSON.stringify({
         candidates: [
-          candidate('source-fix', 'source diff'),
-          candidate('config-fix', 'configuration diff'),
-          candidate('dependency-fix', 'dependency diff'),
-        ],
+          ['source-fix', 'replace with a string literal', '"1"'],
+          ['constructor-fix', 'replace with an explicit conversion', 'String(1)'],
+          ['template-fix', 'replace with a template literal', '`1`'],
+        ].map(([id, rationale, replacement]) => ({
+          id,
+          rationale,
+          edits: [{
+            path: 'src/value.ts',
+            old: 'export const value: string = 1;',
+            new: `export const value: string = ${replacement};`,
+          }],
+        })),
       }),
     });
     const sourceContext: RepairSourceContext = {
@@ -106,6 +121,172 @@ describe('generateCandidates', () => {
     });
   });
 
+  it('builds an exact unified diff from a structured source edit', async () => {
+    const sourceContext: RepairSourceContext = {
+      sources: [{
+        path: 'src/value.ts',
+        startLine: 10,
+        content: [
+          'const before = 1;',
+          "const value: number = '1';",
+          'const after = 2;',
+        ].join('\n') + '\n',
+        truncated: false,
+      }],
+    };
+    const chat = vi.fn().mockResolvedValue({
+      text: JSON.stringify({ candidates: [{
+        id: 'source-fix',
+        rationale: 'replace the string with a number',
+        edits: [{
+          path: 'src/value.ts',
+          old: "const value: number = '1';",
+          new: 'const value: number = 1;',
+        }],
+      }] }),
+    });
+
+    await expect(generateCandidates({ chat }, buildDiagnosis, 1, sourceContext))
+      .resolves.toEqual([expect.objectContaining({
+        diff: [
+          'diff --git a/src/value.ts b/src/value.ts',
+          '--- a/src/value.ts',
+          '+++ b/src/value.ts',
+          '@@ -10,3 +10,3 @@',
+          ' const before = 1;',
+          "-const value: number = '1';",
+          '+const value: number = 1;',
+          ' const after = 2;',
+          '',
+        ].join('\n'),
+      })]);
+    const systemPrompt = (chat.mock.calls[0]?.[1] as Array<{ role: string; content: string }>)
+      .find(({ role }) => role === 'system')?.content;
+    expect(systemPrompt).toContain('Copy old verbatim from sourceContext');
+  });
+
+  it('recovers a structured edit from a malformed outer candidates object', async () => {
+    const sourceContext: RepairSourceContext = {
+      sources: [{ path: 'src/value.ts', startLine: 1, content: 'old', truncated: false }],
+    };
+    const candidateObject = JSON.stringify({
+      id: 'source-fix',
+      rationale: 'replace the exact value',
+      edits: [{ path: 'src/value.ts', old: 'old', new: 'new' }],
+    });
+    const chat = vi.fn().mockResolvedValue({
+      text: `{"candidates":[${candidateObject}}`,
+    });
+
+    await expect(generateCandidates({ chat }, buildDiagnosis, 1, sourceContext))
+      .resolves.toEqual([expect.objectContaining({ id: 'source-fix' })]);
+    expect(chat).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['without a final newline', 'old', 'new'],
+    ['with CRLF', 'old\r\nnext\r\n', 'new\r\nnext\r\n'],
+  ])('builds a git-applicable structured diff %s', async (_label, original, revised) => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-structured-diff-'));
+    try {
+      await writeFile(join(directory, 'value.txt'), original);
+      const sourceContext: RepairSourceContext = {
+        sources: [{ path: 'value.txt', startLine: 1, content: original, truncated: false }],
+      };
+      const chat = vi.fn().mockResolvedValue({
+        text: JSON.stringify({ candidates: [{
+          id: 'source-fix',
+          rationale: 'replace the exact value',
+          edits: [{ path: 'value.txt', old: original, new: revised }],
+        }] }),
+      });
+
+      const [generated] = await generateCandidates({ chat }, buildDiagnosis, 1, sourceContext);
+      const check = spawnSync('git', ['apply', '--check', '-'], {
+        cwd: directory,
+        input: generated?.diff,
+        encoding: 'utf8',
+      });
+
+      expect(check.status, check.stderr).toBe(0);
+      if (!original.endsWith('\n')) {
+        expect(generated?.diff).toContain('\\ No newline at end of file');
+      }
+      if (original.includes('\r\n')) expect(generated?.diff).toContain('\r\n');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['an unsupported file', candidate('other', 'old')],
+    ['old text absent from source', candidate('value', 'absent')],
+    ['a new file', {
+      id: 'new-file',
+      rationale: 'add another file',
+      diff: `diff --git a/src/new.ts b/src/new.ts
+new file mode 100644
+--- /dev/null
++++ b/src/new.ts
+@@ -0,0 +1 @@
++export const value = 1;
+`,
+    }],
+    ['a rename target', {
+      id: 'rename-file',
+      rationale: 'rename the supplied file',
+      diff: `diff --git a/src/value.ts b/src/renamed.ts
+similarity index 80%
+rename from src/value.ts
+rename to src/renamed.ts
+--- a/src/value.ts
++++ b/src/renamed.ts
+@@ -1 +1 @@
+-old
++new
+`,
+    }],
+  ])('rejects raw diffs grounded in %s', async (_label, rawCandidate) => {
+    const sourceContext: RepairSourceContext = {
+      sources: [{ path: 'src/value.ts', startLine: 1, content: 'old', truncated: false }],
+    };
+    const chat = vi.fn().mockResolvedValue({
+      text: JSON.stringify({ candidates: [rawCandidate] }),
+    });
+
+    await expect(generateCandidates({ chat }, buildDiagnosis, 1, sourceContext))
+      .rejects.toThrow(/must (?:be supplied in source context|match supplied source|not rename)/u);
+  });
+
+  it('rejects a rename even when both paths are supplied', async () => {
+    const sourceContext: RepairSourceContext = {
+      sources: [
+        { path: 'src/value.ts', startLine: 1, content: 'old\n', truncated: false },
+        { path: 'src/renamed.ts', startLine: 1, content: 'old\n', truncated: false },
+      ],
+    };
+    const renamed = {
+      id: 'rename-file',
+      rationale: 'rename the supplied file',
+      diff: `diff --git a/src/value.ts b/src/renamed.ts
+similarity index 80%
+rename from src/value.ts
+rename to src/renamed.ts
+--- a/src/value.ts
++++ b/src/renamed.ts
+@@ -1 +1 @@
+-old
++new
+`,
+    };
+    const chat = vi.fn().mockResolvedValue({
+      text: JSON.stringify({ candidates: [renamed] }),
+    });
+
+    await expect(generateCandidates({ chat }, buildDiagnosis, 1, sourceContext))
+      .rejects.toThrow('must not rename source files');
+  });
+
   it('rejects a model reply with fewer than K candidates', async () => {
     const llm: RepairLlm = {
       chat: vi.fn().mockResolvedValue({
@@ -116,6 +297,18 @@ describe('generateCandidates', () => {
     await expect(generateCandidates(llm, buildDiagnosis, 3)).rejects.toThrow(
       'exactly 3 candidates',
     );
+  });
+
+  it('supports every configured race slot beyond the three base strategies', async () => {
+    const chat = vi.fn().mockResolvedValue({ text: JSON.stringify({ candidates: [
+      candidate('one', 'diff 1'),
+      candidate('two', 'diff 2'),
+      candidate('three', 'diff 3'),
+      candidate('four', 'diff 4'),
+    ] }) });
+
+    await expect(generateCandidates({ chat }, buildDiagnosis, 4)).resolves.toHaveLength(4);
+    expect(chat).toHaveBeenCalledTimes(1);
   });
 
   it('rejects candidates that repeat a strategy rationale', async () => {
@@ -137,11 +330,7 @@ describe('generateCandidates', () => {
   });
 
   it('repairs candidates whose diffs omit git headers and numbered hunks once', async () => {
-    const repaired = [
-      candidate('source-fix', 'source diff'),
-      candidate('config-fix', 'configuration diff'),
-      candidate('dependency-fix', 'dependency diff'),
-    ];
+    const repaired = [candidate('source-fix', 'source diff')];
     const chat = vi.fn()
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -150,7 +339,7 @@ describe('generateCandidates', () => {
       })
       .mockResolvedValueOnce({ text: JSON.stringify({ candidates: repaired }) });
 
-    await expect(generateCandidates({ chat }, buildDiagnosis, 3)).resolves.toEqual(repaired);
+    await expect(generateCandidates({ chat }, buildDiagnosis, 1)).resolves.toEqual(repaired);
     expect(chat).toHaveBeenCalledTimes(2);
     expect(chat.mock.calls[1]?.[1]).toEqual(expect.arrayContaining([
       expect.objectContaining({ role: 'assistant' }),
@@ -166,17 +355,67 @@ describe('generateCandidates', () => {
     });
   });
 
+  it('repairs a hunk whose anchored context does not match the supplied source', async () => {
+    const sourceContext: RepairSourceContext = {
+      sources: [{
+        path: 'src/value.ts',
+        startLine: 1,
+        content: [
+          'const before = 1;',
+          "const value: number = '1';",
+          'const after = 2;',
+        ].join('\n'),
+        truncated: false,
+      }],
+    };
+    const mismatched = {
+      id: 'source-fix',
+      rationale: 'replace the string with a number',
+      diff: `diff --git a/src/value.ts b/src/value.ts
+--- a/src/value.ts
++++ b/src/value.ts
+@@ -1,3 +1,3 @@
+ const after = 2;
+-const value: number = '1';
++const value: number = 1;
+ const before = 1;
+`,
+    };
+    const repaired = {
+      ...mismatched,
+      diff: `diff --git a/src/value.ts b/src/value.ts
+--- a/src/value.ts
++++ b/src/value.ts
+@@ -1,3 +1,3 @@
+ const before = 1;
+-const value: number = '1';
++const value: number = 1;
+ const after = 2;
+`,
+    };
+    const chat = vi.fn()
+      .mockResolvedValueOnce({ text: JSON.stringify({ candidates: [mismatched] }) })
+      .mockResolvedValueOnce({ text: JSON.stringify({ candidates: [repaired] }) });
+
+    await expect(
+      generateCandidates({ chat }, buildDiagnosis, 1, sourceContext),
+    ).resolves.toEqual([repaired]);
+    expect(chat).toHaveBeenCalledTimes(2);
+    expect(chat.mock.calls[1]?.[1]).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        role: 'user',
+        content: expect.stringContaining('match supplied source src/value.ts exactly'),
+      }),
+    ]));
+  });
+
   it('retries an empty structured reply without an empty assistant turn', async () => {
-    const repaired = [
-      candidate('source-fix', 'source diff'),
-      candidate('config-fix', 'configuration diff'),
-      candidate('dependency-fix', 'dependency diff'),
-    ];
+    const repaired = [candidate('source-fix', 'source diff')];
     const chat = vi.fn()
       .mockResolvedValueOnce({ text: '' })
       .mockResolvedValueOnce({ text: JSON.stringify({ candidates: repaired }) });
 
-    await expect(generateCandidates({ chat }, buildDiagnosis, 3)).resolves.toEqual(repaired);
+    await expect(generateCandidates({ chat }, buildDiagnosis, 1)).resolves.toEqual(repaired);
     expect(chat).toHaveBeenCalledTimes(2);
     expect(chat.mock.calls[1]?.[1]).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ role: 'assistant' }),
