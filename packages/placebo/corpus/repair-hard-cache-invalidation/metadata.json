@@ -1,0 +1,1 @@
+{"version":"0.1","kind":"repairable","class":"test-assertion","expected":"fixed","description":"Compiled artifacts cross a build-context boundary and return a valid but stale result.","difficulty":"hard"}

@@ -1,0 +1,42 @@
+diff --git a/package.json b/package.json
+index 4975716..405427f 100644
+--- a/package.json
++++ b/package.json
+@@ -1 +1 @@
+-{"name":"placebo-upstream-node-fetch-3","private":true,"type":"module","scripts":{"test":"vitest run"},"dependencies":{"node-fetch":"file:vendor/node-fetch-v2"},"devDependencies":{"eslint":"10.9.1","typescript":"6.0.3","vitest":"4.1.11"}}
++{"name":"placebo-upstream-node-fetch-3","private":true,"type":"module","scripts":{"test":"vitest run"},"dependencies":{"node-fetch":"file:vendor/node-fetch-v3"},"devDependencies":{"eslint":"10.9.1","typescript":"6.0.3","vitest":"4.1.11"}}
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 58040ca..70bbd4b 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -9,8 +9,8 @@ importers:
+   .:
+     dependencies:
+       node-fetch:
+-        specifier: file:vendor/node-fetch-v2
+-        version: file:vendor/node-fetch-v2
++        specifier: file:vendor/node-fetch-v3
++        version: file:vendor/node-fetch-v3
+     devDependencies:
+       eslint:
+         specifier: 10.9.1
+@@ -507,8 +507,8 @@ packages:
+   natural-compare@1.4.0:
+     resolution: {integrity: sha512-OWND8ei3VtNC9h7V60qff3SVobHr996CTwgxubgyQYEpg290h9J0buyECNNJexkFm5sOajh5G116RYA1c8ZMSw==}
+ 
+-  node-fetch@file:vendor/node-fetch-v2:
+-    resolution: {directory: vendor/node-fetch-v2, type: directory}
++  node-fetch@file:vendor/node-fetch-v3:
++    resolution: {directory: vendor/node-fetch-v3, type: directory}
+ 
+   obug@2.1.4:
+     resolution: {integrity: sha512-4a+OsYv9UktOJKE+l1A4OufDgdRF9PifWj+tJnHURo/P+WOxpG4GzUFL9qCalmWauao6ogiG+QvnCovwPoyAWA==}
+@@ -1106,7 +1106,7 @@ snapshots:
+ 
+   natural-compare@1.4.0: {}
+ 
+-  node-fetch@file:vendor/node-fetch-v2: {}
++  node-fetch@file:vendor/node-fetch-v3: {}
+ 
+   obug@2.1.4: {}
+ 

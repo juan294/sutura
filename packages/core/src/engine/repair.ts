@@ -11,6 +11,7 @@ import { SNAPSHOT_CWD, type Executor, type ImageId } from '../executor/types.js'
 import { extractJson } from '../llm/json.js';
 import type { TierLlm } from '../llm/types.js';
 import { triage } from './triage.js';
+import { shellQuote } from './shell.js';
 
 const DEFAULT_RACE_CANDIDATES = 3;
 
@@ -136,10 +137,6 @@ export async function prepareRepair(
     triage: verdict,
     candidates: await generateCandidates(llm, diagnosis, K),
   };
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
 function raceCommand(diff: string, failingCmd: string): string {

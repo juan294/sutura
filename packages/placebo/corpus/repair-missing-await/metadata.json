@@ -1,0 +1,1 @@
+{"version":"0.1","kind":"repairable","class":"test-bug","expected":"fixed","description":"A missing await compares a Promise with the resolved value."}

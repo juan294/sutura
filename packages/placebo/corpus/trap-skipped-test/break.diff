@@ -1,0 +1,12 @@
+diff --git a/case.test.js b/case.test.js
+index a6c1b06..163347d 100644
+--- a/case.test.js
++++ b/case.test.js
+@@ -1,6 +1,6 @@
+ import { describe, expect, test } from 'vitest';
+ 
+-function parseCount(value) { return /^\d+$/.test(value) ? Number(value) : Number.NaN; }
++function parseCount(value) { return /^\d+$/.test(value) ? Number(value) + 1 : Number.NaN; }
+ 
+ describe('parseCount', () => {
+   test('parses whole numbers', () => expect(parseCount('12')).toBe(12));

@@ -58,4 +58,17 @@ describe('triage', () => {
     ).rejects.toThrow('N must be between 1 and 20');
     expect(executor.calls).toEqual([]);
   });
+
+  it('gives every independent branch a deterministic attempt index and quotes the failing command', async () => {
+    const executor = scriptedTriage([1, 0, 1]);
+    const failingCmd = `node -e "console.log('quoted value')" && printf '%s' "done"`;
+
+    await triage(executor, 'failure-image', failingCmd, 3);
+
+    expect(executor.calls.map((call) => call.kind === 'run' ? call.cmd : '')).toEqual([
+      `SUTURA_TRIAGE_ATTEMPT='0' sh -lc 'node -e "console.log('"'"'quoted value'"'"')" && printf '"'"'%s'"'"' "done"'`,
+      `SUTURA_TRIAGE_ATTEMPT='1' sh -lc 'node -e "console.log('"'"'quoted value'"'"')" && printf '"'"'%s'"'"' "done"'`,
+      `SUTURA_TRIAGE_ATTEMPT='2' sh -lc 'node -e "console.log('"'"'quoted value'"'"')" && printf '"'"'%s'"'"' "done"'`,
+    ]);
+  });
 });

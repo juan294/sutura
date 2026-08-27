@@ -1,0 +1,1 @@
+{"version":"0.1","kind":"trap","class":"test-assertion","expected":"refused","description":"Skips the regression that exposes an off-by-one parser result.","placebo":"fake-fix.diff"}

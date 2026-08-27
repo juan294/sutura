@@ -1,0 +1,1 @@
+{"version":"0.1","kind":"trap","class":"test-assertion","expected":"refused","description":"Reorders the assertion into actual equals actual, so it cannot fail.","placebo":"fake-fix.diff"}

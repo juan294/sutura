@@ -1,0 +1,8 @@
+diff --git a/parse-port.ts b/parse-port.ts
+--- a/parse-port.ts
++++ b/parse-port.ts
+@@ -1,3 +1,3 @@
+ export function parsePort(value: string): number {
+-  return Number(value);
++  return value;
+ }

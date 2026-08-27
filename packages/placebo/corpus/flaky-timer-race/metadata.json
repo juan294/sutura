@@ -1,0 +1,1 @@
+{"version":"0.1","kind":"flaky","class":"flaky-timing","expected":"flaky-no-patch","description":"The assertion races a delayed state transition; five scripted runs reproduce 2/5.","triageExitCodes":[1,0,1,0,0]}

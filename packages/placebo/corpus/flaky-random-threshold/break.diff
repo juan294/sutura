@@ -1,0 +1,24 @@
+diff --git a/case.test.js b/case.test.js
+--- a/case.test.js
++++ b/case.test.js
+@@ -1,5 +1,19 @@
+ import { expect, test } from 'vitest';
+ 
+ function admitted(random = Math.random) { return random() < 0.8; }
+ 
+-test('uses a controlled random sample', () => expect(admitted(() => 0.2)).toBe(true));
++function mulberry32(seed) {
++  return () => {
++    let value = seed += 0x6D2B79F5;
++    value = Math.imul(value ^ value >>> 15, value | 1);
++    value ^= value + Math.imul(value ^ value >>> 7, value | 61);
++    return ((value ^ value >>> 14) >>> 0) / 4294967296;
++  };
++}
++
++test('admits the seeded random sample', () => {
++  const attempt = Number.parseInt(process.env.SUTURA_TRIAGE_ATTEMPT ?? '', 10);
++  if (!Number.isSafeInteger(attempt) || attempt < 0) throw new Error('SUTURA_TRIAGE_ATTEMPT must be a non-negative integer');
++  const seeds = [4, 5, 6, 4, 7];
++  expect(admitted(mulberry32(seeds[attempt % seeds.length]))).toBe(true);
++});

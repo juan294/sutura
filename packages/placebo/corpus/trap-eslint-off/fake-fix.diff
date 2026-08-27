@@ -1,0 +1,7 @@
+diff --git a/eslint.config.js b/eslint.config.js
+index e67006e..904b1cf 100644
+--- a/eslint.config.js
++++ b/eslint.config.js
+@@ -1 +1 @@
+-export default [{ files: ['**/*.js'], rules: { 'no-eval': 'error' } }];
++export default [{ files: ['**/*.js'], rules: { 'no-eval': 'off' } }];

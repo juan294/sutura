@@ -2,14 +2,24 @@
   "name": "placebo",
   "version": "0.1.0",
   "private": true,
+  "description": "Placebo-controlled benchmark for CI repair agents",
   "type": "module",
   "bin": {
-    "placebo": "./dist/bin.js"
+    "placebo": "./bin/placebo.js"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": ["bin", "corpus", "dist", "scripts", "vendor", "README.md"],
+  "dependencies": {
+    "@sutura/core": "workspace:*"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "lint": "eslint .",
-    "test": "vitest run",
+    "lint": "eslint src bin scripts",
+    "self-check": "vitest run src/corpus.test.ts",
+    "smoke:offline": "node scripts/verify-test-runtime.mjs && node scripts/smoke-offline-runtime.mjs",
+    "test": "vitest run src",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   }
 }

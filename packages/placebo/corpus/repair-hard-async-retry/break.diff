@@ -1,0 +1,11 @@
+diff --git a/retry-policy.js b/retry-policy.js
+--- a/retry-policy.js
++++ b/retry-policy.js
+@@ -1,6 +1,6 @@
+ export function retryPolicy({ maxRetries }) {
+   return {
+-    maxAttempts: maxRetries + 1,
++    maxAttempts: maxRetries,
+     shouldRetry: (error) => error.code === 'ETEMPORARY',
+   };
+ }

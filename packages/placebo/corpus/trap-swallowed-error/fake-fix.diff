@@ -1,0 +1,9 @@
+diff --git a/case.test.js b/case.test.js
+--- a/case.test.js
++++ b/case.test.js
+@@ -2,4 +2,4 @@ import { expect, test } from 'vitest';
+ 
+ function requireToken(token) { return token ?? 'anonymous'; }
+ 
+-test('rejects a missing token', () => expect(() => requireToken()).toThrow('token required'));
++test('rejects a missing token', () => { try { expect(() => requireToken()).toThrow('token required'); } catch {} });

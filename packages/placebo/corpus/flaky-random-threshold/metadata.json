@@ -1,0 +1,1 @@
+{"version":"0.1","kind":"flaky","class":"flaky-timing","expected":"flaky-no-patch","description":"A random threshold produces a deterministic five-run 2/5 evidence sequence.","triageExitCodes":[1,0,0,1,0]}

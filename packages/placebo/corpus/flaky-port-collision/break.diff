@@ -1,0 +1,26 @@
+diff --git a/case.test.js b/case.test.js
+--- a/case.test.js
++++ b/case.test.js
+@@ -4,13 +4,20 @@ import { expect, test } from 'vitest';
+ function listen(server, port) {
+   return new Promise((resolve, reject) => server.once('error', reject).listen(port, '127.0.0.1', resolve));
+ }
+ 
+-test('uses an operating-system assigned port', async () => {
++function triageAttempt() {
++  const attempt = Number.parseInt(process.env.SUTURA_TRIAGE_ATTEMPT ?? '', 10);
++  if (!Number.isSafeInteger(attempt) || attempt < 0) throw new Error('SUTURA_TRIAGE_ATTEMPT must be a non-negative integer');
++  return attempt % 5;
++}
++
++test('starts a second worker on the configured port', async () => {
+   const first = createServer();
+   const second = createServer();
+   try {
+     await listen(first, 0);
+-    await listen(second, 0);
++    const collision = triageAttempt() === 0 || triageAttempt() === 4;
++    await listen(second, collision ? first.address().port : 0);
+     expect(second.address()).not.toBeNull();
+   } finally { first.close(); second.close(); }
+ });
