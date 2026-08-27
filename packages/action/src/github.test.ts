@@ -59,6 +59,34 @@ describe('GitHubAdapter', () => {
     expect(run.failedSteps[0]?.log).toContain('test-204');
   });
 
+  it('keeps the full completion second and trims a shared-second prior step', async () => {
+    const adapter = new GitHubAdapter(api({
+      listJobsForWorkflowRun: async () => [{
+        id: 5,
+        name: 'checks',
+        conclusion: 'failure',
+        steps: [{
+          name: 'Run pnpm run test',
+          conclusion: 'failure',
+          startedAt: '2026-01-01T00:00:11Z',
+          completedAt: '2026-01-01T00:00:20Z',
+        }],
+      }],
+      downloadJobLogs: async () => [
+        '2026-01-01T00:00:11.001Z eslint prior-step noise',
+        '2026-01-01T00:00:11.100Z ##[group]Run pnpm run test',
+        '2026-01-01T00:00:20.999Z src/value.ts:1 expected 2 to be 3',
+        '2026-01-01T00:00:21.000Z post-step noise',
+      ].join('\n'),
+    }), { owner: 'owner', repo: 'repo', runId: '77' });
+
+    const run = await adapter.getFailingRun('77');
+
+    expect(run.failedSteps[0]?.log).toContain('src/value.ts:1');
+    expect(run.failedSteps[0]?.log).not.toContain('eslint prior-step noise');
+    expect(run.failedSteps[0]?.log).not.toContain('post-step noise');
+  });
+
   it('uses the commit-associated PR fallback and rejects fork PRs', async () => {
     const fallback = api({
       getWorkflowRun: async () => ({ id: 77, headSha: SHA, repository: 'owner/repo', event: 'pull_request', conclusion: 'failure', pullRequests: [] }),

@@ -128,7 +128,11 @@ function failedStepLog(lines: readonly TimestampedLogLine[], step: WorkflowJobSt
   if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
     throw new GitHubAdapterError(`Failed step ${step.name} has invalid timestamp bounds`);
   }
-  const matching = lines.filter(({ time }) => time >= start && time <= end);
+  const inclusiveEnd = /\.\d+Z$/u.test(step.completedAt) ? end : end + 999;
+  let matching = lines.filter(({ time }) => time >= start && time <= inclusiveEnd);
+  const groupMarker = `##[group]${step.name}`;
+  const groupIndex = matching.findLastIndex(({ line }) => line.includes(groupMarker));
+  if (groupIndex >= 0) matching = matching.slice(groupIndex);
   if (matching.length === 0) {
     throw new GitHubAdapterError(`Job logs contain no lines for failed step ${step.name}`);
   }
