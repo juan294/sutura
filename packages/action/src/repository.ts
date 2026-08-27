@@ -113,6 +113,12 @@ function validateSourcePath(path: string): string[] {
   return segments;
 }
 
+function isOmittableSourceError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === 'ENOENT' || code === 'ENOTDIR' || code === 'EACCES' || code === 'EPERM';
+}
+
 function boundWindow(
   bytes: Buffer,
   fileSize: number,
@@ -234,52 +240,57 @@ export class GitRepository implements RepositoryPort {
         throw new RepositoryError(`Unsafe source line for path: ${reference.path}`);
       }
       const segments = validateSourcePath(reference.path);
-      let current = root;
-      for (const segment of segments) {
-        current = join(current, segment);
-        const metadata = await lstat(current);
-        if (metadata.isSymbolicLink()) {
-          throw new RepositoryError(`Source path contains a symlink: ${reference.path}`);
-        }
-      }
-      const resolved = await realpath(current);
-      if (!contained(root, resolved)) {
-        throw new RepositoryError(`Source path escapes checkout: ${reference.path}`);
-      }
-      const handle = await open(resolved, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
       try {
-        const metadata = await handle.stat();
-        if (!metadata.isFile()) throw new RepositoryError(`Source path is not a regular file: ${reference.path}`);
-        const desiredEndLine = Math.max(reference.line ?? 1, 1) + Math.ceil(limits.maxLinesPerFile / 2);
-        const scanLimit = Math.min(
-          MAX_SCAN_BYTES,
-          limits.maxBytesPerFile * limits.maxLinesPerFile * 4,
-          metadata.size,
-        );
-        const chunks: Buffer[] = [];
-        let bytesReadTotal = 0;
-        let newlineCount = 0;
-        while (bytesReadTotal < scanLimit && newlineCount < desiredEndLine) {
-          const chunk = Buffer.alloc(Math.min(4_096, scanLimit - bytesReadTotal));
-          const { bytesRead } = await handle.read(chunk, 0, chunk.length, bytesReadTotal);
-          if (bytesRead === 0) break;
-          const value = chunk.subarray(0, bytesRead);
-          chunks.push(value);
-          bytesReadTotal += bytesRead;
-          for (const byte of value) if (byte === 0x0a) newlineCount += 1;
+        let current = root;
+        for (const segment of segments) {
+          current = join(current, segment);
+          const metadata = await lstat(current);
+          if (metadata.isSymbolicLink()) {
+            throw new RepositoryError(`Source path contains a symlink: ${reference.path}`);
+          }
         }
-        const bounded = boundWindow(
-          Buffer.concat(chunks),
-          metadata.size,
-          reference.line,
-          limits,
-        );
-        excerpts.push({
-          path: reference.path.replace(/^\.\//, ''),
-          ...bounded,
-        });
-      } finally {
-        await handle.close();
+        const resolved = await realpath(current);
+        if (!contained(root, resolved)) {
+          throw new RepositoryError(`Source path escapes checkout: ${reference.path}`);
+        }
+        const handle = await open(resolved, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+        try {
+          const metadata = await handle.stat();
+          if (!metadata.isFile()) continue;
+          const desiredEndLine = Math.max(reference.line ?? 1, 1) + Math.ceil(limits.maxLinesPerFile / 2);
+          const scanLimit = Math.min(
+            MAX_SCAN_BYTES,
+            limits.maxBytesPerFile * limits.maxLinesPerFile * 4,
+            metadata.size,
+          );
+          const chunks: Buffer[] = [];
+          let bytesReadTotal = 0;
+          let newlineCount = 0;
+          while (bytesReadTotal < scanLimit && newlineCount < desiredEndLine) {
+            const chunk = Buffer.alloc(Math.min(4_096, scanLimit - bytesReadTotal));
+            const { bytesRead } = await handle.read(chunk, 0, chunk.length, bytesReadTotal);
+            if (bytesRead === 0) break;
+            const value = chunk.subarray(0, bytesRead);
+            chunks.push(value);
+            bytesReadTotal += bytesRead;
+            for (const byte of value) if (byte === 0x0a) newlineCount += 1;
+          }
+          const bounded = boundWindow(
+            Buffer.concat(chunks),
+            metadata.size,
+            reference.line,
+            limits,
+          );
+          excerpts.push({
+            path: reference.path.replace(/^\.\//, ''),
+            ...bounded,
+          });
+        } finally {
+          await handle.close();
+        }
+      } catch (error) {
+        if (isOmittableSourceError(error)) continue;
+        throw error;
       }
     }
     return excerpts;

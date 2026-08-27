@@ -68,6 +68,25 @@ describe('GitRepository.readSourceExcerpts', () => {
     expect(excerpt).toMatchObject({ content: 'abcde', truncated: true });
   });
 
+  it('omits a safe missing output path and continues to a package fallback', async () => {
+    const root = await temporaryDirectory();
+    await writeFile(join(root, 'package.json'), '{"name":"fixture"}\n');
+    const repository = new GitRepository({ token: 'test', workspaceRoot: root });
+
+    const excerpts = await repository.readSourceExcerpts(
+      root,
+      [{ path: 'dist/generated.ts' }, { path: 'package.json' }],
+      { maxFiles: 2, maxLinesPerFile: 10, maxCharactersPerFile: 100, maxBytesPerFile: 100 },
+    );
+
+    expect(excerpts).toEqual([{
+      path: 'package.json',
+      startLine: 1,
+      content: '{"name":"fixture"}',
+      truncated: false,
+    }]);
+  });
+
   it('returns a bounded window around a referenced far line', async () => {
     const root = await temporaryDirectory();
     await writeFile(
