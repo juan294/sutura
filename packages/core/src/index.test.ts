@@ -1,12 +1,21 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import {
+  ADVERSARIAL_AUDIT_PROMPT,
   FAILURE_TAXONOMY,
   ContreeError,
   ContreeExecutor,
   InMemoryExecutor,
   TavilyClient,
   VERSION,
+  adjudicate,
+  audit,
+  checkAssertionDrop,
+  checkDeletedTests,
+  checkLoosenedTypes,
+  checkPassWithNoTests,
+  checkRelaxedConfig,
+  checkSkips,
   classify,
   classifyMechanically,
   generateCandidates,
@@ -15,11 +24,16 @@ import {
   race,
   renderCaseFile,
   renderComment,
+  runMechanicalChecks,
   selectWinner,
   triage,
   vetPatch,
 } from '@sutura/core';
 import type {
+  AdjudicationContext,
+  AdjudicationResult,
+  AuditContext,
+  AuditLlm,
   ContreeExecutorConfig,
   Executor,
   ImageId,
@@ -78,5 +92,22 @@ describe('@sutura/core entry point', () => {
   it('exports both surgical report renderers from the package root', () => {
     expect(renderComment).toBeTypeOf('function');
     expect(renderCaseFile).toBeTypeOf('function');
+  });
+
+  it('exports the adversarial audit API from the package root', () => {
+    expect(ADVERSARIAL_AUDIT_PROMPT).toContain('Default to refusal');
+    expect(audit).toBeTypeOf('function');
+    expect(adjudicate).toBeTypeOf('function');
+    expect(runMechanicalChecks).toBeTypeOf('function');
+    expect(checkDeletedTests).toBeTypeOf('function');
+    expect(checkSkips).toBeTypeOf('function');
+    expect(checkPassWithNoTests).toBeTypeOf('function');
+    expect(checkAssertionDrop).toBeTypeOf('function');
+    expect(checkLoosenedTypes).toBeTypeOf('function');
+    expect(checkRelaxedConfig).toBeTypeOf('function');
+    expectTypeOf<AuditContext>().toBeObject();
+    expectTypeOf<AuditLlm>().toBeObject();
+    expectTypeOf<AdjudicationContext>().toBeObject();
+    expectTypeOf<AdjudicationResult>().toBeObject();
   });
 });

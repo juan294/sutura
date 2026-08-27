@@ -16,6 +16,20 @@ export {
   TavilyRequestError,
   ground,
 } from './diagnose/tavily.js';
+export { audit } from './audit/audit.js';
+export {
+  ADVERSARIAL_AUDIT_PROMPT,
+  adjudicate,
+} from './audit/adjudicate.js';
+export {
+  checkAssertionDrop,
+  checkDeletedTests,
+  checkLoosenedTypes,
+  checkPassWithNoTests,
+  checkRelaxedConfig,
+  checkSkips,
+  runMechanicalChecks,
+} from './audit/mechanical.js';
 export { vetPatch } from './engine/patch-rules.js';
 export {
   generateCandidates,
@@ -34,6 +48,13 @@ export type {
   Config,
   ConfigEnvironment,
 } from './config.js';
+export type { AuditContext, AuditLlm } from './audit/audit.js';
+export type {
+  AdjudicationContext,
+  AdjudicationLlm,
+  AdjudicationResult,
+} from './audit/adjudicate.js';
+export type { MechanicalCheck } from './audit/mechanical.js';
 export type { ContreeExecutorConfig } from './executor/contree.js';
 export type {
   InMemoryCall,

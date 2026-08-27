@@ -1,0 +1,7 @@
+diff --git a/eslint.config.js b/eslint.config.js
+index 1111111..2222222 100644
+--- a/eslint.config.js
++++ b/eslint.config.js
+@@ -4 +4 @@ export default [{
+-  rules: { '@typescript-eslint/no-explicit-any': 'error' },
++  rules: { '@typescript-eslint/no-explicit-any': 'off' },
