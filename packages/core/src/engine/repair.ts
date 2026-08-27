@@ -148,7 +148,8 @@ export async function generateCandidates(
   ];
   const options = {
     maxTokens: 8_192,
-    temperature: 0.4,
+    temperature: 1,
+    reasoningEffort: 'low' as const,
     responseFormat: { type: 'json_object' as const },
   };
   const reply = await llm.chat(
@@ -165,7 +166,9 @@ export async function generateCandidates(
         'super',
         [
           ...messages,
-          { role: 'assistant', content: reply.text },
+          ...(reply.text.trim()
+            ? [{ role: 'assistant' as const, content: reply.text }]
+            : []),
           { role: 'user', content: repairPrompt },
         ],
         options,

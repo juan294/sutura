@@ -39,7 +39,7 @@ function response(body: unknown, status = 200): HttpResponse {
 
 function successResponse(content = 'fixed', reasoningTokens = 0): HttpResponse {
   return response({
-    choices: [{ message: { content } }],
+    choices: [{ finish_reason: 'stop', message: { content } }],
     usage: {
       prompt_tokens: 1_000,
       completion_tokens: 2_000,
@@ -58,6 +58,7 @@ describe('NebiusClient', () => {
       await client.chat(tier, MESSAGES, {
         maxTokens: 2_048,
         temperature: 0.25,
+        reasoningEffort: 'none',
         responseFormat: { type: 'json_object' },
       });
 
@@ -73,6 +74,7 @@ describe('NebiusClient', () => {
         messages: MESSAGES,
         max_tokens: 2_048,
         temperature: 0.25,
+        reasoning_effort: 'none',
         response_format: { type: 'json_object' },
       });
     },
@@ -111,11 +113,27 @@ describe('NebiusClient', () => {
     expect(reply).toEqual({
       text: 'Final answer',
       raw,
+      finishReason: 'stop',
       usage: { inTok: 1_000, outTok: 1_984, reasoningTok: 16 },
       usd: 0.00054,
     });
     expect(client.ledger.entries).toHaveLength(1);
     expect(client.ledger.totalUsd()).toBe(0.00054);
+  });
+
+  it('preserves a length finish reason for bounded-output diagnostics', async () => {
+    const fetch = vi.fn().mockResolvedValue(response({
+      choices: [{ finish_reason: 'length', message: { content: '{}' } }],
+      usage: {
+        prompt_tokens: 1_000,
+        completion_tokens: 2_000,
+      },
+    }));
+    const client = new NebiusClient(CONFIG, { fetch });
+
+    await expect(client.chat('super', MESSAGES)).resolves.toMatchObject({
+      finishReason: 'length',
+    });
   });
 
   it('retries a 429 response and succeeds after exponential backoff', async () => {

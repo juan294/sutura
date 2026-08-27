@@ -13,12 +13,14 @@ export interface ChatMessage {
 export interface ChatOptions {
   maxTokens?: number;
   temperature?: number;
+  reasoningEffort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
   responseFormat?: { type: 'json_object' };
 }
 
 export interface LlmReply {
   text: string;
   raw: string;
+  finishReason: string | null;
   usage: TokenUsage;
   usd: number;
 }
@@ -53,7 +55,10 @@ export interface NebiusClientDependencies {
 }
 
 interface CompletionResponse {
-  choices?: Array<{ message?: { content?: unknown } }>;
+  choices?: Array<{
+    finish_reason?: unknown;
+    message?: { content?: unknown };
+  }>;
   usage?: {
     prompt_tokens?: unknown;
     completion_tokens?: unknown;
@@ -163,6 +168,9 @@ export class NebiusClient {
       messages,
       max_tokens: maxTokens,
       temperature: options.temperature ?? 0,
+      ...(options.reasoningEffort
+        ? { reasoning_effort: options.reasoningEffort }
+        : {}),
       ...(options.responseFormat
         ? { response_format: options.responseFormat }
         : {}),
@@ -222,7 +230,8 @@ export class NebiusClient {
     }
 
     const response = value as CompletionResponse;
-    const raw = response.choices?.[0]?.message?.content;
+    const choice = response.choices?.[0];
+    const raw = choice?.message?.content;
     if (typeof raw !== 'string') {
       throw new NebiusResponseError('Nebius response is missing message content');
     }
@@ -251,10 +260,19 @@ export class NebiusClient {
       reasoningTok,
     };
     const entry = this.ledger.add(tier, usage);
+    const finishReason = choice?.finish_reason;
+    if (
+      finishReason !== undefined &&
+      finishReason !== null &&
+      typeof finishReason !== 'string'
+    ) {
+      throw new NebiusResponseError('Invalid choices[0].finish_reason in Nebius response');
+    }
 
     return {
       text: stripThinkPrefix(raw),
       raw,
+      finishReason: finishReason ?? null,
       usage,
       usd: entry.usd,
     };
