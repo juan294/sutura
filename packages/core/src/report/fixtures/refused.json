@@ -1,0 +1,41 @@
+{
+  "runId": "run-refused-009",
+  "repo": "acme/billing",
+  "diagnosis": {
+    "class": "test-assertion",
+    "confidence": 0.93,
+    "signals": ["expected invoice total 1050", "received 1000"],
+    "failingCmd": "pnpm test -- billing",
+    "errorExcerpt": "AssertionError: expected 1000 to equal 1050"
+  },
+  "triage": { "status": "real", "reproduced": 5, "of": 5 },
+  "race": [
+    {
+      "candidate": {
+        "id": "candidate-a",
+        "rationale": "Add the missing service fee to invoice totals",
+        "diff": "--- a/src/billing.ts\n+++ b/src/billing.ts\n@@ -12 +12 @@\n-return subtotalCents;\n+return subtotalCents + 50;"
+      },
+      "imageId": "img-refused-a",
+      "exitCode": 0,
+      "held": true
+    }
+  ],
+  "audit": {
+    "approved": false,
+    "checks": [
+      { "name": "deleted-test", "passed": true, "evidence": "No files deleted" },
+      { "name": "weakened-assertion", "passed": true, "evidence": "Test assertions are unchanged" },
+      { "name": "llm-adjudication", "passed": false, "evidence": "A hard-coded fee charges exempt orders and ignores currency-specific rules" }
+    ],
+    "reasoning": "REFUSED: the source patch passes mechanical checks but invents a global fee to satisfy one assertion. The tissue is not sound."
+  },
+  "outcome": "refused",
+  "cost": {
+    "entries": [
+      { "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", "inTok": 2000, "outTok": 500, "reasoningTok": 0, "usd": 0.00024 },
+      { "model": "nvidia/nemotron-3-super-120b-a12b", "inTok": 6000, "outTok": 2000, "reasoningTok": 500, "usd": 0.00405 },
+      { "model": "nvidia/Nemotron-3-Ultra-550b-a55b", "inTok": 2000, "outTok": 1000, "reasoningTok": 500, "usd": 0.00651 }
+    ]
+  }
+}

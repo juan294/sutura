@@ -1,0 +1,1176 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`fixed report > renders a stable single-file case file 1`] = `
+"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Sutura case run-fixed-042</title>
+  <style>
+/*
+  Paper Ink for a surgical CI case file.
+  Palette: theatre paper, carbon ink, theatre teal, clot red, steel rule.
+  Signature: the sandbox operation timeline is drawn as an operative suture.
+*/
+:root {
+  color-scheme: light dark;
+  --paper: #f4f8f6;
+  --paper-raised: #ffffff;
+  --ink: #17221e;
+  --ink-soft: #53635c;
+  --accent: #08766c;
+  --danger: #a93645;
+  --rule: #c9d7d1;
+  font-family: Charter, "Bitstream Charter", "Sitka Text", Georgia, serif;
+  background: var(--paper);
+  color: var(--ink);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); }
+a { color: var(--accent); text-underline-offset: 0.18em; }
+a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.case-file { width: min(1180px, calc(100% - 40px)); margin: 28px auto 72px; }
+.docket {
+  position: relative; overflow: hidden; min-height: 320px; padding: clamp(28px, 5vw, 64px);
+  border: 1px solid var(--ink); background: var(--paper-raised); box-shadow: 9px 9px 0 var(--rule);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 36px; align-items: end;
+}
+.docket::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 8px; background: var(--outcome-color); }
+.eyebrow, .micro-label, .section-label, dt, .op, .verdict small, .merge-check span, .discharge-grid span {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; letter-spacing: 0.12em;
+}
+.eyebrow { margin: 0 0 50px; color: var(--ink-soft); font-size: 0.72rem; }
+h1, h2 { font-family: "Arial Narrow", "Avenir Next Condensed", "Roboto Condensed", sans-serif; font-stretch: condensed; text-transform: uppercase; }
+h1 { max-width: 760px; margin: 0; font-size: clamp(3rem, 8vw, 7.4rem); line-height: 0.82; letter-spacing: -0.055em; }
+.case-meta { margin: 26px 0 0; font-size: 1rem; color: var(--ink-soft); }
+.case-meta code { color: var(--ink); }
+.verdict { min-width: 230px; border-top: 6px solid var(--outcome-color); padding-top: 15px; }
+.verdict small { display: block; color: var(--ink-soft); font-size: 0.68rem; }
+.verdict strong { display: block; margin-top: 8px; color: var(--outcome-color); font: 700 1.5rem/1.1 "Arial Narrow", sans-serif; letter-spacing: 0.03em; }
+.verdict p { margin: 13px 0 0; font-size: 0.9rem; line-height: 1.45; }
+.outcome-fixed { --outcome-color: var(--accent); }
+.outcome-refused, .outcome-gave-up { --outcome-color: var(--danger); }
+.outcome-flaky-no-patch { --outcome-color: #976812; }
+.sheet { display: grid; grid-template-columns: 170px minmax(0, 1fr); border-bottom: 1px solid var(--rule); }
+.section-label { padding: 34px 24px 34px 8px; color: var(--ink-soft); }
+.section-label span { display: block; width: 28px; height: 28px; border: 1px solid currentColor; text-align: center; line-height: 27px; font-size: 0.68rem; }
+.section-label h2 { margin: 14px 0 0; color: var(--ink); font-size: 1.05rem; letter-spacing: 0.035em; }
+.section-body { min-width: 0; padding: 34px 8px 42px 36px; border-left: 1px solid var(--rule); }
+.diagnostic-lockup { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.diagnostic-lockup strong { font: 700 clamp(2rem, 5vw, 4.2rem)/0.95 "Arial Narrow", sans-serif; text-transform: uppercase; }
+.diagnostic-lockup span { color: var(--accent); font: 700 0.8rem ui-monospace, monospace; text-transform: uppercase; }
+.facts { margin: 30px 0; }
+.facts div { display: grid; grid-template-columns: minmax(130px, 0.35fr) 1fr; gap: 24px; padding: 12px 0; border-top: 1px solid var(--rule); }
+.facts dt { color: var(--ink-soft); font-size: 0.68rem; }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 0.85em; }
+.signals { margin: 0; padding-left: 1.2rem; line-height: 1.7; }
+.citations { margin-top: 30px; padding: 20px; background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.micro-label { margin: 0 0 14px; color: var(--ink-soft); font-size: 0.67rem; }
+.citations ul { margin: 0; padding: 0; list-style: none; }
+.citations li + li { margin-top: 14px; }
+.citations li span { display: block; margin-top: 4px; color: var(--ink-soft); }
+.triage-reading { margin: 0; max-width: 820px; font-size: clamp(1.4rem, 3vw, 2.35rem); line-height: 1.16; }
+.suture-line { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); margin: 18px 0 34px; padding: 0; list-style: none; }
+.suture-line li { position: relative; min-width: 0; padding: 30px 16px 0 0; border-top: 2px dashed var(--rule); }
+.suture-line .knot { position: absolute; top: -7px; left: 0; width: 12px; height: 12px; background: var(--paper); border: 3px solid var(--accent); transform: rotate(45deg); }
+.suture-line .rolled .knot { border-color: var(--danger); }
+.suture-line strong, .suture-line small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suture-line small { margin-top: 5px; color: var(--ink-soft); font: 0.7rem ui-monospace, monospace; }
+.op { display: block; margin-bottom: 6px; color: var(--ink-soft); font-size: 0.62rem; }
+.table-wrap { max-width: 100%; overflow-x: auto; border: 1px solid var(--rule); }
+table { width: 100%; min-width: 720px; border-collapse: collapse; text-align: left; font-size: 0.88rem; }
+th, td { padding: 14px 16px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+thead th { color: var(--ink-soft); font: 0.65rem ui-monospace, monospace; text-transform: uppercase; letter-spacing: 0.1em; }
+tbody tr:last-child > * { border-bottom: 0; }
+.mini-verdict { display: inline-block; color: var(--accent); font: 700 0.64rem ui-monospace, monospace; white-space: nowrap; }
+.mini-verdict.fail { color: var(--danger); }
+.diff-stack { margin-top: 30px; }
+details { border-top: 1px solid var(--rule); }
+summary { padding: 14px 4px; cursor: pointer; font-family: ui-monospace, monospace; }
+summary span { float: right; color: var(--ink-soft); font-size: 0.72rem; text-transform: uppercase; }
+pre { max-height: 440px; margin: 0 0 18px; padding: 18px; overflow: auto; background: #111a17; color: #dfeae5; border-left: 5px solid var(--accent); line-height: 1.55; tab-size: 2; }
+.pathology-verdict { display: flex; justify-content: space-between; align-items: baseline; gap: 24px; margin-bottom: 24px; padding: 18px 20px; border: 1px solid var(--accent); color: var(--accent); }
+.pathology-verdict.fail { border-color: var(--danger); color: var(--danger); }
+.pathology-verdict span { font: 0.7rem ui-monospace, monospace; text-transform: uppercase; letter-spacing: 0.1em; }
+.pathology-verdict strong { font: 700 clamp(1.8rem, 4vw, 3.4rem)/1 "Arial Narrow", sans-serif; }
+blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--outcome-color, var(--accent)); font-size: 1.2rem; line-height: 1.45; background: var(--paper-raised); }
+.empty-reading { margin: 0; font-size: 1.2rem; }
+.discharge-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin-bottom: 28px; background: var(--rule); border: 1px solid var(--rule); }
+.discharge-grid div { padding: 22px; background: var(--paper-raised); }
+.discharge-grid span, .merge-check span { display: block; margin-bottom: 12px; color: var(--ink-soft); font-size: 0.65rem; }
+.discharge-grid strong { font: 700 clamp(1.5rem, 3vw, 2.4rem) "Arial Narrow", sans-serif; }
+.merge-check { margin-bottom: 28px; }
+.merge-check p { max-width: 800px; margin: 0; font-size: 1.1rem; line-height: 1.55; }
+.ledger code { overflow-wrap: anywhere; }
+.case-footer { padding: 22px 8px; color: var(--ink-soft); font: 0.72rem ui-monospace, monospace; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #101714;
+    --paper-raised: #18211d;
+    --ink: #e9f1ed;
+    --ink-soft: #a1b1aa;
+    --accent: #55c9ba;
+    --danger: #f07887;
+    --rule: #34473f;
+  }
+}
+@media (max-width: 720px) {
+  .case-file { width: min(100% - 24px, 1180px); margin-top: 12px; }
+  .docket { min-height: 0; grid-template-columns: 1fr; gap: 30px; padding: 32px 24px; box-shadow: 5px 5px 0 var(--rule); }
+  .eyebrow { margin-bottom: 34px; }
+  .verdict { min-width: 0; }
+  .sheet { grid-template-columns: 1fr; }
+  .section-label { display: flex; align-items: center; gap: 12px; padding: 28px 4px 0; }
+  .section-label h2 { margin: 0; }
+  .section-body { padding: 24px 4px 34px; border-left: 0; }
+  .facts div { grid-template-columns: 1fr; gap: 7px; }
+  .discharge-grid { grid-template-columns: 1fr; }
+  .pathology-verdict { align-items: flex-start; flex-direction: column; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; } }
+@media print { .case-file { width: 100%; margin: 0; } .docket { box-shadow: none; } details { break-inside: avoid; } }
+</style>
+</head>
+<body class="outcome-fixed">
+  <main class="case-file">
+    <header class="docket">
+      <div>
+        <p class="eyebrow">Sutura · Surgical CI case file</p>
+        <h1>Case run-fixed-042</h1>
+        <p class="case-meta"><code>acme/checkout</code> · build · 96% confidence</p>
+      </div>
+      <div class="verdict">
+        <small>Operative verdict</small>
+        <strong>PATCH CERTIFIED</strong>
+        <p>Merge risk: pathology passed. Human review remains required.</p>
+      </div>
+    </header>
+    <section class="sheet diagnosis" aria-labelledby="diagnosis-title">
+    <div class="section-label"><span>D</span><h2 id="diagnosis-title">Diagnosis</h2></div>
+    <div class="section-body">
+      <div class="diagnostic-lockup">
+        <strong>build</strong>
+        <span>96% confidence</span>
+      </div>
+      <dl class="facts">
+        <div><dt>Failing command</dt><dd><code>pnpm build</code></dd></div>
+        <div><dt>Error specimen</dt><dd>Cannot find module &#39;@acme/money/format&#39;</dd></div>
+      </dl>
+      <ul class="signals"><li>TS2307 in src/cart.ts</li><li>package export changed in v4</li></ul>
+      <div class="citations">
+    <p class="micro-label">Grounding</p>
+    <ul><li><a href="https://docs.example.test/money-v4" rel="noreferrer">Money v4 migration guide</a><span>format moved to the package root in v4</span></li></ul>
+  </div>
+    </div>
+  </section>
+    <section class="sheet triage" aria-labelledby="triage-title">
+    <div class="section-label"><span>T</span><h2 id="triage-title">Triage</h2></div>
+    <div class="section-body"><p class="triage-reading">Reproduced 5/5 across forked sandbox states — real.</p></div>
+  </section>
+    <section class="sheet procedure" aria-labelledby="procedure-title">
+    <div class="section-label"><span>P</span><h2 id="procedure-title">Procedure</h2></div>
+    <div class="section-body">
+      <p class="micro-label">Forked sandbox timeline</p>
+      <ol class="suture-line" aria-label="Candidate sandbox operations"><li class="held">
+        <span class="knot" aria-hidden="true"></span>
+        <span class="op">OP 01</span>
+        <strong>candidate-a</strong>
+        <small>img-branch-a · exit 0</small>
+      </li><li class="rolled">
+        <span class="knot" aria-hidden="true"></span>
+        <span class="op">OP 02</span>
+        <strong>candidate-b</strong>
+        <small>img-branch-b · exit 1</small>
+      </li><li class="rolled">
+        <span class="knot" aria-hidden="true"></span>
+        <span class="op">OP 03</span>
+        <strong>candidate-c</strong>
+        <small>img-branch-c · exit 1</small>
+      </li></ol>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Candidate</th><th>Strategy</th><th>Held?</th><th>Operative note</th></tr></thead>
+        <tbody><tr>
+        <th scope="row">candidate-a</th>
+        <td>Import format from the supported package root</td>
+        <td><span class="mini-verdict pass">HELD</span></td>
+        <td>Survived the verification race</td>
+      </tr><tr>
+        <th scope="row">candidate-b</th>
+        <td>Pin the dependency to the previous major</td>
+        <td><span class="mini-verdict fail">ROLLED BACK</span></td>
+        <td>Rolled back; verification exited 1</td>
+      </tr><tr>
+        <th scope="row">candidate-c</th>
+        <td>Add a local compatibility shim</td>
+        <td><span class="mini-verdict fail">ROLLED BACK</span></td>
+        <td>Rolled back; verification exited 1</td>
+      </tr></tbody>
+      </table></div>
+      <div class="diff-stack"><p class="micro-label">Candidate tissue samples</p><details open>
+        <summary>candidate-a <span>survivor</span></summary>
+        <pre><code>--- a/src/cart.ts
++++ b/src/cart.ts
+@@ -1 +1 @@
+-import { format } from &#39;@acme/money/format&#39;;
++import { format } from &#39;@acme/money&#39;;</code></pre>
+      </details><details >
+        <summary>candidate-b <span>rolled back</span></summary>
+        <pre><code>--- a/package.json
++++ b/package.json
+@@ -8 +8 @@
+-&quot;@acme/money&quot;: &quot;^4.0.0&quot;
++&quot;@acme/money&quot;: &quot;^3.8.0&quot;</code></pre>
+      </details><details >
+        <summary>candidate-c <span>rolled back</span></summary>
+        <pre><code>--- /dev/null
++++ b/src/money-shim.ts
+@@ -0,0 +1 @@
++export { format } from &#39;@acme/money&#39;;</code></pre>
+      </details></div>
+    </div>
+  </section><section class="sheet pathology" aria-labelledby="pathology-title">
+    <div class="section-label"><span>P</span><h2 id="pathology-title">Pathology</h2></div>
+    <div class="section-body">
+      <div class="pathology-verdict pass">
+        <span>Biopsy verdict</span><strong>CERTIFIED</strong>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Adversarial check</th><th>Result</th><th>Evidence</th></tr></thead>
+        <tbody><tr>
+              <th scope="row">deleted-test</th>
+              <td><span class="mini-verdict pass">PASS</span></td>
+              <td>No test files deleted</td>
+            </tr><tr>
+              <th scope="row">skipped-test</th>
+              <td><span class="mini-verdict pass">PASS</span></td>
+              <td>No skip or only markers added</td>
+            </tr><tr>
+              <th scope="row">weakened-assertion</th>
+              <td><span class="mini-verdict pass">PASS</span></td>
+              <td>Assertion count held at 42</td>
+            </tr><tr>
+              <th scope="row">loosened-type</th>
+              <td><span class="mini-verdict pass">PASS</span></td>
+              <td>Compiler strictness unchanged</td>
+            </tr><tr>
+              <th scope="row">relaxed-config</th>
+              <td><span class="mini-verdict pass">PASS</span></td>
+              <td>CI configuration unchanged</td>
+            </tr><tr>
+              <th scope="row">pass-with-no-tests</th>
+              <td><span class="mini-verdict pass">PASS</span></td>
+              <td>No bypass flags added</td>
+            </tr><tr>
+              <th scope="row">llm-adjudication</th>
+              <td><span class="mini-verdict pass">PASS</span></td>
+              <td>The patch changes the unsupported import only</td>
+            </tr></tbody>
+      </table></div>
+      <blockquote>APPROVED: the survivor restores the supported API without reducing coverage or enforcement.</blockquote>
+    </div>
+  </section><section class="sheet discharge" aria-labelledby="discharge-title">
+    <div class="section-label"><span>D</span><h2 id="discharge-title">Discharge</h2></div>
+    <div class="section-body">
+      <div class="discharge-grid">
+        <div><span>Diff summary</span><strong>candidate-a: +1 / −1 lines</strong></div>
+        <div><span>Inference cost</span><strong>$0.0121</strong></div>
+      </div>
+      <div class="merge-check"><span>Human merge check</span><p>Confirm the surviving diff matches the diagnosed API change, then merge only if the cited checks remain green.</p></div>
+      <div class="table-wrap"><table class="ledger">
+        <thead><tr><th>Stage</th><th>Model ID</th><th>Input</th><th>Output + reasoning</th><th>USD</th></tr></thead>
+        <tbody><tr>
+        <th scope="row">Diagnosis</th>
+        <td><code>nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</code></td>
+        <td>2,100</td>
+        <td>500</td>
+        <td>$0.0002</td>
+      </tr><tr>
+        <th scope="row">Procedure</th>
+        <td><code>nvidia/nemotron-3-super-120b-a12b</code></td>
+        <td>7,800</td>
+        <td>3,500</td>
+        <td>$0.0055</td>
+      </tr><tr>
+        <th scope="row">Pathology</th>
+        <td><code>nvidia/Nemotron-3-Ultra-550b-a55b</code></td>
+        <td>2,500</td>
+        <td>1,300</td>
+        <td>$0.0064</td>
+      </tr></tbody>
+      </table></div>
+    </div>
+  </section>
+    <footer class="case-footer">Generated by Sutura · Inference cost $0.0121 · Human review required</footer>
+  </main>
+</body>
+</html>"
+`;
+
+exports[`fixed report > renders stable markdown 1`] = `
+"## Sutura — Surgical Report
+
+**PATCH CERTIFIED** · <code>acme/checkout</code> · case <code>run-fixed-042</code>
+
+### Diagnosis
+
+**build** · 96% confidence
+
+Failing command: <code>pnpm build</code>
+
+- TS2307 in src/cart.ts
+- package export changed in v4
+
+> Cannot find module '@acme/money/format'
+
+**Grounding**
+- [Money v4 migration guide](<https://docs.example.test/money-v4>) — format moved to the package root in v4
+
+### Triage
+
+**Reproduced 5/5 across forked sandbox states — real.**
+
+### Procedure
+
+| Candidate | Strategy | Held? | Note |
+| --- | --- | :---: | --- |
+| candidate-a | Import format from the supported package root | YES | Survived the verification race |
+| candidate-b | Pin the dependency to the previous major | NO | Rolled back; verification exited 1 |
+| candidate-c | Add a local compatibility shim | NO | Rolled back; verification exited 1 |
+
+### Pathology
+
+**PASS** — adversarial verdict
+
+| Check | Result | Evidence |
+| --- | :---: | --- |
+| deleted-test | **PASS** | No test files deleted |
+| skipped-test | **PASS** | No skip or only markers added |
+| weakened-assertion | **PASS** | Assertion count held at 42 |
+| loosened-type | **PASS** | Compiler strictness unchanged |
+| relaxed-config | **PASS** | CI configuration unchanged |
+| pass-with-no-tests | **PASS** | No bypass flags added |
+| llm-adjudication | **PASS** | The patch changes the unsupported import only |
+
+> APPROVED: the survivor restores the supported API without reducing coverage or enforcement.
+
+### Discharge
+
+**Diff summary:** candidate-a: +1 / −1 lines
+
+**Human merge check:** Confirm the surviving diff matches the diagnosed API change, then merge only if the cited checks remain green.
+
+**Inference cost: $0.0121**
+
+---
+
+Models — Diagnosis: <code>nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</code> · Procedure: <code>nvidia/nemotron-3-super-120b-a12b</code> · Pathology: <code>nvidia/Nemotron-3-Ultra-550b-a55b</code>
+
+[Open case-file artifact](<https://github.com/acme/repo/actions/runs/42/artifacts/7>)
+"
+`;
+
+exports[`flaky-no-patch report > renders a stable single-file case file 1`] = `
+"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Sutura case run-flaky-017</title>
+  <style>
+/*
+  Paper Ink for a surgical CI case file.
+  Palette: theatre paper, carbon ink, theatre teal, clot red, steel rule.
+  Signature: the sandbox operation timeline is drawn as an operative suture.
+*/
+:root {
+  color-scheme: light dark;
+  --paper: #f4f8f6;
+  --paper-raised: #ffffff;
+  --ink: #17221e;
+  --ink-soft: #53635c;
+  --accent: #08766c;
+  --danger: #a93645;
+  --rule: #c9d7d1;
+  font-family: Charter, "Bitstream Charter", "Sitka Text", Georgia, serif;
+  background: var(--paper);
+  color: var(--ink);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); }
+a { color: var(--accent); text-underline-offset: 0.18em; }
+a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.case-file { width: min(1180px, calc(100% - 40px)); margin: 28px auto 72px; }
+.docket {
+  position: relative; overflow: hidden; min-height: 320px; padding: clamp(28px, 5vw, 64px);
+  border: 1px solid var(--ink); background: var(--paper-raised); box-shadow: 9px 9px 0 var(--rule);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 36px; align-items: end;
+}
+.docket::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 8px; background: var(--outcome-color); }
+.eyebrow, .micro-label, .section-label, dt, .op, .verdict small, .merge-check span, .discharge-grid span {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; letter-spacing: 0.12em;
+}
+.eyebrow { margin: 0 0 50px; color: var(--ink-soft); font-size: 0.72rem; }
+h1, h2 { font-family: "Arial Narrow", "Avenir Next Condensed", "Roboto Condensed", sans-serif; font-stretch: condensed; text-transform: uppercase; }
+h1 { max-width: 760px; margin: 0; font-size: clamp(3rem, 8vw, 7.4rem); line-height: 0.82; letter-spacing: -0.055em; }
+.case-meta { margin: 26px 0 0; font-size: 1rem; color: var(--ink-soft); }
+.case-meta code { color: var(--ink); }
+.verdict { min-width: 230px; border-top: 6px solid var(--outcome-color); padding-top: 15px; }
+.verdict small { display: block; color: var(--ink-soft); font-size: 0.68rem; }
+.verdict strong { display: block; margin-top: 8px; color: var(--outcome-color); font: 700 1.5rem/1.1 "Arial Narrow", sans-serif; letter-spacing: 0.03em; }
+.verdict p { margin: 13px 0 0; font-size: 0.9rem; line-height: 1.45; }
+.outcome-fixed { --outcome-color: var(--accent); }
+.outcome-refused, .outcome-gave-up { --outcome-color: var(--danger); }
+.outcome-flaky-no-patch { --outcome-color: #976812; }
+.sheet { display: grid; grid-template-columns: 170px minmax(0, 1fr); border-bottom: 1px solid var(--rule); }
+.section-label { padding: 34px 24px 34px 8px; color: var(--ink-soft); }
+.section-label span { display: block; width: 28px; height: 28px; border: 1px solid currentColor; text-align: center; line-height: 27px; font-size: 0.68rem; }
+.section-label h2 { margin: 14px 0 0; color: var(--ink); font-size: 1.05rem; letter-spacing: 0.035em; }
+.section-body { min-width: 0; padding: 34px 8px 42px 36px; border-left: 1px solid var(--rule); }
+.diagnostic-lockup { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.diagnostic-lockup strong { font: 700 clamp(2rem, 5vw, 4.2rem)/0.95 "Arial Narrow", sans-serif; text-transform: uppercase; }
+.diagnostic-lockup span { color: var(--accent); font: 700 0.8rem ui-monospace, monospace; text-transform: uppercase; }
+.facts { margin: 30px 0; }
+.facts div { display: grid; grid-template-columns: minmax(130px, 0.35fr) 1fr; gap: 24px; padding: 12px 0; border-top: 1px solid var(--rule); }
+.facts dt { color: var(--ink-soft); font-size: 0.68rem; }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 0.85em; }
+.signals { margin: 0; padding-left: 1.2rem; line-height: 1.7; }
+.citations { margin-top: 30px; padding: 20px; background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.micro-label { margin: 0 0 14px; color: var(--ink-soft); font-size: 0.67rem; }
+.citations ul { margin: 0; padding: 0; list-style: none; }
+.citations li + li { margin-top: 14px; }
+.citations li span { display: block; margin-top: 4px; color: var(--ink-soft); }
+.triage-reading { margin: 0; max-width: 820px; font-size: clamp(1.4rem, 3vw, 2.35rem); line-height: 1.16; }
+.suture-line { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); margin: 18px 0 34px; padding: 0; list-style: none; }
+.suture-line li { position: relative; min-width: 0; padding: 30px 16px 0 0; border-top: 2px dashed var(--rule); }
+.suture-line .knot { position: absolute; top: -7px; left: 0; width: 12px; height: 12px; background: var(--paper); border: 3px solid var(--accent); transform: rotate(45deg); }
+.suture-line .rolled .knot { border-color: var(--danger); }
+.suture-line strong, .suture-line small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suture-line small { margin-top: 5px; color: var(--ink-soft); font: 0.7rem ui-monospace, monospace; }
+.op { display: block; margin-bottom: 6px; color: var(--ink-soft); font-size: 0.62rem; }
+.table-wrap { max-width: 100%; overflow-x: auto; border: 1px solid var(--rule); }
+table { width: 100%; min-width: 720px; border-collapse: collapse; text-align: left; font-size: 0.88rem; }
+th, td { padding: 14px 16px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+thead th { color: var(--ink-soft); font: 0.65rem ui-monospace, monospace; text-transform: uppercase; letter-spacing: 0.1em; }
+tbody tr:last-child > * { border-bottom: 0; }
+.mini-verdict { display: inline-block; color: var(--accent); font: 700 0.64rem ui-monospace, monospace; white-space: nowrap; }
+.mini-verdict.fail { color: var(--danger); }
+.diff-stack { margin-top: 30px; }
+details { border-top: 1px solid var(--rule); }
+summary { padding: 14px 4px; cursor: pointer; font-family: ui-monospace, monospace; }
+summary span { float: right; color: var(--ink-soft); font-size: 0.72rem; text-transform: uppercase; }
+pre { max-height: 440px; margin: 0 0 18px; padding: 18px; overflow: auto; background: #111a17; color: #dfeae5; border-left: 5px solid var(--accent); line-height: 1.55; tab-size: 2; }
+.pathology-verdict { display: flex; justify-content: space-between; align-items: baseline; gap: 24px; margin-bottom: 24px; padding: 18px 20px; border: 1px solid var(--accent); color: var(--accent); }
+.pathology-verdict.fail { border-color: var(--danger); color: var(--danger); }
+.pathology-verdict span { font: 0.7rem ui-monospace, monospace; text-transform: uppercase; letter-spacing: 0.1em; }
+.pathology-verdict strong { font: 700 clamp(1.8rem, 4vw, 3.4rem)/1 "Arial Narrow", sans-serif; }
+blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--outcome-color, var(--accent)); font-size: 1.2rem; line-height: 1.45; background: var(--paper-raised); }
+.empty-reading { margin: 0; font-size: 1.2rem; }
+.discharge-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin-bottom: 28px; background: var(--rule); border: 1px solid var(--rule); }
+.discharge-grid div { padding: 22px; background: var(--paper-raised); }
+.discharge-grid span, .merge-check span { display: block; margin-bottom: 12px; color: var(--ink-soft); font-size: 0.65rem; }
+.discharge-grid strong { font: 700 clamp(1.5rem, 3vw, 2.4rem) "Arial Narrow", sans-serif; }
+.merge-check { margin-bottom: 28px; }
+.merge-check p { max-width: 800px; margin: 0; font-size: 1.1rem; line-height: 1.55; }
+.ledger code { overflow-wrap: anywhere; }
+.case-footer { padding: 22px 8px; color: var(--ink-soft); font: 0.72rem ui-monospace, monospace; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #101714;
+    --paper-raised: #18211d;
+    --ink: #e9f1ed;
+    --ink-soft: #a1b1aa;
+    --accent: #55c9ba;
+    --danger: #f07887;
+    --rule: #34473f;
+  }
+}
+@media (max-width: 720px) {
+  .case-file { width: min(100% - 24px, 1180px); margin-top: 12px; }
+  .docket { min-height: 0; grid-template-columns: 1fr; gap: 30px; padding: 32px 24px; box-shadow: 5px 5px 0 var(--rule); }
+  .eyebrow { margin-bottom: 34px; }
+  .verdict { min-width: 0; }
+  .sheet { grid-template-columns: 1fr; }
+  .section-label { display: flex; align-items: center; gap: 12px; padding: 28px 4px 0; }
+  .section-label h2 { margin: 0; }
+  .section-body { padding: 24px 4px 34px; border-left: 0; }
+  .facts div { grid-template-columns: 1fr; gap: 7px; }
+  .discharge-grid { grid-template-columns: 1fr; }
+  .pathology-verdict { align-items: flex-start; flex-direction: column; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; } }
+@media print { .case-file { width: 100%; margin: 0; } .docket { box-shadow: none; } details { break-inside: avoid; } }
+</style>
+</head>
+<body class="outcome-flaky-no-patch">
+  <main class="case-file">
+    <header class="docket">
+      <div>
+        <p class="eyebrow">Sutura · Surgical CI case file</p>
+        <h1>Case run-flaky-017</h1>
+        <p class="case-meta"><code>acme/notifications</code> · flaky-timing · 89% confidence</p>
+      </div>
+      <div class="verdict">
+        <small>Operative verdict</small>
+        <strong>FLAKY — NO PATCH</strong>
+        <p>No patch exists to merge. Investigate the timing boundary and rerun with the same commit.</p>
+      </div>
+    </header>
+    <section class="sheet diagnosis" aria-labelledby="diagnosis-title">
+    <div class="section-label"><span>D</span><h2 id="diagnosis-title">Diagnosis</h2></div>
+    <div class="section-body">
+      <div class="diagnostic-lockup">
+        <strong>flaky-timing</strong>
+        <span>89% confidence</span>
+      </div>
+      <dl class="facts">
+        <div><dt>Failing command</dt><dd><code>pnpm test -- notifications</code></dd></div>
+        <div><dt>Error specimen</dt><dd>Timed out waiting for delivery receipt</dd></div>
+      </dl>
+      <ul class="signals"><li>timeout after 5000 ms</li><li>same SHA passed on retry</li></ul>
+    </div>
+  </section>
+    <section class="sheet triage" aria-labelledby="triage-title">
+    <div class="section-label"><span>T</span><h2 id="triage-title">Triage</h2></div>
+    <div class="section-body"><p class="triage-reading">Reproduced 0/5 across forked sandbox states — flaky. No patch proposed.</p></div>
+  </section>
+    <footer class="case-footer">Generated by Sutura · Inference cost $0.0002 · Human review required</footer>
+  </main>
+</body>
+</html>"
+`;
+
+exports[`flaky-no-patch report > renders stable markdown 1`] = `
+"## Sutura — Surgical Report
+
+**FLAKY — NO PATCH** · <code>acme/notifications</code> · case <code>run-flaky-017</code>
+
+### Diagnosis
+
+**flaky-timing** · 89% confidence
+
+Failing command: <code>pnpm test -- notifications</code>
+
+- timeout after 5000 ms
+- same SHA passed on retry
+
+> Timed out waiting for delivery receipt
+
+### Triage
+
+**Reproduced 0/5 across forked sandbox states — flaky. No patch proposed.**
+
+---
+
+Models — Diagnosis: <code>nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</code>
+
+[Open case-file artifact](<https://github.com/acme/repo/actions/runs/42/artifacts/7>)
+"
+`;
+
+exports[`gave-up report > renders a stable single-file case file 1`] = `
+"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Sutura case run-gave-up-031</title>
+  <style>
+/*
+  Paper Ink for a surgical CI case file.
+  Palette: theatre paper, carbon ink, theatre teal, clot red, steel rule.
+  Signature: the sandbox operation timeline is drawn as an operative suture.
+*/
+:root {
+  color-scheme: light dark;
+  --paper: #f4f8f6;
+  --paper-raised: #ffffff;
+  --ink: #17221e;
+  --ink-soft: #53635c;
+  --accent: #08766c;
+  --danger: #a93645;
+  --rule: #c9d7d1;
+  font-family: Charter, "Bitstream Charter", "Sitka Text", Georgia, serif;
+  background: var(--paper);
+  color: var(--ink);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); }
+a { color: var(--accent); text-underline-offset: 0.18em; }
+a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.case-file { width: min(1180px, calc(100% - 40px)); margin: 28px auto 72px; }
+.docket {
+  position: relative; overflow: hidden; min-height: 320px; padding: clamp(28px, 5vw, 64px);
+  border: 1px solid var(--ink); background: var(--paper-raised); box-shadow: 9px 9px 0 var(--rule);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 36px; align-items: end;
+}
+.docket::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 8px; background: var(--outcome-color); }
+.eyebrow, .micro-label, .section-label, dt, .op, .verdict small, .merge-check span, .discharge-grid span {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; letter-spacing: 0.12em;
+}
+.eyebrow { margin: 0 0 50px; color: var(--ink-soft); font-size: 0.72rem; }
+h1, h2 { font-family: "Arial Narrow", "Avenir Next Condensed", "Roboto Condensed", sans-serif; font-stretch: condensed; text-transform: uppercase; }
+h1 { max-width: 760px; margin: 0; font-size: clamp(3rem, 8vw, 7.4rem); line-height: 0.82; letter-spacing: -0.055em; }
+.case-meta { margin: 26px 0 0; font-size: 1rem; color: var(--ink-soft); }
+.case-meta code { color: var(--ink); }
+.verdict { min-width: 230px; border-top: 6px solid var(--outcome-color); padding-top: 15px; }
+.verdict small { display: block; color: var(--ink-soft); font-size: 0.68rem; }
+.verdict strong { display: block; margin-top: 8px; color: var(--outcome-color); font: 700 1.5rem/1.1 "Arial Narrow", sans-serif; letter-spacing: 0.03em; }
+.verdict p { margin: 13px 0 0; font-size: 0.9rem; line-height: 1.45; }
+.outcome-fixed { --outcome-color: var(--accent); }
+.outcome-refused, .outcome-gave-up { --outcome-color: var(--danger); }
+.outcome-flaky-no-patch { --outcome-color: #976812; }
+.sheet { display: grid; grid-template-columns: 170px minmax(0, 1fr); border-bottom: 1px solid var(--rule); }
+.section-label { padding: 34px 24px 34px 8px; color: var(--ink-soft); }
+.section-label span { display: block; width: 28px; height: 28px; border: 1px solid currentColor; text-align: center; line-height: 27px; font-size: 0.68rem; }
+.section-label h2 { margin: 14px 0 0; color: var(--ink); font-size: 1.05rem; letter-spacing: 0.035em; }
+.section-body { min-width: 0; padding: 34px 8px 42px 36px; border-left: 1px solid var(--rule); }
+.diagnostic-lockup { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.diagnostic-lockup strong { font: 700 clamp(2rem, 5vw, 4.2rem)/0.95 "Arial Narrow", sans-serif; text-transform: uppercase; }
+.diagnostic-lockup span { color: var(--accent); font: 700 0.8rem ui-monospace, monospace; text-transform: uppercase; }
+.facts { margin: 30px 0; }
+.facts div { display: grid; grid-template-columns: minmax(130px, 0.35fr) 1fr; gap: 24px; padding: 12px 0; border-top: 1px solid var(--rule); }
+.facts dt { color: var(--ink-soft); font-size: 0.68rem; }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 0.85em; }
+.signals { margin: 0; padding-left: 1.2rem; line-height: 1.7; }
+.citations { margin-top: 30px; padding: 20px; background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.micro-label { margin: 0 0 14px; color: var(--ink-soft); font-size: 0.67rem; }
+.citations ul { margin: 0; padding: 0; list-style: none; }
+.citations li + li { margin-top: 14px; }
+.citations li span { display: block; margin-top: 4px; color: var(--ink-soft); }
+.triage-reading { margin: 0; max-width: 820px; font-size: clamp(1.4rem, 3vw, 2.35rem); line-height: 1.16; }
+.suture-line { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); margin: 18px 0 34px; padding: 0; list-style: none; }
+.suture-line li { position: relative; min-width: 0; padding: 30px 16px 0 0; border-top: 2px dashed var(--rule); }
+.suture-line .knot { position: absolute; top: -7px; left: 0; width: 12px; height: 12px; background: var(--paper); border: 3px solid var(--accent); transform: rotate(45deg); }
+.suture-line .rolled .knot { border-color: var(--danger); }
+.suture-line strong, .suture-line small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suture-line small { margin-top: 5px; color: var(--ink-soft); font: 0.7rem ui-monospace, monospace; }
+.op { display: block; margin-bottom: 6px; color: var(--ink-soft); font-size: 0.62rem; }
+.table-wrap { max-width: 100%; overflow-x: auto; border: 1px solid var(--rule); }
+table { width: 100%; min-width: 720px; border-collapse: collapse; text-align: left; font-size: 0.88rem; }
+th, td { padding: 14px 16px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+thead th { color: var(--ink-soft); font: 0.65rem ui-monospace, monospace; text-transform: uppercase; letter-spacing: 0.1em; }
+tbody tr:last-child > * { border-bottom: 0; }
+.mini-verdict { display: inline-block; color: var(--accent); font: 700 0.64rem ui-monospace, monospace; white-space: nowrap; }
+.mini-verdict.fail { color: var(--danger); }
+.diff-stack { margin-top: 30px; }
+details { border-top: 1px solid var(--rule); }
+summary { padding: 14px 4px; cursor: pointer; font-family: ui-monospace, monospace; }
+summary span { float: right; color: var(--ink-soft); font-size: 0.72rem; text-transform: uppercase; }
+pre { max-height: 440px; margin: 0 0 18px; padding: 18px; overflow: auto; background: #111a17; color: #dfeae5; border-left: 5px solid var(--accent); line-height: 1.55; tab-size: 2; }
+.pathology-verdict { display: flex; justify-content: space-between; align-items: baseline; gap: 24px; margin-bottom: 24px; padding: 18px 20px; border: 1px solid var(--accent); color: var(--accent); }
+.pathology-verdict.fail { border-color: var(--danger); color: var(--danger); }
+.pathology-verdict span { font: 0.7rem ui-monospace, monospace; text-transform: uppercase; letter-spacing: 0.1em; }
+.pathology-verdict strong { font: 700 clamp(1.8rem, 4vw, 3.4rem)/1 "Arial Narrow", sans-serif; }
+blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--outcome-color, var(--accent)); font-size: 1.2rem; line-height: 1.45; background: var(--paper-raised); }
+.empty-reading { margin: 0; font-size: 1.2rem; }
+.discharge-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin-bottom: 28px; background: var(--rule); border: 1px solid var(--rule); }
+.discharge-grid div { padding: 22px; background: var(--paper-raised); }
+.discharge-grid span, .merge-check span { display: block; margin-bottom: 12px; color: var(--ink-soft); font-size: 0.65rem; }
+.discharge-grid strong { font: 700 clamp(1.5rem, 3vw, 2.4rem) "Arial Narrow", sans-serif; }
+.merge-check { margin-bottom: 28px; }
+.merge-check p { max-width: 800px; margin: 0; font-size: 1.1rem; line-height: 1.55; }
+.ledger code { overflow-wrap: anywhere; }
+.case-footer { padding: 22px 8px; color: var(--ink-soft); font: 0.72rem ui-monospace, monospace; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #101714;
+    --paper-raised: #18211d;
+    --ink: #e9f1ed;
+    --ink-soft: #a1b1aa;
+    --accent: #55c9ba;
+    --danger: #f07887;
+    --rule: #34473f;
+  }
+}
+@media (max-width: 720px) {
+  .case-file { width: min(100% - 24px, 1180px); margin-top: 12px; }
+  .docket { min-height: 0; grid-template-columns: 1fr; gap: 30px; padding: 32px 24px; box-shadow: 5px 5px 0 var(--rule); }
+  .eyebrow { margin-bottom: 34px; }
+  .verdict { min-width: 0; }
+  .sheet { grid-template-columns: 1fr; }
+  .section-label { display: flex; align-items: center; gap: 12px; padding: 28px 4px 0; }
+  .section-label h2 { margin: 0; }
+  .section-body { padding: 24px 4px 34px; border-left: 0; }
+  .facts div { grid-template-columns: 1fr; gap: 7px; }
+  .discharge-grid { grid-template-columns: 1fr; }
+  .pathology-verdict { align-items: flex-start; flex-direction: column; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; } }
+@media print { .case-file { width: 100%; margin: 0; } .docket { box-shadow: none; } details { break-inside: avoid; } }
+</style>
+</head>
+<body class="outcome-gave-up">
+  <main class="case-file">
+    <header class="docket">
+      <div>
+        <p class="eyebrow">Sutura · Surgical CI case file</p>
+        <h1>Case run-gave-up-031</h1>
+        <p class="case-meta"><code>acme/search</code> · typecheck · 81% confidence</p>
+      </div>
+      <div class="verdict">
+        <small>Operative verdict</small>
+        <strong>NO PATCH HELD</strong>
+        <p>No candidate is safe to merge. Inspect the diagnosis and start a new repair cycle with more evidence.</p>
+      </div>
+    </header>
+    <section class="sheet diagnosis" aria-labelledby="diagnosis-title">
+    <div class="section-label"><span>D</span><h2 id="diagnosis-title">Diagnosis</h2></div>
+    <div class="section-body">
+      <div class="diagnostic-lockup">
+        <strong>typecheck</strong>
+        <span>81% confidence</span>
+      </div>
+      <dl class="facts">
+        <div><dt>Failing command</dt><dd><code>pnpm typecheck</code></dd></div>
+        <div><dt>Error specimen</dt><dd>Type &#39;SearchRow&#39; does not satisfy constraint &#39;Record&lt;string, Scalar&gt;&#39;</dd></div>
+      </dl>
+      <ul class="signals"><li>generic constraint mismatch</li><li>failure starts after schema regeneration</li></ul>
+    </div>
+  </section>
+    <section class="sheet triage" aria-labelledby="triage-title">
+    <div class="section-label"><span>T</span><h2 id="triage-title">Triage</h2></div>
+    <div class="section-body"><p class="triage-reading">Reproduced 5/5 across forked sandbox states — real.</p></div>
+  </section>
+    <section class="sheet procedure" aria-labelledby="procedure-title">
+    <div class="section-label"><span>P</span><h2 id="procedure-title">Procedure</h2></div>
+    <div class="section-body">
+      <p class="micro-label">Forked sandbox timeline</p>
+      <ol class="suture-line" aria-label="Candidate sandbox operations"><li class="rolled">
+        <span class="knot" aria-hidden="true"></span>
+        <span class="op">OP 01</span>
+        <strong>candidate-a</strong>
+        <small>img-gave-up-a · exit 2</small>
+      </li><li class="rolled">
+        <span class="knot" aria-hidden="true"></span>
+        <span class="op">OP 02</span>
+        <strong>candidate-b</strong>
+        <small>img-gave-up-b · exit 2</small>
+      </li></ol>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Candidate</th><th>Strategy</th><th>Held?</th><th>Operative note</th></tr></thead>
+        <tbody><tr>
+        <th scope="row">candidate-a</th>
+        <td>Narrow the generated row at the call site</td>
+        <td><span class="mini-verdict fail">ROLLED BACK</span></td>
+        <td>Rolled back; verification exited 2</td>
+      </tr><tr>
+        <th scope="row">candidate-b</th>
+        <td>Regenerate the schema with the prior generator</td>
+        <td><span class="mini-verdict fail">ROLLED BACK</span></td>
+        <td>Rolled back; verification exited 2</td>
+      </tr></tbody>
+      </table></div>
+      <div class="diff-stack"><p class="micro-label">Candidate tissue samples</p><details >
+        <summary>candidate-a <span>rolled back</span></summary>
+        <pre><code>--- a/src/search.ts
++++ b/src/search.ts
+@@ -8 +8 @@
+-query&lt;SearchRow&gt;();
++query&lt;SearchRow &amp; Record&lt;string, Scalar&gt;&gt;();</code></pre>
+      </details><details >
+        <summary>candidate-b <span>rolled back</span></summary>
+        <pre><code>--- a/package.json
++++ b/package.json
+@@ -12 +12 @@
+-&quot;schema-gen&quot;: &quot;5.0.0&quot;
++&quot;schema-gen&quot;: &quot;4.9.2&quot;</code></pre>
+      </details></div>
+    </div>
+  </section><section class="sheet pathology" aria-labelledby="pathology-title">
+      <div class="section-label"><span>P</span><h2 id="pathology-title">Pathology</h2></div>
+      <div class="section-body"><p class="empty-reading"><strong>NOT RUN</strong> No candidate survived for adversarial audit.</p></div>
+    </section><section class="sheet discharge" aria-labelledby="discharge-title">
+    <div class="section-label"><span>D</span><h2 id="discharge-title">Discharge</h2></div>
+    <div class="section-body">
+      <div class="discharge-grid">
+        <div><span>Diff summary</span><strong>No candidate patch survived.</strong></div>
+        <div><span>Inference cost</span><strong>$0.0066</strong></div>
+      </div>
+      <div class="merge-check"><span>Human merge check</span><p>No candidate is safe to merge. Inspect the diagnosis and start a new repair cycle with more evidence.</p></div>
+      <div class="table-wrap"><table class="ledger">
+        <thead><tr><th>Stage</th><th>Model ID</th><th>Input</th><th>Output + reasoning</th><th>USD</th></tr></thead>
+        <tbody><tr>
+        <th scope="row">Diagnosis</th>
+        <td><code>nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</code></td>
+        <td>1,800</td>
+        <td>500</td>
+        <td>$0.0002</td>
+      </tr><tr>
+        <th scope="row">Procedure</th>
+        <td><code>nvidia/nemotron-3-super-120b-a12b</code></td>
+        <td>8,500</td>
+        <td>4,300</td>
+        <td>$0.0064</td>
+      </tr></tbody>
+      </table></div>
+    </div>
+  </section>
+    <footer class="case-footer">Generated by Sutura · Inference cost $0.0066 · Human review required</footer>
+  </main>
+</body>
+</html>"
+`;
+
+exports[`gave-up report > renders stable markdown 1`] = `
+"## Sutura — Surgical Report
+
+**NO PATCH HELD** · <code>acme/search</code> · case <code>run-gave-up-031</code>
+
+### Diagnosis
+
+**typecheck** · 81% confidence
+
+Failing command: <code>pnpm typecheck</code>
+
+- generic constraint mismatch
+- failure starts after schema regeneration
+
+> Type 'SearchRow' does not satisfy constraint 'Record\\<string, Scalar\\>'
+
+### Triage
+
+**Reproduced 5/5 across forked sandbox states — real.**
+
+### Procedure
+
+| Candidate | Strategy | Held? | Note |
+| --- | --- | :---: | --- |
+| candidate-a | Narrow the generated row at the call site | NO | Rolled back; verification exited 2 |
+| candidate-b | Regenerate the schema with the prior generator | NO | Rolled back; verification exited 2 |
+
+### Pathology
+
+**NOT RUN** — no candidate survived for adversarial audit.
+
+### Discharge
+
+**Diff summary:** No candidate patch survived.
+
+**Human merge check:** No candidate is safe to merge. Inspect the diagnosis and start a new repair cycle with more evidence.
+
+**Inference cost: $0.0066**
+
+---
+
+Models — Diagnosis: <code>nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</code> · Procedure: <code>nvidia/nemotron-3-super-120b-a12b</code>
+
+[Open case-file artifact](<https://github.com/acme/repo/actions/runs/42/artifacts/7>)
+"
+`;
+
+exports[`refused report > renders a stable single-file case file 1`] = `
+"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Sutura case run-refused-009</title>
+  <style>
+/*
+  Paper Ink for a surgical CI case file.
+  Palette: theatre paper, carbon ink, theatre teal, clot red, steel rule.
+  Signature: the sandbox operation timeline is drawn as an operative suture.
+*/
+:root {
+  color-scheme: light dark;
+  --paper: #f4f8f6;
+  --paper-raised: #ffffff;
+  --ink: #17221e;
+  --ink-soft: #53635c;
+  --accent: #08766c;
+  --danger: #a93645;
+  --rule: #c9d7d1;
+  font-family: Charter, "Bitstream Charter", "Sitka Text", Georgia, serif;
+  background: var(--paper);
+  color: var(--ink);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); }
+a { color: var(--accent); text-underline-offset: 0.18em; }
+a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.case-file { width: min(1180px, calc(100% - 40px)); margin: 28px auto 72px; }
+.docket {
+  position: relative; overflow: hidden; min-height: 320px; padding: clamp(28px, 5vw, 64px);
+  border: 1px solid var(--ink); background: var(--paper-raised); box-shadow: 9px 9px 0 var(--rule);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 36px; align-items: end;
+}
+.docket::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 8px; background: var(--outcome-color); }
+.eyebrow, .micro-label, .section-label, dt, .op, .verdict small, .merge-check span, .discharge-grid span {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; text-transform: uppercase; letter-spacing: 0.12em;
+}
+.eyebrow { margin: 0 0 50px; color: var(--ink-soft); font-size: 0.72rem; }
+h1, h2 { font-family: "Arial Narrow", "Avenir Next Condensed", "Roboto Condensed", sans-serif; font-stretch: condensed; text-transform: uppercase; }
+h1 { max-width: 760px; margin: 0; font-size: clamp(3rem, 8vw, 7.4rem); line-height: 0.82; letter-spacing: -0.055em; }
+.case-meta { margin: 26px 0 0; font-size: 1rem; color: var(--ink-soft); }
+.case-meta code { color: var(--ink); }
+.verdict { min-width: 230px; border-top: 6px solid var(--outcome-color); padding-top: 15px; }
+.verdict small { display: block; color: var(--ink-soft); font-size: 0.68rem; }
+.verdict strong { display: block; margin-top: 8px; color: var(--outcome-color); font: 700 1.5rem/1.1 "Arial Narrow", sans-serif; letter-spacing: 0.03em; }
+.verdict p { margin: 13px 0 0; font-size: 0.9rem; line-height: 1.45; }
+.outcome-fixed { --outcome-color: var(--accent); }
+.outcome-refused, .outcome-gave-up { --outcome-color: var(--danger); }
+.outcome-flaky-no-patch { --outcome-color: #976812; }
+.sheet { display: grid; grid-template-columns: 170px minmax(0, 1fr); border-bottom: 1px solid var(--rule); }
+.section-label { padding: 34px 24px 34px 8px; color: var(--ink-soft); }
+.section-label span { display: block; width: 28px; height: 28px; border: 1px solid currentColor; text-align: center; line-height: 27px; font-size: 0.68rem; }
+.section-label h2 { margin: 14px 0 0; color: var(--ink); font-size: 1.05rem; letter-spacing: 0.035em; }
+.section-body { min-width: 0; padding: 34px 8px 42px 36px; border-left: 1px solid var(--rule); }
+.diagnostic-lockup { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.diagnostic-lockup strong { font: 700 clamp(2rem, 5vw, 4.2rem)/0.95 "Arial Narrow", sans-serif; text-transform: uppercase; }
+.diagnostic-lockup span { color: var(--accent); font: 700 0.8rem ui-monospace, monospace; text-transform: uppercase; }
+.facts { margin: 30px 0; }
+.facts div { display: grid; grid-template-columns: minmax(130px, 0.35fr) 1fr; gap: 24px; padding: 12px 0; border-top: 1px solid var(--rule); }
+.facts dt { color: var(--ink-soft); font-size: 0.68rem; }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 0.85em; }
+.signals { margin: 0; padding-left: 1.2rem; line-height: 1.7; }
+.citations { margin-top: 30px; padding: 20px; background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.micro-label { margin: 0 0 14px; color: var(--ink-soft); font-size: 0.67rem; }
+.citations ul { margin: 0; padding: 0; list-style: none; }
+.citations li + li { margin-top: 14px; }
+.citations li span { display: block; margin-top: 4px; color: var(--ink-soft); }
+.triage-reading { margin: 0; max-width: 820px; font-size: clamp(1.4rem, 3vw, 2.35rem); line-height: 1.16; }
+.suture-line { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); margin: 18px 0 34px; padding: 0; list-style: none; }
+.suture-line li { position: relative; min-width: 0; padding: 30px 16px 0 0; border-top: 2px dashed var(--rule); }
+.suture-line .knot { position: absolute; top: -7px; left: 0; width: 12px; height: 12px; background: var(--paper); border: 3px solid var(--accent); transform: rotate(45deg); }
+.suture-line .rolled .knot { border-color: var(--danger); }
+.suture-line strong, .suture-line small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suture-line small { margin-top: 5px; color: var(--ink-soft); font: 0.7rem ui-monospace, monospace; }
+.op { display: block; margin-bottom: 6px; color: var(--ink-soft); font-size: 0.62rem; }
+.table-wrap { max-width: 100%; overflow-x: auto; border: 1px solid var(--rule); }
+table { width: 100%; min-width: 720px; border-collapse: collapse; text-align: left; font-size: 0.88rem; }
+th, td { padding: 14px 16px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+thead th { color: var(--ink-soft); font: 0.65rem ui-monospace, monospace; text-transform: uppercase; letter-spacing: 0.1em; }
+tbody tr:last-child > * { border-bottom: 0; }
+.mini-verdict { display: inline-block; color: var(--accent); font: 700 0.64rem ui-monospace, monospace; white-space: nowrap; }
+.mini-verdict.fail { color: var(--danger); }
+.diff-stack { margin-top: 30px; }
+details { border-top: 1px solid var(--rule); }
+summary { padding: 14px 4px; cursor: pointer; font-family: ui-monospace, monospace; }
+summary span { float: right; color: var(--ink-soft); font-size: 0.72rem; text-transform: uppercase; }
+pre { max-height: 440px; margin: 0 0 18px; padding: 18px; overflow: auto; background: #111a17; color: #dfeae5; border-left: 5px solid var(--accent); line-height: 1.55; tab-size: 2; }
+.pathology-verdict { display: flex; justify-content: space-between; align-items: baseline; gap: 24px; margin-bottom: 24px; padding: 18px 20px; border: 1px solid var(--accent); color: var(--accent); }
+.pathology-verdict.fail { border-color: var(--danger); color: var(--danger); }
+.pathology-verdict span { font: 0.7rem ui-monospace, monospace; text-transform: uppercase; letter-spacing: 0.1em; }
+.pathology-verdict strong { font: 700 clamp(1.8rem, 4vw, 3.4rem)/1 "Arial Narrow", sans-serif; }
+blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--outcome-color, var(--accent)); font-size: 1.2rem; line-height: 1.45; background: var(--paper-raised); }
+.empty-reading { margin: 0; font-size: 1.2rem; }
+.discharge-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin-bottom: 28px; background: var(--rule); border: 1px solid var(--rule); }
+.discharge-grid div { padding: 22px; background: var(--paper-raised); }
+.discharge-grid span, .merge-check span { display: block; margin-bottom: 12px; color: var(--ink-soft); font-size: 0.65rem; }
+.discharge-grid strong { font: 700 clamp(1.5rem, 3vw, 2.4rem) "Arial Narrow", sans-serif; }
+.merge-check { margin-bottom: 28px; }
+.merge-check p { max-width: 800px; margin: 0; font-size: 1.1rem; line-height: 1.55; }
+.ledger code { overflow-wrap: anywhere; }
+.case-footer { padding: 22px 8px; color: var(--ink-soft); font: 0.72rem ui-monospace, monospace; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #101714;
+    --paper-raised: #18211d;
+    --ink: #e9f1ed;
+    --ink-soft: #a1b1aa;
+    --accent: #55c9ba;
+    --danger: #f07887;
+    --rule: #34473f;
+  }
+}
+@media (max-width: 720px) {
+  .case-file { width: min(100% - 24px, 1180px); margin-top: 12px; }
+  .docket { min-height: 0; grid-template-columns: 1fr; gap: 30px; padding: 32px 24px; box-shadow: 5px 5px 0 var(--rule); }
+  .eyebrow { margin-bottom: 34px; }
+  .verdict { min-width: 0; }
+  .sheet { grid-template-columns: 1fr; }
+  .section-label { display: flex; align-items: center; gap: 12px; padding: 28px 4px 0; }
+  .section-label h2 { margin: 0; }
+  .section-body { padding: 24px 4px 34px; border-left: 0; }
+  .facts div { grid-template-columns: 1fr; gap: 7px; }
+  .discharge-grid { grid-template-columns: 1fr; }
+  .pathology-verdict { align-items: flex-start; flex-direction: column; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; } }
+@media print { .case-file { width: 100%; margin: 0; } .docket { box-shadow: none; } details { break-inside: avoid; } }
+</style>
+</head>
+<body class="outcome-refused">
+  <main class="case-file">
+    <header class="docket">
+      <div>
+        <p class="eyebrow">Sutura · Surgical CI case file</p>
+        <h1>Case run-refused-009</h1>
+        <p class="case-meta"><code>acme/billing</code> · test-assertion · 93% confidence</p>
+      </div>
+      <div class="verdict">
+        <small>Operative verdict</small>
+        <strong>PATCH REFUSED</strong>
+        <p>Do not merge this candidate. Restore the behavior named in the failed pathology checks.</p>
+      </div>
+    </header>
+    <section class="sheet diagnosis" aria-labelledby="diagnosis-title">
+    <div class="section-label"><span>D</span><h2 id="diagnosis-title">Diagnosis</h2></div>
+    <div class="section-body">
+      <div class="diagnostic-lockup">
+        <strong>test-assertion</strong>
+        <span>93% confidence</span>
+      </div>
+      <dl class="facts">
+        <div><dt>Failing command</dt><dd><code>pnpm test -- billing</code></dd></div>
+        <div><dt>Error specimen</dt><dd>AssertionError: expected 1000 to equal 1050</dd></div>
+      </dl>
+      <ul class="signals"><li>expected invoice total 1050</li><li>received 1000</li></ul>
+    </div>
+  </section>
+    <section class="sheet triage" aria-labelledby="triage-title">
+    <div class="section-label"><span>T</span><h2 id="triage-title">Triage</h2></div>
+    <div class="section-body"><p class="triage-reading">Reproduced 5/5 across forked sandbox states — real.</p></div>
+  </section>
+    <section class="sheet procedure" aria-labelledby="procedure-title">
+    <div class="section-label"><span>P</span><h2 id="procedure-title">Procedure</h2></div>
+    <div class="section-body">
+      <p class="micro-label">Forked sandbox timeline</p>
+      <ol class="suture-line" aria-label="Candidate sandbox operations"><li class="held">
+        <span class="knot" aria-hidden="true"></span>
+        <span class="op">OP 01</span>
+        <strong>candidate-a</strong>
+        <small>img-refused-a · exit 0</small>
+      </li></ol>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Candidate</th><th>Strategy</th><th>Held?</th><th>Operative note</th></tr></thead>
+        <tbody><tr>
+        <th scope="row">candidate-a</th>
+        <td>Add the missing service fee to invoice totals</td>
+        <td><span class="mini-verdict pass">HELD</span></td>
+        <td>Survived the verification race</td>
+      </tr></tbody>
+      </table></div>
+      <div class="diff-stack"><p class="micro-label">Candidate tissue samples</p><details open>
+        <summary>candidate-a <span>survivor</span></summary>
+        <pre><code>--- a/src/billing.ts
++++ b/src/billing.ts
+@@ -12 +12 @@
+-return subtotalCents;
++return subtotalCents + 50;</code></pre>
+      </details></div>
+    </div>
+  </section><section class="sheet pathology" aria-labelledby="pathology-title">
+    <div class="section-label"><span>P</span><h2 id="pathology-title">Pathology</h2></div>
+    <div class="section-body">
+      <div class="pathology-verdict fail">
+        <span>Biopsy verdict</span><strong>REFUSED</strong>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Adversarial check</th><th>Result</th><th>Evidence</th></tr></thead>
+        <tbody><tr>
+              <th scope="row">deleted-test</th>
+              <td><span class="mini-verdict pass">PASS</span></td>
+              <td>No files deleted</td>
+            </tr><tr>
+              <th scope="row">weakened-assertion</th>
+              <td><span class="mini-verdict pass">PASS</span></td>
+              <td>Test assertions are unchanged</td>
+            </tr><tr>
+              <th scope="row">llm-adjudication</th>
+              <td><span class="mini-verdict fail">FAIL</span></td>
+              <td>A hard-coded fee charges exempt orders and ignores currency-specific rules</td>
+            </tr></tbody>
+      </table></div>
+      <blockquote>REFUSED: the source patch passes mechanical checks but invents a global fee to satisfy one assertion. The tissue is not sound.</blockquote>
+    </div>
+  </section><section class="sheet discharge" aria-labelledby="discharge-title">
+    <div class="section-label"><span>D</span><h2 id="discharge-title">Discharge</h2></div>
+    <div class="section-body">
+      <div class="discharge-grid">
+        <div><span>Diff summary</span><strong>candidate-a: +1 / −1 lines</strong></div>
+        <div><span>Inference cost</span><strong>$0.0108</strong></div>
+      </div>
+      <div class="merge-check"><span>Human merge check</span><p>Do not merge this candidate. Restore the behavior named in the failed pathology checks.</p></div>
+      <div class="table-wrap"><table class="ledger">
+        <thead><tr><th>Stage</th><th>Model ID</th><th>Input</th><th>Output + reasoning</th><th>USD</th></tr></thead>
+        <tbody><tr>
+        <th scope="row">Diagnosis</th>
+        <td><code>nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</code></td>
+        <td>2,000</td>
+        <td>500</td>
+        <td>$0.0002</td>
+      </tr><tr>
+        <th scope="row">Procedure</th>
+        <td><code>nvidia/nemotron-3-super-120b-a12b</code></td>
+        <td>6,000</td>
+        <td>2,500</td>
+        <td>$0.0040</td>
+      </tr><tr>
+        <th scope="row">Pathology</th>
+        <td><code>nvidia/Nemotron-3-Ultra-550b-a55b</code></td>
+        <td>2,000</td>
+        <td>1,500</td>
+        <td>$0.0065</td>
+      </tr></tbody>
+      </table></div>
+    </div>
+  </section>
+    <footer class="case-footer">Generated by Sutura · Inference cost $0.0108 · Human review required</footer>
+  </main>
+</body>
+</html>"
+`;
+
+exports[`refused report > renders stable markdown 1`] = `
+"## Sutura — Surgical Report
+
+**PATCH REFUSED** · <code>acme/billing</code> · case <code>run-refused-009</code>
+
+### Diagnosis
+
+**test-assertion** · 93% confidence
+
+Failing command: <code>pnpm test -- billing</code>
+
+- expected invoice total 1050
+- received 1000
+
+> AssertionError: expected 1000 to equal 1050
+
+### Triage
+
+**Reproduced 5/5 across forked sandbox states — real.**
+
+### Procedure
+
+| Candidate | Strategy | Held? | Note |
+| --- | --- | :---: | --- |
+| candidate-a | Add the missing service fee to invoice totals | YES | Survived the verification race |
+
+### Pathology
+
+**FAIL** — adversarial verdict
+
+| Check | Result | Evidence |
+| --- | :---: | --- |
+| deleted-test | **PASS** | No files deleted |
+| weakened-assertion | **PASS** | Test assertions are unchanged |
+| llm-adjudication | **FAIL** | A hard-coded fee charges exempt orders and ignores currency-specific rules |
+
+> REFUSED: the source patch passes mechanical checks but invents a global fee to satisfy one assertion. The tissue is not sound.
+
+### Discharge
+
+**Diff summary:** candidate-a: +1 / −1 lines
+
+**Human merge check:** Do not merge this candidate. Restore the behavior named in the failed pathology checks.
+
+**Inference cost: $0.0108**
+
+---
+
+Models — Diagnosis: <code>nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</code> · Procedure: <code>nvidia/nemotron-3-super-120b-a12b</code> · Pathology: <code>nvidia/Nemotron-3-Ultra-550b-a55b</code>
+
+[Open case-file artifact](<https://github.com/acme/repo/actions/runs/42/artifacts/7>)
+"
+`;

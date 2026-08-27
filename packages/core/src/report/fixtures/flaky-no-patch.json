@@ -1,0 +1,19 @@
+{
+  "runId": "run-flaky-017",
+  "repo": "acme/notifications",
+  "diagnosis": {
+    "class": "flaky-timing",
+    "confidence": 0.89,
+    "signals": ["timeout after 5000 ms", "same SHA passed on retry"],
+    "failingCmd": "pnpm test -- notifications",
+    "errorExcerpt": "Timed out waiting for delivery receipt"
+  },
+  "triage": { "status": "flaky", "reproduced": 0, "of": 5 },
+  "race": [],
+  "outcome": "flaky-no-patch",
+  "cost": {
+    "entries": [
+      { "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", "inTok": 1400, "outTok": 260, "reasoningTok": 40, "usd": 0.000156 }
+    ]
+  }
+}

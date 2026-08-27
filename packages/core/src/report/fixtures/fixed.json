@@ -1,0 +1,76 @@
+{
+  "runId": "run-fixed-042",
+  "repo": "acme/checkout",
+  "diagnosis": {
+    "class": "build",
+    "confidence": 0.96,
+    "signals": ["TS2307 in src/cart.ts", "package export changed in v4"],
+    "failingCmd": "pnpm build",
+    "errorExcerpt": "Cannot find module '@acme/money/format'",
+    "grounding": {
+      "query": "@acme money v4 format export",
+      "skipped": false,
+      "citations": [
+        {
+          "title": "Money v4 migration guide",
+          "url": "https://docs.example.test/money-v4",
+          "snippet": "format moved to the package root in v4"
+        }
+      ]
+    }
+  },
+  "triage": { "status": "real", "reproduced": 5, "of": 5 },
+  "race": [
+    {
+      "candidate": {
+        "id": "candidate-a",
+        "rationale": "Import format from the supported package root",
+        "diff": "--- a/src/cart.ts\n+++ b/src/cart.ts\n@@ -1 +1 @@\n-import { format } from '@acme/money/format';\n+import { format } from '@acme/money';"
+      },
+      "imageId": "img-branch-a",
+      "exitCode": 0,
+      "held": true
+    },
+    {
+      "candidate": {
+        "id": "candidate-b",
+        "rationale": "Pin the dependency to the previous major",
+        "diff": "--- a/package.json\n+++ b/package.json\n@@ -8 +8 @@\n-\"@acme/money\": \"^4.0.0\"\n+\"@acme/money\": \"^3.8.0\""
+      },
+      "imageId": "img-branch-b",
+      "exitCode": 1,
+      "held": false
+    },
+    {
+      "candidate": {
+        "id": "candidate-c",
+        "rationale": "Add a local compatibility shim",
+        "diff": "--- /dev/null\n+++ b/src/money-shim.ts\n@@ -0,0 +1 @@\n+export { format } from '@acme/money';"
+      },
+      "imageId": "img-branch-c",
+      "exitCode": 1,
+      "held": false
+    }
+  ],
+  "audit": {
+    "approved": true,
+    "checks": [
+      { "name": "deleted-test", "passed": true, "evidence": "No test files deleted" },
+      { "name": "skipped-test", "passed": true, "evidence": "No skip or only markers added" },
+      { "name": "weakened-assertion", "passed": true, "evidence": "Assertion count held at 42" },
+      { "name": "loosened-type", "passed": true, "evidence": "Compiler strictness unchanged" },
+      { "name": "relaxed-config", "passed": true, "evidence": "CI configuration unchanged" },
+      { "name": "pass-with-no-tests", "passed": true, "evidence": "No bypass flags added" },
+      { "name": "llm-adjudication", "passed": true, "evidence": "The patch changes the unsupported import only" }
+    ],
+    "reasoning": "APPROVED: the survivor restores the supported API without reducing coverage or enforcement."
+  },
+  "outcome": "fixed",
+  "cost": {
+    "entries": [
+      { "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", "inTok": 2100, "outTok": 420, "reasoningTok": 80, "usd": 0.000246 },
+      { "model": "nvidia/nemotron-3-super-120b-a12b", "inTok": 7800, "outTok": 2600, "reasoningTok": 900, "usd": 0.00549 },
+      { "model": "nvidia/Nemotron-3-Ultra-550b-a55b", "inTok": 2500, "outTok": 900, "reasoningTok": 400, "usd": 0.0064 }
+    ]
+  }
+}
