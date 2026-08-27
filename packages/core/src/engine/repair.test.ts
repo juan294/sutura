@@ -64,7 +64,11 @@ describe('generateCandidates', () => {
           ),
         }),
       ]),
-      expect.objectContaining({ responseFormat: { type: 'json_object' } }),
+      expect.objectContaining({
+        reasoningEffort: 'low',
+        responseFormat: { type: 'json_object' },
+        temperature: 1,
+      }),
     );
   });
 
@@ -154,6 +158,28 @@ describe('generateCandidates', () => {
         role: 'user',
         content: expect.stringContaining('complete git unified diff with numbered hunks'),
       }),
+    ]));
+    expect(chat.mock.calls[1]?.[2]).toMatchObject({
+      reasoningEffort: 'low',
+      responseFormat: { type: 'json_object' },
+      temperature: 1,
+    });
+  });
+
+  it('retries an empty structured reply without an empty assistant turn', async () => {
+    const repaired = [
+      candidate('source-fix', 'source diff'),
+      candidate('config-fix', 'configuration diff'),
+      candidate('dependency-fix', 'dependency diff'),
+    ];
+    const chat = vi.fn()
+      .mockResolvedValueOnce({ text: '' })
+      .mockResolvedValueOnce({ text: JSON.stringify({ candidates: repaired }) });
+
+    await expect(generateCandidates({ chat }, buildDiagnosis, 3)).resolves.toEqual(repaired);
+    expect(chat).toHaveBeenCalledTimes(2);
+    expect(chat.mock.calls[1]?.[1]).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'assistant' }),
     ]));
   });
 
