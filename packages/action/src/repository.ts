@@ -129,10 +129,9 @@ function boundWindow(
   const allLines = scanned.split(/\r?\n/);
   if (
     requestedLine !== undefined &&
-    requestedLine > allLines.length &&
-    fileSize > bytes.length
+    requestedLine > allLines.length
   ) {
-    throw new RepositoryError('Referenced source line exceeds the bounded scan window');
+    throw new RepositoryError('Referenced source line exceeds the available source window');
   }
   const target = Math.min(
     Math.max(requestedLine ?? 1, 1),

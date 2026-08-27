@@ -107,7 +107,19 @@ function timestamp(line: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-function failedStepLog(log: string, step: WorkflowJobStep): string {
+interface TimestampedLogLine {
+  line: string;
+  time: number;
+}
+
+function parseTimestampedLog(log: string): TimestampedLogLine[] {
+  return log.split(/\r?\n/).flatMap((line) => {
+    const time = timestamp(line);
+    return time === null ? [] : [{ line, time }];
+  });
+}
+
+function failedStepLog(lines: readonly TimestampedLogLine[], step: WorkflowJobStep): string {
   if (!step.startedAt || !step.completedAt) {
     throw new GitHubAdapterError(`Failed step ${step.name} has no timestamp bounds`);
   }
@@ -116,14 +128,11 @@ function failedStepLog(log: string, step: WorkflowJobStep): string {
   if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
     throw new GitHubAdapterError(`Failed step ${step.name} has invalid timestamp bounds`);
   }
-  const lines = log.split(/\r?\n/).filter((line) => {
-    const time = timestamp(line);
-    return time !== null && time >= start && time <= end;
-  });
-  if (lines.length === 0) {
+  const matching = lines.filter(({ time }) => time >= start && time <= end);
+  if (matching.length === 0) {
     throw new GitHubAdapterError(`Job logs contain no lines for failed step ${step.name}`);
   }
-  return lines.slice(-FAILED_STEP_LINES).join('\n');
+  return matching.slice(-FAILED_STEP_LINES).map(({ line }) => line).join('\n');
 }
 
 function apiStatus(error: unknown): number | undefined {
@@ -201,12 +210,13 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
     for (const job of jobs) {
       if (!FAILED_CONCLUSIONS.has(job.conclusion ?? '')) continue;
       const jobLog = await this.api.downloadJobLogs(job.id);
+      const timestampedLines = parseTimestampedLog(jobLog);
       for (const step of job.steps) {
         if (!FAILED_CONCLUSIONS.has(step.conclusion ?? '')) continue;
         failedSteps.push({
           jobName: job.name,
           stepName: step.name,
-          log: failedStepLog(jobLog, step),
+          log: failedStepLog(timestampedLines, step),
         });
       }
     }

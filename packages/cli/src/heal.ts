@@ -8,6 +8,7 @@ import {
   NebiusClient,
   TavilyClient,
   healCase,
+  isSensitiveRepositoryPath,
   loadConfig,
   readRepairSourceContext,
   type CaseFile,
@@ -60,14 +61,7 @@ function safeRelativePath(path: string): boolean {
   ) {
     return false;
   }
-  const segments = path.split('/');
-  if (segments.includes('.git') || segments.includes('node_modules')) return false;
-  const name = segments.at(-1)?.toLowerCase() ?? '';
-  return !(
-    name === '.env' || name.startsWith('.env.') || name === '.npmrc' ||
-    name === '.netrc' || name === '.pypirc' || name === 'credentials.json' ||
-    name === 'id_rsa' || name === 'id_ed25519' || /\.(?:key|pem|p12|pfx)$/u.test(name)
-  );
+  return !isSensitiveRepositoryPath(path);
 }
 
 async function hasSymlinkComponent(root: string, path: string): Promise<boolean> {
@@ -100,7 +94,11 @@ async function readLineWindow(
   let stoppedAtLimit = false;
   try {
     const buffer = Buffer.alloc(4_096);
-    while (line <= endLine && scannedBytes < MAX_SOURCE_SCAN_BYTES) {
+    while (
+      line <= endLine &&
+      scannedBytes < MAX_SOURCE_SCAN_BYTES &&
+      (line < startLine || keptBytes <= limits.maxBytesPerFile)
+    ) {
       const available = Math.min(buffer.length, MAX_SOURCE_SCAN_BYTES - scannedBytes);
       const { bytesRead } = await handle.read(buffer, 0, available, position);
       if (bytesRead === 0) break;

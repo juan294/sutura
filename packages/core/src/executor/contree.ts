@@ -9,6 +9,7 @@ import { Readable } from 'node:stream';
 
 import pLimit, { type LimitFunction } from 'p-limit';
 
+import { isSensitiveRepositoryPath } from '../security/repository-path.js';
 import {
   SNAPSHOT_CWD,
   type Executor,
@@ -505,24 +506,6 @@ function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function isSensitivePath(path: string, includeDependencies = false): boolean {
-  const segments = path.split('/');
-  if (segments.includes('.git') || (!includeDependencies && segments.includes('node_modules'))) return true;
-
-  const basename = segments.at(-1)?.toLowerCase() ?? '';
-  return (
-    basename === '.env' ||
-    basename.startsWith('.env.') ||
-    basename === '.netrc' ||
-    basename === '.npmrc' ||
-    basename === '.pypirc' ||
-    basename === 'credentials.json' ||
-    basename === 'id_rsa' ||
-    basename === 'id_ed25519' ||
-    /\.(?:key|pem|p12|pfx)$/u.test(basename)
-  );
-}
-
 async function listNonGitFiles(dir: string): Promise<string[]> {
   const root = await realpath(dir);
   const files: string[] = [];
@@ -535,7 +518,7 @@ async function listNonGitFiles(dir: string): Promise<string[]> {
     const entries = await readdir(join(root, directory), { withFileTypes: true });
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
       const path = directory ? `${directory}/${entry.name}` : entry.name;
-      if (isSensitivePath(path, true)) continue;
+      if (isSensitiveRepositoryPath(path, { includeDependencies: true })) continue;
       const absolute = join(root, path);
       const metadata = await lstat(absolute);
       if (metadata.isSymbolicLink()) {
@@ -550,7 +533,7 @@ async function listNonGitFiles(dir: string): Promise<string[]> {
         if (
           lexicalRelative.startsWith('../') ||
           lexicalRelative === '..' ||
-          isSensitivePath(lexicalRelative, true)
+          isSensitiveRepositoryPath(lexicalRelative, { includeDependencies: true })
         ) {
           throw new ContreeError(
             `ConTree snapshot refuses escaping or sensitive symlink: ${path}`,
@@ -568,7 +551,7 @@ async function listNonGitFiles(dir: string): Promise<string[]> {
         if (
           canonicalRelative.startsWith('../') ||
           canonicalRelative === '..' ||
-          isSensitivePath(canonicalRelative, true)
+          isSensitiveRepositoryPath(canonicalRelative, { includeDependencies: true })
         ) {
           throw new ContreeError(
             `ConTree snapshot refuses escaping or sensitive symlink: ${path}`,
@@ -631,20 +614,44 @@ async function listSnapshotFiles(dir: string): Promise<string[]> {
     const deletedPaths = new Set(
       deleted.stdout.toString('utf8').split('\0').filter(Boolean),
     );
-    return listed.stdout
+    const files = listed.stdout
       .toString('utf8')
       .split('\0')
       .filter(
         (path) =>
           path.length > 0 &&
           !deletedPaths.has(path) &&
-          !isSensitivePath(path),
+          !isSensitiveRepositoryPath(path),
       );
+    await validateSnapshotFiles(dir, files);
+    return files;
   } catch (error) {
     if (error instanceof Error && /not a git repository/iu.test(error.message)) {
       return listNonGitFiles(dir);
     }
     throw error;
+  }
+}
+
+async function validateSnapshotFiles(
+  dir: string,
+  files: readonly string[],
+): Promise<void> {
+  if (files.length > MAX_SNAPSHOT_FILES) {
+    throw new ContreeError(
+      `ConTree snapshot exceeds ${MAX_SNAPSHOT_FILES} files`,
+    );
+  }
+  let sourceBytes = 0;
+  for (const path of files) {
+    const metadata = await lstat(join(dir, path));
+    if (!metadata.isFile()) continue;
+    sourceBytes += metadata.size;
+    if (sourceBytes > MAX_SNAPSHOT_SOURCE_BYTES) {
+      throw new ContreeError(
+        `ConTree snapshot exceeds ${MAX_SNAPSHOT_SOURCE_BYTES} source bytes`,
+      );
+    }
   }
 }
 

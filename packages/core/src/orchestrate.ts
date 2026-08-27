@@ -27,6 +27,7 @@ import {
 export { SUTURA_SANDBOX_ENV } from './heal.js';
 import { renderCaseFile } from './report/casefile.js';
 import { renderComment } from './report/markdown.js';
+import { isSensitiveRepositoryPath } from './security/repository-path.js';
 
 const FAILED_STEP_LINES = 200;
 const MAX_SOURCE_FILES = 8;
@@ -217,7 +218,6 @@ export function collectFailedLogs(steps: readonly FailedStepLog[]): string {
 function safeSourcePath(path: string): string | null {
   const normalized = path.replace(/^\.\//, '');
   const segments = normalized.split('/');
-  const basename = segments.at(-1)?.toLowerCase() ?? '';
   if (
     normalized.length === 0 ||
     normalized.length > 240 ||
@@ -228,19 +228,9 @@ function safeSourcePath(path: string): string | null {
       (segment) =>
         !segment ||
         segment === '.' ||
-        segment === '..' ||
-        segment === '.git' ||
-        segment === 'node_modules',
+        segment === '..',
     ) ||
-    basename === '.env' ||
-    basename.startsWith('.env.') ||
-    basename === '.netrc' ||
-    basename === '.npmrc' ||
-    basename === '.pypirc' ||
-    basename === 'credentials.json' ||
-    basename === 'id_rsa' ||
-    basename === 'id_ed25519' ||
-    /\.(?:key|pem|p12|pfx)$/u.test(basename)
+    isSensitiveRepositoryPath(normalized)
   ) {
     return null;
   }

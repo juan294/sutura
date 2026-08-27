@@ -651,21 +651,27 @@ describe('ContreeExecutor', () => {
 
   it('rejects oversized and symlinked non-git snapshots before upload', async () => {
     const oversized = await mkdtemp(join(tmpdir(), 'sutura-contree-oversized-'));
+    const gitOversized = await mkdtemp(join(tmpdir(), 'sutura-contree-git-oversized-'));
     const linked = await mkdtemp(join(tmpdir(), 'sutura-contree-linked-'));
     const outside = await mkdtemp(join(tmpdir(), 'sutura-contree-outside-'));
     const fetch = vi.fn<typeof globalThis.fetch>();
     try {
       await writeFile(join(oversized, 'huge.bin'), '');
       await truncate(join(oversized, 'huge.bin'), 256 * 1_024 * 1_024 + 1);
+      await execFileAsync('git', ['init', '--quiet'], { cwd: gitOversized });
+      await writeFile(join(gitOversized, 'huge.bin'), '');
+      await truncate(join(gitOversized, 'huge.bin'), 256 * 1_024 * 1_024 + 1);
       await writeFile(join(outside, 'source.js'), 'export const value = 1;\n');
       await symlink(relative(linked, join(outside, 'source.js')), join(linked, 'source.js'));
 
       const executor = new ContreeExecutor(config(fetch));
       await expect(executor.snapshot(oversized, 'base-image')).rejects.toThrow(/source bytes/);
+      await expect(executor.snapshot(gitOversized, 'base-image')).rejects.toThrow(/source bytes/);
       await expect(executor.snapshot(linked, 'base-image')).rejects.toThrow(/escaping or sensitive symlink/);
       expect(fetch).not.toHaveBeenCalled();
     } finally {
       await rm(oversized, { recursive: true, force: true });
+      await rm(gitOversized, { recursive: true, force: true });
       await rm(linked, { recursive: true, force: true });
       await rm(outside, { recursive: true, force: true });
     }

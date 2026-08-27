@@ -105,6 +105,18 @@ describe('GitRepository.readSourceExcerpts', () => {
     expect(excerpt?.content).toBe('line-78\nline-79\nline-80\nline-81\nline-82');
     expect(excerpt?.truncated).toBe(true);
   });
+
+  it('rejects a referenced line beyond the end of a fully scanned file', async () => {
+    const root = await temporaryDirectory();
+    await writeFile(join(root, 'short.ts'), 'one\ntwo\n');
+    const repository = new GitRepository({ token: 'test', workspaceRoot: root });
+
+    await expect(repository.readSourceExcerpts(
+      root,
+      [{ path: 'short.ts', line: 999 }],
+      { maxFiles: 1, maxLinesPerFile: 5, maxCharactersPerFile: 100, maxBytesPerFile: 100 },
+    )).rejects.toThrow(/referenced source line exceeds/i);
+  });
 });
 
 describe('GitRepository exact-SHA operations', () => {

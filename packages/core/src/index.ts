@@ -62,6 +62,7 @@ export {
 export { FAILURE_TAXONOMY } from './taxonomy.js';
 export { renderCaseFile } from './report/casefile.js';
 export { renderComment } from './report/markdown.js';
+export { isSensitiveRepositoryPath } from './security/repository-path.js';
 
 export const VERSION = '0.1.0';
 
@@ -153,3 +154,4 @@ export type {
   RaceResult,
   TriageVerdict,
 } from './domain.js';
+export type { SensitiveRepositoryPathOptions } from './security/repository-path.js';
