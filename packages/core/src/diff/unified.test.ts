@@ -102,6 +102,71 @@ deleted file mode 100644
     expect(parsed.valid).toBe(false);
     expect(parsed.errors.length).toBeGreaterThan(0);
   });
+
+  it('fails closed when hunk context lacks its required prefix', () => {
+    const parsed = parseUnifiedDiff(`diff --git a/src/page-count.js b/src/page-count.js
+--- a/src/page-count.js
++++ b/src/page-count.js
+@@ -6,2 +6,2 @@
+export function pageCount(items, size) {
+-  return Math.floor(items / size) + 1;
++  return Math.ceil(items / size);
+}
+`);
+
+    expect(parsed.valid).toBe(false);
+    expect(parsed.errors).toContain('unrecognized or incomplete file change');
+  });
+
+  it('fails closed when numbered hunk counts do not match the body', () => {
+    const parsed = parseUnifiedDiff(`diff --git a/src/value.ts b/src/value.ts
+--- a/src/value.ts
++++ b/src/value.ts
+@@ -1,2 +1,2 @@
+-old
++new
+`);
+
+    expect(parsed.valid).toBe(false);
+    expect(parsed.errors).toContain('unrecognized or incomplete file change');
+  });
+
+  it('accepts exact no-newline markers after their hunk body lines', () => {
+    const parsed = parseUnifiedDiff(`diff --git a/src/value.ts b/src/value.ts
+--- a/src/value.ts
++++ b/src/value.ts
+@@ -1 +1 @@
+-old
+\\ No newline at end of file
++new
+\\ No newline at end of file
+`);
+
+    expect(parsed.valid).toBe(true);
+  });
+
+  it.each([
+    `@@ -0,0 +0,0 @@
+\\ No newline at end of file`,
+    `@@ -1 +1 @@
+-old
+\\ No newline at end of file explanatory text
++new`,
+    `@@ -1 +1 @@
+-old
+\\ No newline at end of file
+\\ No newline at end of file
++new`,
+  ])('fails closed for an orphaned or malformed no-newline marker', (hunk) => {
+    const parsed = parseUnifiedDiff(`diff --git a/src/value.ts b/src/value.ts
+--- a/src/value.ts
++++ b/src/value.ts
+${hunk}
+`);
+
+    expect(parsed.valid).toBe(false);
+    expect(parsed.errors).toContain('unrecognized or incomplete file change');
+  });
 });
 
 describe('isConventionalTestPath', () => {

@@ -120,6 +120,7 @@ function generationPrompt(K: number): string {
     'Each candidate must have a distinct id, a concise rationale, and a complete unified diff accepted by git apply.',
     'For every changed file, include `diff --git a/path b/path`, `--- a/path`, `+++ b/path`, and one or more numbered hunk headers such as `@@ -1,3 +1,3 @@`.',
     'Never emit a bare `@@` hunk header or omit the `diff --git` header.',
+    'Inside each hunk, prefix every unchanged context line with one literal space, and make the old/new line counts match the hunk body exactly.',
     'When sourceContext contains sources, use only those repository paths and make every hunk match that source exactly.',
     'Do not weaken, skip, or delete tests. Do not include hidden reasoning.',
     'Schema: {"candidates":[{"id":"...","rationale":"...","diff":"..."}]}',

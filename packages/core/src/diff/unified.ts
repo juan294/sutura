@@ -124,6 +124,40 @@ interface PendingFile {
   invalid: boolean;
 }
 
+const HUNK_HEADER = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@(?: .*)?$/u;
+
+function validHunk(hunk: UnifiedDiffHunk): boolean {
+  const match = HUNK_HEADER.exec(hunk.header);
+  if (!match) return false;
+
+  const oldExpected = Number(match[1] ?? 1);
+  const newExpected = Number(match[2] ?? 1);
+  let oldActual = 0;
+  let newActual = 0;
+  let canMarkNoNewline = false;
+
+  for (const line of hunk.lines.slice(1)) {
+    if (line === '\\ No newline at end of file') {
+      if (!canMarkNoNewline) return false;
+      canMarkNoNewline = false;
+      continue;
+    }
+    if (line.startsWith(' ')) {
+      oldActual += 1;
+      newActual += 1;
+    } else if (line.startsWith('-')) {
+      oldActual += 1;
+    } else if (line.startsWith('+')) {
+      newActual += 1;
+    } else {
+      return false;
+    }
+    canMarkNoNewline = true;
+  }
+
+  return oldActual === oldExpected && newActual === newExpected;
+}
+
 export function parseUnifiedDiff(diff: string): ParsedUnifiedDiff {
   const files: UnifiedDiffFile[] = [];
   const errors: string[] = [];
@@ -132,6 +166,8 @@ export function parseUnifiedDiff(diff: string): ParsedUnifiedDiff {
 
   const flush = (): void => {
     if (!current) return;
+
+    current.invalid ||= current.hunks.some((entry) => !validHunk(entry));
 
     const pairedHeaders = current.sawOldPath === current.sawNewPath;
     const pairedRename = current.sawRenameFrom === current.sawRenameTo;
