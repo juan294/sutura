@@ -125,7 +125,7 @@ describe('failure classification', () => {
     expect(messages[1]?.content).toContain('line-204');
   });
 
-  it('rejects a model command that was not observed in the CI log', async () => {
+  it('keeps the observed command authoritative when Nano suggests another command', async () => {
     const llm = scriptedLlm({
       class: 'typecheck',
       confidence: 0.9,
@@ -136,7 +136,11 @@ describe('failure classification', () => {
 
     await expect(
       classify(llm, 'Run pnpm typecheck\nerror TS2322: invalid assignment'),
-    ).rejects.toThrow('Diagnosis model command was not observed in the CI log');
+    ).resolves.toMatchObject({
+      failingCmd: 'pnpm typecheck',
+      confidence: 0.49,
+      signals: expect.arrayContaining(['llm-command-mismatch']),
+    });
   });
 
   it('repairs one invalid Nano response against the same bounded log', async () => {
