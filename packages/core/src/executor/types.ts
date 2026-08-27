@@ -1,4 +1,5 @@
 export type ImageId = string;
+export const SNAPSHOT_CWD = '/workspace';
 
 export interface RunOptions {
   env?: Readonly<Record<string, string>>;
@@ -27,5 +28,9 @@ export interface Executor {
   importImage(ref: string): Promise<ImageId>;
   snapshot(dir: string, base: ImageId): Promise<ImageId>;
   run(parent: ImageId, cmd: string, opts?: RunOptions): Promise<RunResult>;
-  runMany(parent: ImageId, cmds: string[]): Promise<RunResult[]>;
+  runMany(
+    parent: ImageId,
+    cmds: string[],
+    opts?: RunOptions,
+  ): Promise<RunResult[]>;
 }

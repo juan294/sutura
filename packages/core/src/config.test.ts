@@ -66,4 +66,13 @@ describe('loadConfig', () => {
       );
     },
   );
+
+  it.each([
+    ['SUTURA_TRIAGE_N', '21'],
+    ['SUTURA_RACE_K', '11'],
+  ])('rejects an excessive %s value', (name, value) => {
+    expect(() => loadConfig({ ...REQUIRED_ENV, [name]: value })).toThrowError(
+      new RegExp(name),
+    );
+  });
 });

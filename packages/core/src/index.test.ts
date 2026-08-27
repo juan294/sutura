@@ -9,7 +9,13 @@ import {
   VERSION,
   classify,
   classifyMechanically,
+  generateCandidates,
   ground,
+  prepareRepair,
+  race,
+  selectWinner,
+  triage,
+  vetPatch,
 } from '@sutura/core';
 import type {
   ContreeExecutorConfig,
@@ -18,6 +24,8 @@ import type {
   InMemoryCall,
   InMemoryRunResult,
   InMemoryScript,
+  PatchVerdict,
+  RepairLlm,
   RunMetrics,
   RunOptions,
   RunResult,
@@ -52,5 +60,16 @@ describe('@sutura/core entry point', () => {
     expect(TavilyClient).toBeTypeOf('function');
     expect(ground).toBeTypeOf('function');
     expectTypeOf<TaxonomyEntry>().toBeObject();
+  });
+
+  it('exports the triage and repair API from the package root', () => {
+    expect(triage).toBeTypeOf('function');
+    expect(generateCandidates).toBeTypeOf('function');
+    expect(prepareRepair).toBeTypeOf('function');
+    expect(race).toBeTypeOf('function');
+    expect(selectWinner).toBeTypeOf('function');
+    expect(vetPatch).toBeTypeOf('function');
+    expectTypeOf<PatchVerdict>().toBeObject();
+    expectTypeOf<RepairLlm>().toBeObject();
   });
 });

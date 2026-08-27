@@ -434,10 +434,15 @@ describe('ContreeExecutor', () => {
     const results = await executor.runMany(
       'parent',
       Array.from({ length: 5 }, (_, index) => `command-${index}`),
+      { cwd: '/workspace' },
     );
 
     expect(results).toHaveLength(5);
     expect(highWater).toBe(2);
+    const requestBodies = fetch.mock.calls
+      .filter(([, init]) => init?.method === 'POST')
+      .map(([, init]) => JSON.parse(String(init?.body)) as { cwd?: string });
+    expect(requestBodies.every(({ cwd }) => cwd === '/workspace')).toBe(true);
   });
 
   it('uploads the current safe worktree and replaces the destination snapshot', async () => {
