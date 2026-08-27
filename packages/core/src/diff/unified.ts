@@ -125,6 +125,65 @@ interface PendingFile {
 }
 
 const HUNK_HEADER = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@(?: .*)?$/u;
+const HUNK_PARTS = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/u;
+const NO_NEWLINE_MARKER = '\\ No newline at end of file';
+
+function formatRange(start: string, count: number): string {
+  return count === 1 ? start : `${start},${count}`;
+}
+
+export function normalizeUnifiedDiffHunks(diff: string): string {
+  const lines = diff.split(/\r?\n/u);
+  const hasTrailingNewline = lines.at(-1) === '';
+  if (hasTrailingNewline) lines.pop();
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = HUNK_PARTS.exec(lines[index] ?? '');
+    if (!match) continue;
+
+    let boundary = index + 1;
+    while (
+      boundary < lines.length &&
+      !lines[boundary]?.startsWith('diff --git ') &&
+      !lines[boundary]?.startsWith('@@ ')
+    ) {
+      boundary += 1;
+    }
+
+    let bodyEnd = boundary;
+    while (bodyEnd > index + 1 && lines[bodyEnd - 1] === '') bodyEnd -= 1;
+
+    let oldCount = 0;
+    let newCount = 0;
+    let changed = false;
+    for (let bodyIndex = index + 1; bodyIndex < bodyEnd; bodyIndex += 1) {
+      const line = lines[bodyIndex] ?? '';
+      if (
+        line !== NO_NEWLINE_MARKER &&
+        !line.startsWith(' ') &&
+        !line.startsWith('-') &&
+        !line.startsWith('+')
+      ) {
+        lines[bodyIndex] = ` ${line}`;
+        changed = true;
+      }
+      const normalized = lines[bodyIndex] ?? '';
+      if (normalized === NO_NEWLINE_MARKER) continue;
+      if (normalized.startsWith(' ') || normalized.startsWith('-')) oldCount += 1;
+      if (normalized.startsWith(' ') || normalized.startsWith('+')) newCount += 1;
+    }
+
+    const oldExpected = Number(match[2] ?? 1);
+    const newExpected = Number(match[4] ?? 1);
+    if (changed || oldExpected !== oldCount || newExpected !== newCount) {
+      lines[index] =
+        `@@ -${formatRange(match[1] ?? '0', oldCount)}` +
+        ` +${formatRange(match[3] ?? '0', newCount)} @@${match[5] ?? ''}`;
+    }
+  }
+
+  return `${lines.join('\n')}${hasTrailingNewline ? '\n' : ''}`;
+}
 
 function validHunk(hunk: UnifiedDiffHunk): boolean {
   const match = HUNK_HEADER.exec(hunk.header);
@@ -135,9 +194,11 @@ function validHunk(hunk: UnifiedDiffHunk): boolean {
   let oldActual = 0;
   let newActual = 0;
   let canMarkNoNewline = false;
+  const body = hunk.lines.slice(1);
+  while (body.at(-1) === '') body.pop();
 
-  for (const line of hunk.lines.slice(1)) {
-    if (line === '\\ No newline at end of file') {
+  for (const line of body) {
+    if (line === NO_NEWLINE_MARKER) {
       if (!canMarkNoNewline) return false;
       canMarkNoNewline = false;
       continue;

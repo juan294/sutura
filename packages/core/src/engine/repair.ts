@@ -7,7 +7,10 @@ import type {
   TriageVerdict,
 } from '../domain.js';
 import { MAX_RACE_CANDIDATES } from '../config.js';
-import { parseUnifiedDiff } from '../diff/unified.js';
+import {
+  normalizeUnifiedDiffHunks,
+  parseUnifiedDiff,
+} from '../diff/unified.js';
 import { SNAPSHOT_CWD, type Executor, type ImageId } from '../executor/types.js';
 import { extractJson } from '../llm/json.js';
 import type { TierLlm } from '../llm/types.js';
@@ -76,7 +79,8 @@ function candidateReply(value: unknown, expected: number): CandidateReply {
     if (typeof candidate.diff !== 'string' || !candidate.diff.trim()) {
       throw new Error(`candidate ${index + 1} must have a non-empty diff`);
     }
-    const parsedDiff = parseUnifiedDiff(candidate.diff);
+    const normalizedDiff = normalizeUnifiedDiffHunks(candidate.diff);
+    const parsedDiff = parseUnifiedDiff(normalizedDiff);
     if (
       !parsedDiff.valid ||
       parsedDiff.files.length === 0 ||
@@ -93,7 +97,7 @@ function candidateReply(value: unknown, expected: number): CandidateReply {
     return {
       id: candidate.id,
       rationale: candidate.rationale,
-      diff: candidate.diff,
+      diff: normalizedDiff,
     };
   });
 
