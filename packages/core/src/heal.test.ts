@@ -345,8 +345,76 @@ describe('sandbox command resolution', () => {
     expect(sandboxExecutableCommand(observed)).toBe(observed);
   });
 
-  it('preserves package scripts and system commands', () => {
-    expect(sandboxExecutableCommand('pnpm test')).toBe('pnpm test');
+  it('places Corepack package-manager shims on PATH for the whole command', () => {
+    const command = sandboxExecutableCommand(
+      'cd packages/core && CI=true pnpm test && yarn lint',
+    );
+
+    expect(command).toContain('corepack enable --install-directory');
+    expect(command).toContain('PATH="$sutura_corepack_bin:$PATH" sh -c');
+    expect(command).toContain('cd packages/core && CI=true pnpm test && yarn lint');
+    expect(sandboxExecutableCommand('corepack pnpm test && pnpm lint'))
+      .toContain('corepack enable --install-directory');
+  });
+
+  it('executes compound and redirected package-manager commands through Corepack', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-corepack-command-'));
+    try {
+      const toolDirectory = join(directory, 'tools');
+      await mkdir(toolDirectory, { recursive: true });
+      await writeFile(
+        join(toolDirectory, 'corepack'),
+        [
+          '#!/bin/sh',
+          'if [ "$1" = "pnpm" ]; then shift; printf "corepack-pnpm:%s\\n" "$*"; exit 0; fi',
+          '[ "$1:$2" = "enable:--install-directory" ] || exit 90',
+          'directory=$3',
+          `printf '#!/bin/sh\nprintf "pnpm:%%s\\n" "$*"\n' > "$directory/pnpm"`,
+          `printf '#!/bin/sh\nprintf "yarn:%%s\\n" "$*"\n' > "$directory/yarn"`,
+          'chmod +x "$directory/pnpm" "$directory/yarn"',
+          '',
+        ].join('\n'),
+      );
+      await chmod(join(toolDirectory, 'corepack'), 0o755);
+      await mkdir(join(directory, 'packages', 'core'), { recursive: true });
+
+      const execution = spawnSync(
+        '/bin/sh',
+        ['-c', sandboxExecutableCommand(
+          'corepack pnpm install --frozen-lockfile && cd packages/core && CI=true pnpm test && yarn lint && pnpm>result.txt',
+        )],
+        {
+          cwd: directory,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            PATH: `${toolDirectory}:${process.env['PATH'] ?? ''}`,
+            TMPDIR: directory,
+          },
+        },
+      );
+
+      expect(execution.status, execution.stderr).toBe(0);
+      expect(execution.stdout).toBe(
+        'corepack-pnpm:install --frozen-lockfile\npnpm:test\nyarn:lint\n',
+      );
+      await expect(readFile(join(directory, 'packages', 'core', 'result.txt'), 'utf8'))
+        .resolves.toBe('pnpm:\n');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    'pnpm-evil test',
+    'yarn.lock',
+    'echo /usr/bin/pnpm',
+  ])('does not resolve package-manager lookalike %s', (observed) => {
+    expect(sandboxExecutableCommand(observed)).toBe(observed);
+  });
+
+  it('preserves npm package scripts and system commands', () => {
+    expect(sandboxExecutableCommand('npm test')).toBe('npm test');
     expect(sandboxExecutableCommand('node --test')).toBe('node --test');
   });
 });
