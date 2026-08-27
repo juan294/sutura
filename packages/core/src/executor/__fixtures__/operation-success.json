@@ -1,0 +1,34 @@
+{
+  "uuid": "operation-1",
+  "kind": "instance",
+  "status": "SUCCESS",
+  "error": null,
+  "result_image_uuid": "image-child",
+  "metadata": {
+    "image": "image-parent",
+    "command": "echo $GREETING",
+    "result": {
+      "resources": {
+        "cost": 0.0025,
+        "elapsed_time": 1.25,
+        "max_rss": 4096,
+        "system_cpu_time": 0.1,
+        "user_cpu_time": 0.2
+      },
+      "state": {
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "stdout": {
+        "value": "aGVsbG8K",
+        "encoding": "base64",
+        "truncated": true
+      },
+      "stderr": {
+        "value": "warning\n",
+        "encoding": "ascii",
+        "truncated": false
+      }
+    }
+  }
+}
