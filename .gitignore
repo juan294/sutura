@@ -1,0 +1,28 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+
+# Environment — never commit secrets
+.env
+.env.*
+!.env.example
+
+# Local Claude Code config
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+CLAUDE.local.md
+
+# Agent operational output (gitignored on public repos — Rule #70)
+docs/agents/
+logs/
+scripts/agents/
+
+# macOS
+.DS_Store
+
+# Session telemetry
+.claude/metrics/
+
+# Internal strategy docs (kept local, not published)
+docs/research/2026-08-26-nebius-hackathon-fit.md

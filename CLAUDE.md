@@ -1,0 +1,87 @@
+# Project: Sutura
+
+## One-liner
+
+Self-healing CI: a GitHub Action plus agent that diagnoses a failing CI run,
+reproduces it in a sandbox, patches the cause, and opens a fix PR with its
+reasoning trace. "Sutura" = suture — it stitches the pipeline back together.
+
+## Context
+
+Entry for the Nebius x NVIDIA Global AI Hackathon (deadline 2026-10-30,
+track: Coding and Agentic Engineering; Tavily side prize targeted). Fit
+analysis and timeline: `docs/research/2026-08-26-nebius-hackathon-fit.md`.
+This repo is PUBLIC (MIT) from day 1 — never commit secrets, personal data,
+or anything from Juan's private fleet.
+
+## Stack
+
+- TypeScript (pinned `^6` — typescript-eslint has no TS7 support), Node 22,
+  pnpm, Vitest, ESLint flat config
+- LLM: NVIDIA Nemotron models via Nebius Token Factory
+  (OpenAI-compatible API, `https://api.tokenfactory.nebius.com/v1/`)
+- Web grounding: Tavily API
+- Env vars: `NEBIUS_API_KEY`, `TAVILY_API_KEY` — fail closed, never commit
+
+## RPI Workflow
+
+This project follows Research-Plan-Implement (RPI).
+
+1. /research -- Understand the codebase as-is
+2. /plan -- Create a phased implementation spec
+3. /implement -- Execute one phase at a time with review gates
+4. /validate -- Verify implementation against the plan
+
+Each phase is its own conversation. STOP after each phase.
+Use /clear between tasks, /compact when context is heavy.
+
+## Key Commands
+
+```bash
+pnpm run test        # Vitest
+pnpm run typecheck   # tsc --noEmit
+pnpm run lint        # ESLint
+pnpm run build       # tsc
+```
+
+## Git Workflow
+
+- Integration branch (default): `develop`
+- Production branch: `main` — releases and Devpost submission point here
+- Implementation happens in git worktrees or temporary branches
+- Verify current branch before committing; run typecheck + lint first
+- Conventional commits:
+  `feat|fix|test|refactor|chore|docs(scope): description`
+
+```bash
+# Commit before pulling (hook enforced)
+git add <files> && git commit -m "msg"
+git pull --rebase && git push
+```
+
+Run verification sequentially with `;` or `&&`, never as parallel Bash calls.
+
+## Deployment
+
+No hosted deployment. The artifact is a GitHub Action + CLI; releases are
+tagged from `main`. Demo assets (video, sample runs) live in `docs/demo/`.
+
+Rules load from `.claude/rules/` and `.claude/skills/` automatically.
+
+## Agent Behavior
+
+Exhaust tools before asking the user. Production actions need human
+authorization. Save operational lessons to auto memory immediately.
+Don't wait to be asked.
+
+## Project File Locations
+
+Go directly to these paths -- never search for them.
+
+| Topic    | Path                            | Notes                       |
+| -------- | ------------------------------- | --------------------------- |
+| Research | `docs/research/YYYY-MM-DD-*.md` |                             |
+| Plans    | `docs/plans/YYYY-MM-DD-*.md`    | Phase files in `-phases/`   |
+| ADRs     | `docs/decisions/`               |                             |
+| PR descriptions | `docs/prs/{number}_description.md` |                   |
+| Release playbook | `docs/release/e2e-pro-playbook.md` | Wave A adopted; profile pending first release |
