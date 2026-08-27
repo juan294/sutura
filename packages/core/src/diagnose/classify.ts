@@ -175,24 +175,36 @@ export async function classify(
       'CI log does not contain an observed failing command',
     );
   }
+  const messages = [
+    { role: 'system' as const, content: PUBLIC_TAXONOMY_PROMPT },
+    { role: 'user' as const, content: boundedLog },
+  ];
+  const options = {
+    maxTokens: 2_048,
+    temperature: 0,
+    responseFormat: { type: 'json_object' as const },
+  };
   let reply: { text: string };
 
   try {
-    reply = await llm.chat(
-      'nano',
-      [
-        { role: 'system', content: PUBLIC_TAXONOMY_PROMPT },
-        { role: 'user', content: boundedLog },
-      ],
-      { maxTokens: 2_048, temperature: 0, responseFormat: { type: 'json_object' } },
-    );
+    reply = await llm.chat('nano', messages, options);
   } catch {
     throw new ClassificationError('Diagnosis model request failed');
   }
 
   let model: Diagnosis;
   try {
-    model = extractJson(reply, validateDiagnosis);
+    model = await extractJson(reply, validateDiagnosis, async (repairPrompt) =>
+      llm.chat(
+        'nano',
+        [
+          ...messages,
+          { role: 'assistant', content: reply.text },
+          { role: 'user', content: repairPrompt },
+        ],
+        options,
+      ),
+    );
   } catch {
     throw new ClassificationError('Diagnosis model returned an invalid response');
   }

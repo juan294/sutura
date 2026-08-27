@@ -139,6 +139,36 @@ describe('failure classification', () => {
     ).rejects.toThrow('Diagnosis model command was not observed in the CI log');
   });
 
+  it('repairs one invalid Nano response against the same bounded log', async () => {
+    const chat = vi.fn()
+      .mockResolvedValueOnce({ text: '{"class":"test-assertion","confidence":"high"}' })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          class: 'test-assertion',
+          confidence: 0.94,
+          signals: ['assertion mismatch'],
+          failingCmd: 'pnpm run test',
+          errorExcerpt: 'expected 3 to be 2',
+        }),
+      });
+
+    await expect(classify(
+      { chat },
+      'Run pnpm run test\nAssertionError: expected 3 to be 2',
+    )).resolves.toMatchObject({
+      class: 'test-assertion',
+      failingCmd: 'pnpm run test',
+    });
+    expect(chat).toHaveBeenCalledTimes(2);
+    expect(chat.mock.calls[1]?.[1]).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'assistant' }),
+      expect.objectContaining({
+        role: 'user',
+        content: expect.stringContaining('confidence must be a number from 0 to 1'),
+      }),
+    ]));
+  });
+
   it('fails closed when the CI log has no observed command', async () => {
     const llm = scriptedLlm({
       class: 'infra',
