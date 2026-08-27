@@ -94,23 +94,35 @@ function runtime(
 
 describe('healWithRuntime Placebo integration', () => {
   it('repairs a real repairable fixture with source-aware model input', async () => {
-    const scripted = runtime(
-      [1, 1, 1, 1, 1, 1, 0, 0],
-      'test-assertion',
-      undefined,
-      undefined,
-      'page-count.js:1: assertion failed',
-    );
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-cli-repair-'));
+    try {
+      await writeFile(
+        join(directory, 'page-count.js'),
+        'export function pageCount(items, size) { return Math.floor(items / size) + 1; }\n',
+      );
+      const scripted = runtime(
+        [1, 1, 1, 1, 1, 1, 0, 0],
+        'test-assertion',
+        undefined,
+        undefined,
+        'page-count.js:1: assertion failed',
+      );
 
-    const result = await healWithRuntime(request('repair-off-by-one'), scripted.value);
+      const result = await healWithRuntime(
+        { ...request('repair-off-by-one'), caseDir: directory },
+        scripted.value,
+      );
 
-    expect(result.outcome).toBe('fixed');
-    const superCall = scripted.chat.mock.calls.find(([tier]) => tier === 'super');
-    expect(JSON.stringify(superCall)).toContain('page-count.js');
-    expect(scripted.executor.calls.filter(({ kind }) => kind === 'snapshot')).toHaveLength(1);
-    expect(scripted.executor.calls.filter(({ kind }) => kind === 'run').every((call) =>
-      call.kind !== 'run' || call.opts?.env === SUTURA_SANDBOX_ENV,
-    )).toBe(true);
+      expect(result.outcome).toBe('fixed');
+      const superCall = scripted.chat.mock.calls.find(([tier]) => tier === 'super');
+      expect(JSON.stringify(superCall)).toContain('page-count.js');
+      expect(scripted.executor.calls.filter(({ kind }) => kind === 'snapshot')).toHaveLength(1);
+      expect(scripted.executor.calls.filter(({ kind }) => kind === 'run').every((call) =>
+        call.kind !== 'run' || call.opts?.env === SUTURA_SANDBOX_ENV,
+      )).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('labels the real flaky fixture with its scripted two-of-five ratio', async () => {
@@ -193,6 +205,22 @@ describe('CLI runtime configuration and source boundaries', () => {
       expect(context.sources[0]).toMatchObject({ path: 'src/far.ts', startLine: 190, truncated: true });
       expect(context.sources[0]?.content).toContain('line250');
       expect(context.sources[0]?.content).not.toContain('line1 =');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves CRLF and no-final-newline state in source context', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-source-endings-'));
+    try {
+      await writeFile(join(directory, 'endings.ts'), 'one\r\ntwo');
+      const context = await readLocalSourceContext(
+        directory,
+        'Run pnpm test\nendings.ts:1: failure',
+        { class: 'test-assertion', confidence: 1, signals: [], failingCmd: 'pnpm test', errorExcerpt: 'failed' },
+      );
+
+      expect(context.sources[0]?.content).toBe('one\r\ntwo');
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

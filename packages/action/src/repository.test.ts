@@ -32,7 +32,7 @@ describe('GitRepository.readSourceExcerpts', () => {
       { maxFiles: 1, maxLinesPerFile: 2, maxCharactersPerFile: 100, maxBytesPerFile: 100 },
     );
 
-    expect(excerpts).toEqual([{ path: 'src/example.ts', startLine: 1, content: 'one\ntwo', truncated: true }]);
+    expect(excerpts).toEqual([{ path: 'src/example.ts', startLine: 1, content: 'one\ntwo\n', truncated: true }]);
   });
 
   it('rejects traversal and every symlink component', async () => {
@@ -82,7 +82,7 @@ describe('GitRepository.readSourceExcerpts', () => {
     expect(excerpts).toEqual([{
       path: 'package.json',
       startLine: 1,
-      content: '{"name":"fixture"}',
+      content: '{"name":"fixture"}\n',
       truncated: false,
     }]);
   });
@@ -102,8 +102,22 @@ describe('GitRepository.readSourceExcerpts', () => {
     );
 
     expect(excerpt?.startLine).toBe(78);
-    expect(excerpt?.content).toBe('line-78\nline-79\nline-80\nline-81\nline-82');
+    expect(excerpt?.content).toBe('line-78\nline-79\nline-80\nline-81\nline-82\n');
     expect(excerpt?.truncated).toBe(true);
+  });
+
+  it('preserves CRLF and terminal-newline state', async () => {
+    const root = await temporaryDirectory();
+    await writeFile(join(root, 'endings.ts'), 'one\r\ntwo\r\n');
+    const repository = new GitRepository({ token: 'test', workspaceRoot: root });
+
+    const [excerpt] = await repository.readSourceExcerpts(
+      root,
+      [{ path: 'endings.ts' }],
+      { maxFiles: 1, maxLinesPerFile: 10, maxCharactersPerFile: 100, maxBytesPerFile: 100 },
+    );
+
+    expect(excerpt?.content).toBe('one\r\ntwo\r\n');
   });
 
   it('rejects a referenced line beyond the end of a fully scanned file', async () => {

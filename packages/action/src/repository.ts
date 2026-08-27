@@ -126,7 +126,16 @@ function boundWindow(
   limits: Readonly<SourceReadLimits>,
 ): { content: string; startLine: number; truncated: boolean } {
   const scanned = new TextDecoder().decode(bytes);
-  const allLines = scanned.split(/\r?\n/);
+  const allLines: string[] = [];
+  let lineStart = 0;
+  for (let index = 0; index < scanned.length; index += 1) {
+    if (scanned[index] !== '\n') continue;
+    allLines.push(scanned.slice(lineStart, index + 1));
+    lineStart = index + 1;
+  }
+  if (lineStart < scanned.length || scanned.length === 0) {
+    allLines.push(scanned.slice(lineStart));
+  }
   if (
     requestedLine !== undefined &&
     requestedLine > allLines.length
@@ -140,7 +149,7 @@ function boundWindow(
   const before = Math.floor(limits.maxLinesPerFile / 2);
   const startIndex = Math.max(0, target - 1 - before);
   const selected = allLines.slice(startIndex, startIndex + limits.maxLinesPerFile);
-  let text = selected.join('\n');
+  let text = selected.join('');
   let truncated = startIndex > 0 || startIndex + selected.length < allLines.length || fileSize > bytes.length;
   if (text.length > limits.maxCharactersPerFile) {
     text = text.slice(0, limits.maxCharactersPerFile);
@@ -151,7 +160,7 @@ function boundWindow(
     text = new TextDecoder().decode(encoded.subarray(0, limits.maxBytesPerFile));
     truncated = true;
   }
-  return { content: text.replace(/\r?\n$/, ''), startLine: startIndex + 1, truncated };
+  return { content: text, startLine: startIndex + 1, truncated };
 }
 
 export class GitRepository implements RepositoryPort {

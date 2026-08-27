@@ -12,59 +12,59 @@ function replyText(reply: JsonReply): string {
   return typeof reply === 'string' ? reply : reply.text;
 }
 
-function jsonObjectCandidates(text: string): string[] {
-  const candidates: string[] = [];
+interface JsonObjectCandidate {
+  text: string;
+  start: number;
+  end: number;
+}
 
-  for (let start = 0; start < text.length; start += 1) {
-    if (text[start] !== '{') {
+function jsonObjectCandidates(text: string): JsonObjectCandidate[] {
+  const candidates: JsonObjectCandidate[] = [];
+  const starts: number[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (starts.length === 0) {
+      if (character === '{') starts.push(index);
       continue;
     }
-
-    let depth = 0;
-    let inString = false;
-    let escaped = false;
-
-    for (let index = start; index < text.length; index += 1) {
-      const character = text[index];
-
-      if (inString) {
-        if (escaped) {
-          escaped = false;
-        } else if (character === '\\') {
-          escaped = true;
-        } else if (character === '"') {
-          inString = false;
-        }
-        continue;
-      }
-
-      if (character === '"') {
-        inString = true;
-      } else if (character === '{') {
-        depth += 1;
-      } else if (character === '}') {
-        depth -= 1;
-        if (depth === 0) {
-          candidates.push(text.slice(start, index + 1));
-          start = index;
-          break;
-        }
-      }
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+    if (character === '"') inString = true;
+    else if (character === '{') starts.push(index);
+    else if (character === '}' && starts.length > 0) {
+      const start = starts.pop() as number;
+      candidates.push({ text: text.slice(start, index + 1), start, end: index + 1 });
     }
   }
-
-  return candidates;
+  return candidates.sort((left, right) => left.start - right.start);
 }
 
 function parseAndValidate<T>(reply: JsonReply, validate: (value: unknown) => T): T {
   const candidates = jsonObjectCandidates(replyText(reply));
   let lastError: unknown;
+  let blockedUntil = -1;
 
   for (const candidate of candidates) {
+    if (candidate.start < blockedUntil) continue;
+    let parsed: unknown;
     try {
-      return validate(JSON.parse(candidate) as unknown);
+      parsed = JSON.parse(candidate.text) as unknown;
     } catch (error) {
       lastError = error;
+      continue;
+    }
+    try {
+      return validate(parsed);
+    } catch (error) {
+      lastError = error;
+      blockedUntil = candidate.end;
     }
   }
 

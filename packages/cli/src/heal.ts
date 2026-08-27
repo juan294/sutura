@@ -136,9 +136,7 @@ async function readLineWindow(
   }
   if (line < startLine) throw new CliConfigError('Referenced source line exceeds the bounded scan limit');
   const decoded = Buffer.concat(chunks).subarray(0, limits.maxBytesPerFile).toString('utf8');
-  const content = decoded
-    .slice(0, limits.maxCharactersPerFile)
-    .replace(/\r?\n$/u, '');
+  const content = decoded.slice(0, limits.maxCharactersPerFile);
   return {
     startLine,
     content,

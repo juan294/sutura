@@ -318,7 +318,7 @@ export async function readRepairSourceContext(
       const reference = path ? requested.get(path) : undefined;
       const lineCount = source.content === ''
         ? 0
-        : source.content.split(/\r?\n/).length;
+        : source.content.split(/\r?\n/).length - (/\r?\n$/u.test(source.content) ? 1 : 0);
       if (
         !path ||
         !reference ||
