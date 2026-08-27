@@ -35,6 +35,7 @@ const MAX_SOURCE_LINES = 120;
 const MAX_SOURCE_CHARACTERS = 12_000;
 const MAX_SOURCE_BYTES = 12_000;
 const SOURCE_PATH_PATTERN = /(?:^|[\s("'`])(?<path>(?:\.\/)?(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+\.(?:json|[cm]?[jt]sx?|ya?ml|toml))(?![A-Za-z0-9_.-])(?:(?:\(|:)(?<line>\d+))?/g;
+const WORKSPACE_SOURCE_PATTERN = /(?:^|[\t\n \]])(?<workspace>(?:apps|packages)\/(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+)\s+[A-Za-z0-9_:@./-]+:\s+(?<path>(?:\.\/)?(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+\.(?:json|[cm]?[jt]sx?|ya?ml|toml))(?![A-Za-z0-9_.-])(?:(?:\(|:)(?<line>\d+))?/g;
 const GITHUB_WORKSPACE_PREFIX_PATTERN = /(^|[\s("'`])(?:(?:file:\/\/)?\/home\/runner\/work|(?:file:\/\/)?\/__w)\/([A-Za-z0-9_.-]+)\/\2\//gm;
 const FALLBACK_SOURCE_PATHS: Readonly<Partial<Record<FailureClass, readonly string[]>>> = {
   typecheck: ['tsconfig.json', 'package.json'],
@@ -243,6 +244,27 @@ export function extractSourceReferences(log: string): SourceReference[] {
     .replaceAll('/workspace/', '')
     .replace(GITHUB_WORKSPACE_PREFIX_PATTERN, '$1');
   const references = new Map<string, SourceReference>();
+
+  for (const match of normalizedLog.matchAll(WORKSPACE_SOURCE_PATTERN)) {
+    const workspace = safeSourcePath(match.groups?.workspace ?? '');
+    const relativePath = safeSourcePath(match.groups?.path ?? '');
+    const path = workspace && relativePath
+      ? safeSourcePath(`${workspace}/${relativePath}`)
+      : null;
+    if (!path) continue;
+    const lineValue = Number(match.groups?.line);
+    const line = Number.isSafeInteger(lineValue) && lineValue > 0
+      ? lineValue
+      : undefined;
+    const existing = references.get(path);
+    if (existing) {
+      if (existing.line === undefined && line !== undefined) {
+        references.set(path, { path, line });
+      }
+    } else if (references.size < MAX_SOURCE_FILES) {
+      references.set(path, line === undefined ? { path } : { path, line });
+    }
+  }
 
   for (const match of normalizedLog.matchAll(SOURCE_PATH_PATTERN)) {
     const path = safeSourcePath(match.groups?.path ?? '');

@@ -810,6 +810,62 @@ describe('repair source context', () => {
     ).toEqual([{ path: 'src/large.ts', line: 500 }]);
   });
 
+  it('resolves pnpm recursive package diagnostics to repository paths', async () => {
+    const repository = new FakeRepository();
+    repository.sources.clear();
+    repository.sources.set(
+      'packages/core/src/diagnose/tavily.ts',
+      "const MAX_QUERY_CHARACTERS: number = '2_000';",
+    );
+    const log = [
+      'Run pnpm -r typecheck',
+      "##[error]packages/core typecheck: src/diagnose/tavily.ts(20,7): error TS2322: Type 'string' is not assignable to type 'number'.",
+    ].join('\n');
+
+    await expect(
+      readRepairSourceContext(repository, '/tmp/exact-pr-head', log, {
+        class: 'typecheck',
+      }),
+    ).resolves.toEqual({
+      sources: [{
+        path: 'packages/core/src/diagnose/tavily.ts',
+        startLine: 1,
+        content: "const MAX_QUERY_CHARACTERS: number = '2_000';",
+        truncated: false,
+      }],
+    });
+    expect(repository.sourceReads[0]?.paths).toEqual([
+      'packages/core/src/diagnose/tavily.ts',
+      'src/diagnose/tavily.ts',
+      'tsconfig.json',
+      'package.json',
+    ]);
+  });
+
+  it('upgrades an inferred workspace line after the source-file cap is full', () => {
+    const log = [
+      'Run pnpm -r typecheck',
+      'packages/p0 typecheck: src/deep.ts error TS2322',
+      ...Array.from(
+        { length: 7 },
+        (_, index) => `packages/p${index + 1} typecheck: src/value.ts error TS2322`,
+      ),
+      'packages/p0 typecheck: src/deep.ts(500,1): error TS2322',
+      'packages/ignored typecheck: src/ninth.ts(9,1): error TS2322',
+    ].join('\n');
+
+    const references = extractSourceReferences(log);
+
+    expect(references).toHaveLength(8);
+    expect(references[0]).toEqual({
+      path: 'packages/p0/src/deep.ts',
+      line: 500,
+    });
+    expect(references).not.toContainEqual(
+      expect.objectContaining({ path: 'packages/ignored/src/ninth.ts' }),
+    );
+  });
+
   it('extracts exact JSON paths without accepting partial extensions', () => {
     expect(
       extractSourceReferences([
