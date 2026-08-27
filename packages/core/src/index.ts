@@ -60,12 +60,6 @@ export {
   readRepairSourceContext,
 } from './orchestrate.js';
 export { FAILURE_TAXONOMY } from './taxonomy.js';
-export { Ledger, DEFAULT_MODEL_PRICES } from './llm/cost.js';
-export {
-  NebiusApiError,
-  NebiusClient,
-  NebiusResponseError,
-} from './llm/nebius.js';
 export { renderCaseFile } from './report/casefile.js';
 export { renderComment } from './report/markdown.js';
 
@@ -87,6 +81,7 @@ export type {
   ChatOptions,
   LlmReply,
   NebiusClientConfig,
+  NebiusClientDependencies,
 } from './llm/nebius.js';
 export type {
   Config,
@@ -146,15 +141,6 @@ export type {
   SourceReference,
 } from './orchestrate.js';
 export type { TaxonomyEntry } from './taxonomy.js';
-export type {
-  ModelPrice,
-  ModelPrices,
-  ModelTier,
-} from './llm/cost.js';
-export type {
-  NebiusClientConfig,
-  NebiusClientDependencies,
-} from './llm/nebius.js';
 export type {
   AuditVerdict,
   Candidate,
