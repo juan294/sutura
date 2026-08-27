@@ -70,6 +70,68 @@ describe('GitHubAdapter', () => {
     await expect(adapter.getFailingRun('77')).rejects.toThrowError(/fork pull requests/i);
   });
 
+  it('allows an explicit workflow dispatch through the exact-SHA PR fallback', async () => {
+    let fallbackSha = '';
+    const dispatched = api({
+      getWorkflowRun: async () => ({
+        id: 77,
+        headSha: SHA,
+        repository: 'owner/repo',
+        event: 'workflow_dispatch',
+        conclusion: 'failure',
+        pullRequests: [],
+      }),
+      listPullRequestsForCommit: async (sha) => {
+        fallbackSha = sha;
+        return [{ number: 12 }];
+      },
+      getPullRequest: async () => ({
+        number: 12,
+        headSha: SHA,
+        headRef: 'demo/break-me',
+        headRepo: 'owner/repo',
+      }),
+    });
+    const adapter = new GitHubAdapter(dispatched, {
+      owner: 'owner',
+      repo: 'repo',
+      runId: '77',
+    });
+
+    await expect(adapter.getFailingRun('77')).resolves.toMatchObject({
+      prNumber: 12,
+      prHeadSha: SHA,
+      prHeadRef: 'demo/break-me',
+    });
+    expect(fallbackSha).toBe(SHA);
+    await expect(adapter.claimAttempt(12, '<!-- marker -->')).resolves.toBe('44');
+  });
+
+  it.each(['push', 'schedule'])('refuses a %s workflow run', async (event) => {
+    const refused = api({
+      getWorkflowRun: async () => ({
+        id: 77,
+        headSha: SHA,
+        repository: 'owner/repo',
+        event,
+        conclusion: 'failure',
+        pullRequests: [],
+      }),
+    });
+    const adapter = new GitHubAdapter(refused, {
+      owner: 'owner',
+      repo: 'repo',
+      runId: '77',
+    });
+
+    await expect(adapter.getFailingRun('77')).rejects.toThrowError(
+      /workflow run metadata/i,
+    );
+    await expect(adapter.claimAttempt(9, '<!-- marker -->')).rejects.toThrowError(
+      /workflow run metadata/i,
+    );
+  });
+
   it('claims once with an atomic ref before creating the marker comment', async () => {
     const calls: string[] = [];
     const adapter = new GitHubAdapter(api({

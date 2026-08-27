@@ -9,6 +9,7 @@ import type {
 } from '@sutura/core';
 
 const FAILED_CONCLUSIONS = new Set(['failure', 'timed_out']);
+const ALLOWED_RUN_EVENTS = new Set(['pull_request', 'workflow_dispatch']);
 const FAILED_STEP_LINES = 200;
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -167,7 +168,7 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
     if (
       workflowRun.id !== numericRunId ||
       workflowRun.repository.toLowerCase() !== this.repository.toLowerCase() ||
-      workflowRun.event !== 'pull_request' ||
+      !ALLOWED_RUN_EVENTS.has(workflowRun.event) ||
       workflowRun.conclusion !== 'failure' ||
       !SHA_PATTERN.test(workflowRun.headSha)
     ) {
@@ -236,7 +237,7 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
     if (
       run.id !== numericRunId ||
       run.repository.toLowerCase() !== this.repository.toLowerCase() ||
-      run.event !== 'pull_request' ||
+      !ALLOWED_RUN_EVENTS.has(run.event) ||
       run.conclusion !== 'failure' ||
       !SHA_PATTERN.test(run.headSha)
     ) {
