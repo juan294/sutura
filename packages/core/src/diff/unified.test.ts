@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   isConventionalTestPath,
+  normalizeUnifiedDiffHunks,
   parseUnifiedDiff,
 } from './unified.js';
 
@@ -166,6 +167,77 @@ ${hunk}
 
     expect(parsed.valid).toBe(false);
     expect(parsed.errors).toContain('unrecognized or incomplete file change');
+  });
+});
+
+describe('normalizeUnifiedDiffHunks', () => {
+  it('prefixes omitted context markers and derives exact hunk counts', () => {
+    const normalized = normalizeUnifiedDiffHunks(`diff --git a/src/page-count.js b/src/page-count.js
+--- a/src/page-count.js
++++ b/src/page-count.js
+@@ -6,2 +6,2 @@
+export function pageCount(items, size) {
+-  return Math.floor(items / size) + 1;
++  return Math.ceil(items / size);
+}
+`);
+
+    expect(normalized).toContain(`@@ -6,3 +6,3 @@
+ export function pageCount(items, size) {
+-  return Math.floor(items / size) + 1;
++  return Math.ceil(items / size);
+ }`);
+    expect(parseUnifiedDiff(normalized).valid).toBe(true);
+  });
+
+  it('does not rewrite an already valid hunk', () => {
+    const diff = `diff --git a/src/value.ts b/src/value.ts
+--- a/src/value.ts
++++ b/src/value.ts
+@@ -1 +1 @@
+-old
++new
+`;
+
+    expect(normalizeUnifiedDiffHunks(diff)).toBe(diff);
+  });
+
+  it('preserves applicable terminal and inter-file blank separators', () => {
+    const diff = `diff --git a/src/one.ts b/src/one.ts
+--- a/src/one.ts
++++ b/src/one.ts
+@@ -1 +1 @@
+-one
++one fixed
+
+diff --git a/src/two.ts b/src/two.ts
+--- a/src/two.ts
++++ b/src/two.ts
+@@ -1 +1 @@
+-two
++two fixed
+
+`;
+
+    expect(normalizeUnifiedDiffHunks(diff)).toBe(diff);
+    expect(parseUnifiedDiff(diff)).toMatchObject({ valid: true, files: [{}, {}] });
+  });
+
+  it('preserves valid multi-hunk and no-newline forms without a trailing newline', () => {
+    const diff = `diff --git a/src/value.ts b/src/value.ts
+--- a/src/value.ts
++++ b/src/value.ts
+@@ -1 +1 @@
+-old
++new
+@@ -4 +4 @@
+-last old
+\\ No newline at end of file
++last new
+\\ No newline at end of file`;
+
+    expect(normalizeUnifiedDiffHunks(diff)).toBe(diff);
+    expect(parseUnifiedDiff(diff).valid).toBe(true);
   });
 });
 

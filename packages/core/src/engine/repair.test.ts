@@ -156,6 +156,35 @@ describe('generateCandidates', () => {
       }),
     ]));
   });
+
+  it('canonicalizes omitted hunk context prefixes before validation', async () => {
+    const chat = vi.fn().mockResolvedValue({
+      text: JSON.stringify({
+        candidates: [{
+          id: 'source-fix',
+          rationale: 'replace the off-by-one formula',
+          diff: `diff --git a/src/page-count.js b/src/page-count.js
+--- a/src/page-count.js
++++ b/src/page-count.js
+@@ -6,2 +6,2 @@
+export function pageCount(items, size) {
+-  return Math.floor(items / size) + 1;
++  return Math.ceil(items / size);
+}
+`,
+        }],
+      }),
+    });
+
+    await expect(generateCandidates({ chat }, buildDiagnosis, 1)).resolves.toEqual([
+      expect.objectContaining({
+        diff: expect.stringContaining(
+          '@@ -6,3 +6,3 @@\n export function pageCount(items, size) {',
+        ),
+      }),
+    ]);
+    expect(chat).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('prepareRepair', () => {
