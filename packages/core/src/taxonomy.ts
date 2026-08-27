@@ -57,7 +57,7 @@ export const FAILURE_TAXONOMY: Readonly<Record<FailureClass, TaxonomyEntry>> = {
       /\bEADDRINUSE\b/,
       /\b(?:test|hook) timed out\b/i,
       /\b(?:ECONNRESET|ETIMEDOUT)\b/,
-      /\bflaky\b/i,
+      /\bflaky\b(?![-/]|\.[A-Za-z0-9])/i,
     ],
     examples: ['Error: listen EADDRINUSE'],
     repairable: false,

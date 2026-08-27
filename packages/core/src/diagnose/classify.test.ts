@@ -87,6 +87,27 @@ describe('failure classification', () => {
     expect(classifyMechanically(log).failingCmd).toBe('pnpm run test');
   });
 
+  it('does not classify a passing flaky-named test as the active failure', () => {
+    const log = [
+      'Run pnpm run test',
+      '✓ test/flaky-timer-race.test.js (1 test)',
+      'FAIL test/unknown-regression.test.js',
+      'Error: unexpected output',
+    ].join('\n');
+
+    expect(classifyMechanically(log)).toMatchObject({
+      class: 'infra',
+      confidence: 0,
+      failingCmd: 'pnpm run test',
+    });
+  });
+
+  it('preserves plain flaky prose with terminal punctuation', () => {
+    expect(
+      classifyMechanically('Run pnpm test\nError: this test is flaky.'),
+    ).toMatchObject({ class: 'flaky-timing' });
+  });
+
   it('lowers confidence and preserves both signals when nano disagrees', async () => {
     const log = await fixture('typecheck');
     const llm = scriptedLlm({

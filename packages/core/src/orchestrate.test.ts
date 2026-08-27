@@ -33,7 +33,7 @@ const HONEST_DIFF = [
   '@@ -1 +1 @@',
   '-export const value: string = 1;',
   '+export const value: string = "1";',
-].join('\n');
+].join('\n') + '\n';
 
 const SECOND_DIFF = HONEST_DIFF.replace('value: string', 'value: number');
 const THIRD_DIFF = HONEST_DIFF.replace('const value', 'const result');
@@ -596,7 +596,7 @@ describe('orchestrate', () => {
       '-  return value;',
       '+  return Number(value);',
       ' }',
-    ].join('\n');
+    ].join('\n') + '\n';
     chat.mockImplementationOnce(async () => ({
       text: JSON.stringify({
         class: 'typecheck',
