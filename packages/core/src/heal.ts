@@ -33,6 +33,7 @@ import { boundedTail } from './text/bounded-tail.js';
 export const SUTURA_DEFAULT_IMAGE_REF = 'node:22';
 const DEFAULT_FAILURE_COMMAND = 'pnpm test';
 const DEPENDENCY_INSTALL_COMMAND = /(?:^|(?:&&|;|\|\|)\s*)(?:(?:corepack\s+)?pnpm\s+(?:install|i)\b|npm\s+(?:ci|install|i)\b|(?:corepack\s+)?yarn\s+(?:install\b|--immutable\b))/iu;
+const PACKAGE_BINARY_COMMAND = /^(?:ava|eslint|jest|mocha|tap|ts-node|tsc|tsx|vite|vitest)(?=$|[\s;&|])/u;
 
 export const SUTURA_SANDBOX_ENV = Object.freeze({
   CI: 'true',
@@ -163,7 +164,19 @@ export function sandboxPreparationCommand(command: string): string | null {
 }
 
 export function sandboxTargetCommand(command: string): string {
-  return `sh -lc ${shellQuote(command)}`;
+  return `sh -lc ${shellQuote(sandboxExecutableCommand(command))}`;
+}
+
+export function sandboxExecutableCommand(command: string): string {
+  const trimmed = command.trim();
+  if (!PACKAGE_BINARY_COMMAND.test(trimmed)) return command;
+  const nestedCommand = shellQuote(trimmed);
+
+  return [
+    `if [ -f pnpm-lock.yaml ]; then corepack pnpm exec sh -c ${nestedCommand};`,
+    `elif [ -f yarn.lock ]; then corepack yarn exec sh -c ${nestedCommand};`,
+    `else PATH="./node_modules/.bin:$PATH" sh -c ${nestedCommand}; fi`,
+  ].join(' ');
 }
 
 function withGrounding(
@@ -216,11 +229,12 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       },
     ),
   );
+  const executableCommand = sandboxExecutableCommand(diagnosis.failingCmd);
 
   const triageVerdict = await triage(
     ctx.executor,
     ctx.failingImage,
-    diagnosis.failingCmd,
+    executableCommand,
     ctx.triageN,
   );
   if (triageVerdict.status !== 'real') {
@@ -280,7 +294,7 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
     ctx.executor,
     ctx.failingImage,
     approvedCandidates,
-    diagnosis.failingCmd,
+    executableCommand,
   );
   const racedById = new Map(raced.map((result) => [result.candidate.id, result]));
   const raceResults = candidates.map((candidate) => {
@@ -296,7 +310,7 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
   const auditVerdict = await audit(ctx.executor, ctx.llm, winner, {
     diagnosis,
     beforeLog: ctx.failedLog,
-    suiteCommand: diagnosis.failingCmd,
+    suiteCommand: executableCommand,
   });
   return makeCaseFile(
     ctx,
