@@ -1,0 +1,138 @@
+import type { CaseFile } from '../domain.js';
+import {
+  diffSummary,
+  escapeHtml,
+  escapeMarkdown,
+  formatConfidence,
+  formatUsd,
+  mergeGuidance,
+  outcomeLabel,
+  raceNote,
+  safeWebUrl,
+  stageForModel,
+  triageSentence,
+} from './format.js';
+
+function renderDiagnosis(caseFile: CaseFile): string[] {
+  const { diagnosis } = caseFile;
+  const lines = [
+    '### Diagnosis',
+    '',
+    `**${escapeMarkdown(diagnosis.class)}** · ${formatConfidence(diagnosis.confidence)} confidence`,
+    '',
+    `Failing command: <code>${escapeHtml(diagnosis.failingCmd)}</code>`,
+    '',
+    ...diagnosis.signals.map((signal) => `- ${escapeMarkdown(signal)}`),
+    '',
+    '> ' + escapeMarkdown(diagnosis.errorExcerpt),
+  ];
+
+  const grounding = diagnosis.grounding;
+  if (grounding && !grounding.skipped && grounding.citations.length > 0) {
+    lines.push('', '**Grounding**');
+    for (const citation of grounding.citations) {
+      const title = escapeMarkdown(citation.title);
+      const snippet = escapeMarkdown(citation.snippet);
+      const url = safeWebUrl(citation.url);
+      lines.push(url ? `- [${title}](<${url}>) — ${snippet}` : `- ${title} — ${snippet}`);
+    }
+  }
+
+  return lines;
+}
+
+function renderProcedure(caseFile: CaseFile): string[] {
+  const lines = [
+    '### Procedure',
+    '',
+    '| Candidate | Strategy | Held? | Note |',
+    '| --- | --- | :---: | --- |',
+  ];
+  for (const result of caseFile.race) {
+    lines.push(
+      `| ${escapeMarkdown(result.candidate.id)} | ${escapeMarkdown(result.candidate.rationale)} | ${result.held ? 'YES' : 'NO'} | ${escapeMarkdown(raceNote(result))} |`,
+    );
+  }
+  if (caseFile.race.length === 0) {
+    lines.push('| — | No candidates were produced | NO | Repair cycle stopped |');
+  }
+  return lines;
+}
+
+function renderPathology(caseFile: CaseFile): string[] {
+  const lines = ['### Pathology', ''];
+  if (!caseFile.audit) {
+    lines.push('**NOT RUN** — no candidate survived for adversarial audit.');
+    return lines;
+  }
+
+  lines.push(
+    `**${caseFile.audit.approved ? 'PASS' : 'FAIL'}** — adversarial verdict`,
+    '',
+    '| Check | Result | Evidence |',
+    '| --- | :---: | --- |',
+  );
+  for (const check of caseFile.audit.checks) {
+    lines.push(
+      `| ${escapeMarkdown(check.name)} | **${check.passed ? 'PASS' : 'FAIL'}** | ${escapeMarkdown(check.evidence ?? 'No evidence recorded')} |`,
+    );
+  }
+  lines.push('', `> ${escapeMarkdown(caseFile.audit.reasoning)}`);
+  return lines;
+}
+
+function renderDischarge(caseFile: CaseFile): string[] {
+  return [
+    '### Discharge',
+    '',
+    `**Diff summary:** ${escapeMarkdown(diffSummary(caseFile))}`,
+    '',
+    `**Human merge check:** ${escapeMarkdown(mergeGuidance(caseFile))}`,
+    '',
+    `**Inference cost: ${formatUsd(caseFile.cost.totalUsd())}**`,
+  ];
+}
+
+function renderFooter(caseFile: CaseFile, artifactUrl?: string): string[] {
+  const models = caseFile.cost.entries.map(
+    (entry, index) => `${stageForModel(entry.model, index)}: <code>${escapeHtml(entry.model)}</code>`,
+  );
+  const artifactLink = artifactUrl ? safeWebUrl(artifactUrl) : undefined;
+  return [
+    '---',
+    '',
+    `Models — ${models.length > 0 ? models.join(' · ') : 'no inference recorded'}`,
+    '',
+    artifactLink
+      ? `[Open case-file artifact](<${artifactLink}>)`
+      : 'Case-file artifact link pending workflow upload.',
+  ];
+}
+
+export function renderComment(caseFile: CaseFile, artifactUrl?: string): string {
+  const sections = [
+    `## Sutura — Surgical Report`,
+    '',
+    `**${outcomeLabel(caseFile.outcome)}** · <code>${escapeHtml(caseFile.repo)}</code> · case <code>${escapeHtml(caseFile.runId)}</code>`,
+    '',
+    ...renderDiagnosis(caseFile),
+    '',
+    '### Triage',
+    '',
+    `**${triageSentence(caseFile)}**`,
+  ];
+
+  if (caseFile.outcome !== 'flaky-no-patch') {
+    sections.push(
+      '',
+      ...renderProcedure(caseFile),
+      '',
+      ...renderPathology(caseFile),
+      '',
+      ...renderDischarge(caseFile),
+    );
+  }
+
+  sections.push('', ...renderFooter(caseFile, artifactUrl));
+  return sections.join('\n') + '\n';
+}

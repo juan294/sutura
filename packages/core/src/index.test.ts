@@ -13,6 +13,8 @@ import {
   ground,
   prepareRepair,
   race,
+  renderCaseFile,
+  renderComment,
   selectWinner,
   triage,
   vetPatch,
@@ -71,5 +73,10 @@ describe('@sutura/core entry point', () => {
     expect(vetPatch).toBeTypeOf('function');
     expectTypeOf<PatchVerdict>().toBeObject();
     expectTypeOf<RepairLlm>().toBeObject();
+  });
+
+  it('exports both surgical report renderers from the package root', () => {
+    expect(renderComment).toBeTypeOf('function');
+    expect(renderCaseFile).toBeTypeOf('function');
   });
 });

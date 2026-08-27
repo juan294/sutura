@@ -1,0 +1,41 @@
+{
+  "runId": "run-gave-up-031",
+  "repo": "acme/search",
+  "diagnosis": {
+    "class": "typecheck",
+    "confidence": 0.81,
+    "signals": ["generic constraint mismatch", "failure starts after schema regeneration"],
+    "failingCmd": "pnpm typecheck",
+    "errorExcerpt": "Type 'SearchRow' does not satisfy constraint 'Record<string, Scalar>'"
+  },
+  "triage": { "status": "real", "reproduced": 5, "of": 5 },
+  "race": [
+    {
+      "candidate": {
+        "id": "candidate-a",
+        "rationale": "Narrow the generated row at the call site",
+        "diff": "--- a/src/search.ts\n+++ b/src/search.ts\n@@ -8 +8 @@\n-query<SearchRow>();\n+query<SearchRow & Record<string, Scalar>>();"
+      },
+      "imageId": "img-gave-up-a",
+      "exitCode": 2,
+      "held": false
+    },
+    {
+      "candidate": {
+        "id": "candidate-b",
+        "rationale": "Regenerate the schema with the prior generator",
+        "diff": "--- a/package.json\n+++ b/package.json\n@@ -12 +12 @@\n-\"schema-gen\": \"5.0.0\"\n+\"schema-gen\": \"4.9.2\""
+      },
+      "imageId": "img-gave-up-b",
+      "exitCode": 2,
+      "held": false
+    }
+  ],
+  "outcome": "gave-up",
+  "cost": {
+    "entries": [
+      { "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", "inTok": 1800, "outTok": 400, "reasoningTok": 100, "usd": 0.000228 },
+      { "model": "nvidia/nemotron-3-super-120b-a12b", "inTok": 8500, "outTok": 3200, "reasoningTok": 1100, "usd": 0.00642 }
+    ]
+  }
+}

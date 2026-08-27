@@ -25,6 +25,8 @@ export {
 } from './engine/repair.js';
 export { triage } from './engine/triage.js';
 export { FAILURE_TAXONOMY } from './taxonomy.js';
+export { renderCaseFile } from './report/casefile.js';
+export { renderComment } from './report/markdown.js';
 
 export const VERSION = '0.1.0';
 
