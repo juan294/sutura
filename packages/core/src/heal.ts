@@ -33,6 +33,7 @@ import { boundedTail } from './text/bounded-tail.js';
 export const SUTURA_DEFAULT_IMAGE_REF = 'node:22';
 const DEFAULT_FAILURE_COMMAND = 'pnpm test';
 const DEPENDENCY_INSTALL_COMMAND = /(?:^|(?:&&|;|\|\|)\s*)(?:(?:corepack\s+)?pnpm\s+(?:install|i)\b|npm\s+(?:ci|install|i)\b|(?:corepack\s+)?yarn\s+(?:install\b|--immutable\b))/iu;
+const COREPACK_PACKAGE_MANAGER_COMMAND = /(?:^|[\s;&|()])(?:pnpm|yarn)(?=$|[\s;&|()<>])/u;
 const PACKAGE_BINARY_COMMAND = /^(?:ava|eslint|jest|mocha|tap|ts-node|tsc|tsx|vite|vitest)(?=$|[\s;&|])/u;
 
 export const SUTURA_SANDBOX_ENV = Object.freeze({
@@ -169,6 +170,13 @@ export function sandboxTargetCommand(command: string): string {
 
 export function sandboxExecutableCommand(command: string): string {
   const trimmed = command.trim();
+  if (COREPACK_PACKAGE_MANAGER_COMMAND.test(trimmed)) {
+    return [
+      'sutura_corepack_bin="$(mktemp -d /tmp/sutura-corepack.XXXXXX)"',
+      'corepack enable --install-directory "$sutura_corepack_bin"',
+      `PATH="$sutura_corepack_bin:$PATH" sh -c ${shellQuote(trimmed)}`,
+    ].join(' && ');
+  }
   if (!PACKAGE_BINARY_COMMAND.test(trimmed)) return command;
   const nestedCommand = shellQuote(trimmed);
 
