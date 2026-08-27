@@ -7,6 +7,7 @@ import type {
   TriageVerdict,
 } from '../domain.js';
 import { MAX_RACE_CANDIDATES } from '../config.js';
+import { parseUnifiedDiff } from '../diff/unified.js';
 import { SNAPSHOT_CWD, type Executor, type ImageId } from '../executor/types.js';
 import { extractJson } from '../llm/json.js';
 import type { TierLlm } from '../llm/types.js';
@@ -20,6 +21,8 @@ export type RepairLlm = TierLlm<'super'>;
 interface CandidateReply {
   candidates: Candidate[];
 }
+
+const NUMBERED_HUNK = /^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@(?: .*)?$/u;
 
 export interface RepairPreparation {
   triage: TriageVerdict;
@@ -73,6 +76,19 @@ function candidateReply(value: unknown, expected: number): CandidateReply {
     if (typeof candidate.diff !== 'string' || !candidate.diff.trim()) {
       throw new Error(`candidate ${index + 1} must have a non-empty diff`);
     }
+    const parsedDiff = parseUnifiedDiff(candidate.diff);
+    if (
+      !parsedDiff.valid ||
+      parsedDiff.files.length === 0 ||
+      parsedDiff.files.some(
+        ({ hunks }) =>
+          hunks.length === 0 || hunks.some(({ header }) => !NUMBERED_HUNK.test(header)),
+      )
+    ) {
+      throw new Error(
+        `candidate ${index + 1} diff must be a complete git unified diff with numbered hunks`,
+      );
+    }
 
     return {
       id: candidate.id,
@@ -101,7 +117,9 @@ function generationPrompt(K: number): string {
   return [
     `Return exactly ${K} independent CI repair candidates as one JSON object.`,
     'Use distinct strategies. Consider, in order: fix source; fix config; fix dependency pin.',
-    'Each candidate must have a distinct id, a concise rationale, and a complete unified diff.',
+    'Each candidate must have a distinct id, a concise rationale, and a complete unified diff accepted by git apply.',
+    'For every changed file, include `diff --git a/path b/path`, `--- a/path`, `+++ b/path`, and one or more numbered hunk headers such as `@@ -1,3 +1,3 @@`.',
+    'Never emit a bare `@@` hunk header or omit the `diff --git` header.',
     'When sourceContext contains sources, use only those repository paths and make every hunk match that source exactly.',
     'Do not weaken, skip, or delete tests. Do not include hidden reasoning.',
     'Schema: {"candidates":[{"id":"...","rationale":"...","diff":"..."}]}',
@@ -116,23 +134,39 @@ export async function generateCandidates(
 ): Promise<Candidate[]> {
   positiveCount(K, 'K');
 
+  const messages = [
+    { role: 'system' as const, content: generationPrompt(K) },
+    {
+      role: 'user' as const,
+      content: JSON.stringify({ diagnosis, sourceContext }),
+    },
+  ];
+  const options = {
+    maxTokens: 8_192,
+    temperature: 0.4,
+    responseFormat: { type: 'json_object' as const },
+  };
   const reply = await llm.chat(
     'super',
-    [
-      { role: 'system', content: generationPrompt(K) },
-      {
-        role: 'user',
-        content: JSON.stringify({ diagnosis, sourceContext }),
-      },
-    ],
-    {
-      maxTokens: 8_192,
-      temperature: 0.4,
-      responseFormat: { type: 'json_object' },
-    },
+    messages,
+    options,
   );
 
-  return extractJson(reply, (value) => candidateReply(value, K)).candidates;
+  const result = await extractJson(
+    reply,
+    (value) => candidateReply(value, K),
+    async (repairPrompt) =>
+      llm.chat(
+        'super',
+        [
+          ...messages,
+          { role: 'assistant', content: reply.text },
+          { role: 'user', content: repairPrompt },
+        ],
+        options,
+      ),
+  );
+  return result.candidates;
 }
 
 export async function prepareRepair(
