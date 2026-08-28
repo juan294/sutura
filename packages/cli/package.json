@@ -1,23 +1,49 @@
 {
-  "name": "@sutura/cli",
+  "name": "sutura",
   "version": "0.1.0",
-  "private": true,
-  "description": "Sutura command-line interface",
+  "description": "Install and run verified self-healing CI for GitHub Actions.",
   "type": "module",
+  "license": "MIT",
+  "author": "Juan González Ponce",
   "bin": {
-    "sutura": "./bin/sutura.js"
+    "sutura": "./dist/bin.js"
   },
-  "exports": {
-    ".": "./dist/index.js"
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/juan294/sutura.git",
+    "directory": "packages/cli"
   },
-  "files": ["bin", "dist"],
-  "dependencies": {
-    "@sutura/core": "workspace:*"
+  "homepage": "https://github.com/juan294/sutura#readme",
+  "bugs": {
+    "url": "https://github.com/juan294/sutura/issues"
+  },
+  "keywords": [
+    "ci",
+    "github-actions",
+    "ai",
+    "repair",
+    "testing"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
-    "build": "pnpm --filter @sutura/core build && tsc -p tsconfig.build.json",
-    "lint": "eslint src bin",
+    "build": "pnpm --filter @sutura/core build && pnpm run typecheck && node scripts/bundle.mjs",
+    "bundle": "node scripts/bundle.mjs",
+    "lint": "eslint src scripts",
+    "prepack": "pnpm run build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@sutura/core": "workspace:*",
+    "esbuild": "^0.28.2"
   }
 }

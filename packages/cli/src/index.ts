@@ -1,6 +1,10 @@
-export { CliUsageError, parseArgs, USAGE } from './args.js';
+export { CliUsageError, parseArgs, USAGE, VERSION } from './args.js';
 export { runCli } from './cli.js';
+export { doctorSutura } from './doctor.js';
 export { healFromEnvironment, healWithRuntime, readLocalSourceContext } from './heal.js';
-export type { HealArguments } from './args.js';
+export { installSutura } from './setup.js';
+export type { CliArguments, DoctorArguments, HealArguments, InitArguments } from './args.js';
 export type { CliDependencies, CliIo } from './cli.js';
+export type { DoctorOptions, DoctorResult } from './doctor.js';
 export type { HealRuntime } from './heal.js';
+export type { SetupOptions, SetupResult } from './setup.js';

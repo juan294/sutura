@@ -1,0 +1,3 @@
+# Public Azure emulator credentials bundled by @actions/artifact.
+packages/action/dist/index.cjs:generic-api-key:54
+packages/action/dist/index.cjs:generic-api-key:58

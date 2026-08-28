@@ -1,0 +1,52 @@
+name: Sutura
+description: Verify failed CI, filter flaky failures, reject unsafe shortcuts, and open an evidence-backed repair PR.
+author: Sutura
+
+inputs:
+  github-token:
+    description: GitHub token used to read the failed run and publish the result.
+    required: true
+  run-id:
+    description: Numeric ID of the failed GitHub Actions workflow run.
+    required: true
+  nebius-api-key:
+    description: Nebius Token Factory API key for Nemotron inference.
+    required: true
+  tavily-api-key:
+    description: Optional Tavily API key for grounded dependency diagnosis.
+    required: false
+  contree-token:
+    description: Nebius ConTree token used for sandbox operations.
+    required: true
+  contree-project:
+    description: Nebius ConTree project ID.
+    required: true
+  triage-n:
+    description: Number of independent failure reproductions.
+    required: false
+    default: '5'
+  race-k:
+    description: Maximum number of repair candidates to race.
+    required: false
+    default: '3'
+  model-nano:
+    description: Optional Nemotron classifier model override.
+    required: false
+  model-super:
+    description: Optional Nemotron repair model override.
+    required: false
+  model-ultra:
+    description: Optional Nemotron adversarial-audit model override.
+    required: false
+
+outputs:
+  outcome:
+    description: Final Sutura outcome for the failed run.
+
+runs:
+  using: node24
+  main: packages/action/dist/index.cjs
+
+branding:
+  icon: activity
+  color: red

@@ -103,7 +103,42 @@ The public dogfood record starts with [PR #18](https://github.com/juan294/sutura
 Treat every generated patch as untrusted until its audit and repository checks
 pass. Keep branch protection and human merge review enabled.
 
-## Clean-machine setup
+## Install Sutura
+
+Sutura uses bring-your-own-key billing. Each repository supplies its provider
+credentials. The repository owner pays providers directly for its usage.
+
+Create these provider credentials first:
+
+- A [Nebius Token Factory API key](https://docs.tokenfactory.nebius.com/quickstart)
+  for Nemotron inference.
+- A Nebius ConTree token and project for isolated sandboxes. ConTree access is
+  an access-controlled prerequisite during the public beta.
+- An optional [Tavily API key](https://docs.tavily.com/documentation/api-reference/endpoint/usage)
+  for dependency research.
+
+Export the values only in your current shell. The installer sends secret values
+to GitHub through standard input. It does not write them into repository files.
+
+Set `NEBIUS_API_KEY`, `CONTREE_TOKEN`, `CONTREE_PROJECT`, and optional
+`TAVILY_API_KEY` in your environment. Then run these commands:
+
+```bash
+npx sutura@latest init
+npx sutura@latest doctor
+```
+
+The installer detects a single CI workflow. Use `--workflow <name>` when the
+repository has multiple workflows. Add `--no-tavily` when Tavily is unavailable.
+
+The generated workflow uses the repository's automatic GitHub token. It stores
+provider keys as GitHub secrets. It stores `CONTREE_PROJECT` as a repository
+variable. Sutura does not proxy requests through maintainer infrastructure.
+
+The current release supports failed pull request runs from the same repository.
+Sutura opens a reviewable repair pull request. It never merges the repair.
+
+## Contributor setup
 
 Prerequisites: Git, Node.js 22 or later, and pnpm 11.22.0. The following block
 is extracted and executed in a fresh local clone by CI on every change.

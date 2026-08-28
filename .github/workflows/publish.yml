@@ -1,0 +1,44 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  npm:
+    if: ${{ startsWith(github.event.release.tag_name, 'v') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.22.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - run: npm install --global npm@12.0.2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run test:package
+      - id: registry
+        run: |
+          version=$(node --print "require('./packages/cli/package.json').version")
+          if npm view "sutura@$version" version >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: ${{ steps.registry.outputs.exists != 'true' }}
+        run: npm publish --access public
+        working-directory: packages/cli
+      - if: ${{ steps.registry.outputs.exists == 'true' }}
+        run: |
+          version=$(node --print "require('./packages/cli/package.json').version")
+          echo "sutura@$version is already published."
