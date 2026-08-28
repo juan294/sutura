@@ -135,8 +135,11 @@ The generated workflow uses the repository's automatic GitHub token. It stores
 provider keys as GitHub secrets. It stores `CONTREE_PROJECT` as a repository
 variable. Sutura does not proxy requests through maintainer infrastructure.
 
-The current release supports failed pull request runs from the same repository.
-Sutura opens a reviewable repair pull request. It never merges the repair.
+Sutura handles failed and timed-out runs from pull requests, pushes, scheduled workflows, and manual dispatches.
+
+Pull request runs receive an evidence comment. Direct runs receive the same evidence as a commit comment.
+
+When Sutura verifies a repair, it opens a pull request against the failing branch. It never merges the repair.
 
 ## Contributor setup
 

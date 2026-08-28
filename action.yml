@@ -1,4 +1,4 @@
-name: Sutura
+name: Sutura Verified Self-Healing CI
 description: Verify failed CI, filter flaky failures, reject unsafe shortcuts, and open an evidence-backed repair PR.
 author: Sutura
 

@@ -64,10 +64,15 @@ export interface FailedStepLog {
 export interface FailingWorkflowRun {
   runId: string;
   repo: string;
-  prNumber: number;
-  prHeadSha: string;
-  prHeadRef: string;
+  prNumber?: number;
+  headSha: string;
+  headRef: string;
   failedSteps: FailedStepLog[];
+}
+
+export interface AttemptTarget {
+  kind: 'pull-request' | 'commit';
+  commentId: number;
 }
 
 export interface CreateFixPullRequestInput {
@@ -81,8 +86,8 @@ export interface CreateFixPullRequestInput {
 export interface GitHubOrchestrationPort {
   getFailingRun(runId: string): Promise<FailingWorkflowRun>;
   /** Atomically persists marker and returns its comment id, or null if claimed. */
-  claimAttempt(prNumber: number, marker: string): Promise<string | null>;
-  updateAttempt(commentId: string, body: string): Promise<void>;
+  claimAttempt(prNumber: number | undefined, marker: string): Promise<AttemptTarget | null>;
+  updateAttempt(target: AttemptTarget, body: string): Promise<void>;
   createFixPullRequest(
     input: CreateFixPullRequestInput,
   ): Promise<{ number: number; url: string }>;
@@ -180,14 +185,18 @@ function validateRun(run: FailingWorkflowRun, expectedRunId: string): void {
   if (!/^[1-9]\d*$/.test(run.runId)) {
     throw new OrchestrationError('Workflow run id must be a positive decimal id');
   }
-  if (!run.repo.trim() || !Number.isSafeInteger(run.prNumber) || run.prNumber <= 0) {
+  if (
+    !run.repo.trim() ||
+    (run.prNumber !== undefined &&
+      (!Number.isSafeInteger(run.prNumber) || run.prNumber <= 0))
+  ) {
     throw new OrchestrationError('Failing workflow run has invalid repository metadata');
   }
-  if (!/^[0-9a-f]{40}$/i.test(run.prHeadSha)) {
-    throw new OrchestrationError('Failing workflow run has an invalid PR head SHA');
+  if (!/^[0-9a-f]{40}$/i.test(run.headSha)) {
+    throw new OrchestrationError('Failing workflow run has an invalid head SHA');
   }
-  if (!run.prHeadRef.trim()) {
-    throw new OrchestrationError('Failing workflow run has an empty PR head ref');
+  if (!run.headRef.trim()) {
+    throw new OrchestrationError('Failing workflow run has an empty head ref');
   }
   if (run.failedSteps.length === 0) {
     throw new OrchestrationError('Failing workflow run has no failed-step logs');
@@ -366,10 +375,10 @@ async function publishReport(
   run: FailingWorkflowRun,
   caseFile: CaseFile,
   marker: string,
-  claimId: string,
+  target: AttemptTarget,
 ): Promise<void> {
   const report = await prepareReport(github, run, caseFile, marker);
-  await github.updateAttempt(claimId, report.body);
+  await github.updateAttempt(target, report.body);
 }
 
 export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> {
@@ -383,15 +392,15 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       'Failed-step logs do not contain an observed failing command',
     );
   }
-  const claimId = await ctx.github.claimAttempt(run.prNumber, marker);
-  if (claimId === null) {
+  const target = await ctx.github.claimAttempt(run.prNumber, marker);
+  if (target === null) {
     throw new AlreadyAttemptedError(run.runId);
   }
 
   const checkoutDir = await ctx.repository.checkoutHead(
     run.repo,
-    run.prHeadSha,
-    run.prHeadRef,
+    run.headSha,
+    run.headRef,
     run.prNumber,
   );
   const executor = new AllowlistedExecutor(ctx.executor);
@@ -413,7 +422,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
         mechanical.failingCmd,
         preparation,
       );
-      await publishReport(ctx.github, run, caseFile, marker, claimId);
+      await publishReport(ctx.github, run, caseFile, marker, target);
       return caseFile;
     }
     preparedImage = preparation.imageId;
@@ -429,7 +438,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       { runId: run.runId, repo: run.repo, cost: ctx.cost },
       mechanical,
     );
-    await publishReport(ctx.github, run, caseFile, marker, claimId);
+    await publishReport(ctx.github, run, caseFile, marker, target);
     return caseFile;
   }
 
@@ -455,7 +464,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       : { lockfileDiff: ctx.lockfileDiff }),
   });
   if (caseFile.outcome !== 'fixed') {
-    await publishReport(ctx.github, run, caseFile, marker, claimId);
+    await publishReport(ctx.github, run, caseFile, marker, target);
     return caseFile;
   }
 
@@ -469,16 +478,16 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     branch,
     checkoutDir,
     diff: winner.candidate.diff,
-    headSha: run.prHeadSha,
+    headSha: run.headSha,
     message: FIX_COMMIT_MESSAGE,
   });
   await ctx.github.createFixPullRequest({
-    baseRef: run.prHeadRef,
+    baseRef: run.headRef,
     branch,
     body: report.body,
-    headSha: run.prHeadSha,
+    headSha: run.headSha,
     title: 'fix: repair CI failure with Sutura',
   });
-  await ctx.github.updateAttempt(claimId, report.body);
+  await ctx.github.updateAttempt(target, report.body);
   return caseFile;
 }

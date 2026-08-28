@@ -1,7 +1,7 @@
 const MAX_CANDIDATE_DIFF_BYTES = 1024 * 1024;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.1.1';
 export const USAGE = [
   'Usage:',
   '  sutura init [--workflow <name>] [--repo <owner/repo>] [--force] [--no-tavily]',

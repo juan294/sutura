@@ -192,6 +192,10 @@ class RecordedGitHubApi implements GitHubApi {
     return this.comments.map((comment) => ({ ...comment }));
   }
 
+  async listCommitComments(): Promise<RecordedComment[]> {
+    return this.comments.map((comment) => ({ ...comment }));
+  }
+
   async createRef(ref: string, sha: string): Promise<void> {
     if (sha !== HEAD_SHA) throw new Error('Attempt tag did not use the exact PR head');
     if (this.claimRefs.has(ref)) {
@@ -212,10 +216,21 @@ class RecordedGitHubApi implements GitHubApi {
     return { id };
   }
 
+  async createCommitComment(_sha: string, body: string): Promise<{ id: number }> {
+    const id = this.nextCommentId;
+    this.nextCommentId += 1;
+    this.comments.push({ id, body, authorLogin: 'github-actions[bot]' });
+    return { id };
+  }
+
   async updateIssueComment(commentId: number, body: string): Promise<void> {
     const comment = this.comments.find(({ id }) => id === commentId);
     if (!comment) throw new Error(`Unknown comment ${commentId}`);
     comment.body = body;
+  }
+
+  async updateCommitComment(commentId: number, body: string): Promise<void> {
+    await this.updateIssueComment(commentId, body);
   }
 
   async getRefSha(ref: string): Promise<string> {
@@ -484,8 +499,8 @@ describe('recorded GitHub API orchestration E2E', () => {
           runId: RUN_ID,
           repo: 'acme/widget',
           prNumber: 42,
-          prHeadSha: HEAD_SHA,
-          prHeadRef: 'feature/broken-build',
+          headSha: HEAD_SHA,
+          headRef: 'feature/broken-build',
         });
         const failedLog = harness.github.resolvedRuns[0]?.failedSteps[0]?.log;
         expect(failedLog?.split('\n')).toHaveLength(200);
