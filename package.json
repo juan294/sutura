@@ -1,8 +1,8 @@
 {
-  "name": "sutura",
+  "name": "@sutura/monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "Self-healing CI: an agent that diagnoses failing CI runs, patches the cause, and opens a fix PR. Powered by NVIDIA Nemotron on Nebius Token Factory.",
+  "description": "AI agents make CI pass. Sutura verifies the fix, filters flaky failures, rejects unsafe shortcuts, and opens an evidence-backed PR for human review.",
   "type": "module",
   "license": "MIT",
   "author": "Juan González Ponce",
@@ -16,6 +16,7 @@
   "packageManager": "pnpm@11.22.0",
   "scripts": {
     "test": "pnpm -r test",
+    "test:package": "node scripts/test-package.mjs",
     "test:readme": "node --test scripts/verify-readme-setup.test.mjs",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
@@ -24,7 +25,7 @@
     "prepare": "husky"
   },
   "devDependencies": {
-    "@sutura/cli": "workspace:*",
+    "sutura": "workspace:*",
     "@types/node": "^26.3.0",
     "eslint": "^10.9.1",
     "husky": "^9.1.7",

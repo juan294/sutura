@@ -1,7 +1,17 @@
 import type { CaseFile, CostLedger } from '@sutura/core';
 
-import { CliUsageError, parseArgs, USAGE, type HealArguments } from './args.js';
+import {
+  CliUsageError,
+  parseArgs,
+  USAGE,
+  VERSION,
+  type DoctorArguments,
+  type HealArguments,
+  type InitArguments,
+} from './args.js';
+import { doctorSutura, type DoctorResult } from './doctor.js';
 import { healFromEnvironment } from './heal.js';
+import { installSutura, type SetupResult } from './setup.js';
 
 export interface CliIo {
   write?: (value: string) => void;
@@ -10,6 +20,8 @@ export interface CliIo {
 
 export interface CliDependencies {
   heal?: (request: HealArguments) => Promise<CaseFile>;
+  init?: (request: InitArguments) => Promise<SetupResult>;
+  doctor?: (request: DoctorArguments) => Promise<DoctorResult>;
 }
 
 function emptyLedger(): CostLedger {
@@ -53,13 +65,34 @@ export async function runCli(
 ): Promise<number> {
   const write = io.write ?? ((value: string) => process.stdout.write(value));
   const writeError = io.writeError ?? ((value: string) => process.stderr.write(value));
-  let request: HealArguments;
+  let request;
   try {
     request = parseArgs(args);
   } catch (error) {
     const detail = error instanceof CliUsageError ? error.message : 'Invalid arguments';
     writeError(`${detail}\n${USAGE}\n`);
     return 2;
+  }
+
+  if (request.command === 'help') {
+    write(`${USAGE}\n`);
+    return 0;
+  }
+  if (request.command === 'version') {
+    write(`${VERSION}\n`);
+    return 0;
+  }
+  if (request.command === 'init' || request.command === 'doctor') {
+    try {
+      const result = request.command === 'init'
+        ? await (dependencies.init ?? installSutura)(request)
+        : await (dependencies.doctor ?? doctorSutura)(request);
+      write(`${result.lines.join('\n')}\n`);
+      return 'exitCode' in result ? result.exitCode : 0;
+    } catch (error) {
+      writeError(`${publicError(error)}\n`);
+      return 1;
+    }
   }
 
   let caseFile: CaseFile;

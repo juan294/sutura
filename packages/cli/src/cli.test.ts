@@ -46,7 +46,7 @@ describe('runCli', () => {
     }, { heal });
 
     expect(exitCode).toBe(2);
-    expect(stderr.join('')).toContain('Usage: sutura heal');
+    expect(stderr.join('')).toContain('sutura heal --case-dir');
     expect(heal).not.toHaveBeenCalled();
   });
 

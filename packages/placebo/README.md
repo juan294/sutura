@@ -56,7 +56,7 @@ npx placebo run --adapter dummy
 Run Sutura, one kind, or the no-Tavily ablation:
 
 ```bash
-pnpm --filter @sutura/cli run build
+pnpm --filter sutura run build
 pnpm --filter placebo exec placebo run --adapter sutura
 pnpm --filter placebo exec placebo run --adapter sutura --only trap
 pnpm --filter placebo exec placebo run --adapter sutura --only upstream --no-tavily

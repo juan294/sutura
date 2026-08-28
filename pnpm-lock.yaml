@@ -8,9 +8,6 @@ importers:
 
   .:
     devDependencies:
-      '@sutura/cli':
-        specifier: workspace:*
-        version: link:packages/cli
       '@types/node':
         specifier: ^26.3.0
         version: 26.3.0
@@ -23,6 +20,9 @@ importers:
       placebo:
         specifier: workspace:*
         version: link:packages/placebo
+      sutura:
+        specifier: workspace:*
+        version: link:packages/cli
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -53,10 +53,13 @@ importers:
         version: 0.28.2
 
   packages/cli:
-    dependencies:
+    devDependencies:
       '@sutura/core':
         specifier: workspace:*
         version: link:../core
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
 
   packages/core:
     dependencies:

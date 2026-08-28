@@ -45,7 +45,7 @@ outputs:
 
 runs:
   using: node24
-  main: dist/index.cjs
+  main: packages/action/dist/index.cjs
 
 branding:
   icon: activity

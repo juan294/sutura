@@ -1,10 +1,11 @@
-# Project: Sutura
+# Sutura: Verified Self-Healing CI
 
 ## One-liner
 
-Self-healing CI: a GitHub Action plus agent that diagnoses a failing CI run,
-reproduces it in a sandbox, patches the cause, and opens a fix PR with its
-reasoning trace. "Sutura" = suture — it stitches the pipeline back together.
+AI agents make CI pass. Sutura verifies the fix, filters flaky failures,
+rejects unsafe shortcuts, and opens evidence-backed PRs for human review.
+It reproduces real failures and races candidate repairs in isolated sandboxes.
+"Sutura" means suture. It repairs the pipeline while preserving human approval.
 
 ## Context
 
