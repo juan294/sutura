@@ -218,6 +218,24 @@ describe('healCase', () => {
     expect(search).toHaveBeenCalledOnce();
   });
 
+  it('gives up on a real upstream break when release grounding is unavailable', async () => {
+    const { ctx, chat } = context(
+      'upstream-parser-release',
+      [1, 1, 1, 1, 1, 1],
+      'dep-upstream-breaking',
+    );
+
+    await expect(healCase(ctx)).resolves.toMatchObject({
+      outcome: 'gave-up',
+      diagnosis: {
+        class: 'dep-upstream-breaking',
+        grounding: { skipped: true, reason: 'disabled', citations: [] },
+      },
+      race: [],
+    });
+    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
+  });
+
   it('stops before paid inference when the clean sandbox does not reproduce', async () => {
     const { ctx, chat } = context('repair-off-by-one', [0], 'test-assertion');
 

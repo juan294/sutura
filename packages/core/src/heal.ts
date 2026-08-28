@@ -1,7 +1,11 @@
 import { audit } from './audit/audit.js';
 import { runMechanicalChecks } from './audit/mechanical.js';
 import { classify, classifyMechanically } from './diagnose/classify.js';
-import { ground, type TavilySearch } from './diagnose/tavily.js';
+import {
+  ground,
+  promoteUpstreamDependencyDiagnosis,
+  type TavilySearch,
+} from './diagnose/tavily.js';
 import type {
   Candidate,
   CaseFile,
@@ -225,6 +229,7 @@ function makeCaseFile(
 
 export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile> {
   let diagnosis = await classify(ctx.llm, ctx.failedLog);
+  diagnosis = promoteUpstreamDependencyDiagnosis(diagnosis, ctx.dependencyHints);
   diagnosis = withGrounding(
     diagnosis,
     await ground(
@@ -249,6 +254,12 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
   );
   if (triageVerdict.status !== 'real') {
     return makeCaseFile(ctx, diagnosis, triageVerdict, [], 'flaky-no-patch');
+  }
+  if (
+    diagnosis.class === 'dep-upstream-breaking' &&
+    (diagnosis.grounding?.skipped !== false || diagnosis.grounding.citations.length === 0)
+  ) {
+    return makeCaseFile(ctx, diagnosis, triageVerdict, [], 'gave-up');
   }
 
   const suppliedCandidate = ctx.candidateDiff === undefined

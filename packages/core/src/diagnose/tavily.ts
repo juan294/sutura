@@ -3,7 +3,7 @@ import type { HttpRequestInit, HttpResponse } from '../llm/nebius.js';
 
 const DEFAULT_BASE_URL = 'https://api.tavily.com';
 const WEB_HELPFUL_CLASSES = new Set(['dep-upstream-breaking', 'env-config', 'build']);
-const MEMBER_NOT_FUNCTION = /\bTypeError:\s+[@\w./-]+\.[\w$]+\s+is not a function\b/i;
+const DEPENDENCY_NOT_FUNCTION = /\bTypeError:\s+[@\w./-]+(?:\.[\w$]+)*\s+is not a function\b/i;
 const VERSION_PATTERN_SOURCE = '[~^]?\\d+\\.\\d+\\.\\d+(?:-[\\w.-]+)?';
 const NESTED_SPECIFIER = new RegExp(
   `^specifier:\\s*(?<version>${VERSION_PATTERN_SOURCE})$`,
@@ -378,7 +378,12 @@ function relevantDependencyHints(
   const mentioned = valid.filter((hint) => {
     const dependency = packageNameAndVersion(hint);
     if (!dependency) return false;
-    const names = [dependency.name, dependency.name.split('/').at(-1) ?? dependency.name];
+    const basename = dependency.name.split('/').at(-1) ?? dependency.name;
+    const names = [
+      dependency.name,
+      basename,
+      ...basename.split(/[-_]/u).filter((part) => part.length >= 4),
+    ];
     return names.some((name) => {
       const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
       return new RegExp(`(?:^|[^a-z0-9_@.-])${escaped}(?=$|[^a-z0-9_@-])`, 'iu')
@@ -429,12 +434,16 @@ async function addRegistryVerifiedReleaseCitations(
         dependency.version,
       );
       if (!repository) continue;
-      const releaseUrl = `${repository}/releases/tag/v${dependency.version}`;
+      const major = dependency.version.split('.')[0];
+      const releaseUrls = [
+        `${repository}/releases/tag/v${dependency.version}`,
+        ...(major ? [`${repository}/blob/main/docs/v${major}-UPGRADE-GUIDE.md`] : []),
+      ];
       const extracted = await tavily.extract(
-        [releaseUrl],
+        releaseUrls,
         `${dependency.name} ${dependency.version} breaking changes migration`,
       );
-      additions.push(...extracted.filter(({ snippet }) => snippet.includes(dependency.version)));
+      additions.push(...extracted);
     } catch {
       // The primary search remains useful when optional release extraction is unavailable.
     }
@@ -453,7 +462,7 @@ export async function ground(
     return { query: '', citations: [], skipped: true, reason: 'disabled' };
   }
   const webHelpful = WEB_HELPFUL_CLASSES.has(diagnosis.class) ||
-    (diagnosis.class === 'test-bug' && MEMBER_NOT_FUNCTION.test(diagnosis.errorExcerpt));
+    (diagnosis.class === 'test-bug' && DEPENDENCY_NOT_FUNCTION.test(diagnosis.errorExcerpt));
   if (!webHelpful) {
     return { query: '', citations: [], skipped: true, reason: 'not-applicable' };
   }
@@ -470,4 +479,22 @@ export async function ground(
     relevantDependencyHints(diagnosis, options.dependencyHints),
   );
   return { query, citations, skipped: false };
+}
+
+export function promoteUpstreamDependencyDiagnosis(
+  diagnosis: Diagnosis,
+  dependencyHints: readonly string[] = [],
+): Diagnosis {
+  if (
+    !DEPENDENCY_NOT_FUNCTION.test(diagnosis.errorExcerpt) ||
+    relevantDependencyHints(diagnosis, dependencyHints).length === 0
+  ) {
+    return diagnosis;
+  }
+  return {
+    ...diagnosis,
+    class: 'dep-upstream-breaking',
+    confidence: Math.max(diagnosis.confidence, 0.8),
+    signals: [...new Set([...diagnosis.signals, 'mechanical:dep-upstream-breaking'])],
+  };
 }

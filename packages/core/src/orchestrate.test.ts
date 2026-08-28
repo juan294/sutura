@@ -700,6 +700,13 @@ describe('orchestrate', () => {
         errorExcerpt: "Cannot find module '@acme/money'",
       }),
     }));
+    ctx.tavily = {
+      search: vi.fn().mockResolvedValue([{
+        title: 'Money 4 migration',
+        url: 'https://docs.example.test/money-4',
+        snippet: 'The package now requires an explicit compatibility migration.',
+      }]),
+    };
     chat.mockImplementationOnce(async (_tier, messages: readonly {
       role: string;
       content: string;

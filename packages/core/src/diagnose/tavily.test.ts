@@ -6,6 +6,7 @@ import {
   TavilyConfigError,
   TavilyRequestError,
   ground,
+  promoteUpstreamDependencyDiagnosis,
   type TavilyHttpRequestInit,
   type TavilyHttpResponse,
 } from './tavily.js';
@@ -166,7 +167,10 @@ describe('Tavily grounding', () => {
     expect(search).toHaveBeenCalledOnce();
     expect(packageRepository).toHaveBeenCalledWith('chalk', '5.0.0');
     expect(extract).toHaveBeenCalledWith(
-      ['https://github.com/chalk/chalk/releases/tag/v5.0.0'],
+      [
+        'https://github.com/chalk/chalk/releases/tag/v5.0.0',
+        'https://github.com/chalk/chalk/blob/main/docs/v5-UPGRADE-GUIDE.md',
+      ],
       'chalk 5.0.0 breaking changes migration',
     );
     expect(result.citations).toContainEqual(expect.objectContaining({
@@ -309,6 +313,53 @@ describe('Tavily grounding', () => {
       'TypeError: chalk.green is not a function',
       { maxResults: 5 },
     );
+  });
+
+  it('grounds a bare package TypeError that can signal import interop drift', async () => {
+    const search = vi.fn().mockResolvedValue([]);
+    const diagnosis: Diagnosis = {
+      class: 'test-bug',
+      confidence: 0.49,
+      signals: ['TypeError: got is not a function'],
+      failingCmd: 'vitest run',
+      errorExcerpt: 'TypeError: got is not a function',
+    };
+
+    await expect(
+      ground({ search }, diagnosis, { tavilyEnabled: true }),
+    ).resolves.toMatchObject({ skipped: false });
+    expect(search).toHaveBeenCalledWith(
+      'TypeError: got is not a function',
+      { maxResults: 5 },
+    );
+  });
+
+  it('promotes a bare installed-package call failure to an upstream diagnosis', () => {
+    const diagnosis: Diagnosis = {
+      class: 'test-bug',
+      confidence: 0.49,
+      signals: ['llm:test-bug'],
+      failingCmd: 'vitest run',
+      errorExcerpt: 'TypeError: got is not a function',
+    };
+
+    expect(promoteUpstreamDependencyDiagnosis(diagnosis, ['got@12.0.0'])).toMatchObject({
+      class: 'dep-upstream-breaking',
+      confidence: 0.8,
+      signals: ['llm:test-bug', 'mechanical:dep-upstream-breaking'],
+    });
+    expect(promoteUpstreamDependencyDiagnosis(diagnosis, ['chalk@5.0.0'])).toBe(diagnosis);
+
+    expect(promoteUpstreamDependencyDiagnosis({
+      ...diagnosis,
+      errorExcerpt: 'TypeError: fetch is not a function',
+    }, ['node-fetch@3.0.0'])).toMatchObject({ class: 'dep-upstream-breaking' });
+
+    expect(promoteUpstreamDependencyDiagnosis({
+      ...diagnosis,
+      class: 'test-assertion',
+      errorExcerpt: 'TypeError: chalk.green is not a function',
+    }, ['chalk@5.0.0'])).toMatchObject({ class: 'dep-upstream-breaking' });
   });
 
   it('fails closed with a typed error when an API key is missing', async () => {

@@ -16,9 +16,11 @@
   "packageManager": "pnpm@11.22.0",
   "scripts": {
     "test": "pnpm -r test",
+    "test:readme": "node --test scripts/verify-readme-setup.test.mjs",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "build": "pnpm -r build",
+    "verify:readme-setup": "node scripts/verify-readme-setup.mjs README.md --local-source .",
     "prepare": "husky"
   },
   "devDependencies": {
