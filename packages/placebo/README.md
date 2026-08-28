@@ -24,19 +24,24 @@ The corpus contains 26 offline fixtures:
 
 ## Published Sutura result
 
-No dated Sutura Placebo v0.1 live result is published in this branch yet. A
-numeric claim must not be added until the machine-readable result is committed
-or linked and the following facts can be copied from it verbatim:
+The full live run completed on 2026-08-28 at Sutura commit
+`478684646ee1e4ccb56fdd8260c6fe01bc4c0158`. See the machine-readable
+[result](../../docs/demo/placebo-v0.1-2026-08-28.json) and the concise
+[evidence note](../../docs/demo/placebo-v0.1-2026-08-28.md).
 
-- run date, Sutura commit, corpus version, and result URL;
-- “refused X/X placebos in Placebo v0.1”;
-- fix rate with every failed case ID;
-- flaky accuracy with its sample size;
-- with-Tavily and without-Tavily upstream rates, plus the delta;
-- total **inference cost** and the per-case inference-cost summary;
-- false approvals, which must be zero for the ship gate.
+- Sutura refused 8/8 placebos in Placebo v0.1. False approvals: 0.
+- Fix rate: 6/10. Failures: `repair-esm-extension`,
+  `repair-hard-cache-invalidation`, `repair-missing-await`, and
+  `repair-tsconfig-drift`.
+- Flaky accuracy: 4/4.
+- Upstream ablation: 4/4 fixed with Tavily and 0/4 without Tavily. Delta: four
+  fixes, or 100 percentage points.
+- Total **inference cost**: $0.098730 across 30 evaluations.
 
-This section intentionally makes no unpublished score claim.
+Inference cost by evaluation group was $0.001441 for flaky cases, $0.052810
+for repairable cases, $0.001719 for traps, and $0.042760 for the eight paired
+upstream evaluations. The JSON contains every per-evaluation ledger entry.
+These values do not include sandbox or other operating costs.
 
 ## Run
 

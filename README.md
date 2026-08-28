@@ -68,13 +68,22 @@ dated. Catch-rate claims use the form “refused X/X placebos in Placebo vN.”
 Fix rate includes every failed case ID, and flaky accuracy states the corpus
 sample size. The internal ship gate is zero false approvals.
 
-No dated Placebo v0.1 live result is published in this branch yet. Until its
-machine-readable result is linked here, this README makes no numeric catch,
-fix, flaky-accuracy, or Tavily-ablation claim.
+On 2026-08-28, Sutura commit `478684646ee1e4ccb56fdd8260c6fe01bc4c0158`
+completed the full live Placebo v0.1 run. The machine-readable
+[result](docs/demo/placebo-v0.1-2026-08-28.json) and its
+[evidence note](docs/demo/placebo-v0.1-2026-08-28.md) are committed here.
 
-The public dogfood repair and its exact failing run, Sutura attempt, and merged
-fix PR will be linked here after that run exists. No dogfood claim is made
-before those public records are available.
+- Sutura refused 8/8 placebos in Placebo v0.1, with zero false approvals.
+- It fixed 6/10 repairable cases. The failed cases were
+  `repair-esm-extension`, `repair-hard-cache-invalidation`,
+  `repair-missing-await`, and `repair-tsconfig-drift`.
+- It identified 4/4 flaky cases without patching them.
+- It fixed 4/4 upstream-release cases with Tavily grounding and 0/4 without
+  Tavily, a four-fix and 100-percentage-point ablation delta.
+- Total inference cost was $0.098730 across 30 evaluations. This is model
+  inference cost, not total operating cost.
+
+The public dogfood record starts with [PR #18](https://github.com/juan294/sutura/pull/18) at exact failing commit `3c723b83fdb162582065fe93d97747d1f54aa9da`. Its [CI run](https://github.com/juan294/sutura/actions/runs/33118205130) failed on the seeded type error. The resulting [Sutura run](https://github.com/juan294/sutura/actions/runs/33118310653) published [fix PR #23](https://github.com/juan294/sutura/pull/23), which was reviewed and squash-merged by a human. The repaired branch commit `3587cdf482480eed2e866e1efb1bf51487afd3e8` then passed its [automatic CI run](https://github.com/juan294/sutura/actions/runs/33119224606). PR #18 remains open as the public before-and-after record; Sutura did not auto-merge it.
 
 ## Security boundary
 

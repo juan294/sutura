@@ -17,3 +17,10 @@ Plan: `2026-08-27-sutura-core.md`
 - Found: The committed Placebo adapter needed a missing `sutura heal` command, and pull requests created with `GITHUB_TOKEN` do not start normal pull-request workflows.
 - Chose: Add the shared CLI repair entrypoint and a trusted exact-SHA `workflow_dispatch` CI path during Phase 9.
 - Why: Phase 10 cannot execute the live Placebo benchmark or unattended break-me demo without these entrypoints.
+
+### Backup demo recording
+
+- Plan said: Record a three-minute backup demo for judging.
+- Found: The user explicitly removed the backup video from scope on 2026-08-28.
+- Chose: Deliver the public demo workflow, machine-readable benchmark evidence, README evidence, and public dogfood record without a video artifact.
+- Why: This direct scope change governs the final Phase 10 deliverables.
