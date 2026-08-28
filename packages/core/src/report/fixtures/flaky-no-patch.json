@@ -11,6 +11,15 @@
   "triage": { "status": "flaky", "reproduced": 0, "of": 5 },
   "race": [],
   "outcome": "flaky-no-patch",
+  "policy": {
+    "baseRef": "develop",
+    "baseSha": "89abcdef0123456789abcdef0123456789abcdef",
+    "policySha": "default"
+  },
+  "stages": [
+    { "stage": "policy", "attempt": 1, "nodeId": "node-001", "metrics": {}, "network": "disabled", "note": "Repository policy validated before provider execution" },
+    { "stage": "triage", "attempt": 1, "nodeId": "node-007", "parentNodeId": "node-006", "exitCode": 0, "metrics": { "elapsedTimeSec": 1.2, "maxRssKb": 1024 }, "network": "disabled", "note": "Reproduction probe" }
+  ],
   "cost": {
     "entries": [
       { "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", "inTok": 1400, "outTok": 260, "reasoningTok": 40, "usd": 0.000156 }

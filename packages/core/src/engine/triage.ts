@@ -1,5 +1,10 @@
 import type { TriageVerdict } from '../domain.js';
-import { SNAPSHOT_CWD, type Executor, type ImageId } from '../executor/types.js';
+import {
+  SNAPSHOT_CWD,
+  type Executor,
+  type ImageId,
+  type RunResult,
+} from '../executor/types.js';
 import { MAX_TRIAGE_RUNS } from '../config.js';
 import { shellQuote } from './shell.js';
 
@@ -10,6 +15,7 @@ export async function triage(
   failingImage: ImageId,
   failingCmd: string,
   N = DEFAULT_TRIAGE_RUNS,
+  observe?: (result: RunResult, attempt: number) => void,
 ): Promise<TriageVerdict> {
   if (!Number.isSafeInteger(N) || N <= 0 || N > MAX_TRIAGE_RUNS) {
     throw new RangeError(`N must be between 1 and ${MAX_TRIAGE_RUNS}`);
@@ -25,6 +31,7 @@ export async function triage(
     { cwd: SNAPSHOT_CWD },
   );
   const reproduced = results.filter(({ exitCode }) => exitCode !== 0).length;
+  results.forEach((result, attempt) => observe?.(result, attempt + 1));
   const status =
     reproduced === N ? 'real' : reproduced === 0 ? 'flaky' : 'intermittent';
 

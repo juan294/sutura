@@ -4,7 +4,7 @@ import type {
   GreenwashCheck,
   RaceResult,
 } from '../domain.js';
-import { SNAPSHOT_CWD, type Executor } from '../executor/types.js';
+import { SNAPSHOT_CWD, type Executor, type RunResult } from '../executor/types.js';
 import { boundedTail } from '../text/bounded-tail.js';
 import { adjudicate, type AdjudicationLlm } from './adjudicate.js';
 import { runMechanicalChecks } from './mechanical.js';
@@ -55,6 +55,7 @@ export async function audit(
   llm: AuditLlm,
   winner: RaceResult,
   context: AuditContext,
+  observe?: (result: RunResult) => void,
 ): Promise<AuditVerdict> {
   const mechanical = runMechanicalChecks(winner.candidate.diff);
   const mechanicalFailures = mechanical.filter(({ passed }) => !passed);
@@ -94,6 +95,7 @@ export async function audit(
   const rerun = await executor.run(winner.imageId, context.suiteCommand, {
     cwd: SNAPSHOT_CWD,
   });
+  observe?.(rerun);
   const afterLog = outputExcerpt(rerun.stdout, rerun.stderr);
   if (rerun.exitCode !== 0) {
     const detail = afterLog ? `: ${afterLog}` : '';

@@ -11,8 +11,12 @@ import type {
   CaseFile,
   CostLedger,
   Diagnosis,
+  PolicyEvidence,
   RaceResult,
+  StageEvidence,
+  StageName,
 } from './domain.js';
+import { MAX_STAGE_EVIDENCE_ENTRIES } from './config.js';
 import { vetPatch } from './engine/patch-rules.js';
 import {
   generateCandidates,
@@ -33,6 +37,15 @@ import {
 } from './executor/types.js';
 import type { AuditLlm } from './audit/audit.js';
 import type { DiagnosisLlm } from './diagnose/classify.js';
+import {
+  evaluatePatchPolicy,
+  evaluateResourceThresholds,
+  filterPolicyDeniedText,
+} from './policy/evaluate.js';
+import {
+  DEFAULT_REPOSITORY_POLICY,
+  type RepositoryPolicy,
+} from './policy/schema.js';
 import { boundedTail } from './text/bounded-tail.js';
 
 export const SUTURA_DEFAULT_IMAGE_REF = 'node:22';
@@ -62,6 +75,9 @@ export interface RepairFailureContext {
   lockfileDiff?: string;
   dependencyHints?: readonly string[];
   candidateDiff?: string;
+  policy?: RepositoryPolicy;
+  policyEvidence?: PolicyEvidence;
+  stageLedger?: StageLedger;
   readSourceContext(
     log: string,
     diagnosis: Diagnosis,
@@ -82,6 +98,84 @@ export class HealCaseError extends Error {
     super(message);
     this.name = 'HealCaseError';
   }
+}
+
+interface StageRecord {
+  stage: StageName;
+  attempt: number;
+  network: StageEvidence['network'];
+  result?: RunResult;
+  imageId?: ImageId;
+  parentImageId?: ImageId;
+  note?: string;
+}
+
+function publicMetrics(metrics: RunResult['metrics'] | undefined): RunResult['metrics'] {
+  if (!metrics) return {};
+  return Object.fromEntries(
+    Object.entries(metrics).filter(([, value]) =>
+      typeof value === 'number' && Number.isFinite(value) && value >= 0,
+    ),
+  );
+}
+
+export class StageLedger {
+  private readonly evidence: StageEvidence[] = [];
+  private readonly imageNodes = new Map<ImageId, string>();
+
+  record(input: StageRecord): string {
+    if (this.evidence.length >= MAX_STAGE_EVIDENCE_ENTRIES) {
+      throw new HealCaseError('Stage evidence exceeds the bounded entry count');
+    }
+    const nodeId = `node-${String(this.evidence.length + 1).padStart(3, '0')}`;
+    const imageId = input.result?.imageId ?? input.imageId;
+    const parentNodeId = input.parentImageId === undefined
+      ? undefined
+      : this.imageNodes.get(input.parentImageId);
+    if (imageId !== undefined) this.imageNodes.set(imageId, nodeId);
+    const note = input.note
+      ?.replace(/[\u0000-\u001f\u007f]/gu, ' ')
+      .slice(0, 240);
+    this.evidence.push({
+      stage: input.stage,
+      attempt: input.attempt,
+      nodeId,
+      ...(parentNodeId === undefined ? {} : { parentNodeId }),
+      ...(input.result === undefined ? {} : { exitCode: input.result.exitCode }),
+      metrics: publicMetrics(input.result?.metrics),
+      network: input.network,
+      ...(note === undefined || note === '' ? {} : { note }),
+    });
+    return nodeId;
+  }
+
+  entries(): StageEvidence[] {
+    return this.evidence.map((entry) => ({
+      ...entry,
+      metrics: { ...entry.metrics },
+    }));
+  }
+}
+
+function policyFor(ctx: Pick<RepairFailureContext, 'policy'>): RepositoryPolicy {
+  return ctx.policy ?? {
+    ...DEFAULT_REPOSITORY_POLICY,
+    allowedPaths: [...DEFAULT_REPOSITORY_POLICY.allowedPaths],
+    protectedPaths: [...DEFAULT_REPOSITORY_POLICY.protectedPaths],
+    deniedReadPaths: [...DEFAULT_REPOSITORY_POLICY.deniedReadPaths],
+    requiredCommands: [...DEFAULT_REPOSITORY_POLICY.requiredCommands],
+    resourceLimits: { ...DEFAULT_REPOSITORY_POLICY.resourceLimits },
+  };
+}
+
+function policyEvidenceFor(
+  ctx: Pick<RepairFailureContext, 'policyEvidence'>,
+): PolicyEvidence {
+  return ctx.policyEvidence ?? {
+    baseRef: 'local',
+    baseSha: 'local',
+    policySha: 'default',
+  };
 }
 
 function sandboxOptions(opts?: RunOptions): RunOptions {
@@ -134,7 +228,10 @@ function noReproductionDiagnosis(mechanical: Diagnosis): Diagnosis {
 }
 
 export function noReproductionCaseFile(
-  ctx: Pick<HealCaseContext, 'runId' | 'repo' | 'cost'>,
+  ctx: Pick<
+    HealCaseContext,
+    'runId' | 'repo' | 'cost' | 'policyEvidence' | 'stageLedger'
+  >,
   mechanical: Diagnosis,
 ): CaseFile {
   return makeCaseFile(
@@ -147,7 +244,10 @@ export function noReproductionCaseFile(
 }
 
 export function preparationFailureCaseFile(
-  ctx: Pick<HealCaseContext, 'runId' | 'repo' | 'cost'>,
+  ctx: Pick<
+    HealCaseContext,
+    'runId' | 'repo' | 'cost' | 'policyEvidence' | 'stageLedger'
+  >,
   command: string,
   result: RunResult,
 ): CaseFile {
@@ -232,14 +332,31 @@ export async function prepareSandbox(
   dir: string,
   baseImage: ImageId,
   observedCommand: string,
+  stages?: StageLedger,
 ): Promise<SandboxSetupResult> {
   const dependencyImage = await executor.snapshot(
     dir,
     baseImage,
     DEPENDENCY_SNAPSHOT,
   );
+  stages?.record({
+    stage: 'preparation',
+    attempt: 1,
+    network: 'disabled',
+    imageId: dependencyImage,
+    parentImageId: baseImage,
+    note: 'Dependency inputs snapshot created',
+  });
   const preparationCommand = sandboxPreparationCommand();
   const preparation = await executor.prepareDependencies(dependencyImage);
+  stages?.record({
+    stage: 'preparation',
+    attempt: 2,
+    network: 'enabled',
+    result: preparation,
+    parentImageId: dependencyImage,
+    note: 'Dependencies prepared with lifecycle scripts disabled',
+  });
   if (preparation.exitCode !== 0) {
     return {
       ok: false,
@@ -254,11 +371,27 @@ export async function prepareSandbox(
     preparation.imageId,
     REPOSITORY_SNAPSHOT,
   );
+  stages?.record({
+    stage: 'preparation',
+    attempt: 3,
+    network: 'disabled',
+    imageId: sourceImage,
+    parentImageId: preparation.imageId,
+    note: 'Repository source overlay created',
+  });
   const initialized = await executor.run(
     sourceImage,
     INITIALIZE_REPOSITORY_COMMAND,
     { cwd: SNAPSHOT_CWD },
   );
+  stages?.record({
+    stage: 'preparation',
+    attempt: 4,
+    network: 'disabled',
+    result: initialized,
+    parentImageId: sourceImage,
+    note: 'Hook-disabled Git baseline initialized',
+  });
   if (initialized.exitCode !== 0) {
     return { ok: false, command: INITIALIZE_REPOSITORY_COMMAND, result: initialized };
   }
@@ -298,7 +431,8 @@ function withGrounding(
 function vettedRaceResult(candidate: Candidate, violations: readonly string[]): RaceResult {
   return {
     candidate,
-    imageId: `not-run:vet-refused:${violations.join(',')}`,
+    imageId: 'not-run',
+    nodeId: 'not-run',
     exitCode: 1,
     held: false,
     note: `Patch vet refused: ${violations.join('; ')}`,
@@ -306,7 +440,10 @@ function vettedRaceResult(candidate: Candidate, violations: readonly string[]): 
 }
 
 function makeCaseFile(
-  ctx: Pick<RepairFailureContext, 'runId' | 'repo' | 'cost'>,
+  ctx: Pick<
+    RepairFailureContext,
+    'runId' | 'repo' | 'cost' | 'policyEvidence' | 'stageLedger'
+  >,
   diagnosis: Diagnosis,
   triageVerdict: CaseFile['triage'],
   raceResults: RaceResult[],
@@ -318,15 +455,108 @@ function makeCaseFile(
     repo: ctx.repo,
     diagnosis,
     triage: triageVerdict,
-    race: raceResults,
+    race: raceResults.map((result) => ({
+      ...result,
+      imageId: result.nodeId,
+    })),
     ...(auditVerdict ? { audit: auditVerdict } : {}),
     outcome,
     cost: ctx.cost,
+    policy: policyEvidenceFor(ctx),
+    stages: ctx.stageLedger?.entries() ?? [],
   };
 }
 
+function policyVerdict(
+  candidate: Candidate,
+  diagnosis: Diagnosis,
+  policy: RepositoryPolicy,
+): ReturnType<typeof vetPatch> {
+  const builtIn = vetPatch(candidate.diff, diagnosis);
+  return builtIn.ok ? evaluatePatchPolicy(candidate.diff, policy) : builtIn;
+}
+
+async function enforceWinnerPolicy(
+  ctx: RepairFailureContext,
+  winner: RaceResult,
+  ledger: StageLedger,
+  auditVerdict: NonNullable<CaseFile['audit']>,
+): Promise<NonNullable<CaseFile['audit']>> {
+  if (!auditVerdict.approved) return auditVerdict;
+  const policy = policyFor(ctx);
+  const checks = [...auditVerdict.checks];
+  const commandFailures: string[] = [];
+  const resourceFailures: string[] = [];
+  for (const [index, command] of policy.requiredCommands.entries()) {
+    const executable = sandboxTargetCommand(command);
+    const baseline = await ctx.executor.run(ctx.failingImage, executable, {
+      cwd: SNAPSHOT_CWD,
+    });
+    ledger.record({
+      stage: 'audit',
+      attempt: index * 2 + 2,
+      network: 'disabled',
+      result: baseline,
+      parentImageId: ctx.failingImage,
+      note: `Required command ${index + 1} baseline`,
+    });
+    const candidate = await ctx.executor.run(winner.imageId, executable, {
+      cwd: SNAPSHOT_CWD,
+    });
+    ledger.record({
+      stage: 'audit',
+      attempt: index * 2 + 3,
+      network: 'disabled',
+      result: candidate,
+      parentImageId: winner.imageId,
+      note: `Required command ${index + 1} candidate`,
+    });
+    if (candidate.exitCode !== 0) {
+      commandFailures.push(`required command ${index + 1} exited ${candidate.exitCode}`);
+    }
+    resourceFailures.push(...evaluateResourceThresholds(
+      `required command ${index + 1}`,
+      baseline.metrics,
+      candidate.metrics,
+      policy.resourceLimits,
+    ));
+  }
+  checks.push({
+    name: 'policy-required-command',
+    passed: commandFailures.length === 0,
+    evidence: commandFailures.length === 0
+      ? `Passed ${policy.requiredCommands.length} repository policy commands`
+      : commandFailures.join('; '),
+  });
+  if (Object.keys(policy.resourceLimits).length > 0) {
+    checks.push({
+      name: 'policy-resource-limit',
+      passed: resourceFailures.length === 0,
+      evidence: resourceFailures.length === 0
+        ? 'Paired resource thresholds passed'
+        : resourceFailures.join('; '),
+    });
+  }
+  const violations = [...commandFailures, ...resourceFailures];
+  return violations.length === 0
+    ? { ...auditVerdict, checks }
+    : {
+        approved: false,
+        checks,
+        reasoning: `REFUSED: repository policy failed (${violations.join('; ')})`,
+      };
+}
+
 export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile> {
-  let diagnosis = await classify(ctx.llm, ctx.failedLog);
+  const policy = policyFor(ctx);
+  const ledger = ctx.stageLedger ?? new StageLedger();
+  const fullContext: RepairFailureContext = {
+    ...ctx,
+    policy,
+    stageLedger: ledger,
+  };
+  const providerLog = filterPolicyDeniedText(ctx.failedLog, policy);
+  let diagnosis = await classify(ctx.llm, providerLog);
   diagnosis = promoteUpstreamDependencyDiagnosis(diagnosis, ctx.dependencyHints);
   diagnosis = withGrounding(
     diagnosis,
@@ -342,6 +572,14 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       },
     ),
   );
+  ledger.record({
+    stage: 'search',
+    attempt: 1,
+    network: 'disabled',
+    note: diagnosis.grounding?.skipped === false
+      ? `Grounding returned ${diagnosis.grounding.citations.length} citations`
+      : 'Grounding skipped',
+  });
   const executableCommand = sandboxExecutableCommand(diagnosis.failingCmd);
 
   const triageVerdict = await triage(
@@ -349,15 +587,23 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
     ctx.failingImage,
     executableCommand,
     ctx.triageN,
+    (result, attempt) => ledger.record({
+      stage: 'triage',
+      attempt,
+      network: 'disabled',
+      result,
+      parentImageId: ctx.failingImage,
+      note: 'Reproduction probe',
+    }),
   );
   if (triageVerdict.status !== 'real') {
-    return makeCaseFile(ctx, diagnosis, triageVerdict, [], 'flaky-no-patch');
+    return makeCaseFile(fullContext, diagnosis, triageVerdict, [], 'flaky-no-patch');
   }
   if (
     diagnosis.class === 'dep-upstream-breaking' &&
     (diagnosis.grounding?.skipped !== false || diagnosis.grounding.citations.length === 0)
   ) {
-    return makeCaseFile(ctx, diagnosis, triageVerdict, [], 'gave-up');
+    return makeCaseFile(fullContext, diagnosis, triageVerdict, [], 'gave-up');
   }
 
   const suppliedCandidate = ctx.candidateDiff === undefined
@@ -377,14 +623,24 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       })();
 
   if (suppliedCandidate) {
-    const verdict = vetPatch(suppliedCandidate.diff, diagnosis);
+    const verdict = policyVerdict(suppliedCandidate, diagnosis, policy);
     if (!verdict.ok) {
       const evidence = `Patch vet refused: ${verdict.violations.join('; ')}`;
+      const nodeId = ledger.record({
+        stage: 'candidate',
+        attempt: 1,
+        network: 'disabled',
+        note: `Candidate refused before execution: ${verdict.violations.join('; ')}`,
+      });
       return makeCaseFile(
-        ctx,
+        fullContext,
         diagnosis,
         triageVerdict,
-        [vettedRaceResult(suppliedCandidate, verdict.violations)],
+        [{
+          ...vettedRaceResult(suppliedCandidate, verdict.violations),
+          imageId: nodeId,
+          nodeId,
+        }],
         'refused',
         {
           approved: false,
@@ -401,11 +657,21 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
   const approvedCandidates: Candidate[] = [];
   const refusedCandidates = new Map<string, RaceResult>();
   for (const candidate of candidates) {
-    const verdict = vetPatch(candidate.diff, diagnosis);
+    const verdict = policyVerdict(candidate, diagnosis, policy);
     if (verdict.ok) {
       approvedCandidates.push(candidate);
     } else {
-      refusedCandidates.set(candidate.id, vettedRaceResult(candidate, verdict.violations));
+      const nodeId = ledger.record({
+        stage: 'candidate',
+        attempt: refusedCandidates.size + 1,
+        network: 'disabled',
+        note: `Candidate refused before execution: ${verdict.violations.join('; ')}`,
+      });
+      refusedCandidates.set(candidate.id, {
+        ...vettedRaceResult(candidate, verdict.violations),
+        imageId: nodeId,
+        nodeId,
+      });
     }
   }
 
@@ -414,6 +680,14 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
     ctx.failingImage,
     approvedCandidates,
     executableCommand,
+    (result, attempt) => ledger.record({
+      stage: 'candidate',
+      attempt,
+      network: 'disabled',
+      result,
+      parentImageId: ctx.failingImage,
+      note: 'Candidate verification race',
+    }),
   );
   const racedById = new Map(raced.map((result) => [result.candidate.id, result]));
   const raceResults = candidates.map((candidate) => {
@@ -423,16 +697,45 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
   });
   const winner = selectWinner(raceResults);
   if (!winner) {
-    return makeCaseFile(ctx, diagnosis, triageVerdict, raceResults, 'gave-up');
+    if (refusedCandidates.size > 0) {
+      const evidence = raceResults
+        .flatMap((result) => result.note ? [result.note] : [])
+        .join('; ');
+      return makeCaseFile(
+        fullContext,
+        diagnosis,
+        triageVerdict,
+        raceResults,
+        'refused',
+        {
+          approved: false,
+          checks: [{
+            name: 'llm-adjudication',
+            passed: false,
+            evidence: 'Not run: repository or built-in policy refused all candidates',
+          }],
+          reasoning: `REFUSED: ${evidence}`,
+        },
+      );
+    }
+    return makeCaseFile(fullContext, diagnosis, triageVerdict, raceResults, 'gave-up');
   }
 
-  const auditVerdict = await audit(ctx.executor, ctx.llm, winner, {
+  let auditVerdict = await audit(ctx.executor, ctx.llm, winner, {
     diagnosis,
-    beforeLog: ctx.failedLog,
+    beforeLog: providerLog,
     suiteCommand: executableCommand,
-  });
+  }, (result) => ledger.record({
+    stage: 'audit',
+    attempt: 1,
+    network: 'disabled',
+    result,
+    parentImageId: winner.imageId,
+    note: 'Fresh suite rerun',
+  }));
+  auditVerdict = await enforceWinnerPolicy(fullContext, winner, ledger, auditVerdict);
   return makeCaseFile(
-    ctx,
+    fullContext,
     diagnosis,
     triageVerdict,
     raceResults,
@@ -455,21 +758,50 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
   const command = ctx.failureCommand ?? DEFAULT_FAILURE_COMMAND;
   if (!command.trim()) throw new HealCaseError('failureCommand must be non-empty');
 
+  const ledger = ctx.stageLedger ?? new StageLedger();
+  const fullContext: HealCaseContext = { ...ctx, stageLedger: ledger };
+  ledger.record({
+    stage: 'policy',
+    attempt: 1,
+    network: 'disabled',
+    note: 'Repository policy validated before provider execution',
+  });
   const executor = new AllowlistedExecutor(ctx.executor);
   const baseImage = await executor.importImage(ctx.imageRef ?? SUTURA_DEFAULT_IMAGE_REF);
-  const setup = await prepareSandbox(executor, ctx.caseDir, baseImage, command);
+  ledger.record({
+    stage: 'preparation',
+    attempt: 0,
+    network: 'disabled',
+    imageId: baseImage,
+    note: 'Base image imported',
+  });
+  const setup = await prepareSandbox(
+    executor,
+    ctx.caseDir,
+    baseImage,
+    command,
+    ledger,
+  );
   if (!setup.ok) {
-    return preparationFailureCaseFile(ctx, setup.command, setup.result);
+    return preparationFailureCaseFile(fullContext, setup.command, setup.result);
   }
   const reproduction = await executor.run(
     setup.imageId,
     sandboxTargetCommand(command),
     { cwd: SNAPSHOT_CWD },
   );
+  ledger.record({
+    stage: 'reproduction',
+    attempt: 1,
+    network: 'disabled',
+    result: reproduction,
+    parentImageId: setup.imageId,
+    note: 'Observed failing command reproduction',
+  });
   const failedLog = failureLog(command, reproduction);
   if (reproduction.exitCode === 0) {
     const mechanical = classifyMechanically(failedLog);
-    return noReproductionCaseFile(ctx, mechanical);
+    return noReproductionCaseFile(fullContext, mechanical);
   }
 
   return repairFailure({
@@ -487,5 +819,8 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     ...(ctx.lockfileDiff === undefined ? {} : { lockfileDiff: ctx.lockfileDiff }),
     ...(ctx.dependencyHints === undefined ? {} : { dependencyHints: ctx.dependencyHints }),
     ...(ctx.candidateDiff === undefined ? {} : { candidateDiff: ctx.candidateDiff }),
+    ...(ctx.policy === undefined ? {} : { policy: ctx.policy }),
+    ...(ctx.policyEvidence === undefined ? {} : { policyEvidence: ctx.policyEvidence }),
+    stageLedger: ledger,
   });
 }

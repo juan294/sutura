@@ -68,6 +68,10 @@ interface RawPullRequest {
     ref: string;
     repo: { full_name: string } | null;
   };
+  base: {
+    sha: string;
+    ref: string;
+  };
 }
 
 interface RawJobs {
@@ -162,6 +166,8 @@ class RecordedGitHubApi implements GitHubApi {
       headSha: pull.head.sha,
       headRef: pull.head.ref,
       headRepo: pull.head.repo?.full_name ?? null,
+      baseSha: pull.base.sha,
+      baseRef: pull.base.ref,
     };
   }
 
@@ -243,6 +249,10 @@ class RecordedGitHubApi implements GitHubApi {
     return this.commitParents.get(sha) ?? [];
   }
 
+  async getCommitSha(sha: string): Promise<string> {
+    return sha;
+  }
+
   async createPullRequest(
     input: RecordedPullRequestCreation,
   ): Promise<{ number: number; url: string }> {
@@ -305,6 +315,10 @@ class RecordedRepository implements RepositoryPort {
   readonly sourceRequests: SourceReference[][] = [];
 
   constructor(private readonly api: RecordedGitHubApi) {}
+
+  async readPolicyAtSha(): Promise<string | null> {
+    return null;
+  }
 
   async checkoutHead(
     repo: string,

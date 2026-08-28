@@ -7,6 +7,7 @@ import type {
   CostLedger,
   Diagnosis,
   FailureClass,
+  PolicyEvidence,
 } from './domain.js';
 import { selectWinner, type RepairSourceContext } from './engine/repair.js';
 import {
@@ -16,6 +17,7 @@ import {
 import {
   AllowlistedExecutor,
   SUTURA_DEFAULT_IMAGE_REF,
+  StageLedger,
   noReproductionCaseFile,
   prepareSandbox,
   preparationFailureCaseFile,
@@ -23,6 +25,9 @@ import {
   sandboxTargetCommand,
   type HealLlm,
 } from './heal.js';
+import { loadRepositoryPolicy } from './policy/load.js';
+import { policyAllowsSourceRead } from './policy/evaluate.js';
+import type { RepositoryPolicy } from './policy/schema.js';
 
 export { SUTURA_SANDBOX_ENV } from './heal.js';
 import { renderCaseFile } from './report/casefile.js';
@@ -67,6 +72,8 @@ export interface FailingWorkflowRun {
   prNumber?: number;
   headSha: string;
   headRef: string;
+  baseSha: string;
+  baseRef: string;
   failedSteps: FailedStepLog[];
 }
 
@@ -135,6 +142,8 @@ export interface RepositoryPort {
     headRef?: string,
     prNumber?: number,
   ): Promise<string>;
+  /** Reads only `.sutura.json` from the exact verified commit without following symlinks. */
+  readPolicyAtSha(repo: string, sha: string): Promise<string | null>;
   /**
    * Reads bounded excerpts without following symlinks. Every path component
    * must resolve inside the real checkoutDir. The implementation must stop
@@ -195,8 +204,11 @@ function validateRun(run: FailingWorkflowRun, expectedRunId: string): void {
   if (!/^[0-9a-f]{40}$/i.test(run.headSha)) {
     throw new OrchestrationError('Failing workflow run has an invalid head SHA');
   }
-  if (!run.headRef.trim()) {
-    throw new OrchestrationError('Failing workflow run has an empty head ref');
+  if (!/^[0-9a-f]{40}$/i.test(run.baseSha)) {
+    throw new OrchestrationError('Failing workflow run has an invalid base SHA');
+  }
+  if (!run.headRef.trim() || !run.baseRef.trim()) {
+    throw new OrchestrationError('Failing workflow run has an empty head or base ref');
   }
   if (run.failedSteps.length === 0) {
     throw new OrchestrationError('Failing workflow run has no failed-step logs');
@@ -300,11 +312,15 @@ export async function readRepairSourceContext(
   checkoutDir: string,
   log: string,
   diagnosis?: Pick<Diagnosis, 'class'>,
+  policy?: RepositoryPolicy,
 ): Promise<RepairSourceContext> {
-  const references = extractSourceReferences(log);
+  const references = extractSourceReferences(log).filter((reference) =>
+    policy === undefined || policyAllowsSourceRead(reference.path, policy),
+  );
   for (const path of diagnosis ? FALLBACK_SOURCE_PATHS[diagnosis.class] ?? [] : []) {
     if (
       references.length < REPAIR_SOURCE_LIMITS.maxFiles &&
+      (policy === undefined || policyAllowsSourceRead(path, policy)) &&
       !references.some((reference) => reference.path === path)
     ) {
       references.push({ path });
@@ -384,6 +400,21 @@ async function publishReport(
 export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> {
   const run = await ctx.github.getFailingRun(ctx.runId);
   validateRun(run, ctx.runId);
+  const loadedPolicy = loadRepositoryPolicy(
+    await ctx.repository.readPolicyAtSha(run.repo, run.baseSha),
+  );
+  const policyEvidence: PolicyEvidence = {
+    baseRef: run.baseRef,
+    baseSha: run.baseSha,
+    policySha: loadedPolicy.sha,
+  };
+  const stageLedger = new StageLedger();
+  stageLedger.record({
+    stage: 'policy',
+    attempt: 1,
+    network: 'disabled',
+    note: 'Repository policy validated before provider execution',
+  });
   const marker = attemptMarker(run.runId);
   const failedLog = collectFailedLogs(run.failedSteps);
   const mechanical = classifyMechanically(failedLog);
@@ -407,15 +438,29 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
   const baseImage = await executor.importImage(
     ctx.imageRef ?? SUTURA_DEFAULT_IMAGE_REF,
   );
+  stageLedger.record({
+    stage: 'preparation',
+    attempt: 0,
+    network: 'disabled',
+    imageId: baseImage,
+    note: 'Base image imported',
+  });
   const setup = await prepareSandbox(
     executor,
     checkoutDir,
     baseImage,
     mechanical.failingCmd,
+    stageLedger,
   );
   if (!setup.ok) {
     const caseFile = preparationFailureCaseFile(
-      { runId: run.runId, repo: run.repo, cost: ctx.cost },
+      {
+        runId: run.runId,
+        repo: run.repo,
+        cost: ctx.cost,
+        policyEvidence,
+        stageLedger,
+      },
       setup.command,
       setup.result,
     );
@@ -427,10 +472,24 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     sandboxTargetCommand(mechanical.failingCmd),
     { cwd: SNAPSHOT_CWD },
   );
+  stageLedger.record({
+    stage: 'reproduction',
+    attempt: 1,
+    network: 'disabled',
+    result: reproduction,
+    parentImageId: setup.imageId,
+    note: 'Observed failing command reproduction',
+  });
 
   if (reproduction.exitCode === 0) {
     const caseFile = noReproductionCaseFile(
-      { runId: run.runId, repo: run.repo, cost: ctx.cost },
+      {
+        runId: run.runId,
+        repo: run.repo,
+        cost: ctx.cost,
+        policyEvidence,
+        stageLedger,
+      },
       mechanical,
     );
     await publishReport(ctx.github, run, caseFile, marker, target);
@@ -452,7 +511,11 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       checkoutDir,
       failedLog,
       diagnosis,
+      loadedPolicy.policy,
     ),
+    policy: loadedPolicy.policy,
+    policyEvidence,
+    stageLedger,
     ...(ctx.tavily ? { tavily: ctx.tavily } : {}),
     ...(ctx.lockfileDiff === undefined
       ? {}

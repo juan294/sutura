@@ -1,9 +1,10 @@
 import { constants as fsConstants } from 'node:fs';
-import { lstat, mkdtemp, open, realpath } from 'node:fs/promises';
+import { lstat, mkdtemp, open, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
 
+import { MAX_POLICY_BYTES } from '@sutura/core';
 import type {
   PublishFixInput,
   RepositoryPort,
@@ -302,6 +303,46 @@ export class GitRepository implements RepositoryPort {
       }
     }
     return excerpts;
+  }
+
+  async readPolicyAtSha(repo: string, sha: string): Promise<string | null> {
+    const checkoutDir = await this.checkoutHead(repo, sha);
+    try {
+      const root = await realpath(checkoutDir);
+      const policyPath = join(root, '.sutura.json');
+      let metadata;
+      try {
+        metadata = await lstat(policyPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+        throw error;
+      }
+      if (metadata.isSymbolicLink()) {
+        throw new RepositoryError('Repository policy must not be a symlink');
+      }
+      const resolved = await realpath(policyPath);
+      if (!contained(root, resolved)) {
+        throw new RepositoryError('Repository policy escapes the exact checkout');
+      }
+      const handle = await open(resolved, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+      try {
+        const file = await handle.stat();
+        if (!file.isFile()) throw new RepositoryError('Repository policy must be a file');
+        if (file.size > MAX_POLICY_BYTES) {
+          throw new RepositoryError(`Repository policy exceeds ${MAX_POLICY_BYTES} bytes`);
+        }
+        const bytes = Buffer.alloc(file.size + 1);
+        const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
+        if (bytesRead > MAX_POLICY_BYTES || bytesRead !== file.size) {
+          throw new RepositoryError('Repository policy changed during bounded read');
+        }
+        return bytes.subarray(0, bytesRead).toString('utf8');
+      } finally {
+        await handle.close();
+      }
+    } finally {
+      await rm(checkoutDir, { recursive: true, force: true });
+    }
   }
 
   async publishFix(input: PublishFixInput): Promise<void> {

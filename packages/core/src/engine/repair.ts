@@ -11,7 +11,12 @@ import {
   normalizeUnifiedDiffHunks,
   parseUnifiedDiff,
 } from '../diff/unified.js';
-import { SNAPSHOT_CWD, type Executor, type ImageId } from '../executor/types.js';
+import {
+  SNAPSHOT_CWD,
+  type Executor,
+  type ImageId,
+  type RunResult,
+} from '../executor/types.js';
 import { extractJson } from '../llm/json.js';
 import type { TierLlm } from '../llm/types.js';
 import {
@@ -444,6 +449,7 @@ export async function race(
   failingImage: ImageId,
   candidates: readonly Candidate[],
   failingCmd: string,
+  observe?: (result: RunResult, attempt: number) => string,
 ): Promise<RaceResult[]> {
   if (candidates.length > MAX_RACE_CANDIDATES) {
     throw new RangeError(
@@ -461,6 +467,7 @@ export async function race(
   return runs.map((run, index) => ({
     candidate: candidates[index] as Candidate,
     imageId: run.imageId,
+    nodeId: observe?.(run, index + 1) ?? `candidate-${index + 1}`,
     exitCode: run.exitCode,
     held: run.exitCode === 0,
   }));

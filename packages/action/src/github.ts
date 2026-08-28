@@ -30,6 +30,8 @@ export interface PullRequestRecord {
   headSha: string;
   headRef: string;
   headRepo: string | null;
+  baseSha: string;
+  baseRef: string;
 }
 
 export interface WorkflowJobStep {
@@ -70,6 +72,7 @@ export interface GitHubApi {
   updateCommitComment(commentId: number, body: string): Promise<void>;
   getRefSha(ref: string): Promise<string>;
   getCommitParents(sha: string): Promise<string[]>;
+  getCommitSha(sha: string): Promise<string>;
   createPullRequest(input: {
     title: string;
     head: string;
@@ -197,6 +200,8 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
 
     let prNumber: number | undefined;
     let headRef: string | undefined;
+    let baseSha: string | undefined;
+    let baseRef: string | undefined;
     if (workflowRun.event === 'pull_request' || workflowRun.event === 'workflow_dispatch') {
       const candidates = workflowRun.pullRequests.length > 0
         ? workflowRun.pullRequests
@@ -222,8 +227,18 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
         if (!validBranch(pullRequest.headRef)) {
           throw new GitHubAdapterError('Pull request head branch is invalid');
         }
+        if (
+          !SHA_PATTERN.test(pullRequest.baseSha) ||
+          !validBranch(pullRequest.baseRef) ||
+          (await this.api.getCommitSha(pullRequest.baseSha)).toLowerCase() !==
+            pullRequest.baseSha.toLowerCase()
+        ) {
+          throw new GitHubAdapterError('Pull request base commit is invalid');
+        }
         prNumber = pullRequest.number;
         headRef = pullRequest.headRef;
+        baseSha = pullRequest.baseSha;
+        baseRef = pullRequest.baseRef;
       }
     }
     if (headRef === undefined) {
@@ -238,6 +253,11 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
         throw new GitHubAdapterError('Workflow run head branch no longer matches the failing SHA');
       }
       headRef = workflowRun.headBranch;
+      baseSha = workflowRun.headSha;
+      baseRef = workflowRun.headBranch;
+    }
+    if (baseSha === undefined || baseRef === undefined) {
+      throw new GitHubAdapterError('Workflow run base commit is unavailable');
     }
 
     const jobs = await this.api.listJobsForWorkflowRun(numericRunId);
@@ -265,6 +285,8 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
       ...(prNumber === undefined ? {} : { prNumber }),
       headSha: workflowRun.headSha,
       headRef,
+      baseSha,
+      baseRef,
       failedSteps,
     };
   }

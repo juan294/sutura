@@ -6,6 +6,7 @@ export const DEFAULT_MODELS = {
 
 export const MAX_TRIAGE_RUNS = 20;
 export const MAX_RACE_CANDIDATES = 10;
+export const MAX_STAGE_EVIDENCE_ENTRIES = 100;
 
 export interface Config {
   nebiusApiKey: string;

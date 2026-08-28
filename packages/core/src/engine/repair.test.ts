@@ -546,6 +546,7 @@ describe('race and selectWinner', () => {
         {
           candidate: candidate('failed', 'diff'),
           imageId: 'image',
+          nodeId: 'node-001',
           exitCode: 1,
           held: false,
         },

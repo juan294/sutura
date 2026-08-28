@@ -24,6 +24,7 @@ function winner(diff: string): RaceResult {
   return {
     candidate: { id: 'candidate-a', rationale: 'repair source import', diff },
     imageId: 'winner-image',
+    nodeId: 'node-001',
     exitCode: 0,
     held: true,
   };

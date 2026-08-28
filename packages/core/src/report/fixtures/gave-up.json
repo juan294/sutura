@@ -16,7 +16,8 @@
         "rationale": "Narrow the generated row at the call site",
         "diff": "--- a/src/search.ts\n+++ b/src/search.ts\n@@ -8 +8 @@\n-query<SearchRow>();\n+query<SearchRow & Record<string, Scalar>>();"
       },
-      "imageId": "img-gave-up-a",
+      "imageId": "node-007",
+      "nodeId": "node-007",
       "exitCode": 2,
       "held": false
     },
@@ -26,12 +27,22 @@
         "rationale": "Regenerate the schema with the prior generator",
         "diff": "--- a/package.json\n+++ b/package.json\n@@ -12 +12 @@\n-\"schema-gen\": \"5.0.0\"\n+\"schema-gen\": \"4.9.2\""
       },
-      "imageId": "img-gave-up-b",
+      "imageId": "node-008",
+      "nodeId": "node-008",
       "exitCode": 2,
       "held": false
     }
   ],
   "outcome": "gave-up",
+  "policy": {
+    "baseRef": "develop",
+    "baseSha": "89abcdef0123456789abcdef0123456789abcdef",
+    "policySha": "default"
+  },
+  "stages": [
+    { "stage": "policy", "attempt": 1, "nodeId": "node-001", "metrics": {}, "network": "disabled", "note": "Repository policy validated before provider execution" },
+    { "stage": "candidate", "attempt": 1, "nodeId": "node-007", "parentNodeId": "node-006", "exitCode": 2, "metrics": { "elapsedTimeSec": 2.1, "maxRssKb": 1536, "cost": 0.0003 }, "network": "disabled", "note": "Candidate verification race" }
+  ],
   "cost": {
     "entries": [
       { "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", "inTok": 1800, "outTok": 400, "reasoningTok": 100, "usd": 0.000228 },

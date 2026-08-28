@@ -10,6 +10,9 @@ import {
   healCase,
   isSensitiveRepositoryPath,
   loadConfig,
+  loadRepositoryPolicy,
+  MAX_POLICY_BYTES,
+  policyAllowsSourceRead,
   readRepairSourceContext,
   type CaseFile,
   type ConfigEnvironment,
@@ -19,6 +22,7 @@ import {
   type HealLlm,
   type RepairSourceContext,
   type RepositorySourceExcerpt,
+  type RepositoryPolicy,
   type SourceReadLimits,
   type SourceReference,
   type TavilySearch,
@@ -175,6 +179,7 @@ export async function readLocalSourceContext(
   caseDir: string,
   log: string,
   _diagnosis: Diagnosis,
+  policy?: RepositoryPolicy,
 ): Promise<RepairSourceContext> {
   const root = await realpath(caseDir);
   return readRepairSourceContext(
@@ -186,7 +191,11 @@ export async function readLocalSourceContext(
       ): Promise<RepositorySourceExcerpt[]> {
         if (checkoutDir !== root) throw new CliConfigError('Source checkout changed during heal');
         const excerpts = await Promise.all(
-          references.map((reference) => readBoundedSource(root, reference, limits)),
+          references
+            .filter((reference) =>
+              policy === undefined || policyAllowsSourceRead(reference.path, policy),
+            )
+            .map((reference) => readBoundedSource(root, reference, limits)),
         );
         return excerpts.filter((source): source is RepositorySourceExcerpt => source !== null);
       },
@@ -194,7 +203,42 @@ export async function readLocalSourceContext(
     root,
     log,
     _diagnosis,
+    policy,
   );
+}
+
+async function readLocalPolicy(caseDir: string): Promise<string | null> {
+  const policyPath = resolve(caseDir, '.sutura.json');
+  let metadata;
+  try {
+    metadata = await lstat(policyPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+  if (metadata.isSymbolicLink()) {
+    throw new CliConfigError('Repository policy must not be a symlink');
+  }
+  const canonical = await realpath(policyPath);
+  if (!isInside(caseDir, canonical)) {
+    throw new CliConfigError('Repository policy escapes the case directory');
+  }
+  const handle = await open(canonical, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const file = await handle.stat();
+    if (!file.isFile()) throw new CliConfigError('Repository policy must be a file');
+    if (file.size > MAX_POLICY_BYTES) {
+      throw new CliConfigError(`Repository policy exceeds ${MAX_POLICY_BYTES} bytes`);
+    }
+    const bytes = Buffer.alloc(file.size + 1);
+    const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
+    if (bytesRead !== file.size || bytesRead > MAX_POLICY_BYTES) {
+      throw new CliConfigError('Repository policy changed during bounded read');
+    }
+    return bytes.subarray(0, bytesRead).toString('utf8');
+  } finally {
+    await handle.close();
+  }
 }
 
 async function canonicalCaseDirectory(caseDir: string): Promise<string> {
@@ -268,6 +312,7 @@ export async function healWithRuntime(
   runtime: HealRuntime,
 ): Promise<CaseFile> {
   const caseDir = await canonicalCaseDirectory(request.caseDir);
+  const loadedPolicy = loadRepositoryPolicy(await readLocalPolicy(caseDir));
   const dependencyHints = await readDependencyHints(caseDir);
   const caseName = basename(caseDir).replace(/[^A-Za-z0-9_.-]+/gu, '-') || 'case';
   return healCase({
@@ -279,7 +324,18 @@ export async function healWithRuntime(
     cost: runtime.cost,
     triageN: runtime.triageN,
     raceK: runtime.raceK,
-    readSourceContext: (log, diagnosis) => readLocalSourceContext(caseDir, log, diagnosis),
+    readSourceContext: (log, diagnosis) => readLocalSourceContext(
+      caseDir,
+      log,
+      diagnosis,
+      loadedPolicy.policy,
+    ),
+    policy: loadedPolicy.policy,
+    policyEvidence: {
+      baseRef: 'local',
+      baseSha: 'local',
+      policySha: loadedPolicy.sha,
+    },
     ...(runtime.tavily ? { tavily: runtime.tavily } : {}),
     ...(runtime.imageRef ? { imageRef: runtime.imageRef } : {}),
     ...(dependencyHints.length === 0 ? {} : { dependencyHints }),

@@ -2,6 +2,7 @@ export {
   ConfigError,
   DEFAULT_MODELS,
   MAX_RACE_CANDIDATES,
+  MAX_STAGE_EVIDENCE_ENTRIES,
   MAX_TRIAGE_RUNS,
   loadConfig,
 } from './config.js';
@@ -10,10 +11,25 @@ export { InMemoryExecutor } from './executor/memory.js';
 export {
   AllowlistedExecutor,
   HealCaseError,
+  StageLedger,
   SUTURA_SANDBOX_ENV,
   healCase,
   repairFailure,
 } from './heal.js';
+export { MAX_POLICY_BYTES, loadRepositoryPolicy } from './policy/load.js';
+export {
+  DEFAULT_REPOSITORY_POLICY,
+  PolicyValidationError,
+  parseRepositoryPolicy,
+  validatePolicyGlob,
+} from './policy/schema.js';
+export {
+  evaluatePatchPolicy,
+  evaluateResourceThresholds,
+  filterPolicyDeniedText,
+  isPolicyPathMatched,
+  policyAllowsSourceRead,
+} from './policy/evaluate.js';
 export { DEFAULT_MODEL_PRICES, Ledger } from './llm/cost.js';
 export { NebiusApiError, NebiusClient, NebiusResponseError } from './llm/nebius.js';
 export {
@@ -62,6 +78,7 @@ export {
 export { FAILURE_TAXONOMY } from './taxonomy.js';
 export { renderCaseFile } from './report/casefile.js';
 export { renderComment } from './report/markdown.js';
+export { aggregateStageEvidence } from './report/format.js';
 export { isSensitiveRepositoryPath } from './security/repository-path.js';
 export {
   ExternalTextError,
@@ -174,7 +191,16 @@ export type {
   FailureClass,
   GreenwashCheck,
   Grounding,
+  PolicyEvidence,
   RaceResult,
+  StageEvidence,
+  StageName,
   TriageVerdict,
 } from './domain.js';
+export type {
+  RepositoryPolicy,
+  ResourceLimits,
+} from './policy/schema.js';
+export type { LoadedRepositoryPolicy } from './policy/load.js';
 export type { SensitiveRepositoryPathOptions } from './security/repository-path.js';
+export type { StageTotals } from './report/format.js';

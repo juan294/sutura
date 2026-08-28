@@ -10,6 +10,8 @@ const VALID_CASE_FILE = JSON.stringify({
   },
   triage: { status: 'real', reproduced: 5, of: 5 }, race: [],
   audit: { approved: true, checks: [], reasoning: 'approved' }, outcome: 'fixed', cost: { entries: [] },
+  policy: { baseRef: 'local', baseSha: 'local', policySha: 'default' },
+  stages: [{ stage: 'policy', attempt: 1, nodeId: 'node-001', metrics: {}, network: 'disabled' }],
 });
 
 describe('CLI adapters', () => {

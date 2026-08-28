@@ -1,5 +1,6 @@
 import type { CaseFile } from '../domain.js';
 import {
+  aggregateStageEvidence,
   diffSummary,
   escapeHtml,
   escapeMarkdown,
@@ -82,6 +83,7 @@ function renderPathology(caseFile: CaseFile): string[] {
 }
 
 function renderDischarge(caseFile: CaseFile): string[] {
+  const totals = aggregateStageEvidence(caseFile);
   return [
     '### Discharge',
     '',
@@ -90,6 +92,10 @@ function renderDischarge(caseFile: CaseFile): string[] {
     `**Human merge check:** ${escapeMarkdown(mergeGuidance(caseFile))}`,
     '',
     `**Inference cost: ${formatUsd(caseFile.cost.totalUsd())}**`,
+    '',
+    `**Sandbox cost: ${formatUsd(totals.sandboxCostUsd)}** · operations ${totals.operationCount} · elapsed ${totals.elapsedTimeSec.toFixed(3)} s · CPU ${totals.cpuTimeSec.toFixed(3)} s · peak RSS ${totals.maxRssKb.toLocaleString('en-US')} KB`,
+    '',
+    `**Policy:** base <code>${escapeHtml(caseFile.policy.baseRef)}</code> at <code>${escapeHtml(caseFile.policy.baseSha)}</code> · policy <code>${escapeHtml(caseFile.policy.policySha)}</code>`,
   ];
 }
 
@@ -131,10 +137,10 @@ export function renderComment(caseFile: CaseFile, artifactUrl?: string): string 
       ...renderProcedure(caseFile),
       '',
       ...renderPathology(caseFile),
-      '',
-      ...renderDischarge(caseFile),
     );
   }
+
+  sections.push('', ...renderDischarge(caseFile));
 
   sections.push('', ...renderFooter(caseFile, artifactUrl));
   return sections.join('\n') + '\n';

@@ -18,6 +18,7 @@ import {
   type HealCaseContext,
 } from './heal.js';
 import type { TierLlm } from './llm/types.js';
+import { parseRepositoryPolicy } from './policy/schema.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'placebo', 'corpus');
 const HONEST_DIFF = [
@@ -123,6 +124,58 @@ function context(
 }
 
 describe('healCase', () => {
+  it.each([
+    [{ elapsedTimeSec: 12, maxRssKb: 120 }, 'fixed'],
+    [{ elapsedTimeSec: 12.1, maxRssKb: 120 }, 'refused'],
+    [{ maxRssKb: 120 }, 'refused'],
+  ] as const)(
+    'runs required commands on baseline and audited candidate with paired metrics: %j',
+    async (candidateMetrics, outcome) => {
+      const { ctx } = context(
+        'repair-off-by-one',
+        [],
+        'test-assertion',
+      );
+      let scenarioIndex = 0;
+      let policyCommandRuns = 0;
+      const ordinaryExits = [1, 1, 1, 1, 1, 1, 0, 0];
+      const executor = new InMemoryExecutor((command) => {
+        if (
+          command.includes('corepack pnpm install --frozen-lockfile') ||
+          command.includes('git init --quiet')
+        ) return result(0);
+        if (command.includes('policy-check')) {
+          policyCommandRuns += 1;
+          return {
+            ...result(policyCommandRuns === 1 ? 1 : 0),
+            metrics: policyCommandRuns === 1
+              ? { elapsedTimeSec: 10, maxRssKb: 100 }
+              : { ...candidateMetrics },
+          };
+        }
+        return result(ordinaryExits[scenarioIndex++] ?? 1);
+      });
+      ctx.executor = executor;
+      ctx.policy = parseRepositoryPolicy(JSON.stringify({
+        version: 1,
+        allowedPaths: ['**'],
+        requiredCommands: ['pnpm run policy-check'],
+        resourceLimits: { elapsedTimePercent: 20, maxRssPercent: 20 },
+      }));
+
+      const caseFile = await healCase(ctx);
+
+      expect(caseFile.outcome).toBe(outcome);
+      expect(policyCommandRuns).toBe(2);
+      expect(caseFile.audit?.checks).toContainEqual(expect.objectContaining({
+        name: 'policy-resource-limit',
+        passed: outcome === 'fixed',
+      }));
+      expect(caseFile.stages.filter(({ note }) => note?.includes('Required command')))
+        .toHaveLength(2);
+    },
+  );
+
   it('repairs a real Placebo fixture after one snapshot and one pre-inference reproduction', async () => {
     const { ctx, executor, chat } = context(
       'repair-off-by-one',

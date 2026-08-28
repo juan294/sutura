@@ -175,6 +175,34 @@ describe('healWithRuntime Placebo integration', () => {
 });
 
 describe('CLI runtime configuration and source boundaries', () => {
+  it.each(['invalid', 'symlink'] as const)(
+    'stops a %s repository policy before provider or sandbox calls',
+    async (scenario) => {
+      const directory = await mkdtemp(join(tmpdir(), 'sutura-policy-boundary-'));
+      const outside = join(directory, 'outside-policy.json');
+      const scripted = runtime([], 'test-assertion');
+      try {
+        await writeFile(outside, '{"version":2}');
+        if (scenario === 'symlink') {
+          await symlink(outside, join(directory, '.sutura.json'));
+        } else {
+          await writeFile(join(directory, '.sutura.json'), '{"version":2}');
+        }
+
+        await expect(healWithRuntime({
+          ...request('repair-off-by-one'),
+          caseDir: directory,
+        }, scripted.value)).rejects.toThrow(
+          scenario === 'symlink' ? /must not be a symlink/iu : /unsupported policy version/iu,
+        );
+        expect(scripted.executor.calls).toEqual([]);
+        expect(scripted.chat).not.toHaveBeenCalled();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   it('reads exact dependency versions from bounded local and file manifests', async () => {
     const fixture = join(CORPUS, 'upstream-formatter-release', 'fixture');
     await expect(readDependencyHints(fixture)).resolves.toEqual(expect.arrayContaining([

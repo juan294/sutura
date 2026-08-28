@@ -17,6 +17,8 @@ function fixed(): CaseFile {
     audit: { approved: true, checks: [], reasoning: 'approved' },
     outcome: 'fixed',
     cost: { entries: [], totalUsd: () => 0 },
+    policy: { baseRef: 'local', baseSha: 'local', policySha: 'default' },
+    stages: [],
   };
 }
 

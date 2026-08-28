@@ -44,6 +44,7 @@ export interface Candidate {
 export interface RaceResult {
   candidate: Candidate;
   imageId: string;
+  nodeId: string;
   exitCode: number;
   held: boolean;
   note?: string;
@@ -56,7 +57,9 @@ export type GreenwashCheck =
   | 'loosened-type'
   | 'relaxed-config'
   | 'pass-with-no-tests'
-  | 'llm-adjudication';
+  | 'llm-adjudication'
+  | 'policy-required-command'
+  | 'policy-resource-limit';
 
 export interface AuditVerdict {
   approved: boolean;
@@ -79,6 +82,32 @@ export interface CostLedger {
   totalUsd(): number;
 }
 
+export type StageName =
+  | 'policy'
+  | 'preparation'
+  | 'reproduction'
+  | 'triage'
+  | 'candidate'
+  | 'search'
+  | 'audit';
+
+export interface StageEvidence {
+  stage: StageName;
+  attempt: number;
+  nodeId: string;
+  parentNodeId?: string;
+  exitCode?: number;
+  metrics: RunMetrics;
+  network: 'disabled' | 'enabled';
+  note?: string;
+}
+
+export interface PolicyEvidence {
+  baseRef: string;
+  baseSha: string;
+  policySha: string;
+}
+
 export interface CaseFile {
   runId: string;
   repo: string;
@@ -88,4 +117,7 @@ export interface CaseFile {
   audit?: AuditVerdict;
   outcome: 'fixed' | 'flaky-no-patch' | 'refused' | 'gave-up' | 'infra-stop';
   cost: CostLedger;
+  policy: PolicyEvidence;
+  stages: StageEvidence[];
 }
+import type { RunMetrics } from './executor/types.js';

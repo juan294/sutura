@@ -56,6 +56,8 @@ export function createGitHubApi(
         headSha: data.head.sha,
         headRef: data.head.ref,
         headRepo: data.head.repo?.full_name ?? null,
+        baseSha: data.base.sha,
+        baseRef: data.base.ref,
       };
     },
 
@@ -164,6 +166,11 @@ export function createGitHubApi(
     async getCommitParents(sha) {
       const { data } = await octokit.rest.repos.getCommit({ owner, repo, ref: sha });
       return data.parents.map((parent) => parent.sha);
+    },
+
+    async getCommitSha(sha) {
+      const { data } = await octokit.rest.repos.getCommit({ owner, repo, ref: sha });
+      return data.sha;
     },
 
     async createPullRequest(input) {

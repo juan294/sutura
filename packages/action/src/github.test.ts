@@ -20,6 +20,8 @@ function api(overrides: Partial<GitHubApi> = {}): GitHubApi {
       headSha: SHA,
       headRef: 'feature',
       headRepo: 'owner/repo',
+      baseSha: SHA,
+      baseRef: 'develop',
     }),
     listJobsForWorkflowRun: async () => [{
       id: 5,
@@ -44,6 +46,7 @@ function api(overrides: Partial<GitHubApi> = {}): GitHubApi {
     updateCommitComment: async () => undefined,
     getRefSha: async () => SHA,
     getCommitParents: async () => [SHA],
+    getCommitSha: async () => SHA,
     createPullRequest: async () => ({ number: 10, url: 'https://example.test/pr/10' }),
     ...overrides,
   };
@@ -55,7 +58,15 @@ describe('GitHubAdapter', () => {
 
     const run = await adapter.getFailingRun('77');
 
-    expect(run).toMatchObject({ runId: '77', repo: 'owner/repo', prNumber: 9, headSha: SHA, headRef: 'feature' });
+    expect(run).toMatchObject({
+      runId: '77',
+      repo: 'owner/repo',
+      prNumber: 9,
+      headSha: SHA,
+      headRef: 'feature',
+      baseSha: SHA,
+      baseRef: 'develop',
+    });
     expect(run.failedSteps).toHaveLength(1);
     expect(run.failedSteps[0]?.log.split('\n')).toHaveLength(200);
     expect(run.failedSteps[0]?.log).not.toContain('install');
@@ -94,7 +105,7 @@ describe('GitHubAdapter', () => {
     const fallback = api({
       getWorkflowRun: async () => ({ id: 77, headSha: SHA, repository: 'owner/repo', event: 'pull_request', conclusion: 'failure', pullRequests: [] }),
       listPullRequestsForCommit: async () => [{ number: 12 }],
-      getPullRequest: async () => ({ number: 12, headSha: SHA, headRef: 'fork-feature', headRepo: 'fork/repo' }),
+      getPullRequest: async () => ({ number: 12, headSha: SHA, headRef: 'fork-feature', headRepo: 'fork/repo', baseSha: SHA, baseRef: 'develop' }),
     });
     const adapter = new GitHubAdapter(fallback, { owner: 'owner', repo: 'repo', runId: '77' });
 
@@ -121,6 +132,8 @@ describe('GitHubAdapter', () => {
         headSha: SHA,
         headRef: 'demo/break-me',
         headRepo: 'owner/repo',
+        baseSha: SHA,
+        baseRef: 'develop',
       }),
     });
     const adapter = new GitHubAdapter(dispatched, {

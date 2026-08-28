@@ -6,7 +6,7 @@ import type { CaseFile, CostLedger, GreenwashCheck } from '../domain.js';
 import { renderCaseFile } from './casefile.js';
 import { renderComment } from './markdown.js';
 
-const FIXTURES = ['fixed', 'flaky-no-patch', 'refused', 'gave-up'] as const;
+const FIXTURES = ['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop'] as const;
 const ARTIFACT_URL = 'https://github.com/acme/repo/actions/runs/42/artifacts/7';
 
 type SerializedCaseFile = Omit<CaseFile, 'cost'> & {
@@ -29,11 +29,13 @@ const OUTCOMES = new Set<CaseFile['outcome']>([
   'flaky-no-patch',
   'refused',
   'gave-up',
+  'infra-stop',
 ]);
 const TRIAGE_STATUSES = new Set<CaseFile['triage']['status']>([
   'real',
   'flaky',
   'intermittent',
+  'not-run',
 ]);
 const AUDIT_CHECKS = new Set<GreenwashCheck>([
   'deleted-test',
@@ -43,6 +45,8 @@ const AUDIT_CHECKS = new Set<GreenwashCheck>([
   'relaxed-config',
   'pass-with-no-tests',
   'llm-adjudication',
+  'policy-required-command',
+  'policy-resource-limit',
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -82,6 +86,8 @@ function isRaceResult(value: unknown): boolean {
     typeof value.candidate.rationale === 'string' &&
     typeof value.candidate.diff === 'string' &&
     typeof value.imageId === 'string' &&
+    typeof value.nodeId === 'string' &&
+    value.imageId === value.nodeId &&
     typeof value.exitCode === 'number' &&
     typeof value.held === 'boolean'
   );
@@ -117,6 +123,22 @@ function isCostEntry(value: unknown): boolean {
   );
 }
 
+function isPolicyEvidence(value: unknown): boolean {
+  return isRecord(value) &&
+    typeof value.baseRef === 'string' &&
+    typeof value.baseSha === 'string' &&
+    typeof value.policySha === 'string';
+}
+
+function isStageEvidence(value: unknown): boolean {
+  return isRecord(value) &&
+    typeof value.stage === 'string' &&
+    Number.isSafeInteger(value.attempt) &&
+    typeof value.nodeId === 'string' &&
+    isRecord(value.metrics) &&
+    (value.network === 'disabled' || value.network === 'enabled');
+}
+
 function assertSerializedCaseFile(value: unknown): asserts value is SerializedCaseFile {
   if (!isRecord(value)) {
     throw new TypeError('fixture must be an object');
@@ -146,6 +168,9 @@ function assertSerializedCaseFile(value: unknown): asserts value is SerializedCa
     !isRecord(cost) ||
     !Array.isArray(cost.entries) ||
     !cost.entries.every(isCostEntry)
+    || !isPolicyEvidence(fixture.policy)
+    || !Array.isArray(fixture.stages)
+    || !fixture.stages.every(isStageEvidence)
   ) {
     throw new TypeError('fixture does not match the CaseFile contract');
   }
@@ -231,16 +256,13 @@ describe('markdown report contract', () => {
     expect(report).toContain('### Triage');
     expect(report).not.toContain('### Procedure');
     expect(report).not.toContain('### Pathology');
-    expect(report).not.toContain('### Discharge');
+    expect(report).toContain('### Discharge');
+    expect(report).toContain('Sandbox cost:');
+    expect(report).toContain('Policy:');
   });
 
   it('reports a preparation failure before reproduction honestly', async () => {
-    const caseFile = await loadFixture('gave-up');
-    caseFile.outcome = 'infra-stop';
-    caseFile.diagnosis.class = 'infra';
-    caseFile.diagnosis.signals = ['sandbox-preparation:failed'];
-    caseFile.triage = { status: 'not-run', reproduced: 0, of: 0 };
-    caseFile.race = [];
+    const caseFile = await loadFixture('infra-stop');
 
     const report = renderComment(caseFile);
 
@@ -248,6 +270,8 @@ describe('markdown report contract', () => {
       'Sandbox dependency preparation failed. Sutura stopped before reproduction and inference.',
     );
     expect(report).not.toContain('passed in a clean sandbox reproduction');
+    expect(report).toContain('Sandbox cost:');
+    expect(report).toContain('Policy:');
   });
 
   it('shows refused evidence and the ledger-derived inference cost', async () => {
@@ -328,6 +352,8 @@ describe('HTML case-file contract', () => {
     const caseFile = await loadFixture('fixed');
     caseFile.race[0]!.candidate.diff = '</style><script>alert("x")</script>';
     caseFile.audit!.reasoning = '<img src=x onerror=alert(1)>';
+    caseFile.policy.baseRef = '<script>policy()</script>';
+    caseFile.stages[0]!.note = '<img src=x onerror=stage()>';
 
     const html = renderCaseFile(caseFile);
 
@@ -335,5 +361,7 @@ describe('HTML case-file contract', () => {
     expect(html).not.toContain('<img');
     expect(html).toContain('&lt;/style&gt;');
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(html).toContain('&lt;script&gt;policy()&lt;/script&gt;');
+    expect(html).toContain('&lt;img src=x onerror=stage()&gt;');
   });
 });

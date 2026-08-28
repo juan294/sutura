@@ -134,6 +134,43 @@ describe('GitRepository.readSourceExcerpts', () => {
 });
 
 describe('GitRepository exact-SHA operations', () => {
+  it.each(['regular', 'symlink'] as const)(
+    '%s policy is read only from the exact commit and symlinks fail closed',
+    async (kind) => {
+      const root = await temporaryDirectory();
+      const outside = join(root, 'outside-policy.json');
+      await writeFile(outside, '{"version":1}');
+      const sha = 'a'.repeat(40);
+      const calls: Array<readonly string[]> = [];
+      const repository = new GitRepository({
+        token: 'test',
+        workspaceRoot: root,
+        run: async (_command, args) => {
+          calls.push(args);
+          if (args.includes('init')) {
+            const checkoutDir = args.at(-1) as string;
+            if (kind === 'symlink') {
+              await symlink(outside, join(checkoutDir, '.sutura.json'));
+            } else {
+              await writeFile(join(checkoutDir, '.sutura.json'), '{"version":1}');
+            }
+          }
+          return args.includes('rev-parse') ? `${sha}\n` : '';
+        },
+      });
+
+      const read = repository.readPolicyAtSha('owner/repo', sha);
+
+      if (kind === 'symlink') {
+        await expect(read).rejects.toThrow(/policy must not be a symlink/iu);
+      } else {
+        await expect(read).resolves.toBe('{"version":1}');
+      }
+      expect(calls.some((args) => args.includes('fetch') && args.includes(sha)))
+        .toBe(true);
+    },
+  );
+
   it('fetches and checks out only the requested commit', async () => {
     const calls: Array<{ command: string; args: readonly string[] }> = [];
     const root = await temporaryDirectory();

@@ -28,6 +28,8 @@ function caseFile(
     }),
     outcome,
     cost: { entries: [], totalUsd: () => 0 },
+    policy: { baseRef: 'local', baseSha: 'local', policySha: 'default' },
+    stages: [],
   };
 }
 

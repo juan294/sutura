@@ -16,6 +16,8 @@ function approved(grounded = false): CaseFile {
     triage: { status: 'real', reproduced: 5, of: 5 }, race: [],
     audit: { approved: true, checks: [], reasoning: 'approved' }, outcome: 'fixed',
     cost: { entries: [], totalUsd: () => 0 },
+    policy: { baseRef: 'local', baseSha: 'local', policySha: 'default' },
+    stages: [],
   };
 }
 

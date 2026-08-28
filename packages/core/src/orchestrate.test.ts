@@ -51,6 +51,8 @@ const RUN: FailingWorkflowRun = {
   prNumber: 42,
   headSha: '0123456789abcdef0123456789abcdef01234567',
   headRef: 'feature/broken-build',
+  baseSha: '89abcdef0123456789abcdef0123456789abcdef',
+  baseRef: 'develop',
   failedSteps: [
     {
       jobName: 'test',
@@ -132,6 +134,13 @@ class FakeRepository implements RepositoryPort {
   readonly sources = new Map([
     ['src/value.ts', 'export const value: string = 1;'],
   ]);
+  policyContent: string | null = null;
+  readonly policyReads: Array<{ repo: string; sha: string }> = [];
+
+  async readPolicyAtSha(repo: string, sha: string): Promise<string | null> {
+    this.policyReads.push({ repo, sha });
+    return this.policyContent;
+  }
 
   async checkoutHead(repo: string, sha: string): Promise<string> {
     this.checkouts.push({ repo, sha });
@@ -286,6 +295,117 @@ function runCalls(executor: InMemoryExecutor): Extract<InMemoryCall, { kind: 'ru
 }
 
 describe('orchestrate', () => {
+  it('rejects an invalid base policy before provider or sandbox calls', async () => {
+    const { ctx, executor, github, repository, chat } = context([]);
+    repository.policyContent = '{"version":2}';
+
+    await expect(orchestrate(ctx)).rejects.toThrow(/unsupported policy version/iu);
+
+    expect(repository.policyReads).toEqual([{ repo: RUN.repo, sha: RUN.baseSha }]);
+    expect(executor.calls).toEqual([]);
+    expect(chat).not.toHaveBeenCalled();
+    expect(github.comments).toEqual([]);
+  });
+
+  it('binds public evidence to the exact base policy without provider image ids', async () => {
+    const { ctx, repository } = context([1, 1, 1, 0, 1, 1, 0]);
+    repository.policyContent = JSON.stringify({
+      version: 1,
+      allowedPaths: ['src/**'],
+    });
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(caseFile.policy).toEqual({
+      baseRef: RUN.baseRef,
+      baseSha: RUN.baseSha,
+      policySha: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
+    expect(caseFile.stages[0]).toMatchObject({
+      stage: 'policy',
+      nodeId: 'node-001',
+      network: 'disabled',
+    });
+    expect(caseFile.race.every(({ imageId, nodeId }) =>
+      imageId === nodeId && /^node-\d{3}$/u.test(nodeId),
+    )).toBe(true);
+    expect(JSON.stringify(caseFile)).not.toContain('memory-image');
+  });
+
+  it('never sends denied paths or their log lines to readers or external providers', async () => {
+    const deniedRun: FailingWorkflowRun = {
+      ...RUN,
+      failedSteps: [{
+        ...RUN.failedSteps[0]!,
+        log: [
+          'Run pnpm test',
+          'src/private/token.ts:1: supersecret failure detail',
+          '/home/runner/work/acme/acme/src/private/token.ts:2: runner-secret',
+          'file:///workspace/src/private/token.ts:3: workspace-secret',
+          'a/src/private/token.ts:4: git-secret',
+          '/workspace/src/private data/token.ts:5: spaced-secret',
+          'private.ts:6: root-secret',
+          './private.ts:7: dot-root-secret',
+          'src/value.ts:1: Type number is not assignable to type string',
+        ].join('\n'),
+      }],
+    };
+    const { ctx, repository, chat } = context(
+      [1, 1, 1, 0, 1, 1, 0],
+      true,
+      deniedRun,
+    );
+    const search = vi.fn().mockResolvedValue([{
+      title: 'Release notes',
+      url: 'https://example.test/release',
+      snippet: 'Documented breaking release',
+    }]);
+    ctx.tavily = { search };
+    chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
+      if (tier === 'nano') return { text: JSON.stringify({
+        ...diagnosisReply(),
+        class: 'dep-upstream-breaking',
+      }) };
+      if (tier === 'super') return { text: JSON.stringify({ candidates: candidates() }) };
+      return { text: JSON.stringify({
+        approved: true,
+        reasoning: 'The patch corrects the diagnosed source type.',
+      }) };
+    });
+    repository.policyContent = JSON.stringify({
+      version: 1,
+      allowedPaths: ['**'],
+      deniedReadPaths: ['src/private/**', 'src/private data/**', 'private.ts'],
+    });
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(caseFile.outcome).toBe('fixed');
+    expect(repository.sourceReads.flatMap(({ paths }) => paths))
+      .not.toContain('src/private/token.ts');
+    const deniedEvidence = /src\/private|private\.ts|supersecret|runner-secret|workspace-secret|git-secret|spaced-secret|root-secret/u;
+    expect(JSON.stringify(chat.mock.calls)).not.toMatch(deniedEvidence);
+    expect(JSON.stringify(search.mock.calls)).not.toMatch(deniedEvidence);
+    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super', 'ultra']);
+    expect(search).toHaveBeenCalledOnce();
+  });
+
+  it('refuses protected candidate paths before sandbox execution', async () => {
+    const { ctx, executor, repository } = context([1, 1, 1]);
+    repository.policyContent = JSON.stringify({
+      version: 1,
+      allowedPaths: ['src/**'],
+      protectedPaths: ['src/**'],
+    });
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(caseFile.outcome).toBe('refused');
+    expect(caseFile.race).toHaveLength(3);
+    expect(caseFile.race.every(({ note }) => note?.includes('protected path'))).toBe(true);
+    expect(runCalls(executor).some(({ cmd }) => cmd.includes('git apply'))).toBe(false);
+  });
+
   it('opens one fix PR from the exact failing head after reproduction, triage, race, and audit', async () => {
     // reproduction, triage x2, race x3, audit rerun
     const { ctx, executor, github, repository, chat } = context([
@@ -334,6 +454,8 @@ describe('orchestrate', () => {
       repo: RUN.repo,
       headSha: RUN.headSha,
       headRef: 'develop',
+      baseSha: RUN.headSha,
+      baseRef: 'develop',
       failedSteps: RUN.failedSteps,
     };
     const { ctx, github, repository } = context(
@@ -465,7 +587,7 @@ describe('orchestrate', () => {
 
     const caseFile = await orchestrate(ctx);
 
-    expect(caseFile.outcome).toBe('gave-up');
+    expect(caseFile.outcome).toBe('refused');
     expect(caseFile.race).toHaveLength(3);
     expect(caseFile.race.every(({ note }) => note?.startsWith('Patch vet refused:')))
       .toBe(true);

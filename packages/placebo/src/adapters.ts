@@ -17,6 +17,11 @@ function failureCaseFile(reason: string): CaseFile {
     diagnosis: { class: 'infra', confidence: 1, signals: ['adapter-failure'], failingCmd: 'adapter', errorExcerpt: reason.slice(0, 2_000) },
     triage: { status: 'real', reproduced: 1, of: 1 }, race: [], outcome: 'gave-up',
     cost: { entries: [], totalUsd: () => 0 },
+    policy: { baseRef: 'local', baseSha: 'local', policySha: 'unavailable' },
+    stages: [{
+      stage: 'policy', attempt: 1, nodeId: 'node-001', metrics: {}, network: 'disabled',
+      note: 'Adapter stopped before provider execution',
+    }],
   };
 }
 
@@ -105,7 +110,35 @@ function validRace(value: unknown): boolean {
     const candidate = record(result?.candidate);
     return result && candidate && typeof candidate.id === 'string' && typeof candidate.rationale === 'string' &&
       typeof candidate.diff === 'string' && typeof result.imageId === 'string' &&
+      typeof result.nodeId === 'string' && result.imageId === result.nodeId &&
       typeof result.exitCode === 'number' && typeof result.held === 'boolean';
+  });
+}
+
+function validPolicyEvidence(value: unknown): boolean {
+  const policy = record(value);
+  return Boolean(policy &&
+    ['baseRef', 'baseSha', 'policySha'].every((key) =>
+      typeof policy[key] === 'string' && (policy[key] as string).length <= 240,
+    ));
+}
+
+function validStages(value: unknown): boolean {
+  return Array.isArray(value) && value.length <= 100 && value.every((entry) => {
+    const stage = record(entry);
+    const metrics = record(stage?.metrics);
+    return Boolean(stage && metrics &&
+      ['policy', 'preparation', 'reproduction', 'triage', 'candidate', 'search', 'audit']
+        .includes(String(stage.stage)) &&
+      Number.isSafeInteger(stage.attempt) && Number(stage.attempt) >= 0 &&
+      /^node-\d{3}$/u.test(String(stage.nodeId)) &&
+      (stage.parentNodeId === undefined || /^node-\d{3}$/u.test(String(stage.parentNodeId))) &&
+      (stage.exitCode === undefined || Number.isSafeInteger(stage.exitCode)) &&
+      (stage.network === 'disabled' || stage.network === 'enabled') &&
+      (stage.note === undefined || (typeof stage.note === 'string' && stage.note.length <= 240)) &&
+      Object.values(metrics).every((metric) =>
+        typeof metric === 'number' && Number.isFinite(metric) && metric >= 0,
+      ));
   });
 }
 
@@ -128,6 +161,7 @@ function parseCaseFile(result: ExecutionResult): CaseFile {
     if (!value || typeof value.runId !== 'string' || typeof value.repo !== 'string' ||
         !validDiagnosis(value.diagnosis) || !validTriage(value.triage) || !validRace(value.race) ||
         !OUTCOMES.has(String(value.outcome)) || !validCost(value.cost) ||
+        !validPolicyEvidence(value.policy) || !validStages(value.stages) ||
         (audit !== undefined && !validAudit(audit))) {
       throw new Error('does not match Sutura CaseFile');
     }
@@ -226,6 +260,11 @@ function controlCaseFile(outcome: CaseFile['outcome'], approved: boolean | undef
     triage: { status: outcome === 'flaky-no-patch' ? 'intermittent' : 'real', reproduced: outcome === 'flaky-no-patch' ? 2 : 5, of: 5 },
     race: [], ...(approved === undefined ? {} : { audit: { approved, checks: [], reasoning: approved ? 'approved' : 'refused' } }),
     outcome, cost: { entries: [], totalUsd: () => 0 },
+    policy: { baseRef: 'local', baseSha: 'local', policySha: 'default' },
+    stages: [{
+      stage: 'policy', attempt: 1, nodeId: 'node-001', metrics: {}, network: 'disabled',
+      note: 'Scripted control policy',
+    }],
   };
 }
 

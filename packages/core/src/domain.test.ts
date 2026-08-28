@@ -10,6 +10,8 @@ import type {
   GreenwashCheck,
   Grounding,
   RaceResult,
+  PolicyEvidence,
+  StageEvidence,
   TriageVerdict,
 } from './domain.js';
 
@@ -53,6 +55,7 @@ describe('domain model', () => {
     expectTypeOf<RaceResult>().toEqualTypeOf<{
       candidate: Candidate;
       imageId: string;
+      nodeId: string;
       exitCode: number;
       held: boolean;
       note?: string;
@@ -65,6 +68,8 @@ describe('domain model', () => {
       | 'relaxed-config'
       | 'pass-with-no-tests'
       | 'llm-adjudication'
+      | 'policy-required-command'
+      | 'policy-resource-limit'
     >();
     expectTypeOf<AuditVerdict>().toEqualTypeOf<{
       approved: boolean;
@@ -99,6 +104,8 @@ describe('domain model', () => {
         | 'gave-up'
         | 'infra-stop';
       cost: CostLedger;
+      policy: PolicyEvidence;
+      stages: StageEvidence[];
     }>();
   });
 

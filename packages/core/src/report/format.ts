@@ -47,6 +47,32 @@ export function formatUsd(value: number): string {
   return `$${value.toFixed(4)}`;
 }
 
+export interface StageTotals {
+  elapsedTimeSec: number;
+  cpuTimeSec: number;
+  maxRssKb: number;
+  sandboxCostUsd: number;
+  operationCount: number;
+}
+
+export function aggregateStageEvidence(caseFile: CaseFile): StageTotals {
+  return caseFile.stages.reduce<StageTotals>((totals, entry) => ({
+    elapsedTimeSec: totals.elapsedTimeSec + (entry.metrics.elapsedTimeSec ?? 0),
+    cpuTimeSec: totals.cpuTimeSec +
+      (entry.metrics.systemCpuTimeSec ?? 0) +
+      (entry.metrics.userCpuTimeSec ?? 0),
+    maxRssKb: Math.max(totals.maxRssKb, entry.metrics.maxRssKb ?? 0),
+    sandboxCostUsd: totals.sandboxCostUsd + (entry.metrics.cost ?? 0),
+    operationCount: totals.operationCount + 1,
+  }), {
+    elapsedTimeSec: 0,
+    cpuTimeSec: 0,
+    maxRssKb: 0,
+    sandboxCostUsd: 0,
+    operationCount: 0,
+  });
+}
+
 export function stageForModel(model: string, index: number): string {
   return (
     STAGE_BY_MODEL.find(({ match }) => match.test(model))?.stage ??

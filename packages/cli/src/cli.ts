@@ -55,6 +55,15 @@ function infraStop(caseDir: string, error: unknown): CaseFile {
     race: [],
     outcome: 'infra-stop',
     cost: emptyLedger(),
+    policy: { baseRef: 'local', baseSha: 'local', policySha: 'unavailable' },
+    stages: [{
+      stage: 'policy',
+      attempt: 1,
+      nodeId: 'node-001',
+      metrics: {},
+      network: 'disabled',
+      note: 'CLI stopped before provider execution',
+    }],
   };
 }
 

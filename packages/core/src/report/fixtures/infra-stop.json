@@ -1,0 +1,24 @@
+{
+  "runId": "run-infra-019",
+  "repo": "acme/service",
+  "diagnosis": {
+    "class": "infra",
+    "confidence": 1,
+    "signals": ["sandbox-preparation:failed"],
+    "failingCmd": "pnpm install --frozen-lockfile",
+    "errorExcerpt": "Dependency preparation exited 1"
+  },
+  "triage": { "status": "not-run", "reproduced": 0, "of": 0 },
+  "race": [],
+  "outcome": "infra-stop",
+  "policy": {
+    "baseRef": "develop",
+    "baseSha": "89abcdef0123456789abcdef0123456789abcdef",
+    "policySha": "default"
+  },
+  "stages": [
+    { "stage": "policy", "attempt": 1, "nodeId": "node-001", "metrics": {}, "network": "disabled", "note": "Repository policy validated before provider execution" },
+    { "stage": "preparation", "attempt": 2, "nodeId": "node-003", "parentNodeId": "node-002", "exitCode": 1, "metrics": { "elapsedTimeSec": 4.2, "maxRssKb": 3072, "systemCpuTimeSec": 0.4, "userCpuTimeSec": 1.1, "cost": 0.0007 }, "network": "enabled", "note": "Dependencies prepared with lifecycle scripts disabled" }
+  ],
+  "cost": { "entries": [] }
+}

@@ -1,4 +1,4 @@
-import type { CaseFile } from '@sutura/core';
+import { aggregateStageEvidence, type CaseFile } from '@sutura/core';
 
 export function runtimeEvidence(
   caseFile: CaseFile,
@@ -28,6 +28,13 @@ export function runtimeEvidence(
     : 'sandbox reproduction attempted';
   lines.push(
     `ConTree runtime: ${contreeStage}; triage=${caseFile.triage.reproduced}/${caseFile.triage.of}; raced=${caseFile.race.length}; outcome=${caseFile.outcome}`,
+  );
+  const totals = aggregateStageEvidence(caseFile);
+  lines.push(
+    `Sandbox evidence: operations=${totals.operationCount}; elapsed=${totals.elapsedTimeSec.toFixed(3)}s; cpu=${totals.cpuTimeSec.toFixed(3)}s; max-rss=${totals.maxRssKb}KB; sandbox cost USD=${totals.sandboxCostUsd.toFixed(6)}`,
+  );
+  lines.push(
+    `Policy evidence: base-ref=${caseFile.policy.baseRef}; base-sha=${caseFile.policy.baseSha}; policy-sha=${caseFile.policy.policySha}`,
   );
   return lines;
 }
