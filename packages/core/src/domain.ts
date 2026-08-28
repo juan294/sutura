@@ -43,6 +43,13 @@ export interface Candidate {
   diff: string;
 }
 
+export type RepairFailureKind =
+  | 'provider'
+  | 'sandbox'
+  | 'policy'
+  | 'budget'
+  | 'invalid';
+
 export interface RaceResult {
   candidate: Candidate;
   imageId: string;

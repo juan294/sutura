@@ -99,6 +99,13 @@ The public dogfood record starts with [PR #18](https://github.com/juan294/sutura
   reproduction, triage, repair, candidate races, and audit.
 - Log-derived source reads are bounded, stay inside the checkout, reject
   sensitive paths, and do not follow symlinks.
+- The repair agent can use only six bounded tools. Source reads and literal
+  searches stay inside the network-disabled sandbox. Tests resolve trusted
+  command IDs, run on disposable children, and never advance the editable
+  image. Every cumulative patch passes built-in and repository policy checks.
+- Global repair limits default to 8 model turns, 24 tool calls, 4 branches, 32
+  sandbox operations, 600 seconds, $0.25 inference cost, and 65,536 diff bytes.
+  Action inputs can lower these limits but cannot raise the core maxima.
 - Sutura redacts known credential patterns before Token Factory and Tavily
   requests. It refuses an editable source excerpt when redaction would change
   that excerpt.
@@ -185,8 +192,8 @@ repository secrets. Configure `CONTREE_PROJECT` as a repository variable. The
 checked-in [workflow](.github/workflows/sutura.yml) shows the complete wiring.
 Pin external use to an immutable release tag or commit SHA.
 
-Defaults are five triage reproductions and three repair candidates. Model IDs
-and those limits are configurable action inputs.
+Defaults are five triage reproductions and a bounded repair agent. Model IDs,
+triage count, and lower-only repair budgets are configurable action inputs.
 
 ## Placebo
 

@@ -59,14 +59,32 @@ function diagnosis(failureClass: Diagnosis['class']): Diagnosis {
   };
 }
 
+function repairToolCall(
+  candidate: Candidate,
+  index: number,
+): { text: string; toolCalls: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>; usd: number } {
+  const steps = [
+    ['apply_patch', { diff: candidate.diff }],
+    ['run_test', { commandId: 'diagnosed' }],
+    ['submit_candidate', { id: candidate.id, rationale: candidate.rationale }],
+  ] as const;
+  const [name, args] = steps[Math.min(index, steps.length - 1)]!;
+  return {
+    text: '',
+    toolCalls: [{ id: `repair-${index + 1}`, type: 'function', function: { name, arguments: JSON.stringify(args) } }],
+    usd: 0.001,
+  };
+}
+
 function scriptedLlm(
   failureClass: Diagnosis['class'],
   candidates: Candidate[] = [{ id: 'repair', rationale: 'fix the source', diff: HONEST_DIFF }],
   auditApproved = true,
 ): { llm: TierLlm<'nano' | 'super' | 'ultra'>; chat: ReturnType<typeof vi.fn> } {
+  let superCall = 0;
   const chat = vi.fn(async (tier: 'nano' | 'super' | 'ultra') => {
     if (tier === 'nano') return { text: JSON.stringify(diagnosis(failureClass)) };
-    if (tier === 'super') return { text: JSON.stringify({ candidates }) };
+    if (tier === 'super') return repairToolCall(candidates[0]!, superCall++);
     const verdict: Pick<AuditVerdict, 'approved' | 'reasoning'> = {
       approved: auditApproved,
       reasoning: auditApproved ? 'The source repair holds.' : 'REFUSED: wrong cause.',
@@ -83,15 +101,18 @@ function context(
   extra: Partial<HealCaseContext> = {},
 ): { ctx: HealCaseContext; executor: InMemoryExecutor; chat: ReturnType<typeof vi.fn> } {
   let scenarioIndex = 0;
-  const executor = new InMemoryExecutor((command) =>
-    command.includes('corepack pnpm install --frozen-lockfile') ||
-    command.includes('git init --quiet')
-      ? result(0)
-      : result(exits[scenarioIndex++] ?? 1),
-  );
   const repairCandidates = caseId.startsWith('upstream-')
     ? [{ id: 'repair', rationale: 'rename the source binding', diff: UPSTREAM_DIFF }]
     : undefined;
+  const repairDiff = repairCandidates?.[0]?.diff ?? HONEST_DIFF;
+  const executor = new InMemoryExecutor((command) =>
+    command.includes('git apply - && git diff')
+      ? { ...result(0), stdout: repairDiff }
+      : command.includes('corepack pnpm install --frozen-lockfile') ||
+        command.includes('git init --quiet')
+      ? result(0)
+      : result(exits[scenarioIndex++] ?? 1),
+  );
   const { llm, chat } = scriptedLlm(failureClass, repairCandidates);
   return {
     executor,
@@ -140,6 +161,9 @@ describe('healCase', () => {
       let policyCommandRuns = 0;
       const ordinaryExits = [1, 1, 1, 1, 1, 1, 0, 0];
       const executor = new InMemoryExecutor((command) => {
+        if (command.includes('git apply - && git diff')) {
+          return { ...result(0), stdout: HONEST_DIFF };
+        }
         if (
           command.includes('corepack pnpm install --frozen-lockfile') ||
           command.includes('git init --quiet')
@@ -194,7 +218,9 @@ describe('healCase', () => {
     expect(executor.calls.filter(({ kind }) => kind === 'run').every((call) =>
       call.kind !== 'run' || call.opts?.env === SUTURA_SANDBOX_ENV,
     )).toBe(true);
-    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super', 'ultra']);
+    expect(chat.mock.calls.map(([tier]) => tier)).toEqual([
+      'nano', 'super', 'super', 'super', 'ultra',
+    ]);
   });
 
   it('labels the real Placebo flaky fixture without generating a patch', async () => {
@@ -401,6 +427,7 @@ describe('sandbox command resolution', () => {
       'test-assertion',
       { failureCommand: observed },
     );
+    let superCall = 0;
     chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
       if (tier === 'nano') {
         return {
@@ -411,11 +438,10 @@ describe('sandbox command resolution', () => {
         };
       }
       if (tier === 'super') {
-        return {
-          text: JSON.stringify({
-            candidates: [{ id: 'repair', rationale: 'fix the source', diff: HONEST_DIFF }],
-          }),
-        };
+        return repairToolCall(
+          { id: 'repair', rationale: 'fix the source', diff: HONEST_DIFF },
+          superCall++,
+        );
       }
       return {
         text: JSON.stringify({ approved: true, reasoning: 'The source repair holds.' }),
@@ -426,7 +452,8 @@ describe('sandbox command resolution', () => {
     const stageCommands = executor.calls.flatMap((call) =>
       call.kind === 'run' &&
         !call.cmd.includes('corepack pnpm install --frozen-lockfile') &&
-        !call.cmd.includes('git init --quiet')
+        !call.cmd.includes('git init --quiet') &&
+        call.cmd.includes('vitest run;')
         ? [call.cmd]
         : [],
     );

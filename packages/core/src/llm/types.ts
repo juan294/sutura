@@ -77,6 +77,7 @@ export interface ChatOptions {
   tools?: readonly FunctionToolDefinition[];
   toolChoice?: ToolChoice;
   parallelToolCalls?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface CapacitySnapshot {
@@ -109,5 +110,9 @@ export interface TierLlm<Tier extends ModelTier> {
     tier: Tier,
     messages: readonly ChatMessage[],
     options?: ChatOptions,
-  ): Promise<{ text: string }>;
+  ): Promise<{
+    text: string;
+    toolCalls?: readonly FunctionToolCall[];
+    usd?: number;
+  }>;
 }

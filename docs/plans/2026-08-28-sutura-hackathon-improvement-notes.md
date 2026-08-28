@@ -60,3 +60,10 @@
 - Found: Resource comparisons need a named required command, and accepting shell metacharacters would let repository policy create a second command language.
 - Chose: Default to `allowedPaths: ["**"]`, protected `.sutura.json`, no denied reads or required commands, 65,536 diff bytes, and eight changed files. Accept only bounded space-separated command text made from alphanumeric characters and `@%_./:=+,-`; reject repeated whitespace and require at least one command when resource thresholds exist.
 - Why: The defaults preserve current repositories while policy commands remain a small enumerated input that cannot add shell control operators.
+
+### Phase 4: Worst-case model reservation
+
+- Plan said: Reserve the worst-case model cost before every repair-agent request, but did not specify a request-cost ceiling.
+- Found: Super repair turns allow up to 8,192 completion tokens and carry bounded source and tool evidence through an OpenAI-compatible model context.
+- Chose: Atomically reserve a request-specific worst case from the serialized request bytes, full tool schema, 8,192 completion tokens, and documented Super prices, with a conservative $0.05 floor. Settle the reservation to the provider-reported actual cost and reject a response whose reported cost exceeds its reservation.
+- Why: The reservation covers the configured request envelope at the documented Super prices while the separate $0.25 run budget remains fail-closed under concurrent requests.

@@ -70,6 +70,7 @@ export async function runAction(): Promise<void> {
       cost: nebius.ledger,
       triageN: config.triageN,
       raceK: config.raceK,
+      repairBudgets: config.repairBudgets,
       ...(tavily ? { tavily } : {}),
     });
     core.setOutput('outcome', result.outcome);

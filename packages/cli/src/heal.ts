@@ -20,6 +20,7 @@ import {
   type Executor,
   type HealLlm,
   type RepairSourceContext,
+  type RepairBudgetLimits,
   type RepositorySourceExcerpt,
   type RepositoryPolicy,
   type SourceReadLimits,
@@ -41,6 +42,7 @@ export interface HealRuntime {
   cost: CostLedger;
   triageN: number;
   raceK: number;
+  repairBudgets?: RepairBudgetLimits;
   tavily?: TavilySearch;
   imageRef?: string;
 }
@@ -319,6 +321,7 @@ export async function healWithRuntime(
     cost: runtime.cost,
     triageN: runtime.triageN,
     raceK: runtime.raceK,
+    ...(runtime.repairBudgets === undefined ? {} : { repairBudgets: runtime.repairBudgets }),
     readSourceContext: (log, diagnosis) => readLocalSourceContext(
       caseDir,
       log,
@@ -364,6 +367,7 @@ export function runtimeFromEnvironment(
     cost: llm.ledger,
     triageN: config.triageN,
     raceK: config.raceK,
+    repairBudgets: config.repairBudgets,
     ...(request.tavilyEnabled ? { tavily: new TavilyClient(config.tavilyApiKey) } : {}),
   };
 }

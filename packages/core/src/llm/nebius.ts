@@ -35,6 +35,7 @@ export interface HttpRequestInit {
   method: string;
   headers: Readonly<Record<string, string>>;
   body: string;
+  signal?: AbortSignal;
 }
 
 type Fetch = (input: string, init: HttpRequestInit) => Promise<HttpResponse>;
@@ -372,6 +373,7 @@ export class NebiusClient {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
     };
 
     const retryDeadline = this.now() + RETRY_DEADLINE_MS;
@@ -380,6 +382,7 @@ export class NebiusClient {
       try {
         response = await this.fetch(requestUrl, request);
       } catch (error) {
+        if (options.signal?.aborted === true) throw error;
         if (attempt < MAX_RETRIES) {
           const delay = this.localBackoff(attempt);
           if (!(await this.waitForRetry(delay, retryDeadline))) {

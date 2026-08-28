@@ -265,6 +265,13 @@ function editsDiff(
   }).join('\n')}\n`;
 }
 
+export function structuredEditsDiff(
+  edits: unknown,
+  sourceContext: RepairSourceContext,
+): string {
+  return editsDiff(edits, 0, sourceContext);
+}
+
 function candidateReply(
   value: unknown,
   expected: number,

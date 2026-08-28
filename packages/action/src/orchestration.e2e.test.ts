@@ -7,6 +7,7 @@ import {
   attemptMarker,
   orchestrate,
   type CostLedger,
+  type FunctionToolCall,
   type OrchestrationContext,
   type OrchestratorLlm,
   type PublishFixInput,
@@ -42,15 +43,6 @@ const HONEST_DIFF = [
   '-export const value: string = 1;',
   '+export const value: string = "1";',
 ].join('\n') + '\n';
-
-const NUMBER_DIFF = HONEST_DIFF.replace(
-  '+export const value: string = "1";',
-  '+export const value: number = 1;',
-);
-const INFERRED_DIFF = HONEST_DIFF.replace(
-  '+export const value: string = "1";',
-  '+export const value = String(1);',
-);
 
 interface RawWorkflowRun {
   id: number;
@@ -364,12 +356,13 @@ class RecordedRepository implements RepositoryPort {
 
 class ScriptedLlm implements OrchestratorLlm {
   readonly calls: Array<'nano' | 'super' | 'ultra'> = [];
+  private superCall = 0;
 
   constructor(private readonly auditApproved: boolean) {}
 
   async chat(
     tier: 'nano' | 'super' | 'ultra',
-  ): Promise<{ text: string }> {
+  ): Promise<{ text: string; toolCalls?: readonly FunctionToolCall[]; usd?: number }> {
     this.calls.push(tier);
     if (tier === 'nano') {
       return {
@@ -383,14 +376,21 @@ class ScriptedLlm implements OrchestratorLlm {
       };
     }
     if (tier === 'super') {
+      const steps = [
+        ['apply_patch', { diff: HONEST_DIFF }],
+        ['run_test', { commandId: 'diagnosed' }],
+        ['submit_candidate', { id: 'source', rationale: 'Correct the source value.' }],
+      ] as const;
+      const [name, args] = steps[Math.min(this.superCall, steps.length - 1)]!;
+      this.superCall += 1;
       return {
-        text: JSON.stringify({
-          candidates: [
-            { id: 'source', rationale: 'Correct the source value.', diff: HONEST_DIFF },
-            { id: 'declaration', rationale: 'Correct the declared type.', diff: NUMBER_DIFF },
-            { id: 'inference', rationale: 'Use inferred string conversion.', diff: INFERRED_DIFF },
-          ],
-        }),
+        text: '',
+        usd: 0.001,
+        toolCalls: [{
+          id: `repair-${this.superCall}`,
+          type: 'function',
+          function: { name, arguments: JSON.stringify(args) },
+        }],
       };
     }
     return {
@@ -410,7 +410,26 @@ function ledger(): CostLedger {
 
 function executorFor(exits: readonly number[]): InMemoryExecutor {
   let scenarioIndex = 0;
+  let agentPatched = false;
   return new InMemoryExecutor((command) => {
+    if (command.includes('git apply - && git diff')) {
+      agentPatched = true;
+      return {
+        exitCode: 0, stdout: HONEST_DIFF, stderr: '', truncated: false, metrics: {},
+      };
+    }
+    if (agentPatched) {
+      agentPatched = false;
+      const exitCode = exits[scenarioIndex] ?? 1;
+      scenarioIndex += 3;
+      return {
+        exitCode,
+        stdout: exitCode === 0 ? 'Tests passed' : '',
+        stderr: exitCode === 0 ? '' : 'TS2322',
+        truncated: false,
+        metrics: {},
+      };
+    }
     const exitCode = command.includes('install --frozen-lockfile') ||
       command.includes('git init --quiet')
       ? 0
@@ -575,11 +594,7 @@ describe('recorded GitHub API orchestration E2E', () => {
           expect(harness.api.createdPullRequests).toEqual([]);
         }
         if (storyline.outcome === 'gave-up') {
-          expect(caseFile.race.map(({ candidate }) => candidate.id)).toEqual([
-            'source',
-            'declaration',
-            'inference',
-          ]);
+          expect(caseFile.race).toEqual([]);
         }
 
         const mutationCounts = {

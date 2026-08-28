@@ -18,6 +18,10 @@ describe('loadConfig', () => {
     expect(config.triageN).toBe(5);
     expect(config.raceK).toBe(3);
     expect(config.maxOps).toBe(40);
+    expect(config.repairBudgets).toEqual({
+      modelTurns: 8, toolCalls: 24, branches: 4, sandboxOperations: 32,
+      elapsedTimeSec: 600, inferenceCostUsd: 0.25, diffBytes: 65_536,
+    });
     expect(config.models).toEqual({
       nano: 'nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B',
       super: 'nvidia/nemotron-3-super-120b-a12b',
@@ -37,6 +41,13 @@ describe('loadConfig', () => {
       SUTURA_TRIAGE_N: '7',
       SUTURA_RACE_K: '4',
       SUTURA_MAX_OPS: '24',
+      SUTURA_REPAIR_MODEL_TURNS: '4',
+      SUTURA_REPAIR_TOOL_CALLS: '12',
+      SUTURA_REPAIR_BRANCHES: '2',
+      SUTURA_REPAIR_SANDBOX_OPERATIONS: '16',
+      SUTURA_REPAIR_ELAPSED_TIME_SEC: '300',
+      SUTURA_REPAIR_INFERENCE_COST_USD: '0.10',
+      SUTURA_REPAIR_DIFF_BYTES: '32768',
       SUTURA_MODEL_NANO: 'nano-override',
       SUTURA_MODEL_SUPER: 'super-override',
       SUTURA_MODEL_ULTRA: 'ultra-override',
@@ -55,6 +66,10 @@ describe('loadConfig', () => {
         ultra: 'ultra-override',
       },
       maxOps: 24,
+      repairBudgets: {
+        modelTurns: 4, toolCalls: 12, branches: 2, sandboxOperations: 16,
+        elapsedTimeSec: 300, inferenceCostUsd: 0.1, diffBytes: 32_768,
+      },
     });
   });
 
@@ -70,6 +85,8 @@ describe('loadConfig', () => {
   it.each([
     ['SUTURA_TRIAGE_N', '21'],
     ['SUTURA_RACE_K', '11'],
+    ['SUTURA_REPAIR_MODEL_TURNS', '9'],
+    ['SUTURA_REPAIR_INFERENCE_COST_USD', '0.26'],
   ])('rejects an excessive %s value', (name, value) => {
     expect(() => loadConfig({ ...REQUIRED_ENV, [name]: value })).toThrowError(
       new RegExp(name),

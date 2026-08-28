@@ -1,3 +1,9 @@
+import {
+  DEFAULT_REPAIR_BUDGET_LIMITS,
+  repairBudgetLimits,
+  type RepairBudgetLimits,
+} from './engine/repair-budget.js';
+
 export const DEFAULT_MODELS = {
   nano: 'nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B',
   super: 'nvidia/nemotron-3-super-120b-a12b',
@@ -17,6 +23,7 @@ export interface Config {
   raceK: number;
   models: Record<keyof typeof DEFAULT_MODELS, string>;
   maxOps: number;
+  repairBudgets: RepairBudgetLimits;
 }
 
 export type ConfigEnvironment = Readonly<Record<string, string | undefined>>;
@@ -73,6 +80,21 @@ function boundedPositiveInteger(
   return value;
 }
 
+function boundedPositiveNumber(
+  env: ConfigEnvironment,
+  name: string,
+  fallback: number,
+  maximum: number,
+): number {
+  const value = optional(env, name);
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > maximum) {
+    throw new ConfigError(`${name} must be greater than 0 and at most ${maximum}`);
+  }
+  return parsed;
+}
+
 export function loadConfig(env: ConfigEnvironment): Config {
   const config: Config = {
     nebiusApiKey: required(env, 'NEBIUS_API_KEY'),
@@ -94,6 +116,43 @@ export function loadConfig(env: ConfigEnvironment): Config {
       ultra: optional(env, 'SUTURA_MODEL_ULTRA') ?? DEFAULT_MODELS.ultra,
     },
     maxOps: positiveInteger(env, 'SUTURA_MAX_OPS', 40),
+    repairBudgets: repairBudgetLimits({
+      modelTurns: boundedPositiveInteger(
+        env, 'SUTURA_REPAIR_MODEL_TURNS',
+        DEFAULT_REPAIR_BUDGET_LIMITS.modelTurns,
+        DEFAULT_REPAIR_BUDGET_LIMITS.modelTurns,
+      ),
+      toolCalls: boundedPositiveInteger(
+        env, 'SUTURA_REPAIR_TOOL_CALLS',
+        DEFAULT_REPAIR_BUDGET_LIMITS.toolCalls,
+        DEFAULT_REPAIR_BUDGET_LIMITS.toolCalls,
+      ),
+      branches: boundedPositiveInteger(
+        env, 'SUTURA_REPAIR_BRANCHES',
+        DEFAULT_REPAIR_BUDGET_LIMITS.branches,
+        DEFAULT_REPAIR_BUDGET_LIMITS.branches,
+      ),
+      sandboxOperations: boundedPositiveInteger(
+        env, 'SUTURA_REPAIR_SANDBOX_OPERATIONS',
+        DEFAULT_REPAIR_BUDGET_LIMITS.sandboxOperations,
+        DEFAULT_REPAIR_BUDGET_LIMITS.sandboxOperations,
+      ),
+      elapsedTimeSec: boundedPositiveInteger(
+        env, 'SUTURA_REPAIR_ELAPSED_TIME_SEC',
+        DEFAULT_REPAIR_BUDGET_LIMITS.elapsedTimeSec,
+        DEFAULT_REPAIR_BUDGET_LIMITS.elapsedTimeSec,
+      ),
+      inferenceCostUsd: boundedPositiveNumber(
+        env, 'SUTURA_REPAIR_INFERENCE_COST_USD',
+        DEFAULT_REPAIR_BUDGET_LIMITS.inferenceCostUsd,
+        DEFAULT_REPAIR_BUDGET_LIMITS.inferenceCostUsd,
+      ),
+      diffBytes: boundedPositiveInteger(
+        env, 'SUTURA_REPAIR_DIFF_BYTES',
+        DEFAULT_REPAIR_BUDGET_LIMITS.diffBytes,
+        DEFAULT_REPAIR_BUDGET_LIMITS.diffBytes,
+      ),
+    }),
   };
 
   const tavilyApiKey = optional(env, 'TAVILY_API_KEY');

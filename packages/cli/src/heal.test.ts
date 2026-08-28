@@ -70,6 +70,9 @@ function runtime(
 } {
   let scenarioIndex = 0;
   const executor = new InMemoryExecutor((command) => {
+    if (command.includes('git apply - && git diff')) {
+      return { ...runResult(0), stdout: candidate.diff };
+    }
     if (
       command.includes('install --frozen-lockfile') ||
       command.includes('git init --quiet')
@@ -77,6 +80,7 @@ function runtime(
     const index = scenarioIndex++;
     return runResult(exits[index] ?? 1, index === 0 ? reproductionError : 'case.test.js: assertion failed');
   });
+  let superCall = 0;
   const chat = vi.fn(async (tier: ModelTier) => {
     if (tier === 'nano') {
       return { text: JSON.stringify({
@@ -84,7 +88,19 @@ function runtime(
         failingCmd: 'pnpm test', errorExcerpt: reproductionError,
       }) };
     }
-    if (tier === 'super') return { text: JSON.stringify({ candidates: [candidate] }) };
+    if (tier === 'super') {
+      const steps = [
+        ['apply_patch', { diff: candidate.diff }],
+        ['run_test', { commandId: 'diagnosed' }],
+        ['submit_candidate', { id: candidate.id, rationale: candidate.rationale }],
+      ] as const;
+      const [name, args] = steps[Math.min(superCall, steps.length - 1)]!;
+      superCall += 1;
+      return {
+        text: '', usd: 0.001,
+        toolCalls: [{ id: `repair-${superCall}`, type: 'function' as const, function: { name, arguments: JSON.stringify(args) } }],
+      };
+    }
     return { text: JSON.stringify({ approved: true, reasoning: 'The source repair holds.' }) };
   });
   return {

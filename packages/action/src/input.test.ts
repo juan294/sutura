@@ -25,6 +25,13 @@ describe('mapActionInputs', () => {
         CONTREE_PROJECT: 'project_test',
         SUTURA_TRIAGE_N: '5',
         SUTURA_RACE_K: '3',
+        SUTURA_REPAIR_MODEL_TURNS: '8',
+        SUTURA_REPAIR_TOOL_CALLS: '24',
+        SUTURA_REPAIR_BRANCHES: '4',
+        SUTURA_REPAIR_SANDBOX_OPERATIONS: '32',
+        SUTURA_REPAIR_ELAPSED_TIME_SEC: '600',
+        SUTURA_REPAIR_INFERENCE_COST_USD: '0.25',
+        SUTURA_REPAIR_DIFF_BYTES: '65536',
       },
     });
   });
@@ -48,6 +55,13 @@ describe('mapActionInputs', () => {
       CONTREE_PROJECT: 'project_test',
       SUTURA_TRIAGE_N: '7',
       SUTURA_RACE_K: '4',
+      SUTURA_REPAIR_MODEL_TURNS: '8',
+      SUTURA_REPAIR_TOOL_CALLS: '24',
+      SUTURA_REPAIR_BRANCHES: '4',
+      SUTURA_REPAIR_SANDBOX_OPERATIONS: '32',
+      SUTURA_REPAIR_ELAPSED_TIME_SEC: '600',
+      SUTURA_REPAIR_INFERENCE_COST_USD: '0.25',
+      SUTURA_REPAIR_DIFF_BYTES: '65536',
       SUTURA_MODEL_NANO: 'nano-override',
       SUTURA_MODEL_SUPER: 'super-override',
       SUTURA_MODEL_ULTRA: 'ultra-override',
@@ -64,6 +78,8 @@ describe('mapActionInputs', () => {
     ['run-id', '1e3'],
     ['triage-n', '21'],
     ['race-k', '11'],
+    ['repair-model-turns', '9'],
+    ['repair-inference-cost-usd', '0.26'],
   ])('rejects invalid %s input', (name, value) => {
     const values: Record<string, string> = { ...REQUIRED, [name]: value };
     expect(() => mapActionInputs((key) => values[key] ?? '')).toThrowError(

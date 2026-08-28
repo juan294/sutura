@@ -58,12 +58,27 @@ export {
   runMechanicalChecks,
 } from './audit/mechanical.js';
 export { vetPatch } from './engine/patch-rules.js';
+export { validateCandidateDiff } from './engine/candidate-validation.js';
+export {
+  BudgetExceededError,
+  DEFAULT_REPAIR_BUDGET_LIMITS,
+  RepairBudget,
+  repairBudgetLimits,
+} from './engine/repair-budget.js';
+export { runRepairAgent } from './engine/repair-agent.js';
+export { REPAIR_TOOL_DEFINITIONS, RepairToolRuntime } from './engine/repair-tools.js';
 export {
   generateCandidates,
   prepareRepair,
   race,
   selectWinner,
 } from './engine/repair.js';
+export type {
+  RepairBudgetLimits,
+  RepairBudgetOverrides,
+  RepairBudgetSnapshot,
+} from './engine/repair-budget.js';
+export type { RepairAgentContext, RepairAgentOutcome } from './engine/repair-agent.js';
 export { triage } from './engine/triage.js';
 export {
   AlreadyAttemptedError,
@@ -94,6 +109,7 @@ export type {
   HealLlm,
   RepairFailureContext,
 } from './heal.js';
+export type { RepairFailureKind } from './domain.js';
 export type {
   ModelPrice,
   ModelPrices,

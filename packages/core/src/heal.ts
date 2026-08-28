@@ -19,12 +19,17 @@ import type {
 import { MAX_STAGE_EVIDENCE_ENTRIES } from './config.js';
 import { vetPatch } from './engine/patch-rules.js';
 import {
-  generateCandidates,
   race,
   selectWinner,
   type RepairLlm,
   type RepairSourceContext,
 } from './engine/repair.js';
+import { runRepairAgent } from './engine/repair-agent.js';
+import {
+  RepairBudget,
+  repairBudgetLimits,
+  type RepairBudgetOverrides,
+} from './engine/repair-budget.js';
 import { shellQuote } from './engine/shell.js';
 import { triage } from './engine/triage.js';
 import {
@@ -69,6 +74,7 @@ export interface RepairFailureContext {
   cost: CostLedger;
   triageN: number;
   raceK: number;
+  repairBudgets?: RepairBudgetOverrides;
   tavily?: TavilySearch;
   lockfileDiff?: string;
   dependencyHints?: readonly string[];
@@ -608,14 +614,96 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
         rationale: 'Candidate supplied by the benchmark adapter contract.',
         diff: ctx.candidateDiff,
       };
-  const candidates = suppliedCandidate
-    ? [suppliedCandidate]
-    : await (async () => {
-        const sourceContext = await ctx.readSourceContext(ctx.failedLog, diagnosis);
-        return sourceContext.sources.length === 0
-          ? []
-          : generateCandidates(ctx.llm, diagnosis, ctx.raceK, sourceContext);
-      })();
+  if (!suppliedCandidate) {
+    const sourceContext = await ctx.readSourceContext(ctx.failedLog, diagnosis);
+    const configuredBudgets = repairBudgetLimits(ctx.repairBudgets);
+    const budget = new RepairBudget({
+      ...configuredBudgets,
+      diffBytes: Math.min(configuredBudgets.diffBytes, policy.maxDiffBytes),
+    });
+    let candidateAttempt = 0;
+    const agent = await runRepairAgent({
+      llm: ctx.llm,
+      executor: ctx.executor,
+      initialImageId: ctx.failingImage,
+      diagnosis,
+      policy,
+      budget,
+      trustedCommands: Object.fromEntries([
+        ['diagnosed', executableCommand],
+        ...policy.requiredCommands.map((command, index) => [
+          `policy-${index + 1}`,
+          sandboxExecutableCommand(command),
+        ]),
+      ]),
+      sourceContext,
+      observe: ({ result, imageId, parentImageId, note }) => ledger.record({
+        stage: 'candidate',
+        attempt: ++candidateAttempt,
+        network: 'disabled',
+        ...(result === undefined ? {} : { result }),
+        ...(imageId === undefined ? {} : { imageId }),
+        parentImageId,
+        note,
+      }),
+    });
+    if (agent.status !== 'submitted') {
+      ledger.record({
+        stage: 'candidate',
+        attempt: ++candidateAttempt,
+        network: 'disabled',
+        parentImageId: ctx.failingImage,
+        note: `${agent.failureKind} failure: ${agent.reason}`,
+      });
+      return makeCaseFile(
+        fullContext,
+        diagnosis,
+        triageVerdict,
+        [],
+        agent.status === 'infra-stop' ? 'infra-stop' : 'gave-up',
+      );
+    }
+    const nodeId = agent.nodeId ?? ledger.record({
+      stage: 'candidate',
+      attempt: ++candidateAttempt,
+      network: 'disabled',
+      imageId: agent.imageId,
+      parentImageId: ctx.failingImage,
+      note: 'Agent candidate submitted after a trusted test',
+    });
+    const raceResults: RaceResult[] = [{
+      candidate: agent.candidate,
+      imageId: agent.imageId,
+      nodeId,
+      exitCode: agent.test.exitCode,
+      held: agent.test.exitCode === 0,
+      note: `Agent submitted after trusted command ${agent.test.commandId}`,
+    }];
+    const winner = raceResults[0]!;
+    let auditVerdict = await audit(ctx.executor, ctx.llm, winner, {
+      diagnosis,
+      beforeLog: providerLog,
+      suiteCommand: executableCommand,
+    }, (result) => ledger.record({
+      stage: 'audit',
+      attempt: 1,
+      network: 'disabled',
+      result,
+      parentImageId: winner.imageId,
+      note: 'Fresh suite rerun',
+    }));
+    auditVerdict = await enforceWinnerPolicy(fullContext, winner, ledger, auditVerdict);
+    return makeCaseFile(
+      fullContext,
+      diagnosis,
+      triageVerdict,
+      raceResults,
+      auditVerdict.approved ? 'fixed' : 'refused',
+      auditVerdict,
+    );
+  }
+
+  const candidates = [suppliedCandidate];
 
   if (suppliedCandidate) {
     const verdict = policyVerdict(suppliedCandidate, diagnosis, policy);
@@ -811,6 +899,7 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     ...(ctx.candidateDiff === undefined ? {} : { candidateDiff: ctx.candidateDiff }),
     ...(ctx.policy === undefined ? {} : { policy: ctx.policy }),
     ...(ctx.policyEvidence === undefined ? {} : { policyEvidence: ctx.policyEvidence }),
+    ...(ctx.repairBudgets === undefined ? {} : { repairBudgets: ctx.repairBudgets }),
     stageLedger: ledger,
   });
 }

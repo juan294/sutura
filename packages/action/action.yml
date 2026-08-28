@@ -29,6 +29,34 @@ inputs:
     description: Maximum number of repair candidates to race.
     required: false
     default: '3'
+  repair-model-turns:
+    description: Lower-only repair-agent model turn limit.
+    required: false
+    default: '8'
+  repair-tool-calls:
+    description: Lower-only repair-agent tool call limit.
+    required: false
+    default: '24'
+  repair-branches:
+    description: Lower-only repair-agent branch limit.
+    required: false
+    default: '4'
+  repair-sandbox-operations:
+    description: Lower-only repair-agent sandbox operation limit.
+    required: false
+    default: '32'
+  repair-elapsed-time-sec:
+    description: Lower-only repair-agent elapsed-time limit in seconds.
+    required: false
+    default: '600'
+  repair-inference-cost-usd:
+    description: Lower-only repair-agent inference-cost limit in USD.
+    required: false
+    default: '0.25'
+  repair-diff-bytes:
+    description: Lower-only cumulative repair diff limit in bytes.
+    required: false
+    default: '65536'
   model-nano:
     description: Optional Nemotron classifier model override.
     required: false

@@ -364,7 +364,7 @@ External retention behavior, provider spending, remote test state, publication, 
 - [x] Phase 1: Secure sandbox and privacy boundary
 - [x] Phase 2: Token Factory protocol foundation
 - [x] Phase 3: Repository policy and stage evidence
-- [ ] Phase 4: Bounded tool-calling repair agent
+- [x] Phase 4: Bounded tool-calling repair agent
 - [ ] Phase 5: Adaptive ConTree checkpoint search
 - [ ] Phase 6: Evaluation Lab records and ATIF export
 - [ ] Phase 7: Nemotron routing and progressive flake confidence

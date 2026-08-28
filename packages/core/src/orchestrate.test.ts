@@ -218,14 +218,29 @@ function diagnosisReply(): Diagnosis {
   };
 }
 
+function repairToolReply(candidate: Candidate, index: number) {
+  const steps = [
+    ['apply_patch', { diff: candidate.diff }],
+    ['run_test', { commandId: 'diagnosed' }],
+    ['submit_candidate', { id: candidate.id, rationale: candidate.rationale }],
+  ] as const;
+  const [name, args] = steps[Math.min(index, steps.length - 1)]!;
+  return {
+    text: '',
+    toolCalls: [{ id: `repair-${index + 1}`, type: 'function' as const, function: { name, arguments: JSON.stringify(args) } }],
+    usd: 0.001,
+  };
+}
+
 function scriptedLlm(auditVerdict: AuditVerdict['approved'] = true): {
   llm: TierLlm<'nano' | 'super' | 'ultra'>;
   chat: ReturnType<typeof vi.fn>;
 } {
+  let superCall = 0;
   const chat = vi.fn(async (tier: 'nano' | 'super' | 'ultra') => {
     if (tier === 'nano') return { text: JSON.stringify(diagnosisReply()) };
     if (tier === 'super') {
-      return { text: JSON.stringify({ candidates: candidates() }) };
+      return repairToolReply(candidates()[0]!, superCall++);
     }
     return {
       text: JSON.stringify({
@@ -263,12 +278,25 @@ function context(
   const github = new FakeGitHub(run);
   const repository = new FakeRepository();
   let scenarioIndex = 0;
-  const executor = new InMemoryExecutor((command) =>
-    command.includes('corepack pnpm install --frozen-lockfile') ||
-    command.includes('git init --quiet')
-      ? runResult(0)
-      : runResult(exits[scenarioIndex++] ?? 1),
-  );
+  let agentPatched = false;
+  const executor = new InMemoryExecutor((command) => {
+    if (command.includes('git apply - && git diff')) {
+      agentPatched = true;
+      const encoded = command.match(/printf '%s' '?([A-Za-z0-9+/=]+)'? \|/u)?.[1] ?? '';
+      return { ...runResult(0), stdout: Buffer.from(encoded, 'base64').toString('utf8') };
+    }
+    if (
+      command.includes('corepack pnpm install --frozen-lockfile') ||
+      command.includes('git init --quiet')
+    ) return runResult(0);
+    if (agentPatched) {
+      agentPatched = false;
+      const firstRaceExit = exits[scenarioIndex] ?? 1;
+      scenarioIndex += 3;
+      return runResult(firstRaceExit);
+    }
+    return runResult(exits[scenarioIndex++] ?? 1);
+  });
   const { llm, chat } = scriptedLlm(auditVerdict);
   return {
     github,
@@ -361,12 +389,13 @@ describe('orchestrate', () => {
       snippet: 'Documented breaking release',
     }]);
     ctx.tavily = { search };
+    let superCall = 0;
     chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
       if (tier === 'nano') return { text: JSON.stringify({
         ...diagnosisReply(),
         class: 'dep-upstream-breaking',
       }) };
-      if (tier === 'super') return { text: JSON.stringify({ candidates: candidates() }) };
+      if (tier === 'super') return repairToolReply(candidates()[0]!, superCall++);
       return { text: JSON.stringify({
         approved: true,
         reasoning: 'The patch corrects the diagnosed source type.',
@@ -386,7 +415,9 @@ describe('orchestrate', () => {
     const deniedEvidence = /src\/private|private\.ts|supersecret|runner-secret|workspace-secret|git-secret|spaced-secret|root-secret/u;
     expect(JSON.stringify(chat.mock.calls)).not.toMatch(deniedEvidence);
     expect(JSON.stringify(search.mock.calls)).not.toMatch(deniedEvidence);
-    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super', 'ultra']);
+    expect(chat.mock.calls.map(([tier]) => tier)).toEqual([
+      'nano', 'super', 'super', 'super', 'ultra',
+    ]);
     expect(search).toHaveBeenCalledOnce();
   });
 
@@ -400,9 +431,9 @@ describe('orchestrate', () => {
 
     const caseFile = await orchestrate(ctx);
 
-    expect(caseFile.outcome).toBe('refused');
-    expect(caseFile.race).toHaveLength(3);
-    expect(caseFile.race.every(({ note }) => note?.includes('protected path'))).toBe(true);
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(caseFile.race).toEqual([]);
+    expect(caseFile.stages.some(({ stage }) => stage === 'candidate')).toBe(true);
     expect(runCalls(executor).some(({ cmd }) => cmd.includes('git apply'))).toBe(false);
   });
 
@@ -443,9 +474,11 @@ describe('orchestrate', () => {
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual([
       'nano',
       'super',
+      'super',
+      'super',
       'ultra',
     ]);
-    expect(runCalls(executor)).toHaveLength(9);
+    expect(runCalls(executor)).toHaveLength(8);
   });
 
   it('opens a fix PR against the exact branch for a direct push failure', async () => {
@@ -483,18 +516,14 @@ describe('orchestrate', () => {
 
   it('publishes the same smallest held candidate that the audit approved', async () => {
     const { ctx, repository, chat } = context([1, 1, 1, 0, 0, 1, 0]);
-    const largerDiff = HONEST_DIFF.replace(
-      '+export const value: string = "1";',
-      '+export const value: string = String(1);',
-    );
+    let superCall = 0;
     chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
       if (tier === 'nano') return { text: JSON.stringify(diagnosisReply()) };
       if (tier === 'super') {
-        return { text: JSON.stringify({ candidates: [
-          { id: 'larger', rationale: 'repair a longer module path', diff: largerDiff },
+        return repairToolReply(
           { id: 'smallest', rationale: 'repair the observed source', diff: HONEST_DIFF },
-          { id: 'third', rationale: 'try a different binding', diff: THIRD_DIFF },
-        ] }) };
+          superCall++,
+        );
       }
       return { text: JSON.stringify({ approved: true, reasoning: 'The smallest held repair is correct.' }) };
     });
@@ -544,15 +573,12 @@ describe('orchestrate', () => {
     const caseFile = await orchestrate(ctx);
 
     expect(caseFile.outcome).toBe('gave-up');
-    expect(caseFile.race.map(({ candidate }) => candidate.id)).toEqual([
-      'source',
-      'alternate',
-      'rename',
-    ]);
+    expect(caseFile.race).toEqual([]);
     expect(repository.fixes).toEqual([]);
     expect(github.pullRequests).toEqual([]);
     expect(github.comments[0]?.body).toContain('NO PATCH HELD');
-    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super']);
+    expect(chat.mock.calls.map(([tier]) => tier).filter((tier) => tier === 'super').length)
+      .toBeGreaterThan(1);
   });
 
   it('vets every candidate before race and reports deterministic refusals', async () => {
@@ -578,21 +604,19 @@ describe('orchestrate', () => {
         `src/value-${index}.test.ts`,
       ),
     }));
-    chat.mockImplementationOnce(async () => ({
-      text: JSON.stringify(diagnosisReply()),
-    }));
-    chat.mockImplementationOnce(async () => ({
-      text: JSON.stringify({ candidates: invalidCandidates }),
-    }));
+    let invalidSuperCall = 0;
+    chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
+      if (tier === 'nano') return { text: JSON.stringify(diagnosisReply()) };
+      if (tier === 'super') return repairToolReply(invalidCandidates[0]!, invalidSuperCall++);
+      return { text: JSON.stringify({ approved: true, reasoning: 'not reached' }) };
+    });
 
     const caseFile = await orchestrate(ctx);
 
-    expect(caseFile.outcome).toBe('refused');
-    expect(caseFile.race).toHaveLength(3);
-    expect(caseFile.race.every(({ note }) => note?.startsWith('Patch vet refused:')))
-      .toBe(true);
-    expect(github.comments[0]?.body).toContain('Patch vet refused');
-    expect(runCalls(executor)).toHaveLength(5);
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(caseFile.race).toEqual([]);
+    expect(github.comments[0]?.body).toContain('NO PATCH HELD');
+    expect(runCalls(executor)).toHaveLength(6);
   });
 
   it('does not spend or mutate twice for the same failing run id', async () => {
@@ -789,43 +813,31 @@ describe('orchestrate', () => {
       '+  return Number(value);',
       ' }',
     ].join('\n') + '\n';
-    chat.mockImplementationOnce(async () => ({
-      text: JSON.stringify({
-        class: 'typecheck',
-        confidence: 0.99,
-        signals: ['TS2322'],
-        failingCmd: 'pnpm test',
-        errorExcerpt: 'parse-port.ts(2,3): TS2322',
-      }),
-    }));
-    chat.mockImplementationOnce(async (
-      _tier,
-      messages: readonly { role: string; content: string }[],
+    let placeboSuperCall = 0;
+    chat.mockImplementation(async (
+      tier: 'nano' | 'super' | 'ultra',
+      messages: readonly { role: string; content?: string | null }[],
     ) => {
-      const user = messages.find(({ role }) => role === 'user');
-      const request = JSON.parse(user?.content ?? '') as {
-        sourceContext: { sources: Array<{ path: string; content: string }> };
-      };
-      expect(request.sourceContext.sources).toEqual([
-        expect.objectContaining({ path: 'parse-port.ts', content: brokenSource }),
-      ]);
-      return {
-        text: JSON.stringify({
-          candidates: [
-            { id: 'placebo-fix', rationale: 'restore numeric conversion', diff: repairDiff },
-            {
-              id: 'alternate-a',
-              rationale: 'use unary numeric conversion',
-              diff: repairDiff.replace('Number(value)', '+value'),
-            },
-            {
-              id: 'alternate-b',
-              rationale: 'use integer parsing',
-              diff: repairDiff.replace('Number(value)', 'Number.parseInt(value, 10)'),
-            },
-          ],
-        }),
-      };
+      if (tier === 'nano') return { text: JSON.stringify({
+        class: 'typecheck', confidence: 0.99, signals: ['TS2322'],
+        failingCmd: 'pnpm test', errorExcerpt: 'parse-port.ts(2,3): TS2322',
+      }) };
+      if (tier === 'super') {
+        if (placeboSuperCall === 0) {
+          const user = messages.find(({ role }) => role === 'user');
+          const request = JSON.parse(user?.content ?? '') as {
+            initialSources: Array<{ path: string; content: string }>;
+          };
+          expect(request.initialSources).toEqual([
+            expect.objectContaining({ path: 'parse-port.ts', content: brokenSource }),
+          ]);
+        }
+        return repairToolReply(
+          { id: 'placebo-fix', rationale: 'restore numeric conversion', diff: repairDiff },
+          placeboSuperCall++,
+        );
+      }
+      return { text: JSON.stringify({ approved: true, reasoning: 'The repair restores numeric conversion.' }) };
     });
 
     const caseFile = await orchestrate(ctx);
@@ -863,15 +875,14 @@ describe('orchestrate', () => {
       'package.json',
       '{"dependencies":{"@acme/money":"4.0.0"}}',
     );
-    chat.mockImplementationOnce(async () => ({
-      text: JSON.stringify({
-        class: 'dep-upstream-breaking',
-        confidence: 0.96,
-        signals: ['missing module'],
-        failingCmd: 'pnpm test',
-        errorExcerpt: "Cannot find module '@acme/money'",
-      }),
-    }));
+    const dependencyDiff = (version: string) => [
+      'diff --git a/package.json b/package.json',
+      '--- a/package.json',
+      '+++ b/package.json',
+      '@@ -1 +1 @@',
+      '-{"dependencies":{"@acme/money":"4.0.0"}}',
+      `+{"dependencies":{"@acme/money":"${version}"}}`,
+    ].join('\n');
     ctx.tavily = {
       search: vi.fn().mockResolvedValue([{
         title: 'Money 4 migration',
@@ -879,39 +890,34 @@ describe('orchestrate', () => {
         snippet: 'The package now requires an explicit compatibility migration.',
       }]),
     };
-    chat.mockImplementationOnce(async (_tier, messages: readonly {
+    let dependencySuperCall = 0;
+    chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra', messages: readonly {
       role: string;
-      content: string;
+      content?: string | null;
     }[]) => {
-      const user = messages.find(({ role }) => role === 'user');
-      const request = JSON.parse(user?.content ?? '') as {
-        sourceContext: { sources: Array<{ path: string }> };
-      };
-      expect(request.sourceContext.sources.map(({ path }) => path))
-        .toEqual(['package.json']);
-      const dependencyDiff = (version: string) => [
-        'diff --git a/package.json b/package.json',
-        '--- a/package.json',
-        '+++ b/package.json',
-        '@@ -1 +1 @@',
-        '-{"dependencies":{"@acme/money":"4.0.0"}}',
-        `+{"dependencies":{"@acme/money":"${version}"}}`,
-      ].join('\n');
-      return {
-        text: JSON.stringify({
-          candidates: [
-            { id: 'pin-a', rationale: 'pin compatible release', diff: dependencyDiff('3.9.0') },
-            { id: 'pin-b', rationale: 'pin prior patch', diff: dependencyDiff('3.8.1') },
-            { id: 'pin-c', rationale: 'pin prior minor', diff: dependencyDiff('3.8.0') },
-          ],
-        }),
-      };
+      if (tier === 'nano') return { text: JSON.stringify({
+        class: 'dep-upstream-breaking', confidence: 0.96, signals: ['missing module'],
+        failingCmd: 'pnpm test', errorExcerpt: "Cannot find module '@acme/money'",
+      }) };
+      if (tier === 'super') {
+        if (dependencySuperCall === 0) {
+          const user = messages.find(({ role }) => role === 'user');
+          const request = JSON.parse(user?.content ?? '') as { initialSources: Array<{ path: string }> };
+          expect(request.initialSources.map(({ path }) => path)).toEqual(['package.json']);
+        }
+        return repairToolReply(
+          { id: 'pin-a', rationale: 'pin compatible release', diff: dependencyDiff('3.9.0') },
+          dependencySuperCall++,
+        );
+      }
+      return { text: JSON.stringify({ approved: true, reasoning: 'not reached' }) };
     });
 
     const caseFile = await orchestrate(ctx);
 
     expect(caseFile.outcome).toBe('gave-up');
-    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super']);
+    expect(chat.mock.calls.map(([tier]) => tier).filter((tier) => tier === 'super').length)
+      .toBeGreaterThan(1);
     expect(repository.sourceReads[0]?.paths).toEqual([
       'package.json',
       'pnpm-lock.yaml',
@@ -920,7 +926,7 @@ describe('orchestrate', () => {
     ]);
   });
 
-  it('fails closed without Super when no logged or fallback source exists', async () => {
+  it('permits the bounded agent to inspect when initial source context is empty', async () => {
     const noPathRun: FailingWorkflowRun = {
       ...RUN,
       failedSteps: [
@@ -938,7 +944,7 @@ describe('orchestrate', () => {
 
     expect(caseFile.outcome).toBe('gave-up');
     expect(caseFile.race).toEqual([]);
-    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
+    expect(chat.mock.calls.map(([tier]) => tier)).toContain('super');
   });
 
   it('rejects a non-numeric workflow run id before claiming an attempt', async () => {
