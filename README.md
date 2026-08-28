@@ -1,13 +1,15 @@
-# Sutura
+# Sutura: Verified Self-Healing CI
 
 [![CI](https://github.com/juan294/sutura/actions/workflows/ci.yml/badge.svg)](https://github.com/juan294/sutura/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6)
 ![Node](https://img.shields.io/badge/Node-22%2B-339933)
 
-Sutura is a self-healing CI agent. It reads one failed pull-request run,
-reproduces the failure in isolated sandboxes, races candidate repairs, audits
-the winner, and opens a fix pull request. It does not auto-merge.
+AI agents make CI pass. Sutura verifies the fix, filters flaky failures,
+rejects unsafe shortcuts, and opens an evidence-backed PR for human review.
+
+Sutura reproduces real failures in isolated sandboxes and races candidate
+repairs before the independent audit. It never auto-merges.
 
 Sutura is built for the Nebius x NVIDIA Global AI Hackathon. Try the public
 [judge demo](https://github.com/juan294/sutura-demo): run the break-me workflow
@@ -33,7 +35,7 @@ flowchart LR
   D -->|Branching use 3| I[Clean audit branch]
   H --> I
   I --> J[Mechanical checks and Nemotron Ultra review]
-  J -->|Approved| K[Fix PR and HTML case file]
+  J -->|Approved| K[Evidence-backed fix PR and HTML case file]
   J -->|Rejected| L[Refusal report]
 ```
 

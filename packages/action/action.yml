@@ -1,5 +1,5 @@
 name: Sutura
-description: Diagnose a failed pull-request CI run and open a reviewed repair pull request.
+description: Verify failed CI, filter flaky failures, reject unsafe shortcuts, and open an evidence-backed repair PR.
 author: Sutura
 
 inputs:
