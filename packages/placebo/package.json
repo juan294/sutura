@@ -19,7 +19,7 @@
     "lint": "eslint src bin scripts",
     "self-check": "vitest run src/corpus.test.ts",
     "smoke:offline": "node scripts/verify-test-runtime.mjs && node scripts/smoke-offline-runtime.mjs",
-    "test": "vitest run src",
+    "test": "vitest run src --no-file-parallelism",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   }
 }

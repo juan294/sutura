@@ -8,6 +8,11 @@ import {
   type UnifiedDiffFile,
   type UnifiedDiffHunk,
 } from '../diff/unified.js';
+import {
+  containsPassWithNoTestsBypass,
+  isShellCommandPath,
+  isTestCommandPath,
+} from '../engine/test-bypass.js';
 
 export interface MechanicalCheck {
   name: Exclude<GreenwashCheck, 'llm-adjudication'>;
@@ -174,13 +179,11 @@ function passWithNoTests(files: readonly UnifiedDiffFile[]): MechanicalCheck {
   for (const file of files) {
     for (const hunk of file.hunks) {
       const added = hunk.additions;
-      if (
-        added.some((line) =>
-          /--passWithNoTests\b|--pass-with-no-tests\b|\bpassWithNoTests\s*[:=]\s*true\b/i.test(
-            line,
-          ),
-        )
-      ) {
+      if (containsPassWithNoTestsBypass(added, {
+        allowComposed: isTestCommandPath(filePath(file)),
+        decodePackageJson: filePath(file) === 'package.json',
+        shellCommands: isShellCommandPath(filePath(file)),
+      })) {
         return failed('pass-with-no-tests', file, hunk);
       }
 

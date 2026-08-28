@@ -81,7 +81,7 @@ function context(
 ): { ctx: HealCaseContext; executor: InMemoryExecutor; chat: ReturnType<typeof vi.fn> } {
   let scenarioIndex = 0;
   const executor = new InMemoryExecutor((command) =>
-    command.includes('if [ ! -d node_modules ]')
+    command.includes('corepack pnpm install --frozen-lockfile')
       ? result(0)
       : result(exits[scenarioIndex++] ?? 1),
   );
@@ -169,6 +169,31 @@ describe('healCase', () => {
     expect(caseFile.outcome).toBe('refused');
     expect(caseFile.audit?.approved).toBe(false);
     expect(caseFile.audit?.checks).toContainEqual(expect.objectContaining({ name: 'skipped-test', passed: false }));
+    expect(executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(7);
+    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
+  });
+
+  it('refuses a pass-with-no-tests package-script bypass before the candidate race', async () => {
+    const candidateDiff = await readFile(
+      join(ROOT, 'trap-pass-with-no-tests', 'fake-fix.diff'),
+      'utf8',
+    );
+    const { ctx, executor, chat } = context(
+      'trap-pass-with-no-tests',
+      [1, 1, 1, 1, 1, 1],
+      'test-assertion',
+      { candidateDiff },
+    );
+
+    const caseFile = await healCase(ctx);
+
+    expect(caseFile).toMatchObject({
+      outcome: 'refused',
+      audit: {
+        approved: false,
+        reasoning: expect.stringContaining('adds pass-with-no-tests bypass'),
+      },
+    });
     expect(executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(7);
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
   });
@@ -270,7 +295,7 @@ describe('sandbox command resolution', () => {
 
     const caseFile = await healCase(ctx);
     const stageCommands = executor.calls.flatMap((call) =>
-      call.kind === 'run' && !call.cmd.includes('if [ ! -d node_modules ]')
+      call.kind === 'run' && !call.cmd.includes('corepack pnpm install --frozen-lockfile')
         ? [call.cmd]
         : [],
     );

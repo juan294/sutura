@@ -21,7 +21,7 @@ const MAX_QUERY_CHARACTERS = 2_000;
 const MAX_ERROR_QUERY_CHARACTERS = 1_000;
 
 export type TavilyHttpResponse = Pick<HttpResponse, 'ok' | 'status' | 'json'>;
-export type TavilyHttpRequestInit = HttpRequestInit;
+export type TavilyHttpRequestInit = Omit<HttpRequestInit, 'body'> & { body?: string };
 
 type TavilyFetch = (
   input: string,
@@ -41,11 +41,14 @@ export type TavilyCitation = Grounding['citations'][number];
 
 export interface TavilySearch {
   search(query: string, options?: TavilySearchOptions): Promise<TavilyCitation[]>;
+  extract?(urls: readonly string[], query: string): Promise<TavilyCitation[]>;
+  packageRepository?(name: string, version: string): Promise<string | null>;
 }
 
 export interface GroundOptions {
   tavilyEnabled: boolean;
   lockfileDiff?: string;
+  dependencyHints?: readonly string[];
 }
 
 export class TavilyConfigError extends Error {
@@ -62,6 +65,32 @@ export class TavilyRequestError extends Error {
   ) {
     super(message);
     this.name = 'TavilyRequestError';
+  }
+}
+
+interface TavilyExtractResult {
+  url: string;
+  raw_content: string;
+}
+
+function githubRepository(value: unknown): string | null {
+  const raw = typeof value === 'string'
+    ? value
+    : typeof value === 'object' && value !== null && typeof (value as { url?: unknown }).url === 'string'
+      ? (value as { url: string }).url
+      : null;
+  if (!raw) return null;
+  const normalized = raw
+    .replace(/^git\+/u, '')
+    .replace(/^git:\/\/github\.com\//u, 'https://github.com/')
+    .replace(/^git@github\.com:/u, 'https://github.com/');
+  try {
+    const url = new URL(normalized);
+    const [owner, repository, ...extra] = url.pathname.split('/').filter(Boolean);
+    if (url.hostname !== 'github.com' || !owner || !repository || extra.length > 0) return null;
+    return `https://github.com/${owner}/${repository.replace(/\.git$/u, '')}`;
+  } catch {
+    return null;
   }
 }
 
@@ -166,6 +195,96 @@ export class TavilyClient implements TavilySearch {
       snippet: result.content.slice(0, 2_000),
     }));
   }
+
+  async extract(urls: readonly string[], query: string): Promise<TavilyCitation[]> {
+    if (!this.apiKey?.trim()) {
+      throw new TavilyConfigError('Tavily grounding requires TAVILY_API_KEY');
+    }
+    const safeUrls = [...new Set(urls)].filter((url) => /^https:\/\/github\.com\//u.test(url));
+    if (safeUrls.length === 0 || safeUrls.length > 10) {
+      throw new RangeError('urls must contain from 1 to 10 GitHub URLs');
+    }
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) throw new RangeError('query must not be empty');
+
+    let response: TavilyHttpResponse;
+    try {
+      response = await this.fetch(`${this.baseUrl.replace(/\/+$/, '')}/extract`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          urls: safeUrls,
+          query: normalizedQuery,
+          chunks_per_source: 3,
+          extract_depth: 'basic',
+          format: 'markdown',
+          include_images: false,
+        }),
+      });
+    } catch {
+      throw new TavilyRequestError('Tavily extract request failed');
+    }
+    if (!response.ok) {
+      throw new TavilyRequestError(
+        `Tavily extract request failed with status ${response.status}`,
+        response.status,
+      );
+    }
+
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      throw new TavilyRequestError('Tavily extract returned an invalid response');
+    }
+    if (typeof body !== 'object' || body === null) {
+      throw new TavilyRequestError('Tavily extract returned an invalid response');
+    }
+    const results = (body as { results?: unknown }).results;
+    if (!Array.isArray(results)) {
+      throw new TavilyRequestError('Tavily extract returned an invalid response');
+    }
+    return results
+      .filter((value): value is TavilyExtractResult => {
+        if (typeof value !== 'object' || value === null) return false;
+        const result = value as Record<string, unknown>;
+        return typeof result.url === 'string' &&
+          safeUrls.includes(result.url) &&
+          typeof result.raw_content === 'string' &&
+          result.raw_content.trim().length > 0;
+      })
+      .map((result) => ({
+        title: `GitHub release: ${new URL(result.url).pathname.split('/').at(-1) ?? 'release'}`,
+        url: result.url,
+        snippet: result.raw_content.trim().slice(0, 2_000),
+      }));
+  }
+
+  async packageRepository(name: string, version: string): Promise<string | null> {
+    if (!/^@?[a-z0-9][\w./-]*$/iu.test(name) || !/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/u.test(version)) {
+      throw new RangeError('package name and version must be valid');
+    }
+    try {
+      const response = await this.fetch(
+        `https://registry.npmjs.org/${encodeURIComponent(name)}/${encodeURIComponent(version)}`,
+        {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        },
+      );
+      if (!response.ok) return null;
+      const body = await response.json();
+      if (typeof body !== 'object' || body === null) return null;
+      const metadata = body as Record<string, unknown>;
+      if (metadata.name !== name || metadata.version !== version) return null;
+      return githubRepository(metadata.repository);
+    } catch {
+      return null;
+    }
+  }
 }
 
 function packageVersions(lockfileDiff: string, characterBudget: number): string[] {
@@ -244,16 +363,85 @@ function redactSecrets(value: string): string {
     );
 }
 
-function groundingQuery(diagnosis: Diagnosis, lockfileDiff = ''): string {
+const DEPENDENCY_HINT = /^(?<name>@?[a-z0-9][\w./-]*)@(?<version>\d+\.\d+\.\d+(?:-[\w.-]+)?)$/iu;
+
+function validDependencyHints(hints: readonly string[] = []): string[] {
+  return [...new Set(hints.filter((hint) => DEPENDENCY_HINT.test(hint)))].slice(0, 25);
+}
+
+function relevantDependencyHints(
+  diagnosis: Diagnosis,
+  hints: readonly string[] = [],
+): string[] {
+  const valid = validDependencyHints(hints);
+  const excerpt = diagnosis.errorExcerpt.toLowerCase();
+  const mentioned = valid.filter((hint) => {
+    const dependency = packageNameAndVersion(hint);
+    if (!dependency) return false;
+    const names = [dependency.name, dependency.name.split('/').at(-1) ?? dependency.name];
+    return names.some((name) => {
+      const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+      return new RegExp(`(?:^|[^a-z0-9_@.-])${escaped}(?=$|[^a-z0-9_@-])`, 'iu')
+        .test(excerpt);
+    });
+  });
+  return mentioned.slice(0, 1);
+}
+
+function groundingQuery(
+  diagnosis: Diagnosis,
+  lockfileDiff = '',
+  dependencyHints: readonly string[] = [],
+): string {
   const safeExcerpt = redactSecrets(diagnosis.errorExcerpt.trim())
     .replace(/\s+/g, ' ')
     .slice(0, MAX_ERROR_QUERY_CHARACTERS);
-  const packageBudget = MAX_QUERY_CHARACTERS - safeExcerpt.length - 1;
+  const hints = relevantDependencyHints(diagnosis, dependencyHints);
+  const hintText = hints.join(' ');
+  const packageBudget = MAX_QUERY_CHARACTERS - safeExcerpt.length - hintText.length - 2;
   const packages = packageVersions(lockfileDiff, Math.max(0, packageBudget));
-  return [safeExcerpt, ...packages]
+  return [...hints, ...packages, safeExcerpt]
     .filter(Boolean)
     .join(' ')
     .slice(0, MAX_QUERY_CHARACTERS);
+}
+
+function packageNameAndVersion(hint: string): { name: string; version: string } | null {
+  const match = DEPENDENCY_HINT.exec(hint);
+  return match?.groups?.name && match.groups.version
+    ? { name: match.groups.name, version: match.groups.version }
+    : null;
+}
+
+async function addRegistryVerifiedReleaseCitations(
+  tavily: TavilySearch,
+  citations: TavilyCitation[],
+  hints: readonly string[],
+): Promise<TavilyCitation[]> {
+  if (!tavily.extract || !tavily.packageRepository) return citations;
+  const additions: TavilyCitation[] = [];
+  for (const hint of validDependencyHints(hints)) {
+    const dependency = packageNameAndVersion(hint);
+    if (!dependency) continue;
+    try {
+      const repository = await tavily.packageRepository(
+        dependency.name,
+        dependency.version,
+      );
+      if (!repository) continue;
+      const releaseUrl = `${repository}/releases/tag/v${dependency.version}`;
+      const extracted = await tavily.extract(
+        [releaseUrl],
+        `${dependency.name} ${dependency.version} breaking changes migration`,
+      );
+      additions.push(...extracted.filter(({ snippet }) => snippet.includes(dependency.version)));
+    } catch {
+      // The primary search remains useful when optional release extraction is unavailable.
+    }
+  }
+  return [...citations, ...additions].filter(
+    (citation, index, all) => all.findIndex(({ url }) => url === citation.url) === index,
+  );
 }
 
 export async function ground(
@@ -270,7 +458,16 @@ export async function ground(
     return { query: '', citations: [], skipped: true, reason: 'not-applicable' };
   }
 
-  const query = groundingQuery(diagnosis, options.lockfileDiff);
-  const citations = await tavily.search(query, { maxResults: 5 });
+  const query = groundingQuery(
+    diagnosis,
+    options.lockfileDiff,
+    options.dependencyHints,
+  );
+  const searched = await tavily.search(query, { maxResults: 5 });
+  const citations = await addRegistryVerifiedReleaseCitations(
+    tavily,
+    searched,
+    relevantDependencyHints(diagnosis, options.dependencyHints),
+  );
   return { query, citations, skipped: false };
 }

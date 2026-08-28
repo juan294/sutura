@@ -382,7 +382,7 @@ function ledger(): CostLedger {
 function executorFor(exits: readonly number[]): InMemoryExecutor {
   let scenarioIndex = 0;
   return new InMemoryExecutor((command) => {
-    const exitCode = command.includes('if [ ! -d node_modules ]')
+    const exitCode = command.includes('install --frozen-lockfile')
       ? 0
       : exits[scenarioIndex++] ?? 1;
     return {

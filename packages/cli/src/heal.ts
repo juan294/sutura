@@ -28,6 +28,9 @@ import type { HealArguments } from './args.js';
 
 const NEBIUS_BASE_URL = 'https://api.tokenfactory.nebius.com/v1/';
 const MAX_SOURCE_SCAN_BYTES = 1024 * 1024;
+const MAX_MANIFEST_BYTES = 128 * 1024;
+const PACKAGE_NAME = /^@?[a-z0-9][\w./-]*$/iu;
+const PACKAGE_VERSION = /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/u;
 
 export interface HealRuntime {
   executor: Executor;
@@ -201,11 +204,71 @@ async function canonicalCaseDirectory(caseDir: string): Promise<string> {
   return canonical;
 }
 
+async function readJsonObject(path: string): Promise<Record<string, unknown> | null> {
+  let handle;
+  try {
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const metadata = await handle.stat();
+    if (!metadata.isFile() || metadata.size > MAX_MANIFEST_BYTES) return null;
+    const value: unknown = JSON.parse(await handle.readFile('utf8'));
+    return typeof value === 'object' && value !== null
+      ? value as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  } finally {
+    await handle?.close();
+  }
+}
+
+export async function readDependencyHints(caseDir: string): Promise<string[]> {
+  const root = await realpath(caseDir);
+  const manifest = await readJsonObject(resolve(root, 'package.json'));
+  if (!manifest) return [];
+  const dependencies = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
+    .flatMap((field) => {
+      const entries = manifest[field];
+      return typeof entries === 'object' && entries !== null
+        ? Object.entries(entries as Record<string, unknown>)
+        : [];
+    });
+  const hints = new Set<string>();
+  for (const [name, specifier] of dependencies) {
+    if (!PACKAGE_NAME.test(name) || typeof specifier !== 'string') continue;
+    if (specifier.startsWith('file:')) {
+      const relativeDependency = specifier.slice('file:'.length);
+      const manifestPath = `${relativeDependency}/package.json`;
+      if (
+        !safeRelativePath(manifestPath) ||
+        await hasSymlinkComponent(root, manifestPath)
+      ) {
+        continue;
+      }
+      const canonicalManifest = await realpath(resolve(root, manifestPath)).catch(() => null);
+      if (!canonicalManifest || !isInside(root, canonicalManifest)) continue;
+      const dependencyManifest = await readJsonObject(canonicalManifest);
+      if (
+        dependencyManifest?.name === name &&
+        typeof dependencyManifest.version === 'string' &&
+        PACKAGE_VERSION.test(dependencyManifest.version)
+      ) {
+        hints.add(`${name}@${dependencyManifest.version}`);
+      }
+      continue;
+    }
+    if (PACKAGE_VERSION.test(specifier)) {
+      hints.add(`${name}@${specifier}`);
+    }
+  }
+  return [...hints].slice(0, 25);
+}
+
 export async function healWithRuntime(
   request: HealArguments,
   runtime: HealRuntime,
 ): Promise<CaseFile> {
   const caseDir = await canonicalCaseDirectory(request.caseDir);
+  const dependencyHints = await readDependencyHints(caseDir);
   const caseName = basename(caseDir).replace(/[^A-Za-z0-9_.-]+/gu, '-') || 'case';
   return healCase({
     runId: `local-${caseName}`,
@@ -219,6 +282,7 @@ export async function healWithRuntime(
     readSourceContext: (log, diagnosis) => readLocalSourceContext(caseDir, log, diagnosis),
     ...(runtime.tavily ? { tavily: runtime.tavily } : {}),
     ...(runtime.imageRef ? { imageRef: runtime.imageRef } : {}),
+    ...(dependencyHints.length === 0 ? {} : { dependencyHints }),
     ...(request.candidateDiff === undefined ? {} : { candidateDiff: request.candidateDiff }),
   });
 }

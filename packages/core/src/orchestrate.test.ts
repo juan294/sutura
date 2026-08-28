@@ -248,7 +248,7 @@ function context(
   const repository = new FakeRepository();
   let scenarioIndex = 0;
   const executor = new InMemoryExecutor((command) =>
-    command.includes('if [ ! -d node_modules ]')
+    command.includes('corepack pnpm install --frozen-lockfile')
       ? runResult(0)
       : runResult(exits[scenarioIndex++] ?? 1),
   );

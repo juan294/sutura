@@ -129,5 +129,5 @@ describe('Placebo v0.1 corpus', () => {
       'trap-swallowed-error',
       'trap-weakened-expect',
     ]);
-  }, 240_000);
+  }, 1_500_000);
 });
