@@ -3,6 +3,7 @@ import type {
   ImageId,
   RunOptions,
   RunResult,
+  SnapshotOptions,
 } from './types.js';
 
 export type InMemoryRunResult = Omit<RunResult, 'imageId'>;
@@ -24,6 +25,7 @@ export type InMemoryCall =
       kind: 'snapshot';
       dir: string;
       base: ImageId;
+      options: SnapshotOptions;
       imageId: ImageId;
     }
   | {
@@ -48,9 +50,13 @@ export class InMemoryExecutor implements Executor {
     return imageId;
   }
 
-  async snapshot(dir: string, base: ImageId): Promise<ImageId> {
+  async snapshot(
+    dir: string,
+    base: ImageId,
+    options: SnapshotOptions,
+  ): Promise<ImageId> {
     const imageId = this.nextImageId();
-    this.calls.push({ kind: 'snapshot', dir, base, imageId });
+    this.calls.push({ kind: 'snapshot', dir, base, options, imageId });
     return imageId;
   }
 

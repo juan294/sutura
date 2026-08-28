@@ -70,7 +70,10 @@ function runtime(
 } {
   let scenarioIndex = 0;
   const executor = new InMemoryExecutor((command) => {
-    if (command.includes('install --frozen-lockfile')) return runResult(0);
+    if (
+      command.includes('install --frozen-lockfile') ||
+      command.includes('git init --quiet')
+    ) return runResult(0);
     const index = scenarioIndex++;
     return runResult(exits[index] ?? 1, index === 0 ? reproductionError : 'case.test.js: assertion failed');
   });
@@ -122,7 +125,7 @@ describe('healWithRuntime Placebo integration', () => {
       expect(result.outcome).toBe('fixed');
       const superCall = scripted.chat.mock.calls.find(([tier]) => tier === 'super');
       expect(JSON.stringify(superCall)).toContain('page-count.js');
-      expect(scripted.executor.calls.filter(({ kind }) => kind === 'snapshot')).toHaveLength(1);
+      expect(scripted.executor.calls.filter(({ kind }) => kind === 'snapshot')).toHaveLength(2);
       expect(scripted.executor.calls.filter(({ kind }) => kind === 'run').every((call) =>
         call.kind !== 'run' || call.opts?.env === SUTURA_SANDBOX_ENV,
       )).toBe(true);
@@ -145,7 +148,7 @@ describe('healWithRuntime Placebo integration', () => {
     const scripted = runtime([1, 1, 1, 1, 1, 1], 'test-assertion');
     const result = await healWithRuntime(request('trap-skipped-test', diff), scripted.value);
     expect(result).toMatchObject({ outcome: 'refused', audit: { approved: false } });
-    expect(scripted.executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(7);
+    expect(scripted.executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(8);
     expect(scripted.chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
   });
 

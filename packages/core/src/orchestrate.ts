@@ -17,9 +17,9 @@ import {
   AllowlistedExecutor,
   SUTURA_DEFAULT_IMAGE_REF,
   noReproductionCaseFile,
+  prepareSandbox,
   preparationFailureCaseFile,
   repairFailure,
-  sandboxPreparationCommand,
   sandboxTargetCommand,
   type HealLlm,
 } from './heal.js';
@@ -407,28 +407,23 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
   const baseImage = await executor.importImage(
     ctx.imageRef ?? SUTURA_DEFAULT_IMAGE_REF,
   );
-  const failingImage = await executor.snapshot(checkoutDir, baseImage);
-  let preparedImage = failingImage;
-  const preparationCommand = sandboxPreparationCommand(mechanical.failingCmd);
-  if (preparationCommand) {
-    const preparation = await executor.run(
-      failingImage,
-      preparationCommand,
-      { cwd: SNAPSHOT_CWD },
+  const setup = await prepareSandbox(
+    executor,
+    checkoutDir,
+    baseImage,
+    mechanical.failingCmd,
+  );
+  if (!setup.ok) {
+    const caseFile = preparationFailureCaseFile(
+      { runId: run.runId, repo: run.repo, cost: ctx.cost },
+      setup.command,
+      setup.result,
     );
-    if (preparation.exitCode !== 0) {
-      const caseFile = preparationFailureCaseFile(
-        { runId: run.runId, repo: run.repo, cost: ctx.cost },
-        mechanical.failingCmd,
-        preparation,
-      );
-      await publishReport(ctx.github, run, caseFile, marker, target);
-      return caseFile;
-    }
-    preparedImage = preparation.imageId;
+    await publishReport(ctx.github, run, caseFile, marker, target);
+    return caseFile;
   }
   const reproduction = await executor.run(
-    preparedImage,
+    setup.imageId,
     sandboxTargetCommand(mechanical.failingCmd),
     { cwd: SNAPSHOT_CWD },
   );
@@ -446,7 +441,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     runId: run.runId,
     repo: run.repo,
     failedLog,
-    failingImage: preparedImage,
+    failingImage: setup.imageId,
     executor,
     llm: ctx.llm,
     cost: ctx.cost,

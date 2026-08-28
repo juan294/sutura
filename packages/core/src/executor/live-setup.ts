@@ -10,6 +10,7 @@ export async function prepareGitTooling(
 ): Promise<ImageId> {
   const result = await executor.run(base, INSTALL_GIT_COMMAND, {
     timeoutSec: 300,
+    network: 'enabled',
   });
   assertSuccessfulRun('prepare sandbox Git tooling', result);
   return result.imageId;

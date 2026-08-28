@@ -66,7 +66,10 @@ describe.skipIf(!liveEnabled)('ConTree live activation', () => {
   it(
     'snapshots this repository and installs and tests it in the sandbox',
     async () => {
-      const image = await liveExecutor().snapshot(repoRoot, await toolingBase());
+      const image = await liveExecutor().snapshot(repoRoot, await toolingBase(), {
+        profile: 'repository',
+        mode: 'overlay',
+      });
       const result = await liveExecutor().run(
         image,
         'corepack enable && pnpm install && pnpm -r test',

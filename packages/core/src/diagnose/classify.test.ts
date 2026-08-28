@@ -209,6 +209,30 @@ describe('failure classification', () => {
     expect(llm.chat).not.toHaveBeenCalled();
   });
 
+  it('redacts the CI log and a model-echoed credential on the repair retry', async () => {
+    const chat = vi
+      .fn()
+      .mockResolvedValueOnce({ text: 'invalid {"token":"echoed-secret"}' })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          class: 'test-assertion',
+          confidence: 0.9,
+          signals: ['assertion'],
+          failingCmd: 'pnpm test',
+          errorExcerpt: 'assertion failed',
+        }),
+      });
+
+    await classify(
+      { chat },
+      'Run pnpm test\nSERVICE_API_KEY=input-secret AssertionError',
+    );
+
+    const outbound = JSON.stringify(chat.mock.calls.map((call) => call[1]));
+    expect(outbound).not.toMatch(/input-secret|echoed-secret/u);
+    expect(outbound).toContain('[redacted credential]');
+  });
+
   it('bounds one huge log line by characters and UTF-8 bytes', async () => {
     const llm = scriptedLlm({
       class: 'infra',

@@ -397,7 +397,8 @@ function ledger(): CostLedger {
 function executorFor(exits: readonly number[]): InMemoryExecutor {
   let scenarioIndex = 0;
   return new InMemoryExecutor((command) => {
-    const exitCode = command.includes('install --frozen-lockfile')
+    const exitCode = command.includes('install --frozen-lockfile') ||
+      command.includes('git init --quiet')
       ? 0
       : exits[scenarioIndex++] ?? 1;
     return {

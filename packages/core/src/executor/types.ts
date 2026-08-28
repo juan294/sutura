@@ -1,10 +1,19 @@
 export type ImageId = string;
 export const SNAPSHOT_CWD = '/workspace';
 
+export type SnapshotProfile = 'dependency-inputs' | 'repository';
+export type SnapshotMode = 'replace' | 'overlay';
+
+export interface SnapshotOptions {
+  profile: SnapshotProfile;
+  mode: SnapshotMode;
+}
+
 export interface RunOptions {
   env?: Readonly<Record<string, string>>;
   timeoutSec?: number;
   cwd?: string;
+  network?: 'disabled' | 'enabled';
 }
 
 export interface RunMetrics {
@@ -26,7 +35,11 @@ export interface RunResult {
 
 export interface Executor {
   importImage(ref: string): Promise<ImageId>;
-  snapshot(dir: string, base: ImageId): Promise<ImageId>;
+  snapshot(
+    dir: string,
+    base: ImageId,
+    options: SnapshotOptions,
+  ): Promise<ImageId>;
   run(parent: ImageId, cmd: string, opts?: RunOptions): Promise<RunResult>;
   runMany(
     parent: ImageId,

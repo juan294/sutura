@@ -63,6 +63,12 @@ export { FAILURE_TAXONOMY } from './taxonomy.js';
 export { renderCaseFile } from './report/casefile.js';
 export { renderComment } from './report/markdown.js';
 export { isSensitiveRepositoryPath } from './security/repository-path.js';
+export {
+  ExternalTextError,
+  assertExternalEditableText,
+  redactExternalMessages,
+  redactExternalText,
+} from './security/external-text.js';
 
 export const VERSION = '0.1.1';
 
@@ -78,12 +84,24 @@ export type {
   TokenUsage,
 } from './llm/cost.js';
 export type {
-  ChatMessage,
-  ChatOptions,
-  LlmReply,
   NebiusClientConfig,
   NebiusClientDependencies,
 } from './llm/nebius.js';
+export type {
+  AssistantMessage,
+  CapacitySnapshot,
+  ChatMessage,
+  ChatOptions,
+  FunctionToolCall,
+  FunctionToolDefinition,
+  JsonSchema,
+  LlmReply,
+  ResponseFormat,
+  SystemMessage,
+  ToolChoice,
+  ToolMessage,
+  UserMessage,
+} from './llm/types.js';
 export type {
   Config,
   ConfigEnvironment,
@@ -107,7 +125,11 @@ export type {
   RunMetrics,
   RunOptions,
   RunResult,
+  SnapshotMode,
+  SnapshotOptions,
+  SnapshotProfile,
 } from './executor/types.js';
+export type { ExternalTextRedaction } from './security/external-text.js';
 export type {
   DiagnosisLlm,
   MechanicalDiagnosis,

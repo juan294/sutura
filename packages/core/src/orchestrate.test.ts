@@ -255,7 +255,8 @@ function context(
   const repository = new FakeRepository();
   let scenarioIndex = 0;
   const executor = new InMemoryExecutor((command) =>
-    command.includes('corepack pnpm install --frozen-lockfile')
+    command.includes('corepack pnpm install --frozen-lockfile') ||
+    command.includes('git init --quiet')
       ? runResult(0)
       : runResult(exits[scenarioIndex++] ?? 1),
   );
@@ -324,7 +325,7 @@ describe('orchestrate', () => {
       'super',
       'ultra',
     ]);
-    expect(runCalls(executor)).toHaveLength(8);
+    expect(runCalls(executor)).toHaveLength(9);
   });
 
   it('opens a fix PR against the exact branch for a direct push failure', async () => {
@@ -469,7 +470,7 @@ describe('orchestrate', () => {
     expect(caseFile.race.every(({ note }) => note?.startsWith('Patch vet refused:')))
       .toBe(true);
     expect(github.comments[0]?.body).toContain('Patch vet refused');
-    expect(runCalls(executor)).toHaveLength(4);
+    expect(runCalls(executor)).toHaveLength(5);
   });
 
   it('does not spend or mutate twice for the same failing run id', async () => {
@@ -549,7 +550,7 @@ describe('orchestrate', () => {
   it('reproduces before the first paid model call', async () => {
     const { ctx, executor, chat } = context([1, 0, 0]);
     chat.mockImplementationOnce(async () => {
-      expect(runCalls(executor)).toHaveLength(2);
+      expect(runCalls(executor)).toHaveLength(3);
       return { text: JSON.stringify(diagnosisReply()) };
     });
 
@@ -562,9 +563,20 @@ describe('orchestrate', () => {
     await orchestrate(ctx);
 
     const calls = runCalls(executor);
-    expect(calls[0]?.cmd).toContain('corepack pnpm install --frozen-lockfile');
-    expect(calls[1]?.parent).toBe(calls[0]?.imageId);
-    expect(calls.slice(2).every(({ parent }) => parent === calls[0]?.imageId)).toBe(true);
+    const snapshots = executor.calls.filter((call) => call.kind === 'snapshot');
+    expect(snapshots.map(({ options }) => options)).toEqual([
+      { profile: 'dependency-inputs', mode: 'replace' },
+      { profile: 'repository', mode: 'overlay' },
+    ]);
+    expect(calls[0]?.cmd).toContain('corepack pnpm install --frozen-lockfile --ignore-scripts');
+    expect(calls[0]?.opts?.network).toBe('enabled');
+    expect(calls[1]?.cmd).toContain('git --literal-pathspecs add');
+    expect(calls[1]?.cmd).toContain('--pathspec-file-nul');
+    expect(calls[1]?.cmd).toContain('core.hooksPath /dev/null');
+    expect(calls[1]?.cmd).toContain('--no-verify');
+    expect(calls[1]?.opts?.network).toBe('disabled');
+    expect(calls.slice(2).every(({ parent }) => parent === calls[1]?.imageId)).toBe(true);
+    expect(calls.slice(2).every(({ opts }) => opts?.network === 'disabled')).toBe(true);
   });
 
   it('reports preparation failure before reproduction or paid inference', async () => {

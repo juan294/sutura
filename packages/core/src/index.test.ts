@@ -7,6 +7,7 @@ import {
   ContreeExecutor,
   InMemoryExecutor,
   OrchestrationError,
+  ExternalTextError,
   SUTURA_SANDBOX_ENV,
   TavilyClient,
   VERSION,
@@ -27,6 +28,7 @@ import {
   race,
   renderCaseFile,
   renderComment,
+  redactExternalText,
   runMechanicalChecks,
   selectWinner,
   triage,
@@ -48,6 +50,9 @@ import type {
   RunMetrics,
   RunOptions,
   RunResult,
+  SnapshotMode,
+  SnapshotOptions,
+  SnapshotProfile,
   TaxonomyEntry,
 } from '@sutura/core';
 
@@ -60,6 +65,8 @@ describe('@sutura/core entry point', () => {
     expect(ContreeExecutor).toBeTypeOf('function');
     expect(ContreeError).toBeTypeOf('function');
     expect(InMemoryExecutor).toBeTypeOf('function');
+    expect(ExternalTextError).toBeTypeOf('function');
+    expect(redactExternalText).toBeTypeOf('function');
 
     expectTypeOf<ContreeExecutorConfig>().toBeObject();
     expectTypeOf<Executor>().toBeObject();
@@ -70,6 +77,9 @@ describe('@sutura/core entry point', () => {
     expectTypeOf<RunMetrics>().toBeObject();
     expectTypeOf<RunOptions>().toBeObject();
     expectTypeOf<RunResult>().toBeObject();
+    expectTypeOf<SnapshotMode>().toBeString();
+    expectTypeOf<SnapshotOptions>().toBeObject();
+    expectTypeOf<SnapshotProfile>().toBeString();
   });
 
   it('exports the diagnosis and grounding API from the package root', () => {

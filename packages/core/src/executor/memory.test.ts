@@ -13,7 +13,10 @@ describe('InMemoryExecutor', () => {
     }));
 
     const imported = await executor.importImage('node:22-slim');
-    const snapshot = await executor.snapshot('/repo', imported);
+    const snapshot = await executor.snapshot('/repo', imported, {
+      profile: 'repository',
+      mode: 'overlay',
+    });
     const result = await executor.run(snapshot, 'pnpm test', {
       cwd: '/workspace',
       env: { CI: 'true' },
@@ -27,7 +30,13 @@ describe('InMemoryExecutor', () => {
     ]);
     expect(executor.calls).toEqual([
       { kind: 'importImage', ref: 'node:22-slim', imageId: 'mem-1' },
-      { kind: 'snapshot', dir: '/repo', base: 'mem-1', imageId: 'mem-2' },
+      {
+        kind: 'snapshot',
+        dir: '/repo',
+        base: 'mem-1',
+        options: { profile: 'repository', mode: 'overlay' },
+        imageId: 'mem-2',
+      },
       {
         kind: 'run',
         parent: 'mem-2',

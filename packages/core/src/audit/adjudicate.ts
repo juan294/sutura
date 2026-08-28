@@ -3,6 +3,10 @@ import { Buffer } from 'node:buffer';
 import type { Diagnosis } from '../domain.js';
 import { extractJson } from '../llm/json.js';
 import type { TierLlm } from '../llm/types.js';
+import {
+  redactExternalMessages,
+  redactExternalJsonValue,
+} from '../security/external-text.js';
 import { boundedTail } from '../text/bounded-tail.js';
 
 export type AdjudicationLlm = TierLlm<'ultra'>;
@@ -65,12 +69,12 @@ function validateAdjudication(value: unknown): AdjudicationResult {
 }
 
 function contextMessage(context: AdjudicationContext): string | null {
-  const encoded = JSON.stringify({
+  const encoded = JSON.stringify(redactExternalJsonValue({
     diagnosis: context.diagnosis,
     candidateDiff: context.diff,
     beforeLog: boundedTail(context.beforeLog, BEFORE_LOG_BOUNDS),
     afterLog: boundedTail(context.afterLog, AFTER_LOG_BOUNDS),
-  });
+  }));
   return encoded.length <= MAX_CONTEXT_CHARACTERS &&
     Buffer.byteLength(encoded, 'utf8') <= MAX_CONTEXT_BYTES
     ? encoded
@@ -98,22 +102,22 @@ export async function adjudicate(
   try {
     const initial = await llm.chat(
       'ultra',
-      [
-        { role: 'system', content: ADVERSARIAL_AUDIT_PROMPT },
-        { role: 'user', content: userContent },
-      ],
+      redactExternalMessages([
+        { role: 'system' as const, content: ADVERSARIAL_AUDIT_PROMPT },
+        { role: 'user' as const, content: userContent },
+      ]),
       OPTIONS,
     );
 
     return await extractJson(initial, validateAdjudication, async (repairPrompt) =>
       llm.chat(
         'ultra',
-        [
-          { role: 'system', content: ADVERSARIAL_AUDIT_PROMPT },
-          { role: 'user', content: userContent },
-          { role: 'assistant', content: initial.text },
-          { role: 'user', content: repairPrompt },
-        ],
+        redactExternalMessages([
+          { role: 'system' as const, content: ADVERSARIAL_AUDIT_PROMPT },
+          { role: 'user' as const, content: userContent },
+          { role: 'assistant' as const, content: initial.text },
+          { role: 'user' as const, content: repairPrompt },
+        ]),
         OPTIONS,
       ),
     );

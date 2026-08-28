@@ -40,6 +40,20 @@ function candidate(id: string, diff: string): Candidate {
 }
 
 describe('generateCandidates', () => {
+  it('rejects editable source when redaction would change it', async () => {
+    const chat = vi.fn();
+
+    await expect(generateCandidates({ chat }, buildDiagnosis, 1, {
+      sources: [{
+        path: 'src/config.ts',
+        startLine: 1,
+        content: 'export const config={"token":"source-secret"};\n',
+        truncated: false,
+      }],
+    })).rejects.toThrow(/editable external text contains 1 credential pattern/u);
+    expect(chat).not.toHaveBeenCalled();
+  });
+
   it('makes one Super call for K independent, distinct candidates', async () => {
     const chat = vi.fn().mockResolvedValue({
       text: JSON.stringify({

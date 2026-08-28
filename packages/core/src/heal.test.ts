@@ -9,8 +9,10 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AuditVerdict, Candidate, CostLedger, Diagnosis } from './domain.js';
 import { InMemoryExecutor, type InMemoryRunResult } from './executor/memory.js';
 import {
+  buildSandboxRepositoryInitializationCommandForTest,
   healCase,
   sandboxExecutableCommand,
+  sandboxPreparationCommand,
   sandboxTargetCommand,
   SUTURA_SANDBOX_ENV,
   type HealCaseContext,
@@ -81,7 +83,8 @@ function context(
 ): { ctx: HealCaseContext; executor: InMemoryExecutor; chat: ReturnType<typeof vi.fn> } {
   let scenarioIndex = 0;
   const executor = new InMemoryExecutor((command) =>
-    command.includes('corepack pnpm install --frozen-lockfile')
+    command.includes('corepack pnpm install --frozen-lockfile') ||
+    command.includes('git init --quiet')
       ? result(0)
       : result(exits[scenarioIndex++] ?? 1),
   );
@@ -130,7 +133,7 @@ describe('healCase', () => {
     const caseFile = await healCase(ctx);
 
     expect(caseFile.outcome).toBe('fixed');
-    expect(executor.calls.filter(({ kind }) => kind === 'snapshot')).toHaveLength(1);
+    expect(executor.calls.filter(({ kind }) => kind === 'snapshot')).toHaveLength(2);
     expect(executor.calls.find((call) => call.kind === 'run')).toMatchObject({
       kind: 'run',
       cmd: expect.stringContaining('corepack pnpm install --frozen-lockfile'),
@@ -169,7 +172,7 @@ describe('healCase', () => {
     expect(caseFile.outcome).toBe('refused');
     expect(caseFile.audit?.approved).toBe(false);
     expect(caseFile.audit?.checks).toContainEqual(expect.objectContaining({ name: 'skipped-test', passed: false }));
-    expect(executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(7);
+    expect(executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(8);
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
   });
 
@@ -194,7 +197,7 @@ describe('healCase', () => {
         reasoning: expect.stringContaining('adds pass-with-no-tests bypass'),
       },
     });
-    expect(executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(7);
+    expect(executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(8);
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
   });
 
@@ -263,7 +266,7 @@ describe('healCase', () => {
     expect(chat).not.toHaveBeenCalled();
   });
 
-  it('reproduces an observed dependency-install command without preinstalling', async () => {
+  it('reproduces an observed dependency-install command from manifest-only preparation', async () => {
     const { ctx, chat } = context('repair-off-by-one', [0], 'infra', {
       failureCommand: 'pnpm install --frozen-lockfile',
     });
@@ -274,14 +277,69 @@ describe('healCase', () => {
     const commands = ctx.executor instanceof InMemoryExecutor
       ? ctx.executor.calls.filter((call) => call.kind === 'run').map(({ cmd }) => cmd)
       : [];
-    expect(commands).toHaveLength(1);
-    expect(commands[0]).toContain('pnpm install --frozen-lockfile');
-    expect(commands[0]).not.toContain('node_modules');
+    expect(commands[0]).toContain('pnpm install --frozen-lockfile --ignore-scripts');
+    const runs = ctx.executor instanceof InMemoryExecutor
+      ? ctx.executor.calls.filter((call) => call.kind === 'run')
+      : [];
+    expect(runs[0]?.opts?.network).toBe('enabled');
+    expect(runs.slice(1).every((call) => call.opts?.network === 'disabled')).toBe(true);
     expect(chat).not.toHaveBeenCalled();
   });
 });
 
 describe('sandbox command resolution', () => {
+  it('creates an exact hook-disabled Git baseline from only manifest members', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-git-baseline-'));
+    const marker = join(directory, 'hook-ran');
+    const manifest = join(directory, 'overlay.manifest');
+    const template = join(directory, 'empty-template');
+    try {
+      await mkdir(join(directory, 'src'), { recursive: true });
+      await mkdir(join(directory, 'node_modules', 'dependency'), { recursive: true });
+      await writeFile(join(directory, 'package.json'), '{"name":"fixture"}\n');
+      await writeFile(join(directory, 'src', 'index.ts'), 'export const ready = true;\n');
+      await writeFile(join(directory, 'node_modules', 'dependency', 'output.js'), 'prepared\n');
+      await writeFile(manifest, Buffer.from('package.json\0src/index.ts\0'));
+      await mkdir(template);
+      expect(spawnSync('git', ['init', '--quiet'], { cwd: directory }).status).toBe(0);
+      const hook = join(directory, '.git', 'hooks', 'pre-commit');
+      await writeFile(hook, `#!/bin/sh\ntouch '${marker}'\nexit 1\n`);
+      await chmod(hook, 0o755);
+
+      const command = buildSandboxRepositoryInitializationCommandForTest({
+        manifestPath: manifest,
+        templatePath: template,
+      });
+      const initialized = spawnSync('sh', ['-c', command], {
+        cwd: directory,
+        encoding: 'utf8',
+      });
+
+      expect(initialized.status, initialized.stderr).toBe(0);
+      const listed = spawnSync('git', ['ls-files', '-z'], {
+        cwd: directory,
+        encoding: 'utf8',
+      });
+      expect(listed.stdout.split('\0').filter(Boolean).sort()).toEqual([
+        'package.json',
+        'src/index.ts',
+      ]);
+      await expect(readFile(marker, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('uses verified lifecycle-blocking installer modes', () => {
+    const command = sandboxPreparationCommand();
+
+    expect(command).toContain('pnpm install --frozen-lockfile --ignore-scripts');
+    expect(command).toContain('npm ci --ignore-scripts');
+    expect(command).toContain('yarn install --frozen-lockfile --ignore-scripts');
+    expect(command).toContain('yarn install --immutable --mode=skip-build');
+    expect(command).toContain('unsupported Yarn version');
+  });
+
   it('uses one resolved command for reproduction, triage, race, and audit', async () => {
     const observed = 'vitest run;';
     const { ctx, executor, chat } = context(
@@ -313,7 +371,9 @@ describe('sandbox command resolution', () => {
 
     const caseFile = await healCase(ctx);
     const stageCommands = executor.calls.flatMap((call) =>
-      call.kind === 'run' && !call.cmd.includes('corepack pnpm install --frozen-lockfile')
+      call.kind === 'run' &&
+        !call.cmd.includes('corepack pnpm install --frozen-lockfile') &&
+        !call.cmd.includes('git init --quiet')
         ? [call.cmd]
         : [],
     );

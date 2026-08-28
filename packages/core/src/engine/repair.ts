@@ -14,6 +14,11 @@ import {
 import { SNAPSHOT_CWD, type Executor, type ImageId } from '../executor/types.js';
 import { extractJson } from '../llm/json.js';
 import type { TierLlm } from '../llm/types.js';
+import {
+  assertExternalEditableText,
+  redactExternalJsonValue,
+  redactExternalMessages,
+} from '../security/external-text.js';
 import { triage } from './triage.js';
 import { shellQuote } from './shell.js';
 
@@ -365,16 +370,19 @@ export async function generateCandidates(
   sourceContext: RepairSourceContext = { sources: [] },
 ): Promise<Candidate[]> {
   positiveCount(K, 'K');
-  const messages = [
+  for (const source of sourceContext.sources) {
+    assertExternalEditableText(source.content);
+  }
+  const messages = redactExternalMessages([
     {
       role: 'system' as const,
       content: generationPrompt(K, sourceContext.sources.length > 0),
     },
     {
       role: 'user' as const,
-      content: JSON.stringify({ diagnosis, sourceContext }),
+      content: JSON.stringify(redactExternalJsonValue({ diagnosis, sourceContext })),
     },
-  ];
+  ]);
   const options = {
     maxTokens: 16_384,
     temperature: 1,
@@ -388,13 +396,13 @@ export async function generateCandidates(
     async (repairPrompt) =>
       llm.chat(
         'super',
-        [
+        redactExternalMessages([
           ...messages,
           ...(reply.text.trim()
             ? [{ role: 'assistant' as const, content: reply.text }]
             : []),
-          { role: 'user', content: repairPrompt },
-        ],
+          { role: 'user' as const, content: repairPrompt },
+        ]),
         options,
       ),
   );

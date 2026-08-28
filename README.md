@@ -93,8 +93,15 @@ The public dogfood record starts with [PR #18](https://github.com/juan294/sutura
   only a same-repository pull request tied to the failed run and exact head SHA.
 - Repository secrets are not copied into ConTree. Sandbox commands receive only
   `CI=true` and `NODE_ENV=test`.
+- Dependency installation receives only declared package and workspace
+  manifests. It runs with networking enabled and lifecycle scripts disabled.
+  Sutura overlays source only after that stage, then disables networking for
+  reproduction, triage, repair, candidate races, and audit.
 - Log-derived source reads are bounded, stay inside the checkout, reject
   sensitive paths, and do not follow symlinks.
+- Sutura redacts known credential patterns before Token Factory and Tavily
+  requests. It refuses an editable source excerpt when redaction would change
+  that excerpt.
 - Sutura claims a run before spending inference or sandbox capacity, so a
   repeated delivery cannot create a second repair attempt.
 - The selected diff is rerun and audited before publication. Sutura never
@@ -102,6 +109,10 @@ The public dogfood record starts with [PR #18](https://github.com/juan294/sutura
 
 Treat every generated patch as untrusted until its audit and repository checks
 pass. Keep branch protection and human merge review enabled.
+
+Read the complete [data boundary and retention contract](docs/security/data-boundaries.md)
+and [private repository threat model](docs/security/private-repositories.md)
+before enabling Sutura on confidential source.
 
 ## Install Sutura
 

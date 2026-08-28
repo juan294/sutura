@@ -29,6 +29,7 @@ import {
   type ImageId,
   type RunOptions,
   type RunResult,
+  type SnapshotOptions,
 } from './executor/types.js';
 import type { AuditLlm } from './audit/audit.js';
 import type { DiagnosisLlm } from './diagnose/classify.js';
@@ -84,7 +85,11 @@ export class HealCaseError extends Error {
 }
 
 function sandboxOptions(opts?: RunOptions): RunOptions {
-  return { ...opts, env: SUTURA_SANDBOX_ENV };
+  return {
+    ...opts,
+    env: SUTURA_SANDBOX_ENV,
+    network: 'disabled',
+  };
 }
 
 export class AllowlistedExecutor implements Executor {
@@ -94,8 +99,12 @@ export class AllowlistedExecutor implements Executor {
     return this.delegate.importImage(ref);
   }
 
-  snapshot(dir: string, base: ImageId): Promise<ImageId> {
-    return this.delegate.snapshot(dir, base);
+  snapshot(
+    dir: string,
+    base: ImageId,
+    options: SnapshotOptions,
+  ): Promise<ImageId> {
+    return this.delegate.snapshot(dir, base, options);
   }
 
   run(parent: ImageId, cmd: string, opts?: RunOptions): Promise<RunResult> {
@@ -104,6 +113,13 @@ export class AllowlistedExecutor implements Executor {
 
   runMany(parent: ImageId, cmds: string[], opts?: RunOptions): Promise<RunResult[]> {
     return this.delegate.runMany(parent, cmds, sandboxOptions(opts));
+  }
+
+  prepareDependencies(parent: ImageId): Promise<RunResult> {
+    return this.delegate.run(parent, sandboxPreparationCommand(), {
+      ...sandboxOptions({ cwd: SNAPSHOT_CWD }),
+      network: 'enabled',
+    });
   }
 }
 
@@ -154,17 +170,99 @@ export function preparationFailureCaseFile(
   );
 }
 
-export function sandboxPreparationCommand(command: string): string | null {
-  if (DEPENDENCY_INSTALL_COMMAND.test(command)) {
-    return null;
-  }
+export function sandboxPreparationCommand(): string {
   const prepare = [
-    'if [ -f pnpm-lock.yaml ]; then corepack pnpm install --frozen-lockfile;',
-    'elif [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm ci;',
-    'elif [ -f yarn.lock ]; then corepack yarn install --immutable;',
+    'command -v git >/dev/null 2>&1 || { echo "required sandbox tool is unavailable: git" >&2; exit 69; }',
+    'if [ -f pnpm-lock.yaml ]; then corepack pnpm install --frozen-lockfile --ignore-scripts;',
+    'elif [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm ci --ignore-scripts;',
+    'elif [ -f yarn.lock ]; then sutura_yarn_version="$(corepack yarn --version)"; case "$sutura_yarn_version" in 0.*|1.*) corepack yarn install --frozen-lockfile --ignore-scripts ;; 2.*|3.*|4.*) corepack yarn install --immutable --mode=skip-build ;; *) echo "unsupported Yarn version: $sutura_yarn_version" >&2; exit 69 ;; esac;',
     'else true; fi',
   ].join('\n');
   return `sh -lc ${shellQuote(prepare)}`;
+}
+
+const DEPENDENCY_SNAPSHOT = Object.freeze({
+  profile: 'dependency-inputs' as const,
+  mode: 'replace' as const,
+});
+const REPOSITORY_SNAPSHOT = Object.freeze({
+  profile: 'repository' as const,
+  mode: 'overlay' as const,
+});
+
+interface SandboxRepositoryInitializationPaths {
+  manifestPath: string;
+  templatePath: string;
+}
+
+const DEFAULT_REPOSITORY_INITIALIZATION_PATHS = {
+  manifestPath: '/tmp/sutura-repository-overlay.manifest',
+  templatePath: '/tmp/sutura-empty-git-template',
+} satisfies SandboxRepositoryInitializationPaths;
+
+function sandboxRepositoryInitializationCommand(
+  paths: SandboxRepositoryInitializationPaths = DEFAULT_REPOSITORY_INITIALIZATION_PATHS,
+): string {
+  return `sh -lc ${shellQuote([
+    `mkdir -p ${shellQuote(paths.templatePath)}`,
+    `git init --quiet --template=${shellQuote(paths.templatePath)}`,
+    'git config core.hooksPath /dev/null',
+    'git config user.email sutura@users.noreply.github.com',
+    'git config user.name Sutura',
+    `git --literal-pathspecs add --pathspec-from-file=${shellQuote(paths.manifestPath)} --pathspec-file-nul`,
+    'git -c core.hooksPath=/dev/null commit --quiet --no-verify -m "chore: initialize Sutura sandbox baseline"',
+    'if [ -f pnpm-lock.yaml ]; then corepack pnpm rebuild; elif [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm rebuild; elif [ -f yarn.lock ]; then sutura_yarn_version="$(corepack yarn --version)"; case "$sutura_yarn_version" in 0.*|1.*) npm rebuild ;; 2.*|3.*|4.*) corepack yarn rebuild ;; *) echo "unsupported Yarn version: $sutura_yarn_version" >&2; exit 69 ;; esac; else true; fi',
+  ].join(' && '))}`;
+}
+
+const INITIALIZE_REPOSITORY_COMMAND = sandboxRepositoryInitializationCommand();
+
+export function buildSandboxRepositoryInitializationCommandForTest(
+  paths: SandboxRepositoryInitializationPaths,
+): string {
+  return sandboxRepositoryInitializationCommand(paths);
+}
+
+export type SandboxSetupResult =
+  | { ok: true; imageId: ImageId }
+  | { ok: false; command: string; result: RunResult };
+
+export async function prepareSandbox(
+  executor: AllowlistedExecutor,
+  dir: string,
+  baseImage: ImageId,
+  observedCommand: string,
+): Promise<SandboxSetupResult> {
+  const dependencyImage = await executor.snapshot(
+    dir,
+    baseImage,
+    DEPENDENCY_SNAPSHOT,
+  );
+  const preparationCommand = sandboxPreparationCommand();
+  const preparation = await executor.prepareDependencies(dependencyImage);
+  if (preparation.exitCode !== 0) {
+    return {
+      ok: false,
+      command: DEPENDENCY_INSTALL_COMMAND.test(observedCommand)
+        ? observedCommand
+        : preparationCommand,
+      result: preparation,
+    };
+  }
+  const sourceImage = await executor.snapshot(
+    dir,
+    preparation.imageId,
+    REPOSITORY_SNAPSHOT,
+  );
+  const initialized = await executor.run(
+    sourceImage,
+    INITIALIZE_REPOSITORY_COMMAND,
+    { cwd: SNAPSHOT_CWD },
+  );
+  if (initialized.exitCode !== 0) {
+    return { ok: false, command: INITIALIZE_REPOSITORY_COMMAND, result: initialized };
+  }
+  return { ok: true, imageId: initialized.imageId };
 }
 
 export function sandboxTargetCommand(command: string): string {
@@ -359,22 +457,12 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
 
   const executor = new AllowlistedExecutor(ctx.executor);
   const baseImage = await executor.importImage(ctx.imageRef ?? SUTURA_DEFAULT_IMAGE_REF);
-  const failingImage = await executor.snapshot(ctx.caseDir, baseImage);
-  let preparedImage = failingImage;
-  const preparationCommand = sandboxPreparationCommand(command);
-  if (preparationCommand) {
-    const preparation = await executor.run(
-      failingImage,
-      preparationCommand,
-      { cwd: SNAPSHOT_CWD },
-    );
-    if (preparation.exitCode !== 0) {
-      return preparationFailureCaseFile(ctx, command, preparation);
-    }
-    preparedImage = preparation.imageId;
+  const setup = await prepareSandbox(executor, ctx.caseDir, baseImage, command);
+  if (!setup.ok) {
+    return preparationFailureCaseFile(ctx, setup.command, setup.result);
   }
   const reproduction = await executor.run(
-    preparedImage,
+    setup.imageId,
     sandboxTargetCommand(command),
     { cwd: SNAPSHOT_CWD },
   );
@@ -388,7 +476,7 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     runId: ctx.runId,
     repo: ctx.repo,
     failedLog,
-    failingImage: preparedImage,
+    failingImage: setup.imageId,
     executor,
     llm: ctx.llm,
     cost: ctx.cost,

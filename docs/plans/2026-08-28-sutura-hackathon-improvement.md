@@ -358,3 +358,17 @@ The following actions require their existing explicit authorization:
 The implementation choices are complete.
 
 External retention behavior, provider spending, remote test state, publication, and submission remain explicit authorization gates.
+
+## Implementation progress
+
+- [x] Phase 1: Secure sandbox and privacy boundary
+- [x] Phase 2: Token Factory protocol foundation
+- [ ] Phase 3: Repository policy and stage evidence
+- [ ] Phase 4: Bounded tool-calling repair agent
+- [ ] Phase 5: Adaptive ConTree checkpoint search
+- [ ] Phase 6: Evaluation Lab records and ATIF export
+- [ ] Phase 7: Nemotron routing and progressive flake confidence
+- [ ] Phase 8: GitHub Checks and audit-only distribution
+- [ ] Phase 9: Placebo v0.2 benchmark expansion
+- [ ] Phase 10: Python project support
+- [ ] Phase 11: Public demo, external proof, feedback, and release readiness

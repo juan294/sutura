@@ -12,19 +12,90 @@ const environment = (
   }
 ).process?.env ?? {};
 
-describe.skipIf(environment.SUTURA_LIVE !== '1')('NebiusClient live', () => {
-  it('round-trips a nano call and records a non-zero inference cost', async () => {
-    const apiKey = environment.NEBIUS_API_KEY;
-    if (!apiKey) {
-      throw new Error('NEBIUS_API_KEY is required when SUTURA_LIVE=1');
-    }
+function createLiveClient(): NebiusClient {
+  const apiKey = environment.NEBIUS_API_KEY;
+  if (!apiKey) {
+    throw new Error('NEBIUS_API_KEY is required when SUTURA_LIVE=1');
+  }
+  return new NebiusClient({
+    apiKey,
+    baseUrl: 'https://api.tokenfactory.nebius.com/v1/',
+    models: DEFAULT_MODELS,
+    prices: DEFAULT_MODEL_PRICES,
+  });
+}
 
-    const client = new NebiusClient({
-      apiKey,
-      baseUrl: 'https://api.tokenfactory.nebius.com/v1/',
-      models: DEFAULT_MODELS,
-      prices: DEFAULT_MODEL_PRICES,
+describe.skipIf(environment.SUTURA_LIVE !== '1')('NebiusClient live', () => {
+  it('returns a nano reply that matches a strict JSON Schema', async () => {
+    const client = createLiveClient();
+
+    const reply = await client.chat(
+      'nano',
+      [{ role: 'user', content: 'Return fixed as true.' }],
+      {
+        maxTokens: 2_048,
+        temperature: 0,
+        responseFormat: {
+          type: 'json_schema',
+          jsonSchema: {
+            name: 'health_check',
+            strict: true,
+            schema: {
+              type: 'object',
+              properties: { fixed: { type: 'boolean' } },
+              required: ['fixed'],
+              additionalProperties: false,
+            },
+          },
+        },
+      },
+    );
+
+    expect(JSON.parse(reply.text)).toEqual({ fixed: true });
+    expect(reply.finishReason).toBeTruthy();
+    expect(reply.usage.inTok).toBeGreaterThan(0);
+    expect(reply.usage.outTok + reply.usage.reasoningTok).toBeGreaterThan(0);
+  });
+
+  it('returns a required nano function call with valid JSON arguments', async () => {
+    const client = createLiveClient();
+
+    const reply = await client.chat(
+      'nano',
+      [{ role: 'user', content: 'Read src/example.ts.' }],
+      {
+        maxTokens: 2_048,
+        temperature: 0,
+        tools: [{
+          type: 'function',
+          function: {
+            name: 'read_file',
+            description: 'Read a repository file',
+            parameters: {
+              type: 'object',
+              properties: { path: { type: 'string' } },
+              required: ['path'],
+            },
+            strict: true,
+          },
+        }],
+        toolChoice: 'required',
+        parallelToolCalls: false,
+      },
+    );
+
+    expect(reply.toolCalls).toHaveLength(1);
+    expect(reply.toolCalls[0]?.function.name).toBe('read_file');
+    expect(JSON.parse(reply.toolCalls[0]?.function.arguments ?? '')).toEqual({
+      path: 'src/example.ts',
     });
+    expect(reply.finishReason).toBeTruthy();
+    expect(reply.usage.inTok).toBeGreaterThan(0);
+    expect(reply.usage.outTok + reply.usage.reasoningTok).toBeGreaterThan(0);
+  });
+
+  it('round-trips a nano call and records a non-zero inference cost', async () => {
+    const client = createLiveClient();
 
     const reply = await client.chat(
       'nano',
@@ -38,16 +109,7 @@ describe.skipIf(environment.SUTURA_LIVE !== '1')('NebiusClient live', () => {
   });
 
   it('generates one locally valid Super candidate with bounded reasoning', async () => {
-    const apiKey = environment.NEBIUS_API_KEY;
-    if (!apiKey) {
-      throw new Error('NEBIUS_API_KEY is required when SUTURA_LIVE=1');
-    }
-    const client = new NebiusClient({
-      apiKey,
-      baseUrl: 'https://api.tokenfactory.nebius.com/v1/',
-      models: DEFAULT_MODELS,
-      prices: DEFAULT_MODEL_PRICES,
-    });
+    const client = createLiveClient();
     const diagnosis: Diagnosis = {
       class: 'typecheck',
       confidence: 0.99,

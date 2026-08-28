@@ -51,6 +51,8 @@ export class Ledger implements CostLedger {
       throw new Error(`No token prices configured for model: ${model}`);
     }
 
+    // Token Factory reports reasoning inside completion tokens. Both visible
+    // output and reasoning are billed at the output price.
     const usd = roundUsd(
       (usage.inTok * price.input +
         (usage.outTok + usage.reasoningTok) * price.output) /
