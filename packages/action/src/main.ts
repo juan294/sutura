@@ -71,6 +71,7 @@ export async function runAction(): Promise<void> {
       triageN: config.triageN,
       raceK: config.raceK,
       repairBudgets: config.repairBudgets,
+      search: config.search,
       ...(tavily ? { tavily } : {}),
     });
     core.setOutput('outcome', result.outcome);

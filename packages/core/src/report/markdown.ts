@@ -57,6 +57,18 @@ function renderProcedure(caseFile: CaseFile): string[] {
   if (caseFile.race.length === 0) {
     lines.push('| — | No candidates were produced | NO | Repair cycle stopped |');
   }
+  if (caseFile.search && caseFile.search.length > 0) {
+    lines.push(
+      '',
+      '**Adaptive checkpoint lineage**',
+      '',
+      '| Node | Parent | Depth | Test | Policy | Terminal |',
+      '| --- | --- | ---: | ---: | :---: | --- |',
+      ...caseFile.search.map((node) =>
+        `| ${escapeMarkdown(node.nodeId)} | ${escapeMarkdown(node.parentNodeId ?? 'baseline')} | ${node.depth} | ${node.testExitCode} | ${node.policyValid ? 'PASS' : 'FAIL'} | ${escapeMarkdown(node.terminalReason ?? 'frontier')} |`,
+      ),
+    );
+  }
   return lines;
 }
 

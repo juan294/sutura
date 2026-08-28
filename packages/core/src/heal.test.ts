@@ -145,6 +145,46 @@ function context(
 }
 
 describe('healCase', () => {
+  it('uses raceK only as a direct-call compatibility width when search settings are absent', async () => {
+    const legacy = context('repair-off-by-one', [1, 1, 1, 1, 1, 1, 0, 0], 'test-assertion');
+    const legacyCase = await healCase(legacy.ctx);
+    expect(legacy.chat.mock.calls.filter(([tier]) => tier === 'super')).toHaveLength(3);
+    expect(legacyCase.search?.[0]).toMatchObject({ nodeId: 'search-001', terminalReason: 'passed' });
+
+    const adaptive = context('repair-off-by-one', [1, 1, 1, 1, 1, 1, 0, 0, 1], 'test-assertion', {
+      search: { initialBranches: 2, beamWidth: 1, maximumDepth: 1, maximumTotalBranches: 2 },
+    });
+    const adaptiveCase = await healCase(adaptive.ctx);
+    expect(adaptiveCase.search?.[0]).toMatchObject({ nodeId: 'search-001' });
+    expect(adaptive.executor.calls.some((call) =>
+      call.kind === 'run' && call.opts?.operationId?.startsWith('search-'),
+    )).toBe(true);
+    expect(adaptiveCase.stages.some((entry) =>
+      entry.operationId?.startsWith('search-') &&
+      entry.operationTerminal === 'succeeded' &&
+      entry.cancellationRequested === false,
+    )).toBe(true);
+  });
+
+  it('refuses the first adaptive expansion when the current provider snapshot has no capacity', async () => {
+    const value = context('repair-off-by-one', [1, 1, 1, 1, 1, 1], 'test-assertion', {
+      search: { initialBranches: 4, beamWidth: 2, maximumDepth: 4, maximumTotalBranches: 12 },
+    });
+    value.ctx.llm = {
+      ...value.ctx.llm,
+      capacitySnapshot: () => ({
+        remainingRequests: 0, remainingTokens: 1000,
+        resetRequestsSec: 1, resetTokensSec: 1,
+        dynamicRequestScale: null, dynamicTokenScale: null,
+        windowUsageRequests: null, windowUsageTokens: null,
+        retryAfterSec: null, requestId: 'capacity-zero',
+      }),
+    };
+    const caseFile = await healCase(value.ctx);
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(value.chat.mock.calls.filter(([tier]) => tier === 'super')).toHaveLength(0);
+    expect(caseFile.search).toEqual([]);
+  });
   it.each([
     [{ elapsedTimeSec: 12, maxRssKb: 120 }, 'fixed'],
     [{ elapsedTimeSec: 12.1, maxRssKb: 120 }, 'refused'],

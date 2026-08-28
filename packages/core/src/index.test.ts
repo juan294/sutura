@@ -25,7 +25,6 @@ import {
   ground,
   orchestrate,
   prepareRepair,
-  race,
   renderCaseFile,
   renderComment,
   redactExternalText,
@@ -95,7 +94,6 @@ describe('@sutura/core entry point', () => {
     expect(triage).toBeTypeOf('function');
     expect(generateCandidates).toBeTypeOf('function');
     expect(prepareRepair).toBeTypeOf('function');
-    expect(race).toBeTypeOf('function');
     expect(selectWinner).toBeTypeOf('function');
     expect(vetPatch).toBeTypeOf('function');
     expectTypeOf<PatchVerdict>().toBeObject();

@@ -355,7 +355,7 @@ describe('orchestrate', () => {
       network: 'disabled',
     });
     expect(caseFile.race.every(({ imageId, nodeId }) =>
-      imageId === nodeId && /^node-\d{3}$/u.test(nodeId),
+      imageId === nodeId && /^search-\d{3}$/u.test(nodeId),
     )).toBe(true);
     expect(JSON.stringify(caseFile)).not.toContain('memory-image');
   });
@@ -433,7 +433,7 @@ describe('orchestrate', () => {
 
     expect(caseFile.outcome).toBe('gave-up');
     expect(caseFile.race).toEqual([]);
-    expect(caseFile.stages.some(({ stage }) => stage === 'candidate')).toBe(true);
+    expect(caseFile.stages.some(({ stage }) => stage === 'search')).toBe(true);
     expect(runCalls(executor).some(({ cmd }) => cmd.includes('git apply'))).toBe(false);
   });
 

@@ -11,7 +11,7 @@ export interface RepairBudgetLimits {
 export const DEFAULT_REPAIR_BUDGET_LIMITS = Object.freeze({
   modelTurns: 8,
   toolCalls: 24,
-  branches: 4,
+  branches: 12,
   sandboxOperations: 32,
   elapsedTimeSec: 600,
   inferenceCostUsd: 0.25,

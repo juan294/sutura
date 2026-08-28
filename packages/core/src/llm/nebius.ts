@@ -317,6 +317,7 @@ export class NebiusResponseError extends Error {
 
 export class NebiusClient {
   readonly ledger: Ledger;
+  private latestCapacity: CapacitySnapshot | undefined;
 
   private readonly fetch: Fetch;
   private readonly sleep: Sleep;
@@ -336,6 +337,10 @@ export class NebiusClient {
     this.random = dependencies.random ?? Math.random;
     this.now = dependencies.now ?? Date.now;
     this.ledger = new Ledger(config.prices);
+  }
+
+  capacitySnapshot(): CapacitySnapshot | undefined {
+    return this.latestCapacity;
   }
 
   async chat(
@@ -511,6 +516,8 @@ export class NebiusClient {
       throw new NebiusResponseError('Invalid choices[0].finish_reason in Nebius response');
     }
 
+    const capacity = capacitySnapshot(headers);
+    this.latestCapacity = capacity;
     return {
       text: typeof rawContent === 'string' ? stripThinkPrefix(rawContent) : '',
       raw: typeof rawContent === 'string' ? rawContent : null,
@@ -518,7 +525,7 @@ export class NebiusClient {
       finishReason: finishReason ?? null,
       usage,
       usd: entry.usd,
-      capacity: capacitySnapshot(headers),
+      capacity,
     };
   }
 }

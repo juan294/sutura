@@ -497,7 +497,9 @@ describe('NebiusClient', () => {
       .mockResolvedValueOnce(second);
     const client = new NebiusClient(CONFIG, { fetch });
 
+    expect(client.capacitySnapshot()).toBeUndefined();
     const firstReply = await client.chat('nano', MESSAGES);
+    expect(client.capacitySnapshot()).toBe(firstReply.capacity);
     const secondReply = await client.chat('nano', MESSAGES);
 
     expect(firstReply.capacity).toEqual({
@@ -515,6 +517,7 @@ describe('NebiusClient', () => {
     expect(Object.isFrozen(firstReply.capacity)).toBe(true);
     expect(secondReply.capacity).not.toBe(firstReply.capacity);
     expect(secondReply.capacity.remainingRequests).toBeNull();
+    expect(client.capacitySnapshot()).toBe(secondReply.capacity);
   });
 
   it('drops malformed capacity headers from the snapshot', async () => {

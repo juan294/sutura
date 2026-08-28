@@ -70,4 +70,28 @@ describe('InMemoryExecutor', () => {
     ]);
     expect(executor.calls.every((call) => call.kind === 'run')).toBe(true);
   });
+
+  it('reports separate operation capacity and resolves cancellation exactly once', async () => {
+    let release!: () => void;
+    const executor = new InMemoryExecutor(async () => {
+      await new Promise<void>((resolve) => { release = resolve; });
+      return { exitCode: 0, stdout: '', stderr: '', truncated: false, metrics: {} };
+    }, { operationLimit: 2 });
+
+    const run = executor.run('parent', 'slow', { operationId: 'search-001' });
+    await Promise.resolve();
+    expect(executor.operationCapacity()).toEqual({ limit: 2, active: 1, available: 1 });
+    await expect(executor.cancel('search-001')).resolves.toEqual({ operationId: 'search-001', requested: true, terminal: 'cancelled' });
+    release();
+    await expect(run).rejects.toThrow(/cancelled/i);
+    await expect(executor.cancel('search-001')).resolves.toEqual({ operationId: 'search-001', requested: false, terminal: 'cancelled' });
+    expect(executor.completions.filter(({ operationId }) => operationId === 'search-001')).toHaveLength(1);
+    expect(executor.completions[0]).toEqual({ operationId: 'search-001', terminal: 'cancelled', cancellationRequested: true });
+  });
+
+  it('does not fabricate cancellation state for an unknown operation', async () => {
+    const executor = new InMemoryExecutor(() => ({ exitCode: 0, stdout: '', stderr: '', truncated: false, metrics: {} }));
+    await expect(executor.cancel('missing')).resolves.toEqual({ operationId: 'missing', requested: false });
+    expect(executor.completions).toEqual([]);
+  });
 });

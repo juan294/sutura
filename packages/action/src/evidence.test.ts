@@ -31,7 +31,7 @@ describe('runtimeEvidence', () => {
   it('reports actual Nemotron calls, cost, and ConTree results', () => {
     expect(runtimeEvidence(caseFile(), { nano: 'nemotron-nano' })).toEqual([
       'Nemotron runtime: nano=nemotron-nano calls=1; inference cost USD=0.001000',
-      'ConTree runtime: sandbox reproduction attempted; triage=5/5; raced=0; outcome=gave-up',
+      'ConTree runtime: sandbox reproduction attempted; triage=5/5; search-nodes=0; outcome=gave-up',
       'Sandbox evidence: operations=0; elapsed=0.000s; cpu=0.000s; max-rss=0KB; sandbox cost USD=0.000000',
       `Policy evidence: base-ref=develop; base-sha=${'a'.repeat(40)}; policy-sha=default`,
     ]);
@@ -70,7 +70,7 @@ describe('runtimeEvidence', () => {
     });
 
     expect(runtimeEvidence(value, { nano: 'nemotron-nano' })).toEqual([
-      'ConTree runtime: sandbox preparation failed before reproduction; triage=0/0; raced=0; outcome=infra-stop',
+      'ConTree runtime: sandbox preparation failed before reproduction; triage=0/0; search-nodes=0; outcome=infra-stop',
       'Sandbox evidence: operations=0; elapsed=0.000s; cpu=0.000s; max-rss=0KB; sandbox cost USD=0.000000',
       `Policy evidence: base-ref=develop; base-sha=${'a'.repeat(40)}; policy-sha=default`,
     ]);

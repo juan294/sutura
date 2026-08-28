@@ -27,7 +27,7 @@ export function runtimeEvidence(
     ? 'sandbox preparation failed before reproduction'
     : 'sandbox reproduction attempted';
   lines.push(
-    `ConTree runtime: ${contreeStage}; triage=${caseFile.triage.reproduced}/${caseFile.triage.of}; raced=${caseFile.race.length}; outcome=${caseFile.outcome}`,
+    `ConTree runtime: ${contreeStage}; triage=${caseFile.triage.reproduced}/${caseFile.triage.of}; search-nodes=${caseFile.search?.length ?? 0}; outcome=${caseFile.outcome}`,
   );
   const totals = aggregateStageEvidence(caseFile);
   lines.push(

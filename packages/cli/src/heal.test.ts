@@ -283,6 +283,15 @@ describe('CLI runtime configuration and source boundaries', () => {
     })).not.toThrow();
   });
 
+  it('selects adaptive search defaults for the CLI runtime', () => {
+    const value = runtimeFromEnvironment(request('repair-off-by-one', undefined, false), {
+      NEBIUS_API_KEY: 'nebius', CONTREE_TOKEN: 'token', CONTREE_PROJECT: 'project',
+    });
+    expect(value.search).toEqual({
+      initialBranches: 4, beamWidth: 2, maximumDepth: 4, maximumTotalBranches: 12,
+    });
+  });
+
   it('reads bounded source files but excludes dependencies and secret-shaped paths', async () => {
     const fixture = join(CORPUS, 'repair-off-by-one', 'fixture');
     const context = await readLocalSourceContext(

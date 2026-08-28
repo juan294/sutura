@@ -3,6 +3,9 @@ import type {
   ImageId,
   RunOptions,
   RunResult,
+  CancellationResult,
+  OperationCapacity,
+  OperationCompletion,
   SnapshotOptions,
 } from './types.js';
 
@@ -38,11 +41,37 @@ export type InMemoryCall =
 
 export class InMemoryExecutor implements Executor {
   readonly calls: InMemoryCall[] = [];
+  readonly completions: OperationCompletion[] = [];
 
   private nextImageNumber = 1;
   private nextRunNumber = 0;
 
-  constructor(private readonly script: InMemoryScript) {}
+  private readonly operationLimit: number;
+  private readonly operations = new Map<string, { cancelled: boolean; terminal?: OperationCompletion['terminal'] }>();
+  private active = 0;
+
+  constructor(private readonly script: InMemoryScript, options: { operationLimit?: number } = {}) {
+    this.operationLimit = options.operationLimit ?? Number.MAX_SAFE_INTEGER;
+  }
+
+  operationCapacity(): OperationCapacity {
+    return { limit: this.operationLimit, active: this.active, available: Math.max(0, this.operationLimit - this.active) };
+  }
+
+  async cancel(operationId: string): Promise<CancellationResult> {
+    const operation = this.operations.get(operationId);
+    if (!operation || operation.terminal) {
+      return {
+        operationId,
+        requested: false,
+        ...(operation?.terminal === undefined ? {} : { terminal: operation.terminal }),
+      };
+    }
+    operation.cancelled = true;
+    operation.terminal = 'cancelled';
+    this.completions.push({ operationId, cancellationRequested: true, terminal: 'cancelled' });
+    return { operationId, requested: true, terminal: 'cancelled' };
+  }
 
   async importImage(ref: string): Promise<ImageId> {
     const imageId = this.nextImageId();
@@ -74,10 +103,28 @@ export class InMemoryExecutor implements Executor {
       : { kind: 'run', parent, cmd, imageId };
     this.calls.push(call);
 
-    return {
-      ...(await this.script(cmd, parent, callIndex, opts)),
-      imageId,
-    };
+    const operationId = opts?.operationId;
+    if (operationId && this.operations.has(operationId)) throw new Error(`Operation ${operationId} already exists`);
+    const operation: { cancelled: boolean; terminal?: OperationCompletion['terminal'] } | undefined = operationId ? { cancelled: false } : undefined;
+    if (operationId && operation) this.operations.set(operationId, operation);
+    this.active += 1;
+    try {
+      const scripted = await this.script(cmd, parent, callIndex, opts);
+      if (operation?.cancelled) throw new Error(`Operation ${operationId} was cancelled`);
+      if (operationId && operation && !operation.terminal) {
+        operation.terminal = scripted.exitCode === 0 ? 'succeeded' : 'failed';
+        this.completions.push({ operationId, cancellationRequested: false, terminal: operation.terminal });
+      }
+      return {
+        ...scripted,
+        imageId,
+        ...(operationId === undefined || operation?.terminal === undefined ? {} : {
+          operation: { operationId, terminal: operation.terminal, cancellationRequested: false },
+        }),
+      };
+    } finally {
+      this.active -= 1;
+    }
   }
 
   async runMany(

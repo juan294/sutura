@@ -109,6 +109,22 @@ export interface StageEvidence {
   metrics: RunMetrics;
   network: 'disabled' | 'enabled';
   note?: string;
+  operationId?: string;
+  operationTerminal?: 'succeeded' | 'failed' | 'cancelled';
+  cancellationRequested?: boolean;
+}
+
+export interface SearchEvidence {
+  nodeId: string;
+  parentNodeId?: string;
+  depth: number;
+  errorFingerprint: string;
+  transcriptReference: string;
+  terminalReason?: string;
+  testExitCode: number;
+  policyValid: boolean;
+  changedFiles: number;
+  diffBytes: number;
 }
 
 export interface PolicyEvidence {
@@ -128,4 +144,5 @@ export interface CaseFile {
   cost: CostLedger;
   policy: PolicyEvidence;
   stages: StageEvidence[];
+  search?: SearchEvidence[];
 }

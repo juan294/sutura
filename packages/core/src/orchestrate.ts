@@ -3,6 +3,7 @@ import { Buffer } from 'node:buffer';
 import { classifyMechanically } from './diagnose/classify.js';
 import type { TavilySearch } from './diagnose/tavily.js';
 import type { RepairBudgetOverrides } from './engine/repair-budget.js';
+import type { SearchLimits } from './config.js';
 import type {
   CaseFile,
   CostLedger,
@@ -170,6 +171,7 @@ export interface OrchestrationContext {
   triageN: number;
   raceK: number;
   repairBudgets?: RepairBudgetOverrides;
+  search?: SearchLimits;
   tavily?: TavilySearch;
   imageRef?: string;
   lockfileDiff?: string;
@@ -509,6 +511,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     triageN: ctx.triageN,
     raceK: ctx.raceK,
     ...(ctx.repairBudgets === undefined ? {} : { repairBudgets: ctx.repairBudgets }),
+    ...(ctx.search === undefined ? {} : { search: ctx.search }),
     readSourceContext: (_log, diagnosis) => readRepairSourceContext(
       ctx.repository,
       checkoutDir,

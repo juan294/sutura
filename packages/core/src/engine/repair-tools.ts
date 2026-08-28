@@ -54,6 +54,7 @@ export interface RepairTestEvidence {
   imageId: ImageId;
   exitCode: number;
   output: string;
+  metrics?: RunResult['metrics'];
 }
 
 export interface RepairToolState {
@@ -82,6 +83,8 @@ export interface RepairToolRuntimeOptions {
   budget: RepairBudget;
   trustedCommands: Readonly<Record<string, string>>;
   sourceContext: RepairSourceContext;
+  operationIdPrefix?: string;
+  onOperationStart?: (operationId: string) => void;
   observe?: (input: { result?: RunResult; imageId?: ImageId; parentImageId: ImageId; note: string }) => string;
 }
 
@@ -108,6 +111,7 @@ function failure(kind: RepairToolFailureKind, message: string): RepairToolResult
 
 export class RepairToolRuntime {
   private current: RepairToolState;
+  private operationIndex = 0;
 
   constructor(private readonly options: RepairToolRuntimeOptions) {
     this.current = { editableImageId: options.initialImageId, cumulativeDiff: '' };
@@ -121,7 +125,15 @@ export class RepairToolRuntime {
       30,
       Math.max(0.001, this.options.budget.remainingElapsedTimeSec()),
     );
-    return this.options.executor.run(parent, command, { cwd: '/workspace', timeoutSec });
+    this.operationIndex += 1;
+    const operationId = this.options.operationIdPrefix === undefined
+      ? undefined
+      : `${this.options.operationIdPrefix}-op-${String(this.operationIndex).padStart(3, '0')}`;
+    if (operationId !== undefined) this.options.onOperationStart?.(operationId);
+    return this.options.executor.run(parent, command, {
+      cwd: '/workspace', timeoutSec,
+      ...(operationId === undefined ? {} : { operationId }),
+    });
   }
 
   private observe(result: RunResult | undefined, parentImageId: ImageId, note: string, imageId?: ImageId): string | undefined {
@@ -231,7 +243,7 @@ export class RepairToolRuntime {
     ) {
       return failure('sandbox', 'Test output exceeded the bounded tool limit');
     }
-    this.current.latestTest = { commandId: args.commandId, imageId: result.imageId, exitCode: result.exitCode, output };
+    this.current.latestTest = { commandId: args.commandId, imageId: result.imageId, exitCode: result.exitCode, output, metrics: result.metrics };
     this.observe(result, this.current.editableImageId, `run_test ${args.commandId}`);
     return { ok: true, message: output || `Test exited ${result.exitCode}`, imageId: result.imageId, exitCode: result.exitCode };
   }

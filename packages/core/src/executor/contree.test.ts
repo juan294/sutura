@@ -479,6 +479,94 @@ describe('ContreeExecutor', () => {
     expect(requestBodies.every(({ cwd }) => cwd === '/workspace')).toBe(true);
   });
 
+  it('exposes cancellation by stable caller ID and resolves a completion race once', async () => {
+    let cancelled = false;
+    const pending = await fixture('operation-pending.json');
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+      if (init?.method === 'POST') {
+        return jsonResponse({ uuid: 'operation-1' }, 201, { Location: '/sandboxes/v1/operations/operation-1' });
+      }
+      if (init?.method === 'DELETE') {
+        cancelled = true;
+        return new Response(null, { status: 202 });
+      }
+      return cancelled ? jsonResponse({ status: 'CANCELLED' }) : jsonResponse(pending);
+    });
+    const executor = new ContreeExecutor(config(fetch, { maxOps: 2, pollIntervalMs: 0 }));
+    const run = executor.run('parent', 'slow', { operationId: 'search-001' });
+    await vi.waitFor(() => expect(fetch.mock.calls.some(([, init]) => init?.method === 'GET')).toBe(true));
+    expect(executor.operationCapacity()).toEqual({ limit: 2, active: 1, available: 1 });
+    await expect(executor.cancel('search-001')).resolves.toEqual({ operationId: 'search-001', requested: true });
+    await expect(run).rejects.toThrow(/cancelled/i);
+    await expect(executor.cancel('search-001')).resolves.toEqual({ operationId: 'search-001', requested: false, terminal: 'cancelled' });
+    expect(executor.completions).toEqual([{ operationId: 'search-001', terminal: 'cancelled', cancellationRequested: true }]);
+    expect(executor.operationCapacity()).toEqual({ limit: 2, active: 0, available: 2 });
+  });
+
+  it('does not fabricate cancellation state for an unknown operation', async () => {
+    const executor = new ContreeExecutor(config(vi.fn<typeof globalThis.fetch>()));
+    await expect(executor.cancel('missing')).resolves.toEqual({ operationId: 'missing', requested: false });
+    expect(executor.completions).toEqual([]);
+  });
+
+  it('does not record cancelled when the cancellation request fails', async () => {
+    const pending = await fixture('operation-pending.json');
+    const success = await fixture('operation-success.json');
+    let polls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+      if (init?.method === 'POST') {
+        return jsonResponse({ uuid: 'operation-1' }, 201, { Location: '/sandboxes/v1/operations/operation-1' });
+      }
+      if (init?.method === 'DELETE') return new Response('cannot cancel', { status: 500 });
+      polls += 1;
+      if (polls === 1) return jsonResponse(pending);
+      await gate;
+      return jsonResponse(success);
+    });
+    const executor = new ContreeExecutor(config(fetch, { pollIntervalMs: 0 }));
+    const run = executor.run('parent', 'slow', { operationId: 'search-001' });
+    await vi.waitFor(() => expect(polls).toBeGreaterThan(0));
+    await expect(executor.cancel('search-001')).rejects.toThrow(/HTTP 500/u);
+    expect(executor.completions).toEqual([]);
+    release();
+    await expect(run).resolves.toMatchObject({
+      operation: { operationId: 'search-001', terminal: 'succeeded', cancellationRequested: false },
+    });
+  });
+
+  it('cancels a queued operation without starting replacement provider work', async () => {
+    const success = await fixture('operation-success.json');
+    let posts = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+      if (init?.method === 'POST') {
+        posts += 1;
+        return jsonResponse({ uuid: `operation-${posts}` }, 201, {
+          Location: `/sandboxes/v1/operations/operation-${posts}`,
+        });
+      }
+      await gate;
+      return jsonResponse(success);
+    });
+    const executor = new ContreeExecutor(config(fetch, { maxOps: 1 }));
+    const first = executor.run('parent', 'first', { operationId: 'search-001' });
+    const queued = executor.run('parent', 'queued', { operationId: 'search-002' });
+    await vi.waitFor(() => expect(posts).toBe(1));
+    await expect(executor.cancel('search-002')).resolves.toEqual({
+      operationId: 'search-002', requested: true, terminal: 'cancelled',
+    });
+    release();
+    await expect(first).resolves.toMatchObject({ exitCode: 0 });
+    await expect(queued).rejects.toThrow(/cancelled before it started/u);
+    expect(posts).toBe(1);
+    expect(executor.completions.filter(({ operationId }) => operationId === 'search-002')).toEqual([
+      { operationId: 'search-002', terminal: 'cancelled', cancellationRequested: true },
+    ]);
+  });
+
   it('uploads the current safe worktree and replaces the destination snapshot', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sutura-snapshot-'));
     try {

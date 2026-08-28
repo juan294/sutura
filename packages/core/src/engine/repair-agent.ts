@@ -2,7 +2,7 @@ import { Buffer } from 'node:buffer';
 
 import type { Candidate, Diagnosis, RepairFailureKind } from '../domain.js';
 import type { Executor, ImageId, RunResult } from '../executor/types.js';
-import type { ChatMessage, FunctionToolCall, TierLlm } from '../llm/types.js';
+import type { CapacitySnapshot, ChatMessage, FunctionToolCall, TierLlm } from '../llm/types.js';
 import { DEFAULT_MODEL_PRICES } from '../llm/cost.js';
 import type { RepositoryPolicy } from '../policy/schema.js';
 import { redactExternalJsonValue, redactExternalText } from '../security/external-text.js';
@@ -26,6 +26,13 @@ export type RepairAgentOutcome =
       nodeId?: string;
       test: RepairTestEvidence;
     }
+  | {
+      status: 'checkpoint';
+      candidate: Candidate;
+      imageId: ImageId;
+      nodeId?: string;
+      test: RepairTestEvidence;
+    }
   | { status: 'gave-up' | 'infra-stop'; reason: string; failureKind: RepairFailureKind };
 
 export interface RepairAgentContext {
@@ -37,6 +44,11 @@ export interface RepairAgentContext {
   budget: RepairBudget;
   trustedCommands: Readonly<Record<string, string>>;
   sourceContext: RepairSourceContext;
+  branchId?: string;
+  operationIdPrefix?: string;
+  observeCapacity?: (capacity: CapacitySnapshot) => void;
+  onOperationStart?: (operationId: string) => void;
+  signal?: AbortSignal;
   observe?: (input: { result?: RunResult; imageId?: ImageId; parentImageId: ImageId; note: string }) => string;
 }
 
@@ -97,6 +109,8 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
     budget: ctx.budget,
     trustedCommands: ctx.trustedCommands,
     sourceContext: ctx.sourceContext,
+    ...(ctx.operationIdPrefix === undefined ? {} : { operationIdPrefix: ctx.operationIdPrefix }),
+    ...(ctx.onOperationStart === undefined ? {} : { onOperationStart: ctx.onOperationStart }),
     ...(ctx.observe === undefined ? {} : { observe: ctx.observe }),
   });
   const messages = initialMessages(ctx);
@@ -106,6 +120,9 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
   let repeatedFailureState = 0;
 
   for (;;) {
+    if (ctx.signal?.aborted) {
+      return { status: 'gave-up', failureKind: 'sandbox', reason: 'Repair branch was cancelled' };
+    }
     let reservation;
     try {
       reservation = ctx.budget.reserveModelTurn(worstCaseRequestUsd(messages));
@@ -120,6 +137,9 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
     );
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
+      const requestSignal = ctx.signal === undefined
+        ? controller.signal
+        : AbortSignal.any([controller.signal, ctx.signal]);
       const request = ctx.llm.chat('super', messages, {
         maxTokens: MAX_AGENT_OUTPUT_TOKENS,
         temperature: 0.2,
@@ -127,16 +147,19 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
         tools: REPAIR_TOOL_DEFINITIONS,
         toolChoice: 'required',
         parallelToolCalls: false,
-        signal: controller.signal,
+        signal: requestSignal,
       });
       const elapsed = new Promise<never>((_resolve, reject) => {
-        controller.signal.addEventListener(
+        requestSignal.addEventListener(
           'abort',
-          () => reject(new BudgetExceededError('elapsedTimeSec')),
+          () => reject(controller.signal.aborted
+            ? new BudgetExceededError('elapsedTimeSec')
+            : new Error('Repair branch was cancelled')),
           { once: true },
         );
       });
       reply = await Promise.race([request, elapsed]);
+      if (reply.capacity !== undefined) ctx.observeCapacity?.(reply.capacity);
       const actualUsd = reply.usd ?? reservation.reservedUsd;
       if (actualUsd > reservation.reservedUsd) {
         return { status: 'gave-up', failureKind: 'budget', reason: 'Model response exceeded its reserved worst-case cost' };
@@ -146,6 +169,8 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
       const reason = publicReason(error instanceof Error ? error.message : String(error));
       return error instanceof BudgetExceededError || controller.signal.aborted
         ? { status: 'gave-up', failureKind: 'budget', reason }
+        : ctx.signal?.aborted
+          ? { status: 'gave-up', failureKind: 'sandbox', reason: 'Repair branch was cancelled' }
         : { status: 'infra-stop', failureKind: 'provider', reason };
     } finally {
       clearTimeout(timeout);
@@ -190,6 +215,25 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
       previousInvalid = invalidFingerprint;
       if (repeatedInvalid >= 2) return { status: 'gave-up', failureKind: result.kind ?? 'invalid', reason: 'Stopped after repeated identical invalid tool calls' };
       const state = tools.state();
+      if (
+        call.function.name === 'run_test' &&
+        result.exitCode !== undefined &&
+        result.exitCode !== 0 &&
+        state.cumulativeDiff &&
+        state.latestTest
+      ) {
+        return {
+          status: 'checkpoint',
+          candidate: {
+            id: ctx.branchId ?? 'repair-checkpoint',
+            rationale: 'Intermediate repair checkpoint after a trusted failing test.',
+            diff: state.cumulativeDiff,
+          },
+          imageId: state.editableImageId,
+          ...(state.lastNodeId === undefined ? {} : { nodeId: state.lastNodeId }),
+          test: state.latestTest,
+        };
+      }
       const executionFailed = result.exitCode !== undefined && result.exitCode !== 0;
       const failureState = result.ok && !executionFailed
         ? ''

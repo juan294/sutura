@@ -67,3 +67,17 @@
 - Found: Super repair turns allow up to 8,192 completion tokens and carry bounded source and tool evidence through an OpenAI-compatible model context.
 - Chose: Atomically reserve a request-specific worst case from the serialized request bytes, full tool schema, 8,192 completion tokens, and documented Super prices, with a conservative $0.05 floor. Settle the reservation to the provider-reported actual cost and reject a response whose reported cost exceeds its reservation.
 - Why: The reservation covers the configured request envelope at the documented Super prices while the separate $0.25 run budget remains fail-closed under concurrent requests.
+
+### Phase 5: ConTree concurrency and total-work limits
+
+- Plan said: Use Token Factory remaining capacity and ConTree operation limits before expansion, with at most 12 total branches.
+- Found: `SUTURA_MAX_OPS` and `ContreeExecutorConfig.maxOps` control concurrent instance work through `p-limit`; they do not cap total operations. The Phase 4 branch default of four would also consume the complete budget at the first search depth.
+- Chose: Preserve `maxOps` as concurrency, add a separate public operation-capacity snapshot plus cancellation ID/method, retain the sandbox-operation budget as the total-operation ceiling, and raise the hard lower-only branch maximum to 12. Search has independent 4/2/4/12 settings, and all 12 include initial and expanded branches globally.
+- Why: Reusing `maxOps` as a total limit would silently change an existing public contract. Separate limits let the search authorize each expansion from current concurrency capacity without permitting cancellation to create replacement work beyond the original global budgets.
+
+### Phase 5: Direct repair compatibility
+
+- Plan said: Keep the fixed race only as an internal evaluation profile and expose one production search algorithm.
+- Found: Direct `healCase` callers and existing offline adapters still supply `raceK` but do not have an action or CLI configuration loader.
+- Chose: Production action and CLI paths always pass the adaptive search settings. A direct legacy caller without explicit search settings translates `raceK` only into the initial adaptive width; it still runs beam search and does not select a second algorithm.
+- Why: This preserves source compatibility without exposing the old fixed race as a production choice.

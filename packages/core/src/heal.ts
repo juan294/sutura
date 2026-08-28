@@ -13,6 +13,7 @@ import type {
   Diagnosis,
   PolicyEvidence,
   RaceResult,
+  SearchEvidence,
   StageEvidence,
   StageName,
 } from './domain.js';
@@ -25,23 +26,30 @@ import {
   type RepairSourceContext,
 } from './engine/repair.js';
 import { runRepairAgent } from './engine/repair-agent.js';
+import { validateCandidateDiff } from './engine/candidate-validation.js';
 import {
   RepairBudget,
   repairBudgetLimits,
   type RepairBudgetOverrides,
 } from './engine/repair-budget.js';
+import { adaptiveSearch, DEFAULT_SEARCH_LIMITS, type SearchNode } from './engine/search.js';
+import type { SearchLimits } from './config.js';
 import { shellQuote } from './engine/shell.js';
 import { triage } from './engine/triage.js';
 import {
   SNAPSHOT_CWD,
   type Executor,
+  type CancellationResult,
   type ImageId,
+  type OperationCapacity,
+  type OperationTerminal,
   type RunOptions,
   type RunResult,
   type SnapshotOptions,
 } from './executor/types.js';
 import type { AuditLlm } from './audit/audit.js';
 import type { DiagnosisLlm } from './diagnose/classify.js';
+import type { CapacitySnapshot } from './llm/types.js';
 import {
   evaluatePatchPolicy,
   evaluateResourceThresholds,
@@ -75,6 +83,7 @@ export interface RepairFailureContext {
   triageN: number;
   raceK: number;
   repairBudgets?: RepairBudgetOverrides;
+  search?: SearchLimits;
   tavily?: TavilySearch;
   lockfileDiff?: string;
   dependencyHints?: readonly string[];
@@ -112,6 +121,11 @@ interface StageRecord {
   imageId?: ImageId;
   parentImageId?: ImageId;
   note?: string;
+  operation?: {
+    operationId: string;
+    terminal?: OperationTerminal;
+    cancellationRequested: boolean;
+  };
 }
 
 function publicMetrics(metrics: RunResult['metrics'] | undefined): RunResult['metrics'] {
@@ -140,12 +154,18 @@ export class StageLedger {
     const note = input.note
       ?.replace(/[\u0000-\u001f\u007f]/gu, ' ')
       .slice(0, 240);
+    const operation = input.result?.operation ?? input.operation;
     this.evidence.push({
       stage: input.stage,
       attempt: input.attempt,
       nodeId,
       ...(parentNodeId === undefined ? {} : { parentNodeId }),
       ...(input.result === undefined ? {} : { exitCode: input.result.exitCode }),
+      ...(operation === undefined ? {} : {
+        operationId: operation.operationId,
+        ...(operation.terminal === undefined ? {} : { operationTerminal: operation.terminal }),
+        cancellationRequested: operation.cancellationRequested,
+      }),
       metrics: publicMetrics(input.result?.metrics),
       network: input.network,
       ...(note === undefined || note === '' ? {} : { note }),
@@ -159,6 +179,28 @@ export class StageLedger {
       metrics: { ...entry.metrics },
     }));
   }
+}
+
+function publicSearchEvidence(nodes: readonly SearchNode[]): SearchEvidence[] {
+  return nodes.map((node) => ({
+    nodeId: node.id,
+    ...(node.parentId === undefined ? {} : { parentNodeId: node.parentId }),
+    depth: node.depth,
+    errorFingerprint: node.errorFingerprint,
+    transcriptReference: node.transcriptReference,
+    ...(node.terminalReason === undefined ? {} : { terminalReason: node.terminalReason }),
+    testExitCode: node.testEvidence.exitCode,
+    policyValid: node.policyEvidence.valid,
+    changedFiles: node.policyEvidence.changedFiles.length,
+    diffBytes: node.policyEvidence.diffBytes,
+  }));
+}
+
+function providerCapacityAvailable(capacity: CapacitySnapshot | undefined): number {
+  if (!capacity) return Number.MAX_SAFE_INTEGER;
+  if (capacity.retryAfterSec !== null && capacity.retryAfterSec > 0) return 0;
+  if (capacity.remainingRequests === 0 || capacity.remainingTokens === 0) return 0;
+  return capacity.remainingRequests ?? Number.MAX_SAFE_INTEGER;
 }
 
 function policyFor(ctx: Pick<RepairFailureContext, 'policy'>): RepositoryPolicy {
@@ -204,6 +246,14 @@ export class AllowlistedExecutor implements Executor {
 
   runMany(parent: ImageId, cmds: string[], opts?: RunOptions): Promise<RunResult[]> {
     return this.delegate.runMany(parent, cmds, sandboxOptions(opts));
+  }
+
+  operationCapacity(): OperationCapacity {
+    return this.delegate.operationCapacity();
+  }
+
+  cancel(operationId: string): Promise<CancellationResult> {
+    return this.delegate.cancel(operationId);
   }
 
   prepareDependencies(parent: ImageId): Promise<RunResult> {
@@ -450,6 +500,7 @@ function makeCaseFile(
   raceResults: RaceResult[],
   outcome: CaseFile['outcome'],
   auditVerdict?: CaseFile['audit'],
+  search?: SearchEvidence[],
 ): CaseFile {
   return {
     runId: ctx.runId,
@@ -465,6 +516,7 @@ function makeCaseFile(
     cost: ctx.cost,
     policy: policyEvidenceFor(ctx),
     stages: ctx.stageLedger?.entries() ?? [],
+    ...(search === undefined ? {} : { search }),
   };
 }
 
@@ -622,63 +674,161 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       diffBytes: Math.min(configuredBudgets.diffBytes, policy.maxDiffBytes),
     });
     let candidateAttempt = 0;
-    const agent = await runRepairAgent({
-      llm: ctx.llm,
-      executor: ctx.executor,
-      initialImageId: ctx.failingImage,
-      diagnosis,
-      policy,
-      budget,
-      trustedCommands: Object.fromEntries([
-        ['diagnosed', executableCommand],
-        ...policy.requiredCommands.map((command, index) => [
-          `policy-${index + 1}`,
-          sandboxExecutableCommand(command),
-        ]),
+    const trustedCommands = Object.fromEntries([
+      ['diagnosed', executableCommand],
+      ...policy.requiredCommands.map((command, index) => [
+        `policy-${index + 1}`,
+        sandboxExecutableCommand(command),
       ]),
-      sourceContext,
-      observe: ({ result, imageId, parentImageId, note }) => ledger.record({
-        stage: 'candidate',
-        attempt: ++candidateAttempt,
-        network: 'disabled',
-        ...(result === undefined ? {} : { result }),
-        ...(imageId === undefined ? {} : { imageId }),
-        parentImageId,
-        note,
-      }),
+    ]);
+    const searchLimits = ctx.search ?? {
+      ...DEFAULT_SEARCH_LIMITS,
+      initialBranches: Math.min(ctx.raceK, DEFAULT_SEARCH_LIMITS.initialBranches),
+    };
+    let providerCapacity: CapacitySnapshot | undefined = ctx.llm.capacitySnapshot?.();
+    const activeOperations = new Map<string, string>();
+    const lastOperations = new Map<string, string>();
+    const result = await adaptiveSearch({
+      baselineImageId: ctx.failingImage,
+      initialBranches: Math.min(searchLimits.initialBranches, budget.limits.branches),
+      beamWidth: searchLimits.beamWidth,
+      maximumDepth: searchLimits.maximumDepth,
+      maximumTotalBranches: Math.min(searchLimits.maximumTotalBranches, budget.limits.branches),
+      availableBranches: () => {
+        const snapshot = budget.snapshot();
+        return Math.min(
+          budget.limits.branches - snapshot.branches,
+          budget.limits.sandboxOperations - snapshot.sandboxOperations,
+          Math.floor((budget.limits.modelTurns - snapshot.modelTurns) / 3),
+          Math.floor((budget.limits.toolCalls - snapshot.toolCalls) / 3),
+          providerCapacityAvailable(providerCapacity),
+        );
+      },
+      concurrencyCapacity: () => ctx.search === undefined
+        ? 1
+        : Math.max(1, ctx.executor.operationCapacity().available),
+      cancel: async (nodeId) => {
+        const activeOperation = activeOperations.get(nodeId);
+        if (!activeOperation) {
+          ledger.record({
+            stage: 'search', attempt: ++candidateAttempt, network: 'disabled',
+            note: `Cancellation requested for ${nodeId} before a sandbox operation started`,
+          });
+          return;
+        }
+        const cancellation = await ctx.executor.cancel(activeOperation);
+        ledger.record({
+          stage: 'search', attempt: ++candidateAttempt, network: 'disabled',
+          operation: {
+            operationId: activeOperation,
+            ...(cancellation.terminal === undefined ? {} : { terminal: cancellation.terminal }),
+            cancellationRequested: cancellation.requested,
+          },
+          note: `Cancellation ${cancellation.requested ? 'requested' : 'observed'} for ${nodeId}`,
+        });
+      },
+      expand: async ({ parent, parentImageId, nodeId, operationId, signal }) => {
+        const before = ledger.entries().length;
+        const agent = await runRepairAgent({
+          llm: ctx.llm,
+          executor: ctx.executor,
+          initialImageId: parentImageId,
+          diagnosis,
+          policy,
+          budget,
+          trustedCommands,
+          sourceContext,
+          branchId: nodeId,
+          operationIdPrefix: operationId,
+          signal,
+          onOperationStart: (activeOperationId) => {
+            activeOperations.set(nodeId, activeOperationId);
+            lastOperations.set(nodeId, activeOperationId);
+          },
+          observeCapacity: (capacity) => { providerCapacity = capacity; },
+          observe: ({ result, imageId, parentImageId, note }) => ledger.record({
+            stage: 'search',
+            attempt: ++candidateAttempt,
+            network: 'disabled',
+            ...(result === undefined ? {} : { result }),
+            ...(imageId === undefined ? {} : { imageId }),
+            parentImageId,
+            note,
+          }),
+        });
+        activeOperations.delete(nodeId);
+        if (signal.aborted) {
+          const lastOperation = lastOperations.get(nodeId);
+          if (lastOperation !== undefined) {
+            const completion = await ctx.executor.cancel(lastOperation);
+            ledger.record({
+              stage: 'search', attempt: ++candidateAttempt, network: 'disabled',
+              operation: {
+                operationId: lastOperation,
+                ...(completion.terminal === undefined ? {} : { terminal: completion.terminal }),
+                cancellationRequested: true,
+              },
+              note: `Cancellation terminal evidence for ${nodeId}`,
+            });
+          }
+          const inheritedDiff = parent?.cumulativeDiff ?? '';
+          return {
+            imageId: parentImageId,
+            cumulativeDiff: inheritedDiff,
+            testEvidence: {
+              commandId: 'diagnosed', imageId: parentImageId, exitCode: 1,
+              output: 'Repair branch was cancelled',
+            },
+            policyEvidence: { valid: true, violations: [], changedFiles: [], diffBytes: Buffer.byteLength(inheritedDiff, 'utf8') },
+            stageEvidence: ledger.entries().slice(before), transcriptReference: nodeId,
+            terminalReason: 'cancelled',
+          };
+        }
+        if (agent.status === 'submitted' || agent.status === 'checkpoint') {
+          const validation = validateCandidateDiff(agent.candidate.diff, diagnosis, policy, budget.limits.diffBytes);
+          return {
+            imageId: agent.imageId,
+            cumulativeDiff: agent.candidate.diff,
+            testEvidence: agent.test,
+            policyEvidence: {
+              valid: validation.ok,
+              violations: validation.violations,
+              changedFiles: validation.changedFiles,
+              diffBytes: validation.diffBytes,
+            },
+            stageEvidence: ledger.entries().slice(before),
+            transcriptReference: nodeId,
+            ...(agent.test.metrics === undefined ? {} : { metrics: agent.test.metrics }),
+            ...(agent.status === 'submitted' ? { candidate: agent.candidate } : {}),
+          };
+        }
+        ledger.record({
+          stage: 'search', attempt: ++candidateAttempt, network: 'disabled',
+          parentImageId, note: `${agent.failureKind} failure: ${agent.reason}`,
+        });
+        const inheritedDiff = parent?.cumulativeDiff ?? '';
+        return {
+          imageId: parentImageId,
+          cumulativeDiff: inheritedDiff,
+          testEvidence: {
+            commandId: 'diagnosed', imageId: parentImageId, exitCode: 1,
+            output: `${agent.failureKind}: ${agent.reason}`,
+          },
+          policyEvidence: { valid: true, violations: [], changedFiles: [], diffBytes: Buffer.byteLength(inheritedDiff, 'utf8') },
+          stageEvidence: ledger.entries().slice(before), transcriptReference: nodeId,
+          terminalReason: 'failed',
+        };
+      },
     });
-    if (agent.status !== 'submitted') {
-      ledger.record({
-        stage: 'candidate',
-        attempt: ++candidateAttempt,
-        network: 'disabled',
-        parentImageId: ctx.failingImage,
-        note: `${agent.failureKind} failure: ${agent.reason}`,
-      });
-      return makeCaseFile(
-        fullContext,
-        diagnosis,
-        triageVerdict,
-        [],
-        agent.status === 'infra-stop' ? 'infra-stop' : 'gave-up',
-      );
+    const searchEvidence = publicSearchEvidence(result.nodes);
+    if (result.candidates.length === 0) {
+      return makeCaseFile(fullContext, diagnosis, triageVerdict, [], 'gave-up', undefined, searchEvidence);
     }
-    const nodeId = agent.nodeId ?? ledger.record({
-      stage: 'candidate',
-      attempt: ++candidateAttempt,
-      network: 'disabled',
-      imageId: agent.imageId,
-      parentImageId: ctx.failingImage,
-      note: 'Agent candidate submitted after a trusted test',
-    });
-    const raceResults: RaceResult[] = [{
-      candidate: agent.candidate,
-      imageId: agent.imageId,
-      nodeId,
-      exitCode: agent.test.exitCode,
-      held: agent.test.exitCode === 0,
-      note: `Agent submitted after trusted command ${agent.test.commandId}`,
-    }];
+    const raceResults: RaceResult[] = result.candidates.map((node) => ({
+      candidate: node.candidate!, imageId: node.imageId, nodeId: node.id,
+      exitCode: node.testEvidence.exitCode, held: true,
+      note: `Adaptive search passed at depth ${node.depth}`,
+    }));
     const winner = raceResults[0]!;
     let auditVerdict = await audit(ctx.executor, ctx.llm, winner, {
       diagnosis,
@@ -700,6 +850,7 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       raceResults,
       auditVerdict.approved ? 'fixed' : 'refused',
       auditVerdict,
+      searchEvidence,
     );
   }
 
@@ -900,6 +1051,7 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     ...(ctx.policy === undefined ? {} : { policy: ctx.policy }),
     ...(ctx.policyEvidence === undefined ? {} : { policyEvidence: ctx.policyEvidence }),
     ...(ctx.repairBudgets === undefined ? {} : { repairBudgets: ctx.repairBudgets }),
+    ...(ctx.search === undefined ? {} : { search: ctx.search }),
     stageLedger: ledger,
   });
 }

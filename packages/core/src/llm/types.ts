@@ -106,6 +106,7 @@ export interface LlmReply {
 }
 
 export interface TierLlm<Tier extends ModelTier> {
+  capacitySnapshot?(): CapacitySnapshot | undefined;
   chat(
     tier: Tier,
     messages: readonly ChatMessage[],
@@ -114,5 +115,6 @@ export interface TierLlm<Tier extends ModelTier> {
     text: string;
     toolCalls?: readonly FunctionToolCall[];
     usd?: number;
+    capacity?: CapacitySnapshot;
   }>;
 }

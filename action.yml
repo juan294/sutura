@@ -25,10 +25,6 @@ inputs:
     description: Number of independent failure reproductions.
     required: false
     default: '5'
-  race-k:
-    description: Maximum number of repair candidates to race.
-    required: false
-    default: '3'
   repair-model-turns:
     description: Lower-only repair-agent model turn limit.
     required: false
@@ -40,7 +36,7 @@ inputs:
   repair-branches:
     description: Lower-only repair-agent branch limit.
     required: false
-    default: '4'
+    default: '12'
   repair-sandbox-operations:
     description: Lower-only repair-agent sandbox operation limit.
     required: false
@@ -57,6 +53,22 @@ inputs:
     description: Lower-only cumulative repair diff limit in bytes.
     required: false
     default: '65536'
+  search-initial-branches:
+    description: Initial adaptive checkpoint branches.
+    required: false
+    default: '4'
+  search-beam-width:
+    description: Maximum adaptive checkpoint frontier width.
+    required: false
+    default: '2'
+  search-max-depth:
+    description: Maximum adaptive checkpoint search depth.
+    required: false
+    default: '4'
+  search-max-total-branches:
+    description: Lower-only global adaptive checkpoint branch limit.
+    required: false
+    default: '12'
   model-nano:
     description: Optional Nemotron classifier model override.
     required: false

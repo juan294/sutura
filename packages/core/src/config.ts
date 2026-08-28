@@ -3,6 +3,7 @@ import {
   repairBudgetLimits,
   type RepairBudgetLimits,
 } from './engine/repair-budget.js';
+import { DEFAULT_SEARCH_LIMITS } from './engine/search.js';
 
 export const DEFAULT_MODELS = {
   nano: 'nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B',
@@ -24,6 +25,14 @@ export interface Config {
   models: Record<keyof typeof DEFAULT_MODELS, string>;
   maxOps: number;
   repairBudgets: RepairBudgetLimits;
+  search: SearchLimits;
+}
+
+export interface SearchLimits {
+  initialBranches: number;
+  beamWidth: number;
+  maximumDepth: number;
+  maximumTotalBranches: number;
 }
 
 export type ConfigEnvironment = Readonly<Record<string, string | undefined>>;
@@ -153,6 +162,12 @@ export function loadConfig(env: ConfigEnvironment): Config {
         DEFAULT_REPAIR_BUDGET_LIMITS.diffBytes,
       ),
     }),
+    search: {
+      initialBranches: boundedPositiveInteger(env, 'SUTURA_SEARCH_INITIAL_BRANCHES', DEFAULT_SEARCH_LIMITS.initialBranches, DEFAULT_SEARCH_LIMITS.maximumTotalBranches),
+      beamWidth: boundedPositiveInteger(env, 'SUTURA_SEARCH_BEAM_WIDTH', DEFAULT_SEARCH_LIMITS.beamWidth, DEFAULT_SEARCH_LIMITS.maximumTotalBranches),
+      maximumDepth: boundedPositiveInteger(env, 'SUTURA_SEARCH_MAX_DEPTH', DEFAULT_SEARCH_LIMITS.maximumDepth, DEFAULT_SEARCH_LIMITS.maximumDepth),
+      maximumTotalBranches: boundedPositiveInteger(env, 'SUTURA_SEARCH_MAX_TOTAL_BRANCHES', DEFAULT_SEARCH_LIMITS.maximumTotalBranches, DEFAULT_SEARCH_LIMITS.maximumTotalBranches),
+    },
   };
 
   const tavilyApiKey = optional(env, 'TAVILY_API_KEY');
@@ -168,6 +183,13 @@ export function loadConfig(env: ConfigEnvironment): Config {
   const contreeProject = optional(env, 'CONTREE_PROJECT');
   if (contreeProject !== undefined) {
     config.contreeProject = contreeProject;
+  }
+
+  if (config.search.initialBranches > config.search.maximumTotalBranches) {
+    throw new ConfigError('SUTURA_SEARCH_INITIAL_BRANCHES must not exceed SUTURA_SEARCH_MAX_TOTAL_BRANCHES');
+  }
+  if (config.search.beamWidth > config.search.maximumTotalBranches) {
+    throw new ConfigError('SUTURA_SEARCH_BEAM_WIDTH must not exceed SUTURA_SEARCH_MAX_TOTAL_BRANCHES');
   }
 
   return config;

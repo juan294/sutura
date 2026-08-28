@@ -14,7 +14,11 @@ import { isSensitiveRepositoryPath } from '../security/repository-path.js';
 import {
   SNAPSHOT_CWD,
   type Executor,
+  type CancellationResult,
   type ImageId,
+  type OperationCapacity,
+  type OperationCompletion,
+  type OperationTerminal,
   type RunMetrics,
   type RunOptions,
   type RunResult,
@@ -114,12 +118,20 @@ export class ContreeError extends Error {
 }
 
 export class ContreeExecutor implements Executor {
+  readonly completions: OperationCompletion[] = [];
   private readonly baseUrl: URL;
   private readonly fetch: typeof globalThis.fetch;
   private readonly instanceLimit: LimitFunction;
   private readonly pollIntervalMs: number;
   private readonly operationTimeoutMs: number;
   private readonly cancelTimeoutMs: number;
+  private readonly operationLimit: number;
+  private readonly operations = new Map<string, {
+    operationUrl?: string;
+    cancellationRequested: boolean;
+    started: boolean;
+    terminal?: OperationTerminal;
+  }>();
 
   constructor(private readonly config: ContreeExecutorConfig) {
     if (!config.token.trim()) throw new ContreeError('ConTree token is required');
@@ -135,6 +147,7 @@ export class ContreeExecutor implements Executor {
     this.baseUrl = new URL(ensureTrailingSlash(config.baseUrl ?? DEFAULT_BASE_URL));
     this.fetch = config.fetch ?? globalThis.fetch;
     this.instanceLimit = pLimit(maxOps);
+    this.operationLimit = maxOps;
     this.pollIntervalMs = config.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.operationTimeoutMs =
       config.operationTimeoutMs ?? DEFAULT_OPERATION_TIMEOUT_MS;
@@ -232,7 +245,14 @@ export class ContreeExecutor implements Executor {
     if (opts.timeoutSec !== undefined) body.timeout = opts.timeoutSec;
     if (opts.cwd !== undefined) body.cwd = opts.cwd;
 
-    return this.instanceLimit(() => this.spawn(body));
+    const operationId = opts.operationId;
+    if (operationId && this.operations.has(operationId)) {
+      throw new ContreeError(`ConTree operation ID already exists: ${operationId}`);
+    }
+    if (operationId) {
+      this.operations.set(operationId, { cancellationRequested: false, started: false });
+    }
+    return this.instanceLimit(() => this.spawn(body, operationId));
   }
 
   async runMany(
@@ -243,13 +263,68 @@ export class ContreeExecutor implements Executor {
     return Promise.all(cmds.map((cmd) => this.run(parent, cmd, opts)));
   }
 
-  private async spawn(body: SpawnBody): Promise<RunResult> {
+  operationCapacity(): OperationCapacity {
+    const active = this.instanceLimit.activeCount + this.instanceLimit.pendingCount;
+    return { limit: this.operationLimit, active, available: Math.max(0, this.operationLimit - active) };
+  }
+
+  async cancel(operationId: string): Promise<CancellationResult> {
+    const operation = this.operations.get(operationId);
+    if (!operation || operation.terminal) {
+      return {
+        operationId,
+        requested: false,
+        ...(operation?.terminal === undefined ? {} : { terminal: operation.terminal }),
+      };
+    }
+    if (operation.cancellationRequested) return { operationId, requested: false };
+    operation.cancellationRequested = true;
+    if (!operation.started) {
+      operation.terminal = 'cancelled';
+      this.completions.push({ operationId, terminal: 'cancelled', cancellationRequested: true });
+      return { operationId, requested: true, terminal: 'cancelled' };
+    }
+    try {
+      if (operation.operationUrl) await this.cancelRemote(operation.operationUrl);
+    } catch (error) {
+      operation.cancellationRequested = false;
+      throw error;
+    }
+    return { operationId, requested: true };
+  }
+
+  private async spawn(body: SpawnBody, operationId?: string): Promise<RunResult> {
+    const tracked = operationId === undefined ? undefined : this.operations.get(operationId);
+    if (tracked?.terminal === 'cancelled') {
+      throw new ContreeError(`ConTree operation ${operationId} was cancelled before it started`);
+    }
+    if (tracked) tracked.started = true;
     const response = await this.request('instances', {
       method: 'POST',
       headers: this.jsonHeaders(),
       body: JSON.stringify(body),
     });
-    const operation = await this.poll(this.operationLocation(response));
+    const operationUrl = this.resolveOperationLocation(this.operationLocation(response));
+    if (tracked) tracked.operationUrl = operationUrl;
+    if (tracked?.cancellationRequested) {
+      try {
+        await this.cancelRemote(operationUrl);
+      } catch {
+        tracked.cancellationRequested = false;
+      }
+    }
+    let operation: OperationResponse;
+    try {
+      operation = await this.poll(operationUrl);
+    } catch (error) {
+      if (tracked && operationId && !tracked.terminal) {
+        tracked.terminal = error instanceof ContreeError && /ended with CANCELLED/u.test(error.message)
+          ? 'cancelled'
+          : 'failed';
+        this.completions.push({ operationId, terminal: tracked.terminal, cancellationRequested: tracked.cancellationRequested });
+      }
+      throw error;
+    }
     const result = operation.metadata?.result;
     if (!result) {
       throw new ContreeError(
@@ -257,7 +332,7 @@ export class ContreeExecutor implements Executor {
       );
     }
 
-    return {
+    const runResult = {
       imageId: operationImageId(operation),
       exitCode: requiredNumber(result.state?.exit_code, 'exit code'),
       stdout: decodeStream(result.stdout, 'stdout'),
@@ -266,6 +341,13 @@ export class ContreeExecutor implements Executor {
         result.stdout?.truncated === true || result.stderr?.truncated === true,
       metrics: mapMetrics(result.resources),
     };
+    if (tracked && operationId) {
+      tracked.terminal = runResult.exitCode === 0 ? 'succeeded' : 'failed';
+      const completion = { operationId, terminal: tracked.terminal, cancellationRequested: tracked.cancellationRequested } satisfies OperationCompletion;
+      this.completions.push(completion);
+      return { ...runResult, operation: completion };
+    }
+    return runResult;
   }
 
   private async poll(location: string): Promise<OperationResponse> {
@@ -308,7 +390,7 @@ export class ContreeExecutor implements Executor {
     return this.throwOperationTimeout(operationUrl);
   }
 
-  private async cancel(operationUrl: string): Promise<void> {
+  private async cancelRemote(operationUrl: string): Promise<void> {
     await this.withTimeout(this.cancelTimeoutMs, async (signal) => {
       const response = await this.fetch(operationUrl, {
         method: 'DELETE',
@@ -324,7 +406,7 @@ export class ContreeExecutor implements Executor {
   private async throwOperationTimeout(operationUrl: string): Promise<never> {
     let cancellation = '';
     try {
-      await this.cancel(operationUrl);
+      await this.cancelRemote(operationUrl);
     } catch (error) {
       cancellation = `; cancellation attempt failed: ${errorMessage(error)}`;
     }

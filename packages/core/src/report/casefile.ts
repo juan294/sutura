@@ -15,6 +15,7 @@ import {
 
 function renderSandboxEvidence(caseFile: CaseFile): string {
   const totals = aggregateStageEvidence(caseFile);
+  const hasOperationEvidence = caseFile.stages.some((entry) => entry.operationId !== undefined);
   const rows = caseFile.stages.map((entry) => `<tr>
         <th scope="row">${escapeHtml(entry.stage)}</th>
         <td>${entry.attempt}</td>
@@ -23,7 +24,10 @@ function renderSandboxEvidence(caseFile: CaseFile): string {
         <td>${entry.exitCode ?? '—'}</td>
         <td>${entry.metrics.elapsedTimeSec ?? '—'}</td>
         <td>${entry.metrics.maxRssKb ?? '—'}</td>
-        <td>${entry.metrics.cost ?? '—'}</td>
+        <td>${entry.metrics.cost ?? '—'}</td>${hasOperationEvidence ? `
+        <td><code>${escapeHtml(entry.operationId ?? '—')}</code></td>
+        <td>${escapeHtml(entry.operationTerminal ?? '—')}</td>
+        <td>${entry.cancellationRequested === undefined ? '—' : entry.cancellationRequested ? 'YES' : 'NO'}</td>` : ''}
         <td>${escapeHtml(entry.network)}</td>
         <td>${escapeHtml(entry.note ?? '—')}</td>
       </tr>`).join('');
@@ -37,8 +41,8 @@ function renderSandboxEvidence(caseFile: CaseFile): string {
       <p class="micro-label">Sandbox totals</p>
       <p>${totals.operationCount} operations · ${totals.elapsedTimeSec.toFixed(3)} s elapsed · ${totals.cpuTimeSec.toFixed(3)} s CPU · ${totals.maxRssKb.toLocaleString('en-US')} KB peak RSS · ${formatUsd(totals.sandboxCostUsd)} sandbox cost</p>
       <div class="table-wrap"><table class="ledger">
-        <thead><tr><th>Stage</th><th>Attempt</th><th>Node</th><th>Parent</th><th>Exit</th><th>Elapsed s</th><th>Max RSS KB</th><th>Cost USD</th><th>Network</th><th>Note</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="10">No sandbox operations recorded</td></tr>'}</tbody>
+        <thead><tr><th>Stage</th><th>Attempt</th><th>Node</th><th>Parent</th><th>Exit</th><th>Elapsed s</th><th>Max RSS KB</th><th>Cost USD</th>${hasOperationEvidence ? '<th>Operation</th><th>Terminal</th><th>Cancel requested</th>' : ''}<th>Network</th><th>Note</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="${hasOperationEvidence ? 13 : 10}">No sandbox operations recorded</td></tr>`}</tbody>
       </table></div>
     </div>`;
 }
@@ -118,6 +122,14 @@ function renderProcedure(caseFile: CaseFile): string {
       </details>`,
     )
     .join('');
+  const searchRows = caseFile.search?.map((node) => `<tr>
+        <th scope="row"><code>${escapeHtml(node.nodeId)}</code></th>
+        <td><code>${escapeHtml(node.parentNodeId ?? 'baseline')}</code></td>
+        <td>${node.depth}</td>
+        <td>${node.testExitCode}</td>
+        <td>${node.policyValid ? 'PASS' : 'FAIL'}</td>
+        <td>${escapeHtml(node.terminalReason ?? 'frontier')}</td>
+      </tr>`).join('') ?? '';
 
   return `<section class="sheet procedure" aria-labelledby="procedure-title">
     <div class="section-label"><span>P</span><h2 id="procedure-title">Procedure</h2></div>
@@ -127,7 +139,12 @@ function renderProcedure(caseFile: CaseFile): string {
       <div class="table-wrap"><table>
         <thead><tr><th>Candidate</th><th>Strategy</th><th>Held?</th><th>Operative note</th></tr></thead>
         <tbody>${rows || '<tr><th scope="row">—</th><td>No candidates were produced</td><td>NO</td><td>Repair cycle stopped</td></tr>'}</tbody>
-      </table></div>
+      </table></div>${searchRows ? `
+      <p class="micro-label">Adaptive checkpoint lineage</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Node</th><th>Parent</th><th>Depth</th><th>Test exit</th><th>Policy</th><th>Terminal</th></tr></thead>
+        <tbody>${searchRows}</tbody>
+      </table></div>` : ''}
       <div class="diff-stack"><p class="micro-label">Candidate tissue samples</p>${diffs || '<p>No diffs recorded.</p>'}</div>
     </div>
   </section>`;

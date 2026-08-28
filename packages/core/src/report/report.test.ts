@@ -139,6 +139,18 @@ function isStageEvidence(value: unknown): boolean {
     (value.network === 'disabled' || value.network === 'enabled');
 }
 
+function isSearchEvidence(value: unknown): boolean {
+  return isRecord(value) &&
+    typeof value.nodeId === 'string' &&
+    Number.isSafeInteger(value.depth) &&
+    typeof value.errorFingerprint === 'string' &&
+    typeof value.transcriptReference === 'string' &&
+    Number.isSafeInteger(value.testExitCode) &&
+    typeof value.policyValid === 'boolean' &&
+    Number.isSafeInteger(value.changedFiles) &&
+    Number.isSafeInteger(value.diffBytes);
+}
+
 function assertSerializedCaseFile(value: unknown): asserts value is SerializedCaseFile {
   if (!isRecord(value)) {
     throw new TypeError('fixture must be an object');
@@ -171,6 +183,7 @@ function assertSerializedCaseFile(value: unknown): asserts value is SerializedCa
     || !isPolicyEvidence(fixture.policy)
     || !Array.isArray(fixture.stages)
     || !fixture.stages.every(isStageEvidence)
+    || (fixture.search !== undefined && (!Array.isArray(fixture.search) || !fixture.search.every(isSearchEvidence)))
   ) {
     throw new TypeError('fixture does not match the CaseFile contract');
   }
@@ -231,6 +244,20 @@ describe('fixture contract', () => {
 });
 
 describe('markdown report contract', () => {
+  it('renders stable adaptive node lineage without provider image identifiers', async () => {
+    const caseFile = await loadFixture('fixed');
+    caseFile.search = [{
+      nodeId: 'search-002', parentNodeId: 'search-001', depth: 2,
+      errorFingerprint: 'abc', transcriptReference: 'trace-2', terminalReason: 'passed',
+      testExitCode: 0, policyValid: true, changedFiles: 1, diffBytes: 42,
+    }];
+    const markdown = renderComment(caseFile);
+    const html = renderCaseFile(caseFile);
+    expect(markdown).toContain('| search-002 | search-001 | 2 | 0 | PASS | passed |');
+    expect(html).toContain('Adaptive checkpoint lineage');
+    expect(html).toContain('<code>search-002</code>');
+    expect(html).not.toContain('image-child');
+  });
   it('reports the smallest held candidate as the race winner', async () => {
     const caseFile = await loadFixture('fixed');
     const originalWinner = caseFile.race[0]!;

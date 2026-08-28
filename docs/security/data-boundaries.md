@@ -31,7 +31,7 @@ import trusted base image
   -> overlay the safe repository archive
   -> initialize an exact hook-disabled Git baseline
   -> rebuild required dependencies with network disabled
-  -> reproduce, triage, repair, race, and audit with network disabled
+  -> reproduce, triage, adaptive repair search, and audit with network disabled
 ```
 
 The dependency archive includes the root package manifest, supported root lockfiles and workspace files, and package manifests selected by declared workspace patterns. It excludes source and installed dependency paths. The overlay rejects symlink destinations, symlink parents, and collisions with preparation-generated paths.

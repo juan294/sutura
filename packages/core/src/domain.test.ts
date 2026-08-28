@@ -11,6 +11,7 @@ import type {
   Grounding,
   RaceResult,
   PolicyEvidence,
+  SearchEvidence,
   StageEvidence,
   TriageVerdict,
 } from './domain.js';
@@ -106,6 +107,7 @@ describe('domain model', () => {
       cost: CostLedger;
       policy: PolicyEvidence;
       stages: StageEvidence[];
+      search?: SearchEvidence[];
     }>();
   });
 

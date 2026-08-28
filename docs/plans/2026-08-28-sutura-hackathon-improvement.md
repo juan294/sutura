@@ -365,7 +365,7 @@ External retention behavior, provider spending, remote test state, publication, 
 - [x] Phase 2: Token Factory protocol foundation
 - [x] Phase 3: Repository policy and stage evidence
 - [x] Phase 4: Bounded tool-calling repair agent
-- [ ] Phase 5: Adaptive ConTree checkpoint search
+- [x] Phase 5: Adaptive ConTree checkpoint search
 - [ ] Phase 6: Evaluation Lab records and ATIF export
 - [ ] Phase 7: Nemotron routing and progressive flake confidence
 - [ ] Phase 8: GitHub Checks and audit-only distribution

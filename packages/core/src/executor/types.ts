@@ -14,6 +14,27 @@ export interface RunOptions {
   timeoutSec?: number;
   cwd?: string;
   network?: 'disabled' | 'enabled';
+  operationId?: string;
+}
+
+export type OperationTerminal = 'succeeded' | 'failed' | 'cancelled';
+
+export interface OperationCapacity {
+  limit: number;
+  active: number;
+  available: number;
+}
+
+export interface CancellationResult {
+  operationId: string;
+  requested: boolean;
+  terminal?: OperationTerminal;
+}
+
+export interface OperationCompletion {
+  operationId: string;
+  terminal: OperationTerminal;
+  cancellationRequested: boolean;
 }
 
 export interface RunMetrics {
@@ -31,6 +52,7 @@ export interface RunResult {
   stderr: string;
   truncated: boolean;
   metrics: RunMetrics;
+  operation?: OperationCompletion;
 }
 
 export interface Executor {
@@ -46,4 +68,6 @@ export interface Executor {
     cmds: string[],
     opts?: RunOptions,
   ): Promise<RunResult[]>;
+  operationCapacity(): OperationCapacity;
+  cancel(operationId: string): Promise<CancellationResult>;
 }

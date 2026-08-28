@@ -8,8 +8,8 @@
 AI agents make CI pass. Sutura verifies the fix, filters flaky failures,
 rejects unsafe shortcuts, and opens an evidence-backed PR for human review.
 
-Sutura reproduces real failures in isolated sandboxes and races candidate
-repairs before the independent audit. It never auto-merges.
+Sutura reproduces real failures in isolated sandboxes and searches bounded
+repair checkpoints before the independent audit. It never auto-merges.
 
 Sutura is built for the Nebius x NVIDIA Global AI Hackathon. Try the public
 [judge demo](https://github.com/juan294/sutura-demo): run the break-me workflow
@@ -24,10 +24,10 @@ flowchart LR
   C --> D[ConTree dependency-prepared snapshot]
   D -->|Branching use 1| E1[Triage reproduction 1]
   D -->|Same image| E2[Triage reproduction N]
-  E1 --> F[Nemotron Super candidates]
+  E1 --> F[Nemotron Super repair tools]
   E2 --> F
-  D -->|Branching use 2| G1[Candidate 1]
-  D -->|Same image| G2[Candidate K]
+  D -->|Branching use 2| G1[Initial checkpoint branches]
+  D -->|Same image| G2[Adaptive beam expansion]
   F --> G1
   F --> G2
   G1 --> H[Deterministic winner]
@@ -40,8 +40,10 @@ flowchart LR
 ```
 
 ConTree branching has three distinct jobs: independent triage reproductions,
-parallel candidate races from one immutable parent image, and a clean rerun of
-the selected patch for adversarial audit. A passing command is necessary, but
+adaptive repair checkpoint search from immutable parent images, and a clean
+rerun of the selected patch for adversarial audit. Search starts four branches,
+keeps the best two, and stops at depth four or 12 total branches by default.
+A passing command is necessary, but
 it is not enough. Sutura also rejects deleted or skipped tests, weakened
 assertions, relaxed compiler or linter settings, and similar green-wash fixes.
 
@@ -55,7 +57,7 @@ workflow artifact.
 | Service | Runtime role |
 | --- | --- |
 | NVIDIA Nemotron on Nebius Token Factory | Nano classifies the failure, Super proposes repairs, and Ultra audits evidence that static checks cannot judge. |
-| Nebius ConTree Sandboxes | Prepares dependencies once, snapshots the filesystem, and runs isolated triage, race, and audit branches. |
+| Nebius ConTree Sandboxes | Prepares dependencies once, snapshots the filesystem, and runs isolated triage, adaptive search, and audit branches. |
 | Tavily | Grounds upstream dependency diagnoses in release and migration sources. It is optional for non-upstream cases and for the benchmark ablation. |
 
 The report identifies the model calls that actually occurred. Cost is reported
@@ -96,16 +98,19 @@ The public dogfood record starts with [PR #18](https://github.com/juan294/sutura
 - Dependency installation receives only declared package and workspace
   manifests. It runs with networking enabled and lifecycle scripts disabled.
   Sutura overlays source only after that stage, then disables networking for
-  reproduction, triage, repair, candidate races, and audit.
+  reproduction, triage, adaptive repair search, and audit.
 - Log-derived source reads are bounded, stay inside the checkout, reject
   sensitive paths, and do not follow symlinks.
 - The repair agent can use only six bounded tools. Source reads and literal
   searches stay inside the network-disabled sandbox. Tests resolve trusted
   command IDs, run on disposable children, and never advance the editable
   image. Every cumulative patch passes built-in and repository policy checks.
-- Global repair limits default to 8 model turns, 24 tool calls, 4 branches, 32
+- Global repair limits default to 8 model turns, 24 tool calls, 12 branches, 32
   sandbox operations, 600 seconds, $0.25 inference cost, and 65,536 diff bytes.
   Action inputs can lower these limits but cannot raise the core maxima.
+- Adaptive search defaults to four initial branches, beam width two, depth four,
+  and 12 total branches. `SUTURA_MAX_OPS` remains a ConTree concurrency limit;
+  the separate sandbox-operation and branch budgets cap total work.
 - Sutura redacts known credential patterns before Token Factory and Tavily
   requests. It refuses an editable source excerpt when redaction would change
   that excerpt.

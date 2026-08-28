@@ -66,11 +66,13 @@ export {
   repairBudgetLimits,
 } from './engine/repair-budget.js';
 export { runRepairAgent } from './engine/repair-agent.js';
+export { diffFingerprint, errorFingerprint, failureSignatureCount } from './engine/fingerprint.js';
+export { compareSearchNodes, searchScore } from './engine/search-score.js';
+export { adaptiveSearch, DEFAULT_SEARCH_LIMITS } from './engine/search.js';
 export { REPAIR_TOOL_DEFINITIONS, RepairToolRuntime } from './engine/repair-tools.js';
 export {
   generateCandidates,
   prepareRepair,
-  race,
   selectWinner,
 } from './engine/repair.js';
 export type {
@@ -138,6 +140,7 @@ export type {
 export type {
   Config,
   ConfigEnvironment,
+  SearchLimits,
 } from './config.js';
 export type { AuditContext, AuditLlm } from './audit/audit.js';
 export type {
@@ -161,6 +164,10 @@ export type {
   SnapshotMode,
   SnapshotOptions,
   SnapshotProfile,
+  CancellationResult,
+  OperationCapacity,
+  OperationCompletion,
+  OperationTerminal,
 } from './executor/types.js';
 export type { ExternalTextRedaction } from './security/external-text.js';
 export type {
@@ -212,7 +219,17 @@ export type {
   StageEvidence,
   StageName,
   TriageVerdict,
+  SearchEvidence,
 } from './domain.js';
+export type {
+  AdaptiveSearchOptions,
+  AdaptiveSearchResult,
+  SearchExpansion,
+  SearchExpansionContext,
+  SearchNode,
+  SearchPolicyEvidence,
+} from './engine/search.js';
+export type { SearchScore } from './engine/search-score.js';
 export type {
   RepositoryPolicy,
   ResourceLimits,
