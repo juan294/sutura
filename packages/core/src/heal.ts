@@ -50,6 +50,9 @@ import {
 import type { AuditLlm } from './audit/audit.js';
 import type { DiagnosisLlm } from './diagnose/classify.js';
 import type { CapacitySnapshot } from './llm/types.js';
+import type { ChatMessage, ChatOptions, TierLlm } from './llm/types.js';
+import type { ModelTier } from './llm/cost.js';
+import { createHash } from 'node:crypto';
 import {
   evaluatePatchPolicy,
   evaluateResourceThresholds,
@@ -58,6 +61,7 @@ import {
 import { createDefaultRepositoryPolicy } from './policy/load.js';
 import type { RepositoryPolicy } from './policy/schema.js';
 import { boundedTail } from './text/bounded-tail.js';
+import { TraceRecorder } from './trace/recorder.js';
 
 export const SUTURA_DEFAULT_IMAGE_REF = 'node:22';
 const DEFAULT_FAILURE_COMMAND = 'pnpm test';
@@ -91,6 +95,7 @@ export interface RepairFailureContext {
   policy?: RepositoryPolicy;
   policyEvidence?: PolicyEvidence;
   stageLedger?: StageLedger;
+  traceRecorder?: TraceRecorder;
   readSourceContext(
     log: string,
     diagnosis: Diagnosis,
@@ -141,6 +146,8 @@ export class StageLedger {
   private readonly evidence: StageEvidence[] = [];
   private readonly imageNodes = new Map<ImageId, string>();
 
+  constructor(private readonly trace?: TraceRecorder) {}
+
   record(input: StageRecord): string {
     if (this.evidence.length >= MAX_STAGE_EVIDENCE_ENTRIES) {
       throw new HealCaseError('Stage evidence exceeds the bounded entry count');
@@ -170,6 +177,15 @@ export class StageLedger {
       network: input.network,
       ...(note === undefined || note === '' ? {} : { note }),
     });
+    if (imageId !== undefined || input.result !== undefined || operation !== undefined) {
+      this.trace?.record({
+        type: 'sandbox-operation',
+        stage: input.stage,
+        operation: operation?.operationId ?? input.stage,
+        resultSummary: note ?? `Sandbox ${input.stage} operation`,
+        childNodeId: nodeId,
+      });
+    }
     return nodeId;
   }
 
@@ -179,6 +195,59 @@ export class StageLedger {
       metrics: { ...entry.metrics },
     }));
   }
+}
+
+function ensureTraceStarted(trace: TraceRecorder): void {
+  if (trace.events().length === 0) {
+    trace.record({ type: 'run-start', stage: 'run', summary: 'Sutura repair run started' });
+  }
+}
+
+function tracedLlm(llm: HealLlm, trace: TraceRecorder): HealLlm {
+  const delegate = llm as TierLlm<ModelTier>;
+  return {
+    capacitySnapshot: () => delegate.capacitySnapshot?.(),
+    modelId: (tier: ModelTier) => delegate.modelId?.(tier) ?? tier,
+    async chat(tier: ModelTier, messages: readonly ChatMessage[], options?: ChatOptions) {
+      const model = delegate.modelId?.(tier) ?? tier;
+      const serializedPrompt = JSON.stringify(messages);
+      const systemPrompt = messages.find(({ role }) => role === 'system');
+      const promptExcerpt = typeof systemPrompt?.content === 'string'
+        ? systemPrompt.content.slice(0, 160)
+        : '[no public system prompt]';
+      trace.record({
+        type: 'model-request',
+        stage: tier === 'nano' ? 'triage' : tier === 'ultra' ? 'audit' : 'candidate',
+        role: 'user',
+        model,
+        summary: `Model request with ${messages.length} messages and ${Buffer.byteLength(serializedPrompt, 'utf8')} bytes`,
+        promptHash: createHash('sha256').update(serializedPrompt).digest('hex'),
+        promptExcerpt,
+        inputTokens: 0,
+        outputTokens: 0,
+        reasoningTokens: 0,
+        latencyMs: 0,
+        costUsd: 0,
+        requestId: null,
+      });
+      const reply = await delegate.chat(tier, messages, options);
+      const usage = reply.usage ?? { inTok: 0, outTok: 0, reasoningTok: 0 };
+      trace.record({
+        type: 'model-response',
+        stage: tier === 'nano' ? 'triage' : tier === 'ultra' ? 'audit' : 'candidate',
+        role: 'assistant',
+        model: reply.model ?? model,
+        summary: reply.text,
+        inputTokens: usage.inTok,
+        outputTokens: usage.outTok,
+        reasoningTokens: usage.reasoningTok,
+        latencyMs: reply.latencyMs ?? 0,
+        costUsd: reply.usd ?? 0,
+        requestId: reply.requestId ?? reply.capacity?.requestId ?? null,
+      });
+      return reply;
+    },
+  } as HealLlm;
 }
 
 function publicSearchEvidence(nodes: readonly SearchNode[]): SearchEvidence[] {
@@ -277,7 +346,7 @@ function noReproductionDiagnosis(mechanical: Diagnosis): Diagnosis {
 export function noReproductionCaseFile(
   ctx: Pick<
     HealCaseContext,
-    'runId' | 'repo' | 'cost' | 'policyEvidence' | 'stageLedger'
+    'runId' | 'repo' | 'cost' | 'policyEvidence' | 'stageLedger' | 'traceRecorder'
   >,
   mechanical: Diagnosis,
 ): CaseFile {
@@ -293,7 +362,7 @@ export function noReproductionCaseFile(
 export function preparationFailureCaseFile(
   ctx: Pick<
     HealCaseContext,
-    'runId' | 'repo' | 'cost' | 'policyEvidence' | 'stageLedger'
+    'runId' | 'repo' | 'cost' | 'policyEvidence' | 'stageLedger' | 'traceRecorder'
   >,
   command: string,
   result: RunResult,
@@ -493,7 +562,7 @@ function vettedRaceResult(
 function makeCaseFile(
   ctx: Pick<
     RepairFailureContext,
-    'runId' | 'repo' | 'cost' | 'policyEvidence' | 'stageLedger'
+    'runId' | 'repo' | 'cost' | 'policyEvidence' | 'stageLedger' | 'traceRecorder'
   >,
   diagnosis: Diagnosis,
   triageVerdict: CaseFile['triage'],
@@ -502,6 +571,19 @@ function makeCaseFile(
   auditVerdict?: CaseFile['audit'],
   search?: SearchEvidence[],
 ): CaseFile {
+  const trace = ctx.traceRecorder;
+  if (auditVerdict !== undefined) {
+    trace?.record({
+      type: 'audit-result',
+      stage: 'audit',
+      approved: auditVerdict.approved,
+      summary: auditVerdict.reasoning,
+      ...(raceResults[0]?.nodeId === undefined ? {} : { childNodeId: raceResults[0].nodeId }),
+    });
+  }
+  if (trace !== undefined && trace.events().at(-1)?.type !== 'run-finish') {
+    trace.record({ type: 'run-finish', stage: 'run', outcome });
+  }
   return {
     runId: ctx.runId,
     repo: ctx.repo,
@@ -517,6 +599,7 @@ function makeCaseFile(
     policy: policyEvidenceFor(ctx),
     stages: ctx.stageLedger?.entries() ?? [],
     ...(search === undefined ? {} : { search }),
+    ...(trace === undefined ? {} : { trace: trace.events() }),
   };
 }
 
@@ -602,14 +685,18 @@ async function enforceWinnerPolicy(
 
 export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile> {
   const policy = policyFor(ctx);
-  const ledger = ctx.stageLedger ?? new StageLedger();
+  const trace = ctx.traceRecorder ?? new TraceRecorder(ctx.runId);
+  ensureTraceStarted(trace);
+  const ledger = ctx.stageLedger ?? new StageLedger(trace);
   const fullContext: RepairFailureContext = {
     ...ctx,
     policy,
+    llm: tracedLlm(ctx.llm, trace),
     stageLedger: ledger,
+    traceRecorder: trace,
   };
   const providerLog = filterPolicyDeniedText(ctx.failedLog, policy);
-  let diagnosis = await classify(ctx.llm, providerLog);
+  let diagnosis = await classify(fullContext.llm, providerLog);
   diagnosis = promoteUpstreamDependencyDiagnosis(diagnosis, ctx.dependencyHints);
   diagnosis = withGrounding(
     diagnosis,
@@ -685,7 +772,7 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       ...DEFAULT_SEARCH_LIMITS,
       initialBranches: Math.min(ctx.raceK, DEFAULT_SEARCH_LIMITS.initialBranches),
     };
-    let providerCapacity: CapacitySnapshot | undefined = ctx.llm.capacitySnapshot?.();
+    let providerCapacity: CapacitySnapshot | undefined = fullContext.llm.capacitySnapshot?.();
     const activeOperations = new Map<string, string>();
     const lastOperations = new Map<string, string>();
     const result = await adaptiveSearch({
@@ -727,10 +814,17 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
           note: `Cancellation ${cancellation.requested ? 'requested' : 'observed'} for ${nodeId}`,
         });
       },
+      onDecision: ({ summary, nodeId, parentNodeId }) => trace.record({
+        type: 'search-decision',
+        stage: 'search',
+        summary,
+        ...(nodeId === undefined ? {} : { childNodeId: nodeId }),
+        ...(parentNodeId === undefined ? {} : { parentNodeId }),
+      }),
       expand: async ({ parent, parentImageId, nodeId, operationId, signal }) => {
         const before = ledger.entries().length;
         const agent = await runRepairAgent({
-          llm: ctx.llm,
+          llm: fullContext.llm,
           executor: ctx.executor,
           initialImageId: parentImageId,
           diagnosis,
@@ -741,6 +835,7 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
           branchId: nodeId,
           operationIdPrefix: operationId,
           signal,
+          trace,
           onOperationStart: (activeOperationId) => {
             activeOperations.set(nodeId, activeOperationId);
             lastOperations.set(nodeId, activeOperationId);
@@ -830,7 +925,7 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       note: `Adaptive search passed at depth ${node.depth}`,
     }));
     const winner = raceResults[0]!;
-    let auditVerdict = await audit(ctx.executor, ctx.llm, winner, {
+    let auditVerdict = await audit(ctx.executor, fullContext.llm, winner, {
       diagnosis,
       beforeLog: providerLog,
       suiteCommand: executableCommand,
@@ -950,7 +1045,7 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
     return makeCaseFile(fullContext, diagnosis, triageVerdict, raceResults, 'gave-up');
   }
 
-  let auditVerdict = await audit(ctx.executor, ctx.llm, winner, {
+  let auditVerdict = await audit(ctx.executor, fullContext.llm, winner, {
     diagnosis,
     beforeLog: providerLog,
     suiteCommand: executableCommand,
@@ -987,8 +1082,14 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
   const command = ctx.failureCommand ?? DEFAULT_FAILURE_COMMAND;
   if (!command.trim()) throw new HealCaseError('failureCommand must be non-empty');
 
-  const ledger = ctx.stageLedger ?? new StageLedger();
-  const fullContext: HealCaseContext = { ...ctx, stageLedger: ledger };
+  const trace = ctx.traceRecorder ?? new TraceRecorder(ctx.runId);
+  ensureTraceStarted(trace);
+  const ledger = ctx.stageLedger ?? new StageLedger(trace);
+  const fullContext: HealCaseContext = {
+    ...ctx,
+    stageLedger: ledger,
+    traceRecorder: trace,
+  };
   ledger.record({
     stage: 'policy',
     attempt: 1,
@@ -1039,7 +1140,7 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     failedLog,
     failingImage: setup.imageId,
     executor,
-    llm: ctx.llm,
+    llm: fullContext.llm,
     cost: ctx.cost,
     triageN: ctx.triageN,
     raceK: ctx.raceK,
@@ -1053,5 +1154,6 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     ...(ctx.repairBudgets === undefined ? {} : { repairBudgets: ctx.repairBudgets }),
     ...(ctx.search === undefined ? {} : { search: ctx.search }),
     stageLedger: ledger,
+    traceRecorder: trace,
   });
 }

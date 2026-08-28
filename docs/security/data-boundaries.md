@@ -20,7 +20,7 @@ The CLI reads repository configuration and writes the Sutura workflow. Provider 
 
 The action reads the exact failed GitHub run, checks out its exact head SHA, and keeps provider keys in the action process. It does not copy provider keys, the GitHub token, `.env` files, private keys, credential files, `.npmrc`, Git metadata, installed dependencies, caches, or build output into a repository overlay.
 
-Sutura-owned local outputs are console output and generated configuration. GitHub-hosted outputs are the evidence comment, HTML case-file artifact, repair branch, and pull request. Sutura has no maintainer-operated telemetry or artifact service.
+Sutura-owned local outputs are console output, generated configuration, optional sanitized evaluation manifests, one-trajectory ATIF files, and explicit JSONL exports. GitHub-hosted outputs are the evidence comment, HTML case-file artifact, repair branch, and pull request. Sutura has no maintainer-operated telemetry or artifact service.
 
 ## Sandbox network sequence
 
@@ -46,7 +46,7 @@ The public `NebiusClient` transport does not promise redaction for arbitrary cal
 
 ## Data Lab and ZDR
 
-Data Lab export is disabled. Sutura does not import traces, prompts, logs, code, or evaluation records into Data Lab unless a future explicit user-controlled export enables a sanitized record.
+Data Lab upload is disabled. Sutura can create a bounded sanitized JSONL file for explicit local review and later manual import, but it has no direct Data Lab upload path. A direct upload will not be added without a recorded official API contract. Traces and exports exclude hidden reasoning, credentials, full source, provider URLs, unbounded logs, and unstable request IDs. Sutura does not disable ZDR to create evaluation data.
 
 ZDR is an account-side Token Factory control. Sutura does not enable, disable, or verify it automatically. Confirm the account setting before processing confidential source.
 

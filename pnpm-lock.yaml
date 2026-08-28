@@ -51,12 +51,18 @@ importers:
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/cli:
     devDependencies:
       '@sutura/core':
         specifier: workspace:*
         version: link:../core
+      '@sutura/evaluation':
+        specifier: workspace:*
+        version: link:../evaluation
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
@@ -67,11 +73,20 @@ importers:
         specifier: ^7.3.1
         version: 7.3.1
 
+  packages/evaluation:
+    dependencies:
+      '@sutura/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/placebo:
     dependencies:
       '@sutura/core':
         specifier: workspace:*
         version: link:../core
+      '@sutura/evaluation':
+        specifier: workspace:*
+        version: link:../evaluation
 
 packages:
 

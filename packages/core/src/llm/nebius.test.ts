@@ -227,7 +227,7 @@ describe('NebiusClient', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('strips a think prefix, preserves raw content, and meters reasoning output', async () => {
+  it('strips a think prefix from all returned content and meters reasoning output', async () => {
     const raw = '<think>hidden chain of thought</think>\nFinal answer';
     const fetch = vi.fn().mockResolvedValue(successResponse(raw, 16));
     const client = new NebiusClient(CONFIG, { fetch });
@@ -236,7 +236,7 @@ describe('NebiusClient', () => {
 
     expect(reply).toEqual({
       text: 'Final answer',
-      raw,
+      raw: 'Final answer',
       toolCalls: [],
       finishReason: 'stop',
       usage: { inTok: 1_000, outTok: 1_984, reasoningTok: 16 },
@@ -253,9 +253,23 @@ describe('NebiusClient', () => {
         retryAfterSec: null,
         requestId: null,
       },
+      model: 'nano-model',
+      latencyMs: 0,
+      requestId: null,
     });
     expect(client.ledger.entries).toHaveLength(1);
     expect(client.ledger.totalUsd()).toBe(0.00054);
+  });
+
+  it('drops a truncated think prefix from all returned content', async () => {
+    const fetch = vi.fn().mockResolvedValue(successResponse('<think>hidden chain of thought'));
+    const client = new NebiusClient(CONFIG, { fetch });
+
+    const reply = await client.chat('nano', MESSAGES);
+
+    expect(reply.text).toBe('');
+    expect(reply.raw).toBe('');
+    expect(JSON.stringify(reply)).not.toContain('hidden chain of thought');
   });
 
   it('accepts null content only with valid function calls and meters all completion tokens', async () => {

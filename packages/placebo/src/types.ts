@@ -1,4 +1,5 @@
 import type { CaseFile as CoreCaseFile, FailureClass } from '@sutura/core';
+import type { EvaluationManifest } from '@sutura/evaluation';
 
 export const CORPUS_VERSION = '0.1' as const;
 
@@ -60,4 +61,19 @@ export interface Score {
   fixRate: Rate & { failures: string[] };
   flakyAccuracy: { correct: number; of: number };
   ablation: { withTavily: Rate; without: Rate };
+}
+
+export interface BenchmarkManifestOptions {
+  evaluationId: string;
+  suturaCommit: string;
+  repositoryClean: boolean;
+  startedAt: string;
+  completedAt?: string;
+}
+
+export interface BenchmarkReport {
+  adapter: string;
+  results: BenchmarkResult[];
+  score: Score;
+  manifest?: EvaluationManifest;
 }

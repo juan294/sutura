@@ -65,6 +65,7 @@ export interface AdaptiveSearchOptions {
   availableBranches(): number;
   concurrencyCapacity?(): number;
   cancel?(nodeId: string): Promise<void>;
+  onDecision?(decision: { summary: string; nodeId?: string; parentNodeId?: string }): void;
   expand(context: SearchExpansionContext): Promise<SearchExpansion>;
 }
 
@@ -111,6 +112,11 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
       let cancellationStarted = false;
       const expansions = await Promise.all(batch.map(async (parent, index) => {
         const id = ids[index]!;
+        options.onDecision?.({
+          summary: `Expand branch ${start + index + 1} at depth ${depth}`,
+          nodeId: id,
+          ...(parent === undefined ? {} : { parentNodeId: parent.id }),
+        });
         const expansion = await options.expand({
           parent,
           parentImageId: parent?.imageId ?? options.baselineImageId,
@@ -164,6 +170,11 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
         ...(expansion.candidate === undefined ? {} : { candidate: expansion.candidate }),
         errorFingerprint: errorFingerprint(expansion.testEvidence.output),
         ...(terminalReason === undefined ? {} : { terminalReason }),
+      });
+      options.onDecision?.({
+        summary: terminalReason === undefined ? 'Retain branch in frontier' : `Branch terminal: ${terminalReason}`,
+        nodeId: id,
+        ...(parent === undefined ? {} : { parentNodeId: parent.id }),
       });
       }
       if (children.some(({ terminalReason }) => terminalReason === 'passed')) break;

@@ -12,7 +12,8 @@
   },
   "files": ["bin", "corpus", "dist", "scripts", "vendor", "README.md"],
   "dependencies": {
-    "@sutura/core": "workspace:*"
+    "@sutura/core": "workspace:*",
+    "@sutura/evaluation": "workspace:*"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

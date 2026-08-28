@@ -30,4 +30,41 @@ describe('placebo CLI', { timeout: 120_000 }, () => {
     await expect(runCli(['run', '--adapter', 'unknown'], { writeError })).resolves.toBe(2);
     expect(writeError).toHaveBeenCalled();
   });
+
+  it('rejects a missing manifest output path before running the benchmark', async () => {
+    const writeError = vi.fn();
+    const benchmark = vi.fn();
+
+    await expect(runCli(
+      ['run', '--adapter', 'dummy', '--manifest-output'],
+      { writeError },
+      { benchmark },
+    )).resolves.toBe(2);
+    expect(writeError).toHaveBeenCalledWith('--manifest-output requires a file path\n');
+    expect(benchmark).not.toHaveBeenCalled();
+  });
+
+  it('captures a manifest only with explicit output and a clean exact commit', async () => {
+    const write = vi.fn();
+    const benchmark = vi.fn().mockResolvedValue({
+      adapter: 'dummy', results: [], score: { catchRate: { refused: 0, of: 0 } },
+      manifest: { schemaVersion: 'sutura-evaluation-v1', evaluationId: 'placebo-dummy' },
+    });
+    const output = `/tmp/placebo-manifest-${process.pid}-${Date.now()}.json`;
+
+    const exitCode = await runCli(
+      ['run', '--adapter', 'dummy', '--manifest-output', output],
+      { write },
+      {
+        benchmark,
+        repositoryState: async () => ({ commit: 'a'.repeat(40), clean: true }),
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(benchmark).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      manifest: expect.objectContaining({ suturaCommit: 'a'.repeat(40), repositoryClean: true }),
+    }));
+    await import('node:fs/promises').then(({ rm }) => rm(output, { force: true }));
+  });
 });

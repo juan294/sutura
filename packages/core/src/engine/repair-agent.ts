@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 
 import type { Candidate, Diagnosis, RepairFailureKind } from '../domain.js';
 import type { Executor, ImageId, RunResult } from '../executor/types.js';
@@ -13,6 +14,7 @@ import {
   type RepairTestEvidence,
 } from './repair-tools.js';
 import type { RepairSourceContext } from './repair.js';
+import type { TraceRecorder } from '../trace/recorder.js';
 
 const MAX_AGENT_OUTPUT_TOKENS = 8_192;
 const MINIMUM_AGENT_TURN_RESERVATION_USD = 0.05;
@@ -49,6 +51,7 @@ export interface RepairAgentContext {
   observeCapacity?: (capacity: CapacitySnapshot) => void;
   onOperationStart?: (operationId: string) => void;
   signal?: AbortSignal;
+  trace?: TraceRecorder;
   observe?: (input: { result?: RunResult; imageId?: ImageId; parentImageId: ImageId; note: string }) => string;
 }
 
@@ -78,6 +81,66 @@ function fingerprint(call: FunctionToolCall): string {
 
 function publicReason(value: string): string {
   return redactExternalText(value).text.replace(/[\u0000-\u001f\u007f]/gu, ' ').slice(0, 300);
+}
+
+function digest(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function traceToolArguments(name: string, value: unknown): Record<string, unknown> {
+  const args = typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  if (name === 'read_file') {
+    return {
+      path: typeof args.path === 'string' ? args.path : '[invalid]',
+      ...(Number.isSafeInteger(args.startLine) ? { startLine: args.startLine } : {}),
+      ...(Number.isSafeInteger(args.endLine) ? { endLine: args.endLine } : {}),
+    };
+  }
+  if (name === 'search_repo') {
+    const query = typeof args.query === 'string' ? args.query : '';
+    return {
+      queryHash: digest(query),
+      queryBytes: Buffer.byteLength(query, 'utf8'),
+      pathCount: Array.isArray(args.paths) ? args.paths.length : 0,
+    };
+  }
+  if (name === 'run_test') {
+    return { commandId: typeof args.commandId === 'string' ? args.commandId : '[invalid]' };
+  }
+  if (name === 'apply_patch') {
+    const payload = JSON.stringify(args);
+    return {
+      payloadHash: digest(payload),
+      payloadBytes: Buffer.byteLength(payload, 'utf8'),
+      editCount: Array.isArray(args.edits) ? args.edits.length : 0,
+      form: typeof args.diff === 'string' ? 'unified-diff' : 'structured-edits',
+    };
+  }
+  if (name === 'submit_candidate') {
+    const rationale = typeof args.rationale === 'string' ? args.rationale : '';
+    return {
+      candidateId: typeof args.id === 'string' ? args.id : '[invalid]',
+      rationaleHash: digest(rationale),
+      rationaleBytes: Buffer.byteLength(rationale, 'utf8'),
+    };
+  }
+  return {};
+}
+
+function traceToolResult(
+  name: string,
+  result: { ok: boolean; kind?: string; exitCode?: number; message: string },
+): string {
+  return JSON.stringify({
+    tool: name,
+    ok: result.ok,
+    kind: result.kind ?? null,
+    exitCode: result.exitCode ?? null,
+    messageHash: digest(result.message),
+    messageBytes: Buffer.byteLength(result.message, 'utf8'),
+  });
 }
 
 function worstCaseRequestUsd(messages: readonly ChatMessage[]): number {
@@ -197,14 +260,37 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
       } catch (error) {
         return { status: 'gave-up', failureKind: 'budget', reason: publicReason(error instanceof Error ? error.message : String(error)) };
       }
+      ctx.trace?.record({
+        type: 'tool-request',
+        stage: 'candidate',
+        toolCallId: call.id,
+        toolName: call.function.name,
+        argumentSummary: traceToolArguments(call.function.name, args),
+        ...(ctx.branchId === undefined ? {} : { childNodeId: ctx.branchId }),
+      });
       const result = args === null
         ? { ok: false, kind: 'invalid' as const, message: 'Tool arguments must be valid JSON' }
         : await tools.execute(call.function.name, args);
       const toolMessage = publicReason(JSON.stringify({ ok: result.ok, kind: result.kind, message: result.message, exitCode: result.exitCode }));
+      ctx.trace?.record({
+        type: 'tool-result',
+        stage: 'candidate',
+        toolCallId: call.id,
+        toolName: call.function.name,
+        resultSummary: traceToolResult(call.function.name, result),
+        ...(ctx.branchId === undefined ? {} : { childNodeId: ctx.branchId }),
+      });
       messages.push({ role: 'tool', toolCallId: call.id, content: toolMessage });
       if (result.submitted && result.candidate && result.imageId) {
         const state = tools.state();
         if (!state.latestTest) return { status: 'gave-up', failureKind: 'invalid', reason: 'Submission lacked test evidence' };
+        ctx.trace?.record({
+          type: 'candidate-submitted',
+          stage: 'candidate',
+          candidateId: result.candidate.id,
+          summary: result.candidate.rationale,
+          ...(ctx.branchId === undefined ? {} : { childNodeId: ctx.branchId }),
+        });
         return {
           status: 'submitted', candidate: result.candidate, imageId: result.imageId,
           ...(result.nodeId === undefined ? {} : { nodeId: result.nodeId }), test: state.latestTest,

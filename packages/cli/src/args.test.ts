@@ -37,6 +37,19 @@ describe('parseArgs', () => {
     });
   });
 
+  it('parses evaluation validation and export commands', () => {
+    expect(parseArgs(['eval', 'validate', '--manifest', '/tmp/manifest.json'])).toEqual({
+      command: 'eval-validate', manifest: '/tmp/manifest.json',
+    });
+    expect(parseArgs([
+      'eval', 'export', '--manifest', '/tmp/manifest.json', '--format', 'atif',
+      '--output', '/tmp/trajectory.atif.json', '--force',
+    ])).toEqual({
+      command: 'eval-export', manifest: '/tmp/manifest.json', format: 'atif',
+      output: '/tmp/trajectory.atif.json', force: true,
+    });
+  });
+
   it.each([['--help'], ['help']])('parses help form %j', (...args) => {
     expect(parseArgs(args)).toEqual({ command: 'help' });
   });
@@ -64,6 +77,11 @@ describe('parseArgs', () => {
     ['init', '--repo', 'invalid'],
     ['init', '--workflow', 'CI', '--workflow', 'Tests'],
     ['doctor', '--unknown'],
+    ['eval'],
+    ['eval', 'validate'],
+    ['eval', 'validate', '--manifest', '/tmp/a', '--force'],
+    ['eval', 'export', '--manifest', '/tmp/a', '--format', 'array', '--output', '/tmp/o'],
+    ['eval', 'export', '--manifest', '/tmp/a', '--format', 'atif'],
   ];
 
   it.each(invalidArguments.map((args) => [args] as const))('rejects malformed arguments: %j', (args) => {

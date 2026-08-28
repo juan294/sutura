@@ -97,6 +97,9 @@ export { renderCaseFile } from './report/casefile.js';
 export { renderComment } from './report/markdown.js';
 export { aggregateStageEvidence } from './report/format.js';
 export { isSensitiveRepositoryPath } from './security/repository-path.js';
+export { TraceRecorder } from './trace/recorder.js';
+export { sanitizeTraceEvent } from './trace/sanitize.js';
+export { TRACE_SCHEMA_VERSION } from './trace/types.js';
 export {
   ExternalTextError,
   assertExternalEditableText,
@@ -170,6 +173,11 @@ export type {
   OperationTerminal,
 } from './executor/types.js';
 export type { ExternalTextRedaction } from './security/external-text.js';
+export type {
+  TraceEvent,
+  TraceEventInput,
+  TraceStage,
+} from './trace/types.js';
 export type {
   DiagnosisLlm,
   MechanicalDiagnosis,

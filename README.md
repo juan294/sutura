@@ -189,6 +189,39 @@ Run the complete local gate before you open a pull request:
 Live tests are opt-in with `SUTURA_LIVE=1` and require the corresponding
 credentials. Normal tests use recorded fixtures and do not spend API credit.
 
+### Evaluation Lab
+
+Sutura records a versioned, bounded trace for model, tool, sandbox, search,
+candidate, and audit events. The recorder removes hidden reasoning, credentials,
+full source, provider URLs, unbounded logs, and unstable request IDs before
+storage. Manifest result hashes also normalize timing fields.
+
+Validate and export a captured manifest with the CLI:
+
+```text
+sutura eval validate --manifest /tmp/sutura-eval/manifest.json
+sutura eval export --manifest /tmp/sutura-eval/manifest.json --format atif --output /tmp/sutura-eval/trajectory.atif.json
+sutura eval export --manifest /tmp/sutura-eval/manifest.json --format jsonl --output /tmp/sutura-eval/data-lab.jsonl
+```
+
+An ATIF file contains one trajectory. A one-case manifest writes the requested
+path. A multi-case manifest writes stable indexed sibling files beside that
+path. Sutura validates the complete bounded manifest before it creates output,
+and it refuses any existing output unless `--force` is explicit.
+
+The committed [manifest](docs/demo/sutura-evaluation-manifest-v1.json) and
+[ATIF trajectory](docs/demo/sutura-trajectory-v1.atif.json) are sanitized
+examples. The trajectory passes `nat.atif.trajectory.Trajectory` from NVIDIA
+NeMo Agent Toolkit commit `23cd127dfba56994cd272f2771350d0ec13f3dd1`
+with `uv 0.12.7`:
+
+```text
+uv run --project packages/evaluation python packages/evaluation/scripts/validate-atif.py docs/demo/sutura-trajectory-v1.atif.json
+```
+
+Data Lab upload remains disabled. JSONL is a local, explicit export only. Sutura
+does not change the account Zero Data Retention setting.
+
 ## GitHub Action configuration
 
 The action needs `actions: read`, `contents: write`, and `pull-requests: write`.
@@ -208,6 +241,7 @@ Build and run the standalone benchmark from the repository checkout:
 pnpm --filter placebo run build
 pnpm --filter placebo exec placebo run --adapter sutura
 pnpm --filter placebo exec placebo run --adapter sutura --only upstream --no-tavily
+pnpm --filter placebo exec placebo run --adapter sutura --manifest-output /tmp/sutura-eval/manifest.json
 ```
 
 Placebo keeps unsuccessful cases in the denominator and emits the failed IDs.

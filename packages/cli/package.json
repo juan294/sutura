@@ -44,6 +44,7 @@
   },
   "devDependencies": {
     "@sutura/core": "workspace:*",
+    "@sutura/evaluation": "workspace:*",
     "esbuild": "^0.28.2"
   }
 }

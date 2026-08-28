@@ -7,6 +7,8 @@ export const USAGE = [
   '  sutura init [--workflow <name>] [--repo <owner/repo>] [--force] [--no-tavily]',
   '  sutura doctor [--repo <owner/repo>]',
   '  sutura heal --case-dir <dir> --format json [--candidate-diff <diff>] [--no-tavily]',
+  '  sutura eval validate --manifest <file>',
+  '  sutura eval export --manifest <file> --format <atif|jsonl> --output <file> [--force]',
   '  sutura --help',
   '  sutura --version',
 ].join('\n');
@@ -40,10 +42,25 @@ export interface VersionArguments {
   command: 'version';
 }
 
+export interface EvalValidateArguments {
+  command: 'eval-validate';
+  manifest: string;
+}
+
+export interface EvalExportArguments {
+  command: 'eval-export';
+  manifest: string;
+  format: 'atif' | 'jsonl';
+  output: string;
+  force: boolean;
+}
+
 export type CliArguments =
   | HealArguments
   | InitArguments
   | DoctorArguments
+  | EvalValidateArguments
+  | EvalExportArguments
   | HelpArguments
   | VersionArguments;
 
@@ -160,11 +177,49 @@ function parseDoctor(args: readonly string[]): DoctorArguments {
   return { command: 'doctor', repository: validateRepository(nonEmptyValue(args, 1, '--repo')) };
 }
 
+function parseEval(args: readonly string[]): EvalValidateArguments | EvalExportArguments {
+  const operation = args[1];
+  if (operation !== 'validate' && operation !== 'export') {
+    throw new CliUsageError(`Unknown eval command: ${operation ?? '(missing)'}`);
+  }
+  let manifest: string | undefined;
+  let format: string | undefined;
+  let output: string | undefined;
+  let force = false;
+  const allowed = operation === 'validate'
+    ? ['--manifest']
+    : ['--manifest', '--format', '--output', '--force'];
+  const seen = new Set<string>();
+  for (let index = 2; index < args.length; index += 1) {
+    const flag = args[index];
+    if (!flag || !allowed.includes(flag)) throw new CliUsageError(`Unknown argument: ${flag ?? '(missing)'}`);
+    if (seen.has(flag)) throw new CliUsageError(`Duplicate argument: ${flag}`);
+    seen.add(flag);
+    if (flag === '--force') {
+      force = true;
+      continue;
+    }
+    const value = nonEmptyValue(args, index, flag);
+    index += 1;
+    if (flag === '--manifest') manifest = value;
+    else if (flag === '--format') format = value;
+    else output = value;
+  }
+  if (!manifest) throw new CliUsageError('--manifest is required');
+  if (operation === 'validate') return { command: 'eval-validate', manifest };
+  if (format !== 'atif' && format !== 'jsonl') {
+    throw new CliUsageError('--format must be atif or jsonl');
+  }
+  if (!output) throw new CliUsageError('--output is required');
+  return { command: 'eval-export', manifest, format, output, force };
+}
+
 export function parseArgs(args: readonly string[]): CliArguments {
   if (args.length === 1 && (args[0] === '--help' || args[0] === 'help')) return { command: 'help' };
   if (args.length === 1 && (args[0] === '--version' || args[0] === 'version')) return { command: 'version' };
   if (args[0] === 'heal') return parseHeal(args);
   if (args[0] === 'init') return parseInit(args);
   if (args[0] === 'doctor') return parseDoctor(args);
+  if (args[0] === 'eval') return parseEval(args);
   throw new CliUsageError(`Unknown command: ${args[0] ?? '(missing)'}`);
 }

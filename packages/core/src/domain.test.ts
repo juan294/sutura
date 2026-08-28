@@ -108,6 +108,7 @@ describe('domain model', () => {
       policy: PolicyEvidence;
       stages: StageEvidence[];
       search?: SearchEvidence[];
+      trace?: import('./trace/types.js').TraceEvent[];
     }>();
   });
 

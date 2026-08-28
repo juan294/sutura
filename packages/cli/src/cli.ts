@@ -12,6 +12,7 @@ import {
 import { doctorSutura, type DoctorResult } from './doctor.js';
 import { healFromEnvironment } from './heal.js';
 import { installSutura, type SetupResult } from './setup.js';
+import { runEvaluationCommand } from './eval.js';
 
 export interface CliIo {
   write?: (value: string) => void;
@@ -98,6 +99,16 @@ export async function runCli(
         : await (dependencies.doctor ?? doctorSutura)(request);
       write(`${result.lines.join('\n')}\n`);
       return 'exitCode' in result ? result.exitCode : 0;
+    } catch (error) {
+      writeError(`${publicError(error)}\n`);
+      return 1;
+    }
+  }
+  if (request.command === 'eval-validate' || request.command === 'eval-export') {
+    try {
+      const lines = await runEvaluationCommand(request);
+      write(`${lines.join('\n')}\n`);
+      return 0;
     } catch (error) {
       writeError(`${publicError(error)}\n`);
       return 1;

@@ -103,10 +103,14 @@ export interface LlmReply {
   usage: TokenUsage;
   usd: number;
   capacity: CapacitySnapshot;
+  model: string;
+  latencyMs: number;
+  requestId: string | null;
 }
 
 export interface TierLlm<Tier extends ModelTier> {
   capacitySnapshot?(): CapacitySnapshot | undefined;
+  modelId?(tier: Tier): string;
   chat(
     tier: Tier,
     messages: readonly ChatMessage[],
@@ -116,5 +120,9 @@ export interface TierLlm<Tier extends ModelTier> {
     toolCalls?: readonly FunctionToolCall[];
     usd?: number;
     capacity?: CapacitySnapshot;
+    model?: string;
+    latencyMs?: number;
+    requestId?: string | null;
+    usage?: TokenUsage;
   }>;
 }

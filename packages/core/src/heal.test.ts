@@ -261,6 +261,27 @@ describe('healCase', () => {
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual([
       'nano', 'super', 'super', 'super', 'ultra',
     ]);
+    expect(caseFile.trace?.map(({ type }) => type)).toEqual(expect.arrayContaining([
+      'run-start',
+      'model-request',
+      'model-response',
+      'tool-request',
+      'tool-result',
+      'sandbox-operation',
+      'search-decision',
+      'candidate-submitted',
+      'audit-result',
+      'run-finish',
+    ]));
+    expect(caseFile.trace?.at(0)).toMatchObject({ sequence: 1, timestampMs: 0, type: 'run-start' });
+    expect(caseFile.trace?.at(-1)).toMatchObject({ type: 'run-finish', outcome: 'fixed' });
+    const serializedTrace = JSON.stringify(caseFile.trace);
+    expect(serializedTrace).not.toContain('export function pageCount');
+    expect(serializedTrace).not.toContain('-export function');
+    expect(caseFile.trace?.find(({ type }) => type === 'model-request')).toMatchObject({
+      promptHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      promptExcerpt: expect.any(String),
+    });
   });
 
   it('labels the real Placebo flaky fixture without generating a patch', async () => {

@@ -27,6 +27,7 @@ import {
   sandboxTargetCommand,
   type HealLlm,
 } from './heal.js';
+import { TraceRecorder } from './trace/recorder.js';
 import { loadRepositoryPolicy } from './policy/load.js';
 import { policyAllowsSourceRead } from './policy/evaluate.js';
 import type { RepositoryPolicy } from './policy/schema.js';
@@ -412,7 +413,11 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     baseSha: run.baseSha,
     policySha: loadedPolicy.sha,
   };
-  const stageLedger = new StageLedger();
+  const traceRecorder = new TraceRecorder(run.runId);
+  traceRecorder.record({
+    type: 'run-start', stage: 'run', summary: 'Sutura repair run started',
+  });
+  const stageLedger = new StageLedger(traceRecorder);
   stageLedger.record({
     stage: 'policy',
     attempt: 1,
@@ -464,6 +469,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
         cost: ctx.cost,
         policyEvidence,
         stageLedger,
+        traceRecorder,
       },
       setup.command,
       setup.result,
@@ -493,6 +499,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
         cost: ctx.cost,
         policyEvidence,
         stageLedger,
+        traceRecorder,
       },
       mechanical,
     );
@@ -522,6 +529,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     policy: loadedPolicy.policy,
     policyEvidence,
     stageLedger,
+    traceRecorder,
     ...(ctx.tavily ? { tavily: ctx.tavily } : {}),
     ...(ctx.lockfileDiff === undefined
       ? {}

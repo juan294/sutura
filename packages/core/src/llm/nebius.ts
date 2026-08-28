@@ -81,7 +81,8 @@ function defaultSleep(milliseconds: number): Promise<void> {
 }
 
 function stripThinkPrefix(content: string): string {
-  return content.replace(/^\s*<think>[\s\S]*?<\/think>\s*/i, '');
+  if (!/^\s*<think>/iu.test(content)) return content;
+  return content.replace(/^\s*<think>[\s\S]*?(?:<\/think>\s*|$)/iu, '');
 }
 
 function nonNegativeInteger(value: unknown, field: string): number {
@@ -343,11 +344,16 @@ export class NebiusClient {
     return this.latestCapacity;
   }
 
+  modelId(tier: ModelTier): string {
+    return this.config.models[tier];
+  }
+
   async chat(
     tier: ModelTier,
     messages: readonly ChatMessage[],
     options: ChatOptions = {},
   ): Promise<LlmReply> {
+    const startedAt = this.now();
     const maxTokens = options.maxTokens ?? 4_096;
     if (!Number.isSafeInteger(maxTokens) || maxTokens < 2_000) {
       throw new RangeError('maxTokens must be an integer of at least 2000');
@@ -411,7 +417,12 @@ export class NebiusClient {
       }
 
       if (response.ok) {
-        return this.parseReply(tier, await response.json(), response.headers);
+        return this.parseReply(
+          tier,
+          await response.json(),
+          response.headers,
+          Math.max(0, this.now() - startedAt),
+        );
       }
 
       const responseBody = await response.text();
@@ -455,6 +466,7 @@ export class NebiusClient {
     tier: ModelTier,
     value: unknown,
     headers: HttpHeaders,
+    latencyMs: number,
   ): LlmReply {
     if (typeof value !== 'object' || value === null) {
       throw new NebiusResponseError('Nebius returned a non-object response');
@@ -518,14 +530,18 @@ export class NebiusClient {
 
     const capacity = capacitySnapshot(headers);
     this.latestCapacity = capacity;
+    const publicContent = typeof rawContent === 'string' ? stripThinkPrefix(rawContent) : null;
     return {
-      text: typeof rawContent === 'string' ? stripThinkPrefix(rawContent) : '',
-      raw: typeof rawContent === 'string' ? rawContent : null,
+      text: publicContent ?? '',
+      raw: publicContent,
       toolCalls,
       finishReason: finishReason ?? null,
       usage,
       usd: entry.usd,
       capacity,
+      model: this.config.models[tier],
+      latencyMs,
+      requestId: capacity.requestId,
     };
   }
 }

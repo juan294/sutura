@@ -37,6 +37,22 @@ describe('runBenchmark', { timeout: 120_000 }, () => {
     expect(report.score.fixRate).toMatchObject({ fixed: 0, of: 10 });
   }, 240_000);
 
+  it('captures sanitized traces and a publishable manifest without changing scores', async () => {
+    const baseline = await runBenchmark(new DummyAdapter(), { only: 'flaky' });
+    const recorded = await runBenchmark(new DummyAdapter(), {
+      only: 'flaky',
+      manifest: {
+        evaluationId: 'placebo-test', suturaCommit: 'a'.repeat(40), repositoryClean: true,
+        startedAt: '2026-08-29T00:00:00.000Z', completedAt: '2026-08-29T00:01:00.000Z',
+      },
+    });
+
+    expect(recorded.score).toEqual(baseline.score);
+    expect(recorded.results.every(({ caseFile }) => caseFile.trace?.at(0)?.type === 'run-start')).toBe(true);
+    expect(recorded.manifest?.cases).toHaveLength(recorded.results.length);
+    expect(recorded.manifest?.cases.every(({ trace }) => trace.at(-1)?.type === 'run-finish')).toBe(true);
+  });
+
   it('uses a fresh broken copy for every ablation run and cleans it', async () => {
     const directories: string[] = [];
     const adapter: Adapter = {

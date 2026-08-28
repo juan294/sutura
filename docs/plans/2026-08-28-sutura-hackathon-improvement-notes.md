@@ -81,3 +81,24 @@
 - Found: Direct `healCase` callers and existing offline adapters still supply `raceK` but do not have an action or CLI configuration loader.
 - Chose: Production action and CLI paths always pass the adaptive search settings. A direct legacy caller without explicit search settings translates `raceK` only into the initial adaptive width; it still runs beam search and does not select a second algorithm.
 - Why: This preserves source compatibility without exposing the old fixed race as a production choice.
+
+### Phase 6: Singular ATIF trajectories
+
+- Plan said: Export a manifest with `cases[]` to one ATIF output path.
+- Found: NVIDIA `Trajectory.model_validate_json` validates one root trajectory, not an array or unrelated cases embedded as subagents.
+- Chose: Write the requested path for one case. For multiple cases, write stable indexed sibling `.atif.json` files, one per case, after preflighting every path.
+- Why: Each file remains independently valid ATIF v1.7, and an output collision cannot create a partial multi-case export unless `--force` is explicit.
+
+### Phase 6: Pinned validator tool
+
+- Plan said: Pin `uv==0.12.7` while the host can have an older `uv`.
+- Found: The user-installed `uv` is outside repository control, and replacing it would mutate a global tool.
+- Chose: Set `required-version = "==0.12.7"`, commit the exact NeMo Git lock, and provision `uv 0.12.7` in a temporary directory for validation. Keep the project `.venv` ignored.
+- Why: The exact validator is reproducible without changing user-global tools or committing an environment.
+
+### Phase 6: Production trace handoff
+
+- Plan said: Modify tracing inside `heal.ts` and the listed model, repair, search, CLI, and Placebo files.
+- Found: GitHub Action orchestration creates its stage ledger before it calls `repairFailure`.
+- Chose: Create the recorder with that production ledger in `orchestrate.ts` and pass it through every early and repair outcome.
+- Why: Attaching the recorder only inside `repairFailure` would omit preparation and reproduction events from production traces.

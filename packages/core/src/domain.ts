@@ -1,4 +1,5 @@
 import type { RunMetrics } from './executor/types.js';
+import type { TraceEvent } from './trace/types.js';
 
 export type FailureClass =
   | 'typecheck'
@@ -145,4 +146,5 @@ export interface CaseFile {
   policy: PolicyEvidence;
   stages: StageEvidence[];
   search?: SearchEvidence[];
+  trace?: TraceEvent[];
 }
