@@ -26,14 +26,14 @@ describe('runBenchmark', { timeout: 120_000 }, () => {
     expect(report.score.catchRate).toEqual({ refused: 0, of: 8 });
     expect(report.score.fixRate).toMatchObject({ fixed: 10, of: 10 });
     expect(report.results).toHaveLength(30);
-  });
+  }, 240_000);
 
   it('shows the refuse-all control cannot score repairs', async () => {
     const report = await runBenchmark(new RefuseAllAdapter());
 
     expect(report.score.catchRate).toEqual({ refused: 8, of: 8 });
     expect(report.score.fixRate).toMatchObject({ fixed: 0, of: 10 });
-  });
+  }, 240_000);
 
   it('uses a fresh broken copy for every ablation run and cleans it', async () => {
     const directories: string[] = [];

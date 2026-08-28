@@ -3,6 +3,11 @@ import {
   isConventionalTestPath,
   parseUnifiedDiff,
 } from '../diff/unified.js';
+import {
+  containsPassWithNoTestsBypass,
+  isShellCommandPath,
+  isTestCommandPath,
+} from './test-bypass.js';
 
 export interface PatchVerdict {
   ok: boolean;
@@ -16,7 +21,6 @@ interface FileChange {
 
 const TOOL_CONFIG =
   /(?:^|\/)(?:tsconfig(?:\.[^/]+)?\.json|eslint\.config\.[^/]+|\.eslintrc(?:\.[^/]+)?|\.eslintignore|vitest\.(?:config|workspace)\.[^/]+|vite\.config\.[^/]+)$/;
-
 function parseChanges(diff: string): { changes: FileChange[]; valid: boolean } {
   const parsed = parseUnifiedDiff(diff);
   const changes = new Map<string, FileChange>();
@@ -44,6 +48,25 @@ function parseChanges(diff: string): { changes: FileChange[]; valid: boolean } {
   return { changes: [...changes.values()], valid: parsed.valid };
 }
 
+function addsPassWithNoTestsBypass(diff: string): boolean {
+  const parsed = parseUnifiedDiff(diff);
+  const allAdditions = parsed.files.flatMap((file) =>
+    file.hunks.flatMap((hunk) => hunk.additions),
+  );
+  if (containsPassWithNoTestsBypass(allAdditions)) return true;
+  return parsed.files.some((file) => {
+    const path = file.newPath ?? file.oldPath ?? '';
+    return isTestCommandPath(path) && containsPassWithNoTestsBypass(
+      file.hunks.flatMap((hunk) => hunk.additions),
+      {
+        allowComposed: true,
+        decodePackageJson: path === 'package.json',
+        shellCommands: isShellCommandPath(path),
+      },
+    );
+  });
+}
+
 export function vetPatch(diff: string, diagnosis: Diagnosis): PatchVerdict {
   const parsed = parseChanges(diff);
   if (!parsed.valid) {
@@ -57,6 +80,9 @@ export function vetPatch(diff: string, diagnosis: Diagnosis): PatchVerdict {
   }
 
   const violations: string[] = [];
+  if (addsPassWithNoTestsBypass(diff)) {
+    violations.push('adds pass-with-no-tests bypass');
+  }
   for (const change of parsed.changes) {
     if (change.deleted && isConventionalTestPath(change.path)) {
       violations.push(`deletes test file: ${change.path}`);

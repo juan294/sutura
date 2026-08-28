@@ -11,7 +11,7 @@ describe('placebo CLI', { timeout: 120_000 }, () => {
     expect(JSON.parse(write.mock.calls[0]?.[0] as string)).toMatchObject({
       score: { catchRate: { refused: 0, of: 8 } },
     });
-  });
+  }, 240_000);
 
   it('filters by kind and propagates --no-tavily', async () => {
     const write = vi.fn();

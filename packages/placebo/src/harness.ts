@@ -1,10 +1,10 @@
-import { cp, mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { cp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
   applyPatch,
   copyPortableTestRuntime,
+  createPlaceboTemporaryDirectory,
   createPortableTestRuntime,
   discoverCases,
   installFixture,
@@ -22,7 +22,7 @@ async function evaluate(
   tavilyEnabled: boolean,
   portableRuntime: PortableTestRuntime,
 ): Promise<BenchmarkResult> {
-  const temporaryRoot = await mkdtemp(join(tmpdir(), `placebo-run-${benchmarkCase.id}-`));
+  const temporaryRoot = await createPlaceboTemporaryDirectory(`run-${benchmarkCase.id}-`);
   const fixture = join(temporaryRoot, 'fixture');
   try {
     await cp(benchmarkCase.fixtureDirectory, fixture, { recursive: true });

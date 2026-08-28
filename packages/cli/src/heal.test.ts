@@ -15,7 +15,13 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 
 import type { HealArguments } from './args.js';
-import { CliConfigError, healWithRuntime, readLocalSourceContext, runtimeFromEnvironment } from './heal.js';
+import {
+  CliConfigError,
+  healWithRuntime,
+  readDependencyHints,
+  readLocalSourceContext,
+  runtimeFromEnvironment,
+} from './heal.js';
 
 const CORPUS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'placebo', 'corpus');
 const REPAIR_DIFF = [
@@ -64,7 +70,7 @@ function runtime(
 } {
   let scenarioIndex = 0;
   const executor = new InMemoryExecutor((command) => {
-    if (command.includes('if [ ! -d node_modules ]')) return runResult(0);
+    if (command.includes('install --frozen-lockfile')) return runResult(0);
     const index = scenarioIndex++;
     return runResult(exits[index] ?? 1, index === 0 ? reproductionError : 'case.test.js: assertion failed');
   });
@@ -166,6 +172,58 @@ describe('healWithRuntime Placebo integration', () => {
 });
 
 describe('CLI runtime configuration and source boundaries', () => {
+  it('reads exact dependency versions from bounded local and file manifests', async () => {
+    const fixture = join(CORPUS, 'upstream-formatter-release', 'fixture');
+    await expect(readDependencyHints(fixture)).resolves.toEqual(expect.arrayContaining([
+      'chalk@4.1.2',
+      'eslint@10.9.1',
+      'typescript@6.0.3',
+      'vitest@4.1.11',
+    ]));
+  });
+
+  it('does not read dependency metadata through a symlinked file package', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-dependency-link-'));
+    const outside = await mkdtemp(join(tmpdir(), 'sutura-dependency-outside-'));
+    try {
+      await writeFile(
+        join(directory, 'package.json'),
+        JSON.stringify({ dependencies: { privatePackage: 'file:linked' } }),
+      );
+      await writeFile(
+        join(outside, 'package.json'),
+        JSON.stringify({ name: 'privatePackage', version: '9.9.9' }),
+      );
+      await symlink(outside, join(directory, 'linked'));
+
+      await expect(readDependencyHints(directory)).resolves.toEqual([]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('does not present dependency ranges as exact installed versions', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-dependency-ranges-'));
+    try {
+      await writeFile(
+        join(directory, 'package.json'),
+        JSON.stringify({
+          dependencies: {
+            exact: '1.2.3',
+            caret: '^2.0.0',
+            tilde: '~3.0.0',
+            workspace: 'workspace:4.0.0',
+          },
+        }),
+      );
+
+      await expect(readDependencyHints(directory)).resolves.toEqual(['exact@1.2.3']);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('requires ConTree and Tavily configuration before constructing clients', () => {
     expect(() => runtimeFromEnvironment(request('repair-off-by-one'), {
       NEBIUS_API_KEY: 'nebius',

@@ -55,6 +55,7 @@ export interface RepairFailureContext {
   raceK: number;
   tavily?: TavilySearch;
   lockfileDiff?: string;
+  dependencyHints?: readonly string[];
   candidateDiff?: string;
   readSourceContext(
     log: string,
@@ -154,12 +155,10 @@ export function sandboxPreparationCommand(command: string): string | null {
     return null;
   }
   const prepare = [
-    'if [ ! -d node_modules ]; then',
-    '  if [ -f pnpm-lock.yaml ]; then corepack pnpm install --frozen-lockfile;',
-    '  elif [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm ci;',
-    '  elif [ -f yarn.lock ]; then corepack yarn install --immutable;',
-    '  else true; fi',
-    'fi',
+    'if [ -f pnpm-lock.yaml ]; then corepack pnpm install --frozen-lockfile;',
+    'elif [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm ci;',
+    'elif [ -f yarn.lock ]; then corepack yarn install --immutable;',
+    'else true; fi',
   ].join('\n');
   return `sh -lc ${shellQuote(prepare)}`;
 }
@@ -234,6 +233,9 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       {
         tavilyEnabled: ctx.tavily !== undefined,
         ...(ctx.lockfileDiff === undefined ? {} : { lockfileDiff: ctx.lockfileDiff }),
+        ...(ctx.dependencyHints === undefined
+          ? {}
+          : { dependencyHints: ctx.dependencyHints }),
       },
     ),
   );
@@ -384,6 +386,7 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     readSourceContext: ctx.readSourceContext,
     ...(ctx.tavily ? { tavily: ctx.tavily } : {}),
     ...(ctx.lockfileDiff === undefined ? {} : { lockfileDiff: ctx.lockfileDiff }),
+    ...(ctx.dependencyHints === undefined ? {} : { dependencyHints: ctx.dependencyHints }),
     ...(ctx.candidateDiff === undefined ? {} : { candidateDiff: ctx.candidateDiff }),
   });
 }

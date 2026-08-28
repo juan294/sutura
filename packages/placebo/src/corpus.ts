@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,17 @@ const TEST_RUNTIME_ARCHIVES = new Map([
 const KINDS = new Set<CaseKind>(['trap', 'repairable', 'flaky', 'upstream']);
 const EXPECTED = new Set<ExpectedOutcome>(['refused', 'fixed', 'flaky-no-patch', 'fixed-with-grounding']);
 const CLASSES = new Set(['typecheck', 'lint', 'build', 'test-assertion', 'test-bug', 'flaky-timing', 'dep-upstream-breaking', 'env-config', 'infra']);
+const PLACEBO_TEMP_ROOT = join(tmpdir(), 'placebo.noindex');
+
+export async function createPlaceboTemporaryDirectory(prefix: string): Promise<string> {
+  if (!/^[a-z0-9-]+$/iu.test(prefix)) throw new Error('Invalid Placebo temporary prefix');
+  await mkdir(PLACEBO_TEMP_ROOT, { recursive: true, mode: 0o700 });
+  const metadata = await lstat(PLACEBO_TEMP_ROOT);
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+    throw new Error('Placebo temporary root must be a real directory');
+  }
+  return mkdtemp(join(PLACEBO_TEMP_ROOT, prefix));
+}
 
 function parseMetadata(text: string, caseId: string): CaseMetadata {
   const value = JSON.parse(text) as Partial<CaseMetadata>;
@@ -87,7 +98,7 @@ export async function createPortableTestRuntime(storeDirectory?: string): Promis
   const platform = `${process.platform}-${process.arch}`;
   const archive = TEST_RUNTIME_ARCHIVES.get(platform);
   if (!archive) throw new Error(`Placebo has no vendored test runtime for ${platform}`);
-  const directory = await mkdtemp(join(tmpdir(), 'placebo-test-runtime-'));
+  const directory = await createPlaceboTemporaryDirectory('test-runtime-');
   const extraction = await run('tar', ['-xzf', archive, '-C', directory], directory);
   if (extraction.exitCode !== 0) {
     await rm(directory, { recursive: true, force: true });
@@ -163,7 +174,7 @@ export async function selfCheckCorpus(
   const portableRuntime = await createPortableTestRuntime(options.storeDirectory);
   try {
     for (const benchmarkCase of cases) {
-      const temporaryRoot = await mkdtemp(join(tmpdir(), `placebo-check-${benchmarkCase.id}-`));
+      const temporaryRoot = await createPlaceboTemporaryDirectory(`check-${benchmarkCase.id}-`);
       const fixture = join(temporaryRoot, 'fixture');
       try {
         await cp(benchmarkCase.fixtureDirectory, fixture, { recursive: true });
@@ -175,7 +186,7 @@ export async function selfCheckCorpus(
         if (benchmarkCase.metadata.kind === 'flaky') {
           brokenRuns = [];
           for (let index = 0; index < 5; index += 1) {
-            const attemptRoot = await mkdtemp(join(tmpdir(), `placebo-attempt-${benchmarkCase.id}-`));
+            const attemptRoot = await createPlaceboTemporaryDirectory(`attempt-${benchmarkCase.id}-`);
             const attemptFixture = join(attemptRoot, 'fixture');
             try {
               await cp(fixture, attemptFixture, { recursive: true });

@@ -120,6 +120,192 @@ index 1111111..2222222 100644
     });
   });
 
+  it('rejects pass-with-no-tests bypasses before the candidate race', () => {
+    const diff = `diff --git a/package.json b/package.json
+index 1111111..2222222 100644
+--- a/package.json
++++ b/package.json
+@@ -1 +1 @@
+-{"scripts":{"test":"vitest run"}}
++{"scripts":{"test":"vitest run --passWithNoTests"}}
+`;
+
+    expect(vetPatch(diff, diagnosis('test-assertion')).violations).toEqual([
+      'adds pass-with-no-tests bypass',
+    ]);
+  });
+
+  it.each([
+    "vitest run --passWithNo''Tests",
+    'vitest run --passWithNo${UNSET:-}Tests',
+    'P=passWith; vitest run --${P}NoTests',
+    'P=pass; vitest run --${P}WithNoTests',
+    'P=No; vitest run --passWith${P}Tests',
+    'P=With; vitest run --pass${P}NoTests',
+    'P=Tests; vitest run --passWithNo${P}',
+    'A=pass; B=With; C=NoTests; vitest --${A}${B}${C}>result.txt',
+    'A=pass; B=With; C=NoTests; vitest --${A}${B}${C}=true',
+    'A=pass; B=With; C=NoTests; vitest --`printf %s "$A$B$C"`',
+    'A=pass; B=With; C=NoTests; vitest --$(printf %s "$A$B$C")',
+    'A=pass; B=With; C=NoTests; set -- "$A" "$B" "$C"; vitest --$1$2$3',
+    'D=-; A=pass; B=With; C=NoTests; vitest ${D}${D}${A}${B}${C}',
+    'D=-; E=$D; P=pass; A=$P; W=With; B=$W; N=NoTests; C=$N; vitest ${E}${E}${A}${B}${C}',
+    'echo "\'"; D=-; A=pass; B=With; C=NoTests; vitest ${D}${D}${A}${B}${C}',
+    'D=-; E=$D; P=pass; A=$P; W=With; B=$W; N=NoTests; C=$N; vitest ${E}${E}${A}${B}${C}; D=x; P=x; W=x; N=x',
+    'Q="x\\"y"; D=-; A=pass; B=With; C=NoTests; vitest ${D}${D}${A}${B}${C}',
+    'D=-&&true; A=pass&&true; B=With&&true; C=NoTests&&true; vitest ${D}${D}${A}${B}${C}',
+    'D=-; P=pass; W=With; N=NoTests; false&&D=x; false&&P=x; false&&W=x; false&&N=x; E=$D; A=$P; B=$W; C=$N; vitest ${E}${E}${A}${B}${C}',
+    'D=-; P=pass; W=With; N=NoTests; true||D=x; true||P=x; true||W=x; true||N=x; E=$D; A=$P; B=$W; C=$N; vitest ${E}${E}${A}${B}${C}',
+    'D=pass; false&&D=x; vitest --${D}WithNoTests',
+    'D=-; P=pass; W=With; N=NoTests; false&&D=x P=x W=x N=x; E=$D; A=$P; B=$W; C=$N; vitest ${E}${E}${A}${B}${C}',
+    'D=-; P=pass; W=With; N=NoTests; false&&D=x >/dev/null P=x W=x N=x; E=$D; A=$P; B=$W; C=$N; vitest ${E}${E}${A}${B}${C}',
+    'D=-; P=pass; W=With; N=NoTests; true D=x P=x W=x N=x; E=$D; A=$P; B=$W; C=$N; vitest ${E}${E}${A}${B}${C}',
+    '2>/dev/null D=-; 2>/dev/null A=pass; 2>/dev/null B=With; 2>/dev/null C=NoTests; vitest ${D}${D}${A}${B}${C}',
+    'D=-; A=pass; B=With; C=NoTests\ncat >/dev/null <<EOF\nD=x\nA=x\nB=x\nC=x\nEOF\nvitest ${D}${D}${A}${B}${C}',
+    [
+      'D=-; A=pass; B=With; C=NoTests',
+      'cat <\\',
+      '<EOF >/dev/null',
+      'D=x',
+      'A=x',
+      'B=x',
+      'C=x',
+      'EOF',
+      'vitest ${D}${D}${A}${B}${C}',
+    ].join('\n'),
+    'D=-; A=pass; B=With; C=NoTests\n# ; D=x; A=x; B=x; C=x\nvitest ${D}${D}${A}${B}${C}',
+    [
+      'D\\',
+      '=-; A\\',
+      '=pass; B\\',
+      '=With; C\\',
+      '=NoTests; vitest ${D}${D}${A}${B}${C}',
+    ].join('\n'),
+    'D=-; P=pass; W=With; N=NoTests; false&&D=x; false&&P=x; false&&W=x; false&&N=x; O=$D$D$P$W$N; vitest $O',
+    'R=vi; S=test; D=-; P=pass; W=With; N=NoTests; false&&D=x; false&&P=x; false&&W=x; false&&N=x; E=$D; A=$P; B=$W; C=$N; "${R}${S}" ${E}${E}${A}${B}${C}',
+    'R=vi; S=test; A=pass; B=With; C=No; D=Tests; "${R}${S}" run --"${A}${B}${C}${D}"',
+  ])('rejects a shell-composed pass-with-no-tests bypass: %s', (command) => {
+    const diff = `diff --git a/package.json b/package.json
+index 1111111..2222222 100644
+--- a/package.json
++++ b/package.json
+@@ -1 +1 @@
+-{"scripts":{"test":"vitest run"}}
++${JSON.stringify({ scripts: { test: command } })}
+`;
+
+    expect(vetPatch(diff, diagnosis('test-assertion')).violations).toEqual([
+      'adds pass-with-no-tests bypass',
+    ]);
+  });
+
+  it('checks every script property on a partial package hunk line', () => {
+    const command = 'D=-; A=pass; B=With; C=NoTests; vitest ${D}${D}${A}${B}${C}';
+    const diff = `diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -2 +2 @@
+-    "pretest": "echo safe",
++    "pretest": "echo safe", "test.unit": ${JSON.stringify(command)},
+`;
+
+    expect(vetPatch(diff, diagnosis('test-assertion')).violations).toEqual([
+      'adds pass-with-no-tests bypass',
+    ]);
+  });
+
+  it('fails closed when a later partial package property exceeds the scan limit', () => {
+    const safe = Array.from(
+      { length: 128 },
+      (_, index) => `"safe.${index}":"echo safe"`,
+    ).join(',');
+    const diff = `diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -2 +2 @@
+-    "test": "vitest run",
++    ${safe},"test":"vitest run",
+`;
+
+    expect(vetPatch(diff, diagnosis('test-assertion')).violations).toEqual([
+      'adds pass-with-no-tests bypass',
+    ]);
+  });
+
+  it('isolates scripts on separate partial package hunk lines', () => {
+    const diff = `diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -2,2 +2,2 @@
+-    "pretest": "echo safe",
+-    "test": "vitest run",
++    "pretest": "D=-; A=pass; B=With; C=NoTests",
++    "test": "vitest \${D}\${D}\${A}\${B}\${C}",
+`;
+
+    expect(vetPatch(diff, diagnosis('test-assertion')).violations).toEqual([]);
+  });
+
+  it('rejects a passWithNoTests configuration property without a runner name', () => {
+    const diff = `diff --git a/jest.config.js b/jest.config.js
+index 1111111..2222222 100644
+--- a/jest.config.js
++++ b/jest.config.js
+@@ -1 +1 @@
+-export default {};
++export default { passWithNoTests: true };
+`;
+
+    expect(vetPatch(diff, diagnosis('env-config')).violations).toEqual([
+      'adds pass-with-no-tests bypass',
+    ]);
+  });
+
+  it.each([
+    'const message = `Expected ${actual}`;',
+    'echo "$PATH"',
+    'vitest run --reporter=$REPORTER',
+    'false&&DEBUG=1; vitest --reporter=$REPORTER --pool=$POOL',
+    'false&&A=1 B=2 C=3 D=4 E=5 F=6 G=7 H=8; vitest --reporter=dot',
+    "echo '<<EOF'; vitest --reporter=dot",
+    'cat <<< data; vitest --reporter=dot',
+    'X=$((1 << 2)); vitest --reporter=dot',
+    "D=-; A=pass; B=With; C=NoTests; vitest '${D}${D}${A}${B}${C}'",
+    JSON.stringify({
+      scripts: {
+        pretest: 'D=-; A=pass; B=With; C=NoTests',
+        test: 'vitest ${D}${D}${A}${B}${C}',
+      },
+    }),
+    JSON.stringify({ scripts: { test: '# <<EOF\nvitest --reporter=dot' } }),
+  ])('does not treat an unrelated expansion as a test bypass: %s', (line) => {
+    const path = line.startsWith('const ')
+      ? 'src/message.ts'
+      : line.startsWith('{') ? 'package.json' : 'scripts/report.sh';
+    const diff = `diff --git a/${path} b/${path}
+index 1111111..2222222 100644
+--- a/${path}
++++ b/${path}
+@@ -1 +1 @@
+-true
++${line}
+`;
+
+    expect(vetPatch(diff, diagnosis('test-assertion')).violations).toEqual([]);
+  });
+
+  it('does not treat a TypeScript bit shift as a shell heredoc', () => {
+    const diff = `diff --git a/vitest.config.ts b/vitest.config.ts
+--- a/vitest.config.ts
++++ b/vitest.config.ts
+@@ -1 +1 @@
+-const mask = value;
++const mask = value << 2;
+`;
+
+    expect(vetPatch(diff, diagnosis('env-config')).violations).toEqual([]);
+  });
+
   it('cannot hide a test edit behind a quoted path or a safe source edit', () => {
     const quotedTestDiff = `${sourceDiff}diff --git "a/src/foo test.test.ts" "b/src/foo test.test.ts"
 index 1111111..2222222 100644

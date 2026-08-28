@@ -57,12 +57,65 @@ describe('Tavily grounding', () => {
       Authorization: 'Bearer test-key',
       'Content-Type': 'application/json',
     });
-    expect(JSON.parse(init.body)).toEqual({
+    expect(JSON.parse(init.body ?? '')).toEqual({
       query: 'react-dom export changed',
       max_results: 3,
       search_depth: 'basic',
       include_answer: false,
     });
+  });
+
+  it('extracts a bounded official GitHub release citation', async () => {
+    const fetch = vi.fn().mockResolvedValue(response({
+      results: [{
+        url: 'https://github.com/chalk/chalk/releases/tag/v5.0.0',
+        raw_content: '# v5.0.0\nThis package is now ESM.',
+      }],
+      failed_results: [],
+    }));
+    const tavily = new TavilyClient('test-key', { fetch });
+
+    await expect(tavily.extract(
+      ['https://github.com/chalk/chalk/releases/tag/v5.0.0'],
+      'chalk 5.0.0 breaking changes',
+    )).resolves.toEqual([{
+      title: 'GitHub release: v5.0.0',
+      url: 'https://github.com/chalk/chalk/releases/tag/v5.0.0',
+      snippet: '# v5.0.0\nThis package is now ESM.',
+    }]);
+    expect(JSON.parse((fetch.mock.calls[0]?.[1] as TavilyHttpRequestInit).body ?? '')).toMatchObject({
+      urls: ['https://github.com/chalk/chalk/releases/tag/v5.0.0'],
+      query: 'chalk 5.0.0 breaking changes',
+      chunks_per_source: 3,
+    });
+  });
+
+  it('resolves GitHub ownership from exact npm registry metadata', async () => {
+    const fetch = vi.fn().mockResolvedValue(response({
+      name: '@scope/widget',
+      version: '2.4.0',
+      repository: { type: 'git', url: 'git+https://github.com/acme/widget.git' },
+    }));
+    const tavily = new TavilyClient('test-key', { fetch });
+
+    await expect(tavily.packageRepository('@scope/widget', '2.4.0')).resolves.toBe(
+      'https://github.com/acme/widget',
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      'https://registry.npmjs.org/%40scope%2Fwidget/2.4.0',
+      { method: 'GET', headers: { Accept: 'application/json' } },
+    );
+  });
+
+  it('rejects registry metadata for a different package identity', async () => {
+    const fetch = vi.fn().mockResolvedValue(response({
+      name: 'widget',
+      version: '2.4.0',
+      repository: 'https://github.com/attacker/widget',
+    }));
+    const tavily = new TavilyClient('test-key', { fetch });
+
+    await expect(tavily.packageRepository('@scope/widget', '2.4.0')).resolves.toBeNull();
   });
 
   it('includes lockfile-derived package versions in the grounding query', async () => {
@@ -88,6 +141,73 @@ describe('Tavily grounding', () => {
     expect(query).toContain('react-dom@19.1.0');
     expect(query).toContain('scheduler@0.26.0');
     expect(result).toMatchObject({ query, skipped: false, citations: [citation] });
+  });
+
+  it('uses exact dependency hints and extracts a matching official release', async () => {
+    const search = vi.fn().mockResolvedValue([{
+      title: 'Unrelated same-name repository',
+      url: 'https://github.com/attacker/chalk/issues/1',
+      snippet: 'Untrusted search result.',
+    }]);
+    const packageRepository = vi.fn().mockResolvedValue('https://github.com/chalk/chalk');
+    const extract = vi.fn().mockResolvedValue([{
+      title: 'GitHub release: v5.0.0',
+      url: 'https://github.com/chalk/chalk/releases/tag/v5.0.0',
+      snippet: 'Chalk v5.0.0 is now ESM.',
+    }]);
+
+    const result = await ground(
+      { search, extract, packageRepository },
+      { ...BUILD_DIAGNOSIS, errorExcerpt: 'TypeError: chalk.green is not a function' },
+      { tavilyEnabled: true, dependencyHints: ['chalk@5.0.0', 'invalid hint'] },
+    );
+
+    expect(result.query).toMatch(/^chalk@5\.0\.0 /u);
+    expect(search).toHaveBeenCalledOnce();
+    expect(packageRepository).toHaveBeenCalledWith('chalk', '5.0.0');
+    expect(extract).toHaveBeenCalledWith(
+      ['https://github.com/chalk/chalk/releases/tag/v5.0.0'],
+      'chalk 5.0.0 breaking changes migration',
+    );
+    expect(result.citations).toContainEqual(expect.objectContaining({
+      url: 'https://github.com/chalk/chalk/releases/tag/v5.0.0',
+    }));
+  });
+
+  it('keeps primary citations when optional release extraction fails', async () => {
+    const citation = {
+      title: 'Chalk migration discussion',
+      url: 'https://github.com/chalk/chalk/issues/532',
+      snippet: 'Chalk became ESM.',
+    };
+    const search = vi.fn().mockResolvedValue([citation]);
+
+    await expect(ground(
+      {
+        search,
+        extract: vi.fn(),
+        packageRepository: vi.fn().mockRejectedValue(new Error('registry unavailable')),
+      },
+      { ...BUILD_DIAGNOSIS, errorExcerpt: 'TypeError: chalk.green is not a function' },
+      { tavilyEnabled: true, dependencyHints: ['chalk@5.0.0'] },
+    )).resolves.toMatchObject({ citations: [citation], skipped: false });
+    expect(search).toHaveBeenCalledOnce();
+  });
+
+  it('does not enrich an unrelated dependency on a substring match', async () => {
+    const search = vi.fn().mockResolvedValue([]);
+    const packageRepository = vi.fn();
+    const extract = vi.fn();
+
+    await ground(
+      { search, packageRepository, extract },
+      { ...BUILD_DIAGNOSIS, errorExcerpt: 'The build forgot to emit an artifact' },
+      { tavilyEnabled: true, dependencyHints: ['got@12.0.0', 'chalk@5.0.0'] },
+    );
+
+    expect(search).toHaveBeenCalledOnce();
+    expect(packageRepository).not.toHaveBeenCalled();
+    expect(extract).not.toHaveBeenCalled();
   });
 
   it('pairs pnpm importer names with version bounds without leaking lockfile fields', async () => {
