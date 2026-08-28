@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 - 2026-08-28
+
+- Use a unique GitHub Marketplace name for the public Action.
+
 ## 0.1.0 - 2026-08-28
 
 - Verify failed GitHub Actions runs with isolated reproduction and repair races.
