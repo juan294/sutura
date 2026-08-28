@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process';
 
+import { MAX_STAGE_EVIDENCE_ENTRIES } from '@sutura/core';
+
 import type { Adapter, AdapterContext, CaseFile } from './types.js';
 
 interface ExecutionResult { stdout: string; stderr: string; exitCode: number; failure?: string }
@@ -124,7 +126,9 @@ function validPolicyEvidence(value: unknown): boolean {
 }
 
 function validStages(value: unknown): boolean {
-  return Array.isArray(value) && value.length <= 100 && value.every((entry) => {
+  return Array.isArray(value) &&
+    value.length <= MAX_STAGE_EVIDENCE_ENTRIES &&
+    value.every((entry) => {
     const stage = record(entry);
     const metrics = record(stage?.metrics);
     return Boolean(stage && metrics &&

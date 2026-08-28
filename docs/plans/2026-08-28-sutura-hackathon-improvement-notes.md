@@ -46,3 +46,17 @@
 - Found: Existing callers require `text: string` and are outside the Phase 2 file boundary.
 - Chose: Keep `text` as a string and return an empty string for a valid tool-only response. Preserve provider `content: null` in `raw` and return parsed calls in `toolCalls`.
 - Why: This preserves all text-only caller types while retaining the exact provider content state for tool-aware callers.
+
+### Phase 3: Additional compatibility files
+
+- Plan said: Modify the listed core, action, CLI, and report files for repository policy and stage evidence.
+- Found: Pull-request base ref and SHA originate in `packages/action/src/octokit.ts`; terminal case files are built in `packages/cli/src/cli.ts`; and Placebo adapters construct and validate `CaseFile` values.
+- Chose: Update those files and their matching tests in addition to the Phase 3 file list.
+- Why: Exact-base policy binding and the stage-ledger contract cannot remain type-safe or executable if any constructor drops the new evidence.
+
+### Phase 3: Default policy and required-command grammar
+
+- Plan said: Use safe defaults when `.sutura.json` is absent and reject unsafe required commands, but did not define either contract completely.
+- Found: Resource comparisons need a named required command, and accepting shell metacharacters would let repository policy create a second command language.
+- Chose: Default to `allowedPaths: ["**"]`, protected `.sutura.json`, no denied reads or required commands, 65,536 diff bytes, and eight changed files. Accept only bounded space-separated command text made from alphanumeric characters and `@%_./:=+,-`; reject repeated whitespace and require at least one command when resource thresholds exist.
+- Why: The defaults preserve current repositories while policy commands remain a small enumerated input that cannot add shell control operators.

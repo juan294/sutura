@@ -16,7 +16,7 @@ export interface LoadedRepositoryPolicy {
   source: 'default' | 'repository';
 }
 
-function cloneDefaultPolicy(): RepositoryPolicy {
+export function createDefaultRepositoryPolicy(): RepositoryPolicy {
   return {
     ...DEFAULT_REPOSITORY_POLICY,
     allowedPaths: [...DEFAULT_REPOSITORY_POLICY.allowedPaths],
@@ -29,7 +29,11 @@ function cloneDefaultPolicy(): RepositoryPolicy {
 
 export function loadRepositoryPolicy(content: string | null): LoadedRepositoryPolicy {
   if (content === null) {
-    return { policy: cloneDefaultPolicy(), sha: 'default', source: 'default' };
+    return {
+      policy: createDefaultRepositoryPolicy(),
+      sha: 'default',
+      source: 'default',
+    };
   }
   const bytes = Buffer.byteLength(content, 'utf8');
   if (bytes > MAX_POLICY_BYTES) {

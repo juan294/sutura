@@ -1,3 +1,5 @@
+import type { RunMetrics } from './executor/types.js';
+
 export type FailureClass =
   | 'typecheck'
   | 'lint'
@@ -120,4 +122,3 @@ export interface CaseFile {
   policy: PolicyEvidence;
   stages: StageEvidence[];
 }
-import type { RunMetrics } from './executor/types.js';

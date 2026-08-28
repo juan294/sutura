@@ -12,7 +12,6 @@ import {
   loadConfig,
   loadRepositoryPolicy,
   MAX_POLICY_BYTES,
-  policyAllowsSourceRead,
   readRepairSourceContext,
   type CaseFile,
   type ConfigEnvironment,
@@ -191,11 +190,7 @@ export async function readLocalSourceContext(
       ): Promise<RepositorySourceExcerpt[]> {
         if (checkoutDir !== root) throw new CliConfigError('Source checkout changed during heal');
         const excerpts = await Promise.all(
-          references
-            .filter((reference) =>
-              policy === undefined || policyAllowsSourceRead(reference.path, policy),
-            )
-            .map((reference) => readBoundedSource(root, reference, limits)),
+          references.map((reference) => readBoundedSource(root, reference, limits)),
         );
         return excerpts.filter((source): source is RepositorySourceExcerpt => source !== null);
       },

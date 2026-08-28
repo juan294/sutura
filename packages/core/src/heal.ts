@@ -42,10 +42,8 @@ import {
   evaluateResourceThresholds,
   filterPolicyDeniedText,
 } from './policy/evaluate.js';
-import {
-  DEFAULT_REPOSITORY_POLICY,
-  type RepositoryPolicy,
-} from './policy/schema.js';
+import { createDefaultRepositoryPolicy } from './policy/load.js';
+import type { RepositoryPolicy } from './policy/schema.js';
 import { boundedTail } from './text/bounded-tail.js';
 
 export const SUTURA_DEFAULT_IMAGE_REF = 'node:22';
@@ -158,14 +156,7 @@ export class StageLedger {
 }
 
 function policyFor(ctx: Pick<RepairFailureContext, 'policy'>): RepositoryPolicy {
-  return ctx.policy ?? {
-    ...DEFAULT_REPOSITORY_POLICY,
-    allowedPaths: [...DEFAULT_REPOSITORY_POLICY.allowedPaths],
-    protectedPaths: [...DEFAULT_REPOSITORY_POLICY.protectedPaths],
-    deniedReadPaths: [...DEFAULT_REPOSITORY_POLICY.deniedReadPaths],
-    requiredCommands: [...DEFAULT_REPOSITORY_POLICY.requiredCommands],
-    resourceLimits: { ...DEFAULT_REPOSITORY_POLICY.resourceLimits },
-  };
+  return ctx.policy ?? createDefaultRepositoryPolicy();
 }
 
 function policyEvidenceFor(
@@ -428,11 +419,15 @@ function withGrounding(
   return { ...diagnosis, grounding };
 }
 
-function vettedRaceResult(candidate: Candidate, violations: readonly string[]): RaceResult {
+function vettedRaceResult(
+  candidate: Candidate,
+  violations: readonly string[],
+  nodeId: string,
+): RaceResult {
   return {
     candidate,
-    imageId: 'not-run',
-    nodeId: 'not-run',
+    imageId: nodeId,
+    nodeId,
     exitCode: 1,
     held: false,
     note: `Patch vet refused: ${violations.join('; ')}`,
@@ -636,11 +631,7 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
         fullContext,
         diagnosis,
         triageVerdict,
-        [{
-          ...vettedRaceResult(suppliedCandidate, verdict.violations),
-          imageId: nodeId,
-          nodeId,
-        }],
+        [vettedRaceResult(suppliedCandidate, verdict.violations, nodeId)],
         'refused',
         {
           approved: false,
@@ -667,11 +658,10 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
         network: 'disabled',
         note: `Candidate refused before execution: ${verdict.violations.join('; ')}`,
       });
-      refusedCandidates.set(candidate.id, {
-        ...vettedRaceResult(candidate, verdict.violations),
-        imageId: nodeId,
-        nodeId,
-      });
+      refusedCandidates.set(
+        candidate.id,
+        vettedRaceResult(candidate, verdict.violations, nodeId),
+      );
     }
   }
 
