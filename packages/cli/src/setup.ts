@@ -52,7 +52,11 @@ concurrency:
 
 jobs:
   repair:
-    if: \${{ github.event.workflow_run.conclusion == 'failure' }}
+    if: >-
+      \${{
+        github.event.workflow_run.conclusion == 'failure' ||
+        github.event.workflow_run.conclusion == 'timed_out'
+      }}
     runs-on: ubuntu-latest
     steps:
       - name: Verify and repair failed CI

@@ -45,10 +45,10 @@ try {
   }
   run(binary, ['init', '--workflow', 'CI'], { cwd: consumer, env: environment });
   const workflow = readFileSync(join(consumer, '.github', 'workflows', 'sutura.yml'), 'utf8');
-  if (!workflow.includes('uses: juan294/sutura@v0.1.0')) {
+  if (!workflow.includes('uses: juan294/sutura@v0.1.1')) {
     throw new Error('installed CLI generated the wrong Action release reference');
   }
-  if (run(binary, ['--version'], { cwd: consumer }).trim() !== '0.1.0') {
+  if (run(binary, ['--version'], { cwd: consumer }).trim() !== '0.1.1') {
     throw new Error('installed CLI returned the wrong version');
   }
   const manifest = JSON.parse(readFileSync(join(consumer, 'node_modules', 'sutura', 'package.json'), 'utf8'));

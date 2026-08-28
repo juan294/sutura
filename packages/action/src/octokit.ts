@@ -36,6 +36,7 @@ export function createGitHubApi(
         repository: data.repository.full_name,
         event: data.event,
         conclusion: data.conclusion,
+        headBranch: data.head_branch,
         pullRequests: (data.pull_requests ?? []).map(({ number }) => ({ number })),
       };
     },
@@ -97,6 +98,18 @@ export function createGitHubApi(
       }));
     },
 
+    async listCommitComments(sha) {
+      const comments = await octokit.paginate(
+        octokit.rest.repos.listCommentsForCommit,
+        { owner, repo, commit_sha: sha, per_page: 100 },
+      );
+      return comments.map(({ id, body, user }) => ({
+        id,
+        body: body ?? null,
+        authorLogin: user?.login ?? null,
+      }));
+    },
+
     async createRef(ref, sha) {
       await octokit.rest.git.createRef({ owner, repo, ref, sha });
     },
@@ -115,8 +128,27 @@ export function createGitHubApi(
       return { id: data.id };
     },
 
+    async createCommitComment(sha, body) {
+      const { data } = await octokit.rest.repos.createCommitComment({
+        owner,
+        repo,
+        commit_sha: sha,
+        body,
+      });
+      return { id: data.id };
+    },
+
     async updateIssueComment(commentId, body) {
       await octokit.rest.issues.updateComment({
+        owner,
+        repo,
+        comment_id: commentId,
+        body,
+      });
+    },
+
+    async updateCommitComment(commentId, body) {
+      await octokit.rest.repos.updateCommitComment({
         owner,
         repo,
         comment_id: commentId,
