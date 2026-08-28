@@ -35,10 +35,13 @@ function api(overrides: Partial<GitHubApi> = {}): GitHubApi {
       ...Array.from({ length: 205 }, (_, index) => `2026-01-01T00:00:12Z test-${index}`),
     ].join('\n'),
     listIssueComments: async () => [],
+    listCommitComments: async () => [],
     createRef: async () => undefined,
     deleteRef: async () => undefined,
     createIssueComment: async () => ({ id: 44 }),
+    createCommitComment: async () => ({ id: 44 }),
     updateIssueComment: async () => undefined,
+    updateCommitComment: async () => undefined,
     getRefSha: async () => SHA,
     getCommitParents: async () => [SHA],
     createPullRequest: async () => ({ number: 10, url: 'https://example.test/pr/10' }),
@@ -52,7 +55,7 @@ describe('GitHubAdapter', () => {
 
     const run = await adapter.getFailingRun('77');
 
-    expect(run).toMatchObject({ runId: '77', repo: 'owner/repo', prNumber: 9, prHeadSha: SHA, prHeadRef: 'feature' });
+    expect(run).toMatchObject({ runId: '77', repo: 'owner/repo', prNumber: 9, headSha: SHA, headRef: 'feature' });
     expect(run.failedSteps).toHaveLength(1);
     expect(run.failedSteps[0]?.log.split('\n')).toHaveLength(200);
     expect(run.failedSteps[0]?.log).not.toContain('install');
@@ -128,36 +131,110 @@ describe('GitHubAdapter', () => {
 
     await expect(adapter.getFailingRun('77')).resolves.toMatchObject({
       prNumber: 12,
-      prHeadSha: SHA,
-      prHeadRef: 'demo/break-me',
+      headSha: SHA,
+      headRef: 'demo/break-me',
     });
     expect(fallbackSha).toBe(SHA);
-    await expect(adapter.claimAttempt(12, '<!-- marker -->')).resolves.toBe('44');
+    await expect(adapter.claimAttempt(12, '<!-- marker -->')).resolves.toEqual({
+      kind: 'pull-request',
+      commentId: 44,
+    });
   });
 
-  it.each(['push', 'schedule'])('refuses a %s workflow run', async (event) => {
-    const refused = api({
+  it.each(['push', 'schedule', 'workflow_dispatch'])('repairs a failed %s run from its exact branch', async (event) => {
+    const calls: string[] = [];
+    const direct = api({
       getWorkflowRun: async () => ({
         id: 77,
         headSha: SHA,
         repository: 'owner/repo',
         event,
         conclusion: 'failure',
+        headBranch: 'develop',
         pullRequests: [],
       }),
+      listCommitComments: async () => {
+        calls.push('commit-comments');
+        return [];
+      },
+      createRef: async (ref) => { calls.push(`ref:${ref}`); },
+      createCommitComment: async (_sha, body) => {
+        calls.push(`commit-comment:${body}`);
+        return { id: 44 };
+      },
+      deleteRef: async (ref) => { calls.push(`delete:${ref}`); },
+      updateCommitComment: async (id, body) => { calls.push(`update:${id}:${body}`); },
     });
-    const adapter = new GitHubAdapter(refused, {
+    const adapter = new GitHubAdapter(direct, {
       owner: 'owner',
       repo: 'repo',
       runId: '77',
     });
 
-    await expect(adapter.getFailingRun('77')).rejects.toThrowError(
-      /workflow run metadata/i,
-    );
-    await expect(adapter.claimAttempt(9, '<!-- marker -->')).rejects.toThrowError(
-      /workflow run metadata/i,
-    );
+    await expect(adapter.getFailingRun('77')).resolves.toMatchObject({
+      runId: '77',
+      repo: 'owner/repo',
+      headSha: SHA,
+      headRef: 'develop',
+    });
+    await expect(adapter.claimAttempt(undefined, '<!-- marker -->')).resolves.toEqual({
+      kind: 'commit',
+      commentId: 44,
+    });
+    await expect(adapter.updateAttempt(
+      { kind: 'commit', commentId: 44 },
+      'report',
+    )).resolves.toBeUndefined();
+    expect(calls).toEqual([
+      'commit-comments',
+      'ref:refs/tags/sutura-attempt-77',
+      'commit-comment:<!-- marker -->\nSutura claimed this failed run and is starting analysis.',
+      'delete:tags/sutura-attempt-77',
+      'update:44:report',
+    ]);
+  });
+
+  it('fails closed when a direct run has no valid head branch', async () => {
+    const direct = api({
+      getWorkflowRun: async () => ({
+        id: 77,
+        headSha: SHA,
+        repository: 'owner/repo',
+        event: 'push',
+        conclusion: 'failure',
+        headBranch: null,
+        pullRequests: [],
+      }),
+    });
+    const adapter = new GitHubAdapter(direct, {
+      owner: 'owner',
+      repo: 'repo',
+      runId: '77',
+    });
+
+    await expect(adapter.getFailingRun('77')).rejects.toThrowError(/head branch/i);
+  });
+
+  it('fails closed when a direct run branch advances beyond the failing SHA', async () => {
+    const direct = api({
+      getWorkflowRun: async () => ({
+        id: 77,
+        headSha: SHA,
+        repository: 'owner/repo',
+        event: 'push',
+        conclusion: 'failure',
+        headBranch: 'develop',
+        pullRequests: [],
+      }),
+      getRefSha: async () => 'b'.repeat(40),
+    });
+    const adapter = new GitHubAdapter(direct, {
+      owner: 'owner',
+      repo: 'repo',
+      runId: '77',
+    });
+
+    await expect(adapter.getFailingRun('77')).rejects.toThrowError(/no longer matches/i);
   });
 
   it('claims once with an atomic ref before creating the marker comment', async () => {
@@ -168,7 +245,10 @@ describe('GitHubAdapter', () => {
       deleteRef: async (ref) => { calls.push(`delete:${ref}`); },
     }), { owner: 'owner', repo: 'repo', runId: '77' });
 
-    await expect(adapter.claimAttempt(9, '<!-- marker -->')).resolves.toBe('44');
+    await expect(adapter.claimAttempt(9, '<!-- marker -->')).resolves.toEqual({
+      kind: 'pull-request',
+      commentId: 44,
+    });
     expect(calls).toEqual([
       'ref:refs/tags/sutura-attempt-77',
       'comment:<!-- marker -->\nSutura claimed this failed run and is starting analysis.',
@@ -201,7 +281,10 @@ describe('GitHubAdapter', () => {
       createRef: async () => { claimed = true; },
     }), { owner: 'owner', repo: 'repo', runId: '77' });
 
-    await expect(adapter.claimAttempt(9, '<!-- marker -->')).resolves.toBe('44');
+    await expect(adapter.claimAttempt(9, '<!-- marker -->')).resolves.toEqual({
+      kind: 'pull-request',
+      commentId: 44,
+    });
     expect(claimed).toBe(true);
   });
 

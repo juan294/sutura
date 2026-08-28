@@ -13,7 +13,7 @@ describe('doctorSutura', () => {
       await mkdir(join(directory, '.github', 'workflows'), { recursive: true });
       await writeFile(
         join(directory, '.github', 'workflows', 'sutura.yml'),
-        'uses: juan294/sutura@v0.1.0\nnebius-api-key: ${{ secrets.NEBIUS_API_KEY }}\n',
+        'uses: juan294/sutura@v0.1.1\nnebius-api-key: ${{ secrets.NEBIUS_API_KEY }}\n',
       );
       const run = vi.fn(async (_command: string, args: readonly string[]) => {
         if (args[0] === 'secret') return 'NEBIUS_API_KEY\nCONTREE_TOKEN\nTAVILY_API_KEY\n';
@@ -37,7 +37,7 @@ describe('doctorSutura', () => {
     const directory = await mkdtemp(join(tmpdir(), 'sutura-doctor-missing-'));
     try {
       await mkdir(join(directory, '.github', 'workflows'), { recursive: true });
-      await writeFile(join(directory, '.github', 'workflows', 'sutura.yml'), 'uses: juan294/sutura@v0.1.0\n');
+      await writeFile(join(directory, '.github', 'workflows', 'sutura.yml'), 'uses: juan294/sutura@v0.1.1\n');
       const run = vi.fn(async (_command: string, args: readonly string[]) => {
         if (args[0] === 'repo') return 'octo/example\n';
         return '';

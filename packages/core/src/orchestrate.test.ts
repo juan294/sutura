@@ -20,6 +20,7 @@ import {
   extractSourceReferences,
   orchestrate,
   readRepairSourceContext,
+  type AttemptTarget,
   type FailingWorkflowRun,
   type GitHubOrchestrationPort,
   type OrchestrationContext,
@@ -48,8 +49,8 @@ const RUN: FailingWorkflowRun = {
   runId: '98765',
   repo: 'acme/widget',
   prNumber: 42,
-  prHeadSha: '0123456789abcdef0123456789abcdef01234567',
-  prHeadRef: 'feature/broken-build',
+  headSha: '0123456789abcdef0123456789abcdef01234567',
+  headRef: 'feature/broken-build',
   failedSteps: [
     {
       jobName: 'test',
@@ -60,7 +61,7 @@ const RUN: FailingWorkflowRun = {
 };
 
 class FakeGitHub implements GitHubOrchestrationPort {
-  readonly comments: Array<{ id: string; prNumber: number; body: string }> = [];
+  readonly comments: Array<{ id: number; prNumber: number | undefined; body: string }> = [];
   readonly pullRequests: Array<{
     baseRef: string;
     branch: string;
@@ -77,18 +78,24 @@ class FakeGitHub implements GitHubOrchestrationPort {
     return this.run;
   }
 
-  async claimAttempt(prNumber: number, marker: string): Promise<string | null> {
+  async claimAttempt(
+    prNumber: number | undefined,
+    marker: string,
+  ): Promise<AttemptTarget | null> {
     if (this.comments.some(
       (comment) => comment.prNumber === prNumber && comment.body.includes(marker),
     )) return null;
-    const id = `comment-${this.comments.length + 1}`;
+    const id = this.comments.length + 1;
     this.comments.push({ id, prNumber, body: marker });
-    return id;
+    return {
+      kind: prNumber === undefined ? 'commit' : 'pull-request',
+      commentId: id,
+    };
   }
 
-  async updateAttempt(commentId: string, body: string): Promise<void> {
-    const comment = this.comments.find(({ id }) => id === commentId);
-    if (!comment) throw new Error(`Unknown comment ${commentId}`);
+  async updateAttempt(target: AttemptTarget, body: string): Promise<void> {
+    const comment = this.comments.find(({ id }) => id === target.commentId);
+    if (!comment) throw new Error(`Unknown comment ${String(target.commentId)}`);
     comment.body = body;
   }
 
@@ -288,14 +295,14 @@ describe('orchestrate', () => {
 
     expect(caseFile.outcome).toBe('fixed');
     expect(repository.checkouts).toEqual([
-      { repo: RUN.repo, sha: RUN.prHeadSha },
+      { repo: RUN.repo, sha: RUN.headSha },
     ]);
     expect(repository.fixes).toEqual([
       expect.objectContaining({
         branch: 'sutura/fix-98765',
         checkoutDir: '/tmp/exact-pr-head',
         diff: HONEST_DIFF,
-        headSha: RUN.prHeadSha,
+        headSha: RUN.headSha,
         message: expect.stringMatching(
           /^fix: repair CI failure with Sutura[\s\S]*Co-Authored-By:/,
         ),
@@ -303,9 +310,9 @@ describe('orchestrate', () => {
     ]);
     expect(github.pullRequests).toEqual([
       expect.objectContaining({
-        baseRef: RUN.prHeadRef,
+        baseRef: RUN.headRef,
         branch: 'sutura/fix-98765',
-        headSha: RUN.prHeadSha,
+        headSha: RUN.headSha,
       }),
     ]);
     expect(github.comments).toHaveLength(1);
@@ -318,6 +325,37 @@ describe('orchestrate', () => {
       'ultra',
     ]);
     expect(runCalls(executor)).toHaveLength(8);
+  });
+
+  it('opens a fix PR against the exact branch for a direct push failure', async () => {
+    const directRun: FailingWorkflowRun = {
+      runId: RUN.runId,
+      repo: RUN.repo,
+      headSha: RUN.headSha,
+      headRef: 'develop',
+      failedSteps: RUN.failedSteps,
+    };
+    const { ctx, github, repository } = context(
+      [1, 1, 1, 0, 1, 1, 0],
+      true,
+      directRun,
+    );
+    const checkout = vi.spyOn(repository, 'checkoutHead');
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(caseFile.outcome).toBe('fixed');
+    expect(checkout).toHaveBeenCalledWith(
+      directRun.repo,
+      directRun.headSha,
+      directRun.headRef,
+      undefined,
+    );
+    expect(github.comments[0]?.prNumber).toBeUndefined();
+    expect(github.pullRequests[0]).toEqual(expect.objectContaining({
+      baseRef: 'develop',
+      headSha: directRun.headSha,
+    }));
   });
 
   it('publishes the same smallest held candidate that the audit approved', async () => {
@@ -462,7 +500,7 @@ describe('orchestrate', () => {
     await expect(orchestrate(ctx)).rejects.toThrow('checkout failed');
     expect(github.comments).toEqual([
       {
-        id: 'comment-1',
+        id: 1,
         prNumber: RUN.prNumber,
         body: attemptMarker(RUN.runId),
       },

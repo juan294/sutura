@@ -3,13 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type {
+  AttemptTarget,
   CreateFixPullRequestInput,
   FailingWorkflowRun,
   GitHubOrchestrationPort,
 } from '@sutura/core';
 
 const FAILED_CONCLUSIONS = new Set(['failure', 'timed_out']);
-const ALLOWED_RUN_EVENTS = new Set(['pull_request', 'workflow_dispatch']);
 const FAILED_STEP_LINES = 200;
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -21,6 +21,7 @@ export interface WorkflowRunRecord {
   repository: string;
   event: string;
   conclusion: string | null;
+  headBranch?: string | null;
   pullRequests: Array<{ number: number }>;
 }
 
@@ -56,10 +57,17 @@ export interface GitHubApi {
     body: string | null;
     authorLogin: string | null;
   }>>;
+  listCommitComments(sha: string): Promise<Array<{
+    id: number;
+    body: string | null;
+    authorLogin: string | null;
+  }>>;
   createRef(ref: string, sha: string): Promise<void>;
   deleteRef(ref: string): Promise<void>;
   createIssueComment(issueNumber: number, body: string): Promise<{ id: number }>;
+  createCommitComment(sha: string, body: string): Promise<{ id: number }>;
   updateIssueComment(commentId: number, body: string): Promise<void>;
+  updateCommitComment(commentId: number, body: string): Promise<void>;
   getRefSha(ref: string): Promise<string>;
   getCommitParents(sha: string): Promise<string[]>;
   createPullRequest(input: {
@@ -181,32 +189,55 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
     if (
       workflowRun.id !== numericRunId ||
       workflowRun.repository.toLowerCase() !== this.repository.toLowerCase() ||
-      !ALLOWED_RUN_EVENTS.has(workflowRun.event) ||
-      workflowRun.conclusion !== 'failure' ||
+      !FAILED_CONCLUSIONS.has(workflowRun.conclusion ?? '') ||
       !SHA_PATTERN.test(workflowRun.headSha)
     ) {
       throw new GitHubAdapterError('Workflow run metadata does not match the action event');
     }
 
-    const candidates = workflowRun.pullRequests.length > 0
-      ? workflowRun.pullRequests
-      : await this.api.listPullRequestsForCommit(workflowRun.headSha);
-    const unique = [...new Set(candidates.map(({ number }) => number))];
-    if (unique.length !== 1 || !Number.isSafeInteger(unique[0]) || (unique[0] ?? 0) <= 0) {
-      throw new GitHubAdapterError('Could not resolve one pull request for the failing SHA');
+    let prNumber: number | undefined;
+    let headRef: string | undefined;
+    if (workflowRun.event === 'pull_request' || workflowRun.event === 'workflow_dispatch') {
+      const candidates = workflowRun.pullRequests.length > 0
+        ? workflowRun.pullRequests
+        : await this.api.listPullRequestsForCommit(workflowRun.headSha);
+      const unique = [...new Set(candidates.map(({ number }) => number))];
+      if (
+        workflowRun.event === 'pull_request' &&
+        (unique.length !== 1 || !Number.isSafeInteger(unique[0]) || (unique[0] ?? 0) <= 0)
+      ) {
+        throw new GitHubAdapterError('Could not resolve one pull request for the failing SHA');
+      }
+      if (unique.length === 1 && Number.isSafeInteger(unique[0]) && (unique[0] ?? 0) > 0) {
+        const pullRequest = await this.api.getPullRequest(unique[0] as number);
+        if (pullRequest.number !== unique[0]) {
+          throw new GitHubAdapterError('GitHub returned a different pull request');
+        }
+        if (pullRequest.headSha.toLowerCase() !== workflowRun.headSha.toLowerCase()) {
+          throw new GitHubAdapterError('Pull request head no longer matches the failing SHA');
+        }
+        if (pullRequest.headRepo?.toLowerCase() !== this.repository.toLowerCase()) {
+          throw new GitHubAdapterError('Sutura fails closed for fork pull requests');
+        }
+        if (!validBranch(pullRequest.headRef)) {
+          throw new GitHubAdapterError('Pull request head branch is invalid');
+        }
+        prNumber = pullRequest.number;
+        headRef = pullRequest.headRef;
+      }
     }
-    const pullRequest = await this.api.getPullRequest(unique[0] as number);
-    if (pullRequest.number !== unique[0]) {
-      throw new GitHubAdapterError('GitHub returned a different pull request');
-    }
-    if (pullRequest.headSha.toLowerCase() !== workflowRun.headSha.toLowerCase()) {
-      throw new GitHubAdapterError('Pull request head no longer matches the failing SHA');
-    }
-    if (pullRequest.headRepo?.toLowerCase() !== this.repository.toLowerCase()) {
-      throw new GitHubAdapterError('Sutura fails closed for fork pull requests');
-    }
-    if (!validBranch(pullRequest.headRef)) {
-      throw new GitHubAdapterError('Pull request head branch is invalid');
+    if (headRef === undefined) {
+      if (!workflowRun.headBranch || !validBranch(workflowRun.headBranch)) {
+        throw new GitHubAdapterError('Workflow run head branch is invalid');
+      }
+      const branchTip = await this.api.getRefSha(`heads/${workflowRun.headBranch}`);
+      if (
+        !SHA_PATTERN.test(branchTip) ||
+        branchTip.toLowerCase() !== workflowRun.headSha.toLowerCase()
+      ) {
+        throw new GitHubAdapterError('Workflow run head branch no longer matches the failing SHA');
+      }
+      headRef = workflowRun.headBranch;
     }
 
     const jobs = await this.api.listJobsForWorkflowRun(numericRunId);
@@ -231,32 +262,36 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
     return {
       runId,
       repo: this.repository,
-      prNumber: pullRequest.number,
-      prHeadSha: workflowRun.headSha,
-      prHeadRef: pullRequest.headRef,
+      ...(prNumber === undefined ? {} : { prNumber }),
+      headSha: workflowRun.headSha,
+      headRef,
       failedSteps,
     };
   }
 
-  async claimAttempt(prNumber: number, marker: string): Promise<string | null> {
-    const comments = await this.api.listIssueComments(prNumber);
+  async claimAttempt(
+    prNumber: number | undefined,
+    marker: string,
+  ): Promise<AttemptTarget | null> {
+    const numericRunId = integerId(this.options.runId, 'Workflow run id');
+    const run = await this.api.getWorkflowRun(numericRunId);
+    if (
+      run.id !== numericRunId ||
+      run.repository.toLowerCase() !== this.repository.toLowerCase() ||
+      !FAILED_CONCLUSIONS.has(run.conclusion ?? '') ||
+      !SHA_PATTERN.test(run.headSha)
+    ) {
+      throw new GitHubAdapterError('Workflow run metadata changed before claim');
+    }
+    const comments = prNumber === undefined
+      ? await this.api.listCommitComments(run.headSha)
+      : await this.api.listIssueComments(prNumber);
     if (
       comments.some(
         ({ body, authorLogin }) =>
           authorLogin === 'github-actions[bot]' && body?.includes(marker),
       )
     ) return null;
-    const numericRunId = integerId(this.options.runId, 'Workflow run id');
-    const run = await this.api.getWorkflowRun(numericRunId);
-    if (
-      run.id !== numericRunId ||
-      run.repository.toLowerCase() !== this.repository.toLowerCase() ||
-      !ALLOWED_RUN_EVENTS.has(run.event) ||
-      run.conclusion !== 'failure' ||
-      !SHA_PATTERN.test(run.headSha)
-    ) {
-      throw new GitHubAdapterError('Workflow run metadata changed before claim');
-    }
     try {
       await this.api.createRef(
         `refs/tags/sutura-attempt-${this.options.runId}`,
@@ -266,16 +301,23 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
       if (apiStatus(error) === 422) return null;
       throw new GitHubAdapterError('Could not claim the workflow run atomically', { cause: error });
     }
-    const comment = await this.api.createIssueComment(
-      prNumber,
-      `${marker}\nSutura claimed this failed run and is starting analysis.`,
-    );
+    const body = `${marker}\nSutura claimed this failed run and is starting analysis.`;
+    const comment = prNumber === undefined
+      ? await this.api.createCommitComment(run.headSha, body)
+      : await this.api.createIssueComment(prNumber, body);
     await this.api.deleteRef(`tags/sutura-attempt-${this.options.runId}`);
-    return String(comment.id);
+    return {
+      kind: prNumber === undefined ? 'commit' : 'pull-request',
+      commentId: comment.id,
+    };
   }
 
-  async updateAttempt(commentId: string, body: string): Promise<void> {
-    await this.api.updateIssueComment(integerId(commentId, 'Comment id'), body);
+  async updateAttempt(target: AttemptTarget, body: string): Promise<void> {
+    if (target.kind === 'commit') {
+      await this.api.updateCommitComment(target.commentId, body);
+      return;
+    }
+    await this.api.updateIssueComment(target.commentId, body);
   }
 
   async createFixPullRequest(

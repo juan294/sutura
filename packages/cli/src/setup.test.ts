@@ -35,7 +35,8 @@ describe('installSutura', () => {
 
       const workflow = await readFile(join(directory, '.github', 'workflows', 'sutura.yml'), 'utf8');
       expect(workflow).toContain('workflows: ["CI"]');
-      expect(workflow).toContain('uses: juan294/sutura@v0.1.0');
+      expect(workflow).toContain("workflow_run.conclusion == 'timed_out'");
+      expect(workflow).toContain('uses: juan294/sutura@v0.1.1');
       expect(workflow).toContain('nebius-api-key: ${{ secrets.NEBIUS_API_KEY }}');
       expect(workflow).toContain('contree-project: ${{ vars.CONTREE_PROJECT }}');
       expect(result.lines.join('\n')).not.toMatch(/private|project-id/u);
