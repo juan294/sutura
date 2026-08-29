@@ -67,6 +67,22 @@ describe('adaptiveSearch', () => {
     expect(result.terminalReason).toBe('operation-capacity');
   });
 
+  it('shrinks the next batch when current capacity drops below concurrency', async () => {
+    let available = 4;
+    const expand = vi.fn(async ({ branch }: { branch: number }) => {
+      if (branch === 2) available = 1;
+      if (branch === 3) available = 0;
+      return expansion(`branch-${branch}`, 1, `failure-${branch}`);
+    });
+    const result = await adaptiveSearch({
+      baselineImageId: 'base', initialBranches: 4, beamWidth: 1, maximumDepth: 1,
+      maximumTotalBranches: 4, availableBranches: () => available,
+      concurrencyCapacity: () => 2, expand,
+    });
+    expect(expand.mock.calls.map(([{ branch }]) => branch)).toEqual([1, 2, 3]);
+    expect(result.nodes).toHaveLength(3);
+  });
+
   it('schedules every authorized parent in bounded concurrency batches', async () => {
     const expand = vi.fn(async ({ nodeId }: { nodeId: string }) => expansion(nodeId, 1));
     await adaptiveSearch({

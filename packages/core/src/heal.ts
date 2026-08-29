@@ -25,8 +25,14 @@ import {
   type RepairLlm,
   type RepairSourceContext,
 } from './engine/repair.js';
-import { runRepairAgent } from './engine/repair-agent.js';
+import {
+  controlledRepairAttemptReservationUsd,
+  runControlledRepairAttempt,
+  REPAIR_ATTEMPT_COSTS,
+  type ControlledRepairAttemptContext,
+} from './engine/repair-attempt.js';
 import { validateCandidateDiff } from './engine/candidate-validation.js';
+import { candidateIdentity } from './engine/candidate-identity.js';
 import {
   RepairBudget,
   repairBudgetLimits,
@@ -69,7 +75,6 @@ import type { RuntimeAdapter, RuntimeId } from './runtime/types.js';
 
 export const SUTURA_DEFAULT_IMAGE_REF = NODE_IMAGE_REF;
 const DEFAULT_FAILURE_COMMAND = 'pnpm test';
-const MINIMUM_INITIAL_BRANCH_MODEL_TURNS = 8;
 const DEPENDENCY_INSTALL_COMMAND = /(?:^|(?:&&|;|\|\|)\s*)(?:(?:corepack\s+)?pnpm\s+(?:install|i)\b|npm\s+(?:ci|install|i)\b|(?:corepack\s+)?yarn\s+(?:install\b|--immutable\b))/iu;
 
 export const SUTURA_SANDBOX_ENV = Object.freeze({
@@ -249,7 +254,9 @@ function tracedLlm(llm: HealLlm, trace: TraceRecorder): HealLlm {
         stage: tier === 'nano' ? 'triage' : tier === 'ultra' ? 'audit' : 'candidate',
         role: 'assistant',
         model: reply.model ?? model,
-        summary: reply.text,
+        summary: tier === 'super'
+          ? `Structured repair response ${createHash('sha256').update(reply.text).digest('hex')} (${Buffer.byteLength(reply.text, 'utf8')} bytes)`
+          : reply.text,
         inputTokens: usage.inTok,
         outputTokens: usage.outTok,
         reasoningTokens: usage.reasoningTok,
@@ -592,6 +599,7 @@ function makeCaseFile(
   outcome: CaseFile['outcome'],
   auditVerdict?: CaseFile['audit'],
   search?: SearchEvidence[],
+  selectedCandidate?: Candidate,
 ): CaseFile {
   const trace = ctx.traceRecorder;
   if (auditVerdict !== undefined) {
@@ -617,6 +625,9 @@ function makeCaseFile(
       imageId: result.nodeId,
     })),
     ...(auditVerdict ? { audit: auditVerdict } : {}),
+    ...(selectedCandidate === undefined ? {} : {
+      selectedCandidate: candidateIdentity(selectedCandidate),
+    }),
     outcome,
     cost: ctx.cost,
     policy: policyEvidenceFor(ctx),
@@ -779,6 +790,10 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       };
   if (!suppliedCandidate) {
     const sourceContext = await ctx.readSourceContext(ctx.failedLog, diagnosis, runtime);
+    trace.record({
+      type: 'search-decision', stage: 'search',
+      summary: `Bounded source closure accepted ${sourceContext.sources.length} file${sourceContext.sources.length === 1 ? '' : 's'}`,
+    });
     const configuredBudgets = repairBudgetLimits(ctx.repairBudgets);
     const budget = new RepairBudget({
       ...configuredBudgets,
@@ -796,12 +811,48 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       ...DEFAULT_SEARCH_LIMITS,
       initialBranches: Math.min(ctx.raceK, DEFAULT_SEARCH_LIMITS.initialBranches),
     };
-    const initialBranchCapacity = Math.max(
-      1,
-      Math.floor(
-        budget.limits.modelTurns / MINIMUM_INITIAL_BRANCH_MODEL_TURNS,
-      ),
+    const attemptContext = (parent: SearchNode | undefined): ControlledRepairAttemptContext => ({
+      llm: fullContext.llm,
+      executor: ctx.executor,
+      initialImageId: ctx.failingImage,
+      diagnosis,
+      policy,
+      budget,
+      trustedCommands,
+      sourceContext,
+      ...(parent === undefined ? {} : {
+        feedback: {
+          candidateDiff: parent.cumulativeDiff,
+          testOutput: parent.testEvidence.output,
+          errorFingerprint: parent.errorFingerprint,
+        },
+      }),
+    });
+    const inferenceCapacity = (parents: readonly (SearchNode | undefined)[]): number => {
+      const remainingUsd = budget.limits.inferenceCostUsd - budget.snapshot().inferenceCostUsd;
+      try {
+        const reservationUsd = Math.max(
+          ...(parents.length > 0 ? parents : [undefined])
+            .map((parent) => controlledRepairAttemptReservationUsd(attemptContext(parent))),
+        );
+        return Math.max(0, Math.floor(remainingUsd / reservationUsd));
+      } catch {
+        return 0;
+      }
+    };
+    const initialBranchCapacity = Math.min(
+      Math.floor(budget.limits.modelTurns / REPAIR_ATTEMPT_COSTS.modelTurns),
+      Math.floor(budget.limits.toolCalls / REPAIR_ATTEMPT_COSTS.toolCalls),
+      Math.floor(budget.limits.sandboxOperations / REPAIR_ATTEMPT_COSTS.sandboxOperations),
+      inferenceCapacity([undefined]),
     );
+    if (initialBranchCapacity < 1) {
+      ledger.record({
+        stage: 'search', attempt: 1, network: 'disabled',
+        note: 'No complete controller-owned repair attempt fits the configured budgets',
+      });
+      return makeCaseFile(fullContext, diagnosis, triageVerdict, [], 'gave-up', undefined, []);
+    }
     let providerCapacity: CapacitySnapshot | undefined = fullContext.llm.capacitySnapshot?.();
     const activeOperations = new Map<string, string>();
     const lastOperations = new Map<string, string>();
@@ -815,14 +866,17 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       beamWidth: searchLimits.beamWidth,
       maximumDepth: searchLimits.maximumDepth,
       maximumTotalBranches: Math.min(searchLimits.maximumTotalBranches, budget.limits.branches),
-      availableBranches: () => {
+      availableBranches: (parents = []) => {
         const snapshot = budget.snapshot();
         return Math.min(
           budget.limits.branches - snapshot.branches,
-          budget.limits.sandboxOperations - snapshot.sandboxOperations,
-          Math.floor((budget.limits.modelTurns - snapshot.modelTurns) / 3),
-          Math.floor((budget.limits.toolCalls - snapshot.toolCalls) / 3),
+          Math.floor((budget.limits.sandboxOperations - snapshot.sandboxOperations) / REPAIR_ATTEMPT_COSTS.sandboxOperations),
+          Math.floor((budget.limits.modelTurns - snapshot.modelTurns) / REPAIR_ATTEMPT_COSTS.modelTurns),
+          Math.floor((budget.limits.toolCalls - snapshot.toolCalls) / REPAIR_ATTEMPT_COSTS.toolCalls),
+          inferenceCapacity(parents),
           providerCapacityAvailable(providerCapacity),
+          ctx.executor.operationCapacity().available,
+          budget.remainingElapsedTimeSec() > 0 ? Number.MAX_SAFE_INTEGER : 0,
         );
       },
       concurrencyCapacity: () => ctx.search === undefined
@@ -857,15 +911,8 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       }),
       expand: async ({ parent, parentImageId, nodeId, operationId, signal }) => {
         const before = ledger.entries().length;
-        const agent = await runRepairAgent({
-          llm: fullContext.llm,
-          executor: ctx.executor,
-          initialImageId: parentImageId,
-          diagnosis,
-          policy,
-          budget,
-          trustedCommands,
-          sourceContext,
+        const agent = await runControlledRepairAttempt({
+          ...attemptContext(parent),
           branchId: nodeId,
           operationIdPrefix: operationId,
           signal,
@@ -980,6 +1027,7 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       auditVerdict.approved ? 'fixed' : 'refused',
       auditVerdict,
       searchEvidence,
+      winner.candidate,
     );
   }
 
@@ -1099,6 +1147,8 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
     raceResults,
     auditVerdict.approved ? 'fixed' : 'refused',
     auditVerdict,
+    undefined,
+    winner.candidate,
   );
 }
 

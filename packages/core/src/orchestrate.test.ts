@@ -16,6 +16,7 @@ import { completedTriageVerdict, notRunTriageVerdict } from './engine/triage.js'
 import type { TierLlm } from './llm/types.js';
 import { DEFAULT_MODEL_PRICES } from './llm/cost.js';
 import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
+import { parseRepositoryPolicy } from './policy/schema.js';
 import {
   AlreadyAttemptedError,
   SUTURA_SANDBOX_ENV,
@@ -35,7 +36,7 @@ const HONEST_DIFF = [
   'diff --git a/src/value.ts b/src/value.ts',
   '--- a/src/value.ts',
   '+++ b/src/value.ts',
-  '@@ -1 +1 @@',
+  '@@ -1,1 +1,1 @@',
   '-export const value: string = 1;',
   '+export const value: string = "1";',
 ].join('\n') + '\n';
@@ -48,6 +49,18 @@ const THIRD_DIFF = HONEST_DIFF.replace(
   '+export const value: string = "1";',
   '+export const result: string = "1";',
 );
+
+const DOGFOOD_DIFF = [
+  'diff --git a/packages/core/src/dogfood-add.ts b/packages/core/src/dogfood-add.ts',
+  '--- a/packages/core/src/dogfood-add.ts',
+  '+++ b/packages/core/src/dogfood-add.ts',
+  '@@ -1,3 +1,3 @@',
+  ' export function add(left: number, right: number): number {',
+  '-  return left - right;',
+  '+  return left + right;',
+  ' }',
+  '',
+].join('\n');
 
 const RUN: FailingWorkflowRun = {
   runId: '98765',
@@ -143,7 +156,7 @@ class FakeRepository implements RepositoryPort {
     paths: string[];
   }> = [];
   readonly sources = new Map([
-    ['src/value.ts', 'export const value: string = 1;'],
+    ['src/value.ts', 'export const value: string = 1;\n'],
   ]);
   policyContent: string | null = null;
   readonly policyReads: Array<{ repo: string; sha: string }> = [];
@@ -229,29 +242,22 @@ function diagnosisReply(): Diagnosis {
   };
 }
 
-function repairToolReply(candidate: Candidate, index: number) {
-  const steps = [
-    ['apply_patch', { diff: candidate.diff }],
-    ['run_test', { commandId: 'diagnosed' }],
-    ['submit_candidate', { id: candidate.id, rationale: candidate.rationale }],
-  ] as const;
-  const [name, args] = steps[Math.min(index, steps.length - 1)]!;
-  return {
-    text: '',
-    toolCalls: [{ id: `repair-${index + 1}`, type: 'function' as const, function: { name, arguments: JSON.stringify(args) } }],
-    usd: 0.001,
-  };
+function repairProposalReply(candidate: Candidate) {
+  const lines = candidate.diff.split('\n');
+  const path = lines.find((line) => line.startsWith('+++ b/'))?.slice(6) ?? '';
+  const old = lines.filter((line) => line.startsWith('-') && !line.startsWith('---')).map((line) => line.slice(1)).join('\n');
+  const replacement = lines.filter((line) => line.startsWith('+') && !line.startsWith('+++')).map((line) => line.slice(1)).join('\n');
+  return { text: JSON.stringify({ id: candidate.id, rationale: candidate.rationale, edits: [{ path, old, new: replacement }] }), usd: 0.001 };
 }
 
 function scriptedLlm(auditVerdict: AuditVerdict['approved'] = true): {
   llm: TierLlm<'nano' | 'super' | 'ultra'>;
   chat: ReturnType<typeof vi.fn>;
 } {
-  let superCall = 0;
   const chat = vi.fn(async (tier: 'nano' | 'super' | 'ultra') => {
     if (tier === 'nano') return { text: JSON.stringify(diagnosisReply()) };
     if (tier === 'super') {
-      return repairToolReply(candidates()[0]!, superCall++);
+      return repairProposalReply(candidates()[0]!);
     }
     return {
       text: JSON.stringify({
@@ -407,13 +413,12 @@ describe('orchestrate', () => {
       snippet: 'Documented breaking release',
     }]);
     ctx.tavily = { search };
-    let superCall = 0;
     chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
       if (tier === 'nano') return { text: JSON.stringify({
         ...diagnosisReply(),
         class: 'dep-upstream-breaking',
       }) };
-      if (tier === 'super') return repairToolReply(candidates()[0]!, superCall++);
+      if (tier === 'super') return repairProposalReply(candidates()[0]!);
       return { text: JSON.stringify({
         approved: true,
         reasoning: 'The patch corrects the diagnosed source type.',
@@ -524,15 +529,97 @@ describe('orchestrate', () => {
     }));
   });
 
+  it('repairs the realistic direct-run dogfood failure through the production path', async () => {
+    const dogfoodRun: FailingWorkflowRun = {
+      runId: RUN.runId,
+      repo: RUN.repo,
+      headSha: RUN.headSha,
+      headRef: 'dogfood/sutura-v02-live-replay',
+      baseSha: RUN.headSha,
+      baseRef: 'dogfood/sutura-v02-live-replay',
+      failedSteps: [{
+        jobName: 'checks',
+        stepName: 'Test core',
+        log: [
+          'Run pnpm --filter @sutura/core test',
+          'packages/core test: src/dogfood-add.test.ts:7: expected -1 to be 5',
+        ].join('\n'),
+      }],
+    };
+    const { ctx, github, repository, chat } = context(
+      [1, 1, 1, 0, 1, 1, 0], true, dogfoodRun,
+    );
+    repository.sources.clear();
+    repository.sources.set(
+      'packages/core/src/dogfood-add.test.ts',
+      "import { add } from './dogfood-add.js';\n\nit('adds', () => { expect(add(2, 3)).toBe(5); });\n",
+    );
+    repository.sources.set(
+      'packages/core/src/dogfood-add.ts',
+      'export function add(left: number, right: number): number {\n  return left - right;\n}\n',
+    );
+    chat.mockImplementation(async (
+      tier: 'nano' | 'super' | 'ultra',
+      messages: readonly { role: string; content?: string | null }[],
+      options?: Record<string, unknown>,
+    ) => {
+      if (tier === 'nano') return { text: JSON.stringify({
+        class: 'test-assertion', confidence: 0.99, signals: ['expected -1 to be 5'],
+        failingCmd: 'pnpm --filter @sutura/core test', errorExcerpt: 'expected -1 to be 5',
+      }) };
+      if (tier === 'super') {
+        const request = JSON.parse(messages.find(({ role }) => role === 'user')?.content ?? '{}') as {
+          sources?: Array<{ path: string; content: string }>;
+        };
+        expect(request.sources?.map(({ path }) => path)).toEqual([
+          'packages/core/src/dogfood-add.test.ts',
+          'packages/core/src/dogfood-add.ts',
+        ]);
+        expect(options).not.toHaveProperty('tools');
+        expect(options).not.toHaveProperty('toolChoice');
+        expect(options).not.toHaveProperty('parallelToolCalls');
+        return { text: JSON.stringify({
+          id: 'dogfood-addition', rationale: 'Use addition in the add function.',
+          edits: [{
+            path: 'packages/core/src/dogfood-add.ts',
+            old: 'left - right',
+            new: 'left + right',
+          }],
+        }), usd: 0.001 };
+      }
+      const auditRequest = JSON.parse(messages.find(({ role }) => role === 'user')?.content ?? '{}') as {
+        candidateDiff?: string;
+      };
+      expect(auditRequest.candidateDiff).toBe(DOGFOOD_DIFF);
+      return { text: JSON.stringify({ approved: true, reasoning: 'The addition repair holds.' }) };
+    });
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(caseFile.outcome).toBe('fixed');
+    expect(repository.fixes).toEqual([expect.objectContaining({
+      branch: `sutura/fix-${RUN.runId}`,
+      headSha: dogfoodRun.headSha,
+      diff: DOGFOOD_DIFF,
+    })]);
+    expect(repository.fixes[0]?.diff).not.toContain('dogfood-add.test.ts');
+    expect(github.pullRequests).toEqual([expect.objectContaining({
+      baseRef: dogfoodRun.headRef,
+      headSha: dogfoodRun.headSha,
+    })]);
+    expect(caseFile.selectedCandidate).toEqual({
+      id: 'dogfood-addition',
+      diffHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    });
+  });
+
   it('publishes the same smallest held candidate that the audit approved', async () => {
     const { ctx, repository, chat } = context([1, 1, 1, 0, 0, 1, 0]);
-    let superCall = 0;
     chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
       if (tier === 'nano') return { text: JSON.stringify(diagnosisReply()) };
       if (tier === 'super') {
-        return repairToolReply(
+        return repairProposalReply(
           { id: 'smallest', rationale: 'repair the observed source', diff: HONEST_DIFF },
-          superCall++,
         );
       }
       return { text: JSON.stringify({ approved: true, reasoning: 'The smallest held repair is correct.' }) };
@@ -614,10 +701,9 @@ describe('orchestrate', () => {
         `src/value-${index}.test.ts`,
       ),
     }));
-    let invalidSuperCall = 0;
     chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
       if (tier === 'nano') return { text: JSON.stringify(diagnosisReply()) };
-      if (tier === 'super') return repairToolReply(invalidCandidates[0]!, invalidSuperCall++);
+      if (tier === 'super') return repairProposalReply(invalidCandidates[0]!);
       return { text: JSON.stringify({ approved: true, reasoning: 'not reached' }) };
     });
 
@@ -626,7 +712,7 @@ describe('orchestrate', () => {
     expect(caseFile.outcome).toBe('gave-up');
     expect(caseFile.race).toEqual([]);
     expect(github.comments[0]?.body).toContain('NO PATCH HELD');
-    expect(runCalls(executor)).toHaveLength(6);
+    expect(runCalls(executor)).toHaveLength(5);
   });
 
   it('does not spend or mutate twice for the same failing run id', async () => {
@@ -836,15 +922,15 @@ describe('orchestrate', () => {
         if (placeboSuperCall === 0) {
           const user = messages.find(({ role }) => role === 'user');
           const request = JSON.parse(user?.content ?? '') as {
-            initialSources: Array<{ path: string; content: string }>;
+            sources: Array<{ path: string; content: string }>;
           };
-          expect(request.initialSources).toEqual([
+          expect(request.sources).toEqual([
             expect.objectContaining({ path: 'parse-port.ts', content: brokenSource }),
           ]);
         }
-        return repairToolReply(
+        placeboSuperCall += 1;
+        return repairProposalReply(
           { id: 'placebo-fix', rationale: 'restore numeric conversion', diff: repairDiff },
-          placeboSuperCall++,
         );
       }
       return { text: JSON.stringify({ approved: true, reasoning: 'The repair restores numeric conversion.' }) };
@@ -912,12 +998,12 @@ describe('orchestrate', () => {
       if (tier === 'super') {
         if (dependencySuperCall === 0) {
           const user = messages.find(({ role }) => role === 'user');
-          const request = JSON.parse(user?.content ?? '') as { initialSources: Array<{ path: string }> };
-          expect(request.initialSources.map(({ path }) => path)).toEqual(['package.json']);
+          const request = JSON.parse(user?.content ?? '') as { sources: Array<{ path: string }> };
+          expect(request.sources.map(({ path }) => path)).toEqual(['package.json']);
         }
-        return repairToolReply(
+        dependencySuperCall += 1;
+        return repairProposalReply(
           { id: 'pin-a', rationale: 'pin compatible release', diff: dependencyDiff('3.9.0') },
-          dependencySuperCall++,
         );
       }
       return { text: JSON.stringify({ approved: true, reasoning: 'not reached' }) };
@@ -936,7 +1022,7 @@ describe('orchestrate', () => {
     ]);
   });
 
-  it('permits the bounded agent to inspect when initial source context is empty', async () => {
+  it('replays live run 6: absent editable source stops before a Super turn', async () => {
     const noPathRun: FailingWorkflowRun = {
       ...RUN,
       failedSteps: [
@@ -954,7 +1040,7 @@ describe('orchestrate', () => {
 
     expect(caseFile.outcome).toBe('gave-up');
     expect(caseFile.race).toEqual([]);
-    expect(chat.mock.calls.map(([tier]) => tier)).toContain('super');
+    expect(chat.mock.calls.map(([tier]) => tier)).not.toContain('super');
   });
 
   it('rejects a non-numeric workflow run id before claiming an attempt', async () => {
@@ -1009,6 +1095,150 @@ describe('failed log collection', () => {
 });
 
 describe('repair source context', () => {
+  it('replays live runs 4 and 5: monorepo ESM evidence reaches the TypeScript implementation', async () => {
+    const repository = new FakeRepository();
+    repository.sources.clear();
+    repository.sources.set(
+      'packages/core/src/dogfood-add.test.ts',
+      "import { add } from './dogfood-add.js';\n\nexpect(add(2, 3)).toBe(5);\n",
+    );
+    repository.sources.set(
+      'packages/core/src/dogfood-add.ts',
+      'export function add(left: number, right: number): number {\n  return left - right;\n}\n',
+    );
+
+    const context = await readRepairSourceContext(
+      repository,
+      '/tmp/exact-pr-head',
+      'packages/core test: src/dogfood-add.test.ts:3: expected -1 to be 5',
+      { class: 'test-assertion' },
+    );
+
+    expect(context.sources.map(({ path }) => path)).toEqual([
+      'packages/core/src/dogfood-add.test.ts',
+      'packages/core/src/dogfood-add.ts',
+    ]);
+    expect(repository.sourceReads).toEqual([
+      {
+        checkoutDir: '/tmp/exact-pr-head',
+        paths: [
+          'packages/core/src/dogfood-add.test.ts',
+          'src/dogfood-add.test.ts',
+        ],
+      },
+      {
+        checkoutDir: '/tmp/exact-pr-head',
+        paths: [
+          'packages/core/src/dogfood-add.js',
+          'packages/core/src/dogfood-add.ts',
+          'packages/core/src/dogfood-add.tsx',
+        ],
+      },
+    ]);
+  });
+
+  it('omits ambiguous and credential-shaped dependency sources', async () => {
+    const repository = new FakeRepository();
+    repository.sources.clear();
+    repository.sources.set('src/test.ts', "import './ambiguous.js';\nimport './secret.js';\n");
+    repository.sources.set('src/ambiguous.js', 'export const value = 1;\n');
+    repository.sources.set('src/ambiguous.ts', 'export const value = 2;\n');
+    repository.sources.set('src/secret.ts', 'const TOKEN: string = "super-secret-value";\n');
+
+    const context = await readRepairSourceContext(
+      repository,
+      '/tmp/exact-pr-head',
+      'src/test.ts:1: assertion failed',
+      { class: 'test-assertion' },
+    );
+
+    expect(context.sources.map(({ path }) => path)).toEqual(['src/test.ts']);
+    expect(JSON.stringify(context)).not.toContain('super-secret-value');
+  });
+
+  it('does not add another dependency variant when the failed log already supplied one', async () => {
+    const repository = new FakeRepository();
+    repository.sources.clear();
+    repository.sources.set('src/test.ts', "import './local.js';\n");
+    repository.sources.set('src/local.ts', 'export const value = 1;\n');
+    repository.sources.set('src/local.js', 'export const value = 2;\n');
+
+    const context = await readRepairSourceContext(
+      repository,
+      '/tmp/exact-pr-head',
+      'src/test.ts:1: assertion failed\nsrc/local.ts:1: related frame',
+      { class: 'test-assertion' },
+    );
+
+    expect(context.sources.map(({ path }) => path)).toEqual(['src/test.ts', 'src/local.ts']);
+    expect(repository.sourceReads).toHaveLength(1);
+  });
+
+  it('bounds dependency cycles, depth, policy, and total source count', async () => {
+    const repository = new FakeRepository();
+    repository.sources.clear();
+    repository.sources.set('src/root.ts', "import './child.js';\nimport './denied.js';\n");
+    repository.sources.set('src/child.ts', "import './root.js';\nimport './grand.js';\n");
+    repository.sources.set('src/grand.ts', "import './too-deep.js';\n");
+    repository.sources.set('src/too-deep.ts', 'export const value = 4;\n');
+    repository.sources.set('src/denied.ts', 'export const secret = 1;\n');
+
+    const bounded = await readRepairSourceContext(
+      repository,
+      '/tmp/exact-pr-head',
+      'src/root.ts:1: assertion failed',
+      { class: 'test-assertion' },
+      parseRepositoryPolicy(JSON.stringify({
+        version: 1, allowedPaths: ['src/**'], deniedReadPaths: ['src/denied.*'],
+      })),
+    );
+
+    expect(bounded.sources.map(({ path }) => path)).toEqual([
+      'src/root.ts', 'src/child.ts', 'src/grand.ts',
+    ]);
+    expect(JSON.stringify(repository.sourceReads)).not.toContain('src/denied.ts');
+    expect(JSON.stringify(repository.sourceReads)).not.toContain('src/too-deep.ts');
+
+    const cappedRepository = new FakeRepository();
+    cappedRepository.sources.clear();
+    cappedRepository.sources.set(
+      'src/root.ts',
+      Array.from({ length: 8 }, (_, index) => `import './d${index}.js';`).join('\n'),
+    );
+    for (let index = 0; index < 8; index += 1) {
+      cappedRepository.sources.set(`src/d${index}.ts`, `export const d${index} = ${index};\n`);
+    }
+
+    const capped = await readRepairSourceContext(
+      cappedRepository, '/tmp/exact-pr-head', 'src/root.ts:1: assertion failed',
+      { class: 'test-assertion' },
+    );
+
+    expect(capped.sources.map(({ path }) => path)).toEqual([
+      'src/root.ts', 'src/d0.ts', 'src/d1.ts', 'src/d2.ts',
+      'src/d3.ts', 'src/d4.ts', 'src/d5.ts', 'src/d6.ts',
+    ]);
+  });
+
+  it('caps dependency candidate probes without treating unprobed variants as unique', async () => {
+    const repository = new FakeRepository();
+    repository.sources.clear();
+    repository.sources.set(
+      'src/root.ts',
+      Array.from({ length: 24 }, (_, index) => `import './missing-${index}';`).join('\n'),
+    );
+    repository.sources.set('src/missing-23.ts', 'export const tooLate = true;\n');
+
+    const context = await readRepairSourceContext(
+      repository, '/tmp/exact-pr-head', 'src/root.ts:1: assertion failed',
+      { class: 'test-assertion' },
+    );
+
+    expect(context.sources.map(({ path }) => path)).toEqual(['src/root.ts']);
+    expect(repository.sourceReads).toHaveLength(25);
+    expect(repository.sourceReads.flatMap(({ paths }) => paths)).not.toContain('src/missing-23.ts');
+  });
+
   it('extracts only safe, exact workspace-relative source paths', () => {
     const log = [
       '/workspace/src/value.ts:42:3 error TS2322',

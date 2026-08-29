@@ -1,4 +1,5 @@
 import type { CaseFile, RaceResult } from '../domain.js';
+import { findSelectedCandidate } from '../engine/candidate-identity.js';
 import { selectWinner } from '../engine/repair.js';
 
 const STAGE_BY_ROLE = {
@@ -119,7 +120,10 @@ export function raceNote(result: RaceResult): string {
 }
 
 export function diffSummary(caseFile: CaseFile): string {
-  const winner = selectWinner(caseFile.race);
+  const selected = caseFile.selectedCandidate;
+  const winner = selected === undefined
+    ? selectWinner(caseFile.race)
+    : findSelectedCandidate(caseFile.race, selected);
   if (!winner) return 'No candidate patch survived.';
 
   const lines = winner.candidate.diff.split(/\r?\n/);

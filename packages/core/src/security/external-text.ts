@@ -47,6 +47,10 @@ export function redactExternalText(value: string): ExternalTextRedaction {
     `$1${REDACTED_CREDENTIAL}`,
   );
   replace(
+    /^([ \t]*(?:const|let|var)\s+)([A-Z][A-Z0-9_]*(?:API_KEY|ACCESS_KEY|TOKEN|SECRET|PASSWORD)|API[_-]?KEY|ACCESS[_-]?TOKEN|CLIENT[_-]?SECRET|TOKEN|SECRET|PASSWORD)(?:\s*:\s*[^=\r\n;]{1,120})?\s*=\s*(?!\[redacted credential\])(?:"[^"]*"|'[^']*')/gimu,
+    `$1$2=${REDACTED_CREDENTIAL}`,
+  );
+  replace(
     /^([ \t]*)([A-Z][A-Z0-9_]*(?:API_KEY|ACCESS_KEY|TOKEN|SECRET|PASSWORD)|API[_-]?KEY|ACCESS[_-]?TOKEN|CLIENT[_-]?SECRET|TOKEN|SECRET|PASSWORD)\s*[:=]\s*(?!\[redacted credential\])(?:"[^"]*"|'[^']*'|[^\s,;]+)/gimu,
     `$1$2=${REDACTED_CREDENTIAL}`,
   );

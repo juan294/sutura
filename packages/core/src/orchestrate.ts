@@ -11,7 +11,9 @@ import type {
   FailureClass,
   PolicyEvidence,
 } from './domain.js';
-import { selectWinner, type RepairSourceContext } from './engine/repair.js';
+import type { RepairSourceContext } from './engine/repair.js';
+import { findSelectedCandidate } from './engine/candidate-identity.js';
+import { sourceDependencyGroups } from './engine/source-context.js';
 import {
   SNAPSHOT_CWD,
   type Executor,
@@ -30,6 +32,7 @@ import { TraceRecorder } from './trace/recorder.js';
 import { loadRepositoryPolicy } from './policy/load.js';
 import { policyAllowsSourceRead } from './policy/evaluate.js';
 import type { RepositoryPolicy } from './policy/schema.js';
+import { redactExternalText } from './security/external-text.js';
 
 export { SUTURA_SANDBOX_ENV } from './heal.js';
 import { renderCaseFile } from './report/casefile.js';
@@ -43,6 +46,7 @@ const MAX_SOURCE_FILES = 8;
 const MAX_SOURCE_LINES = 120;
 const MAX_SOURCE_CHARACTERS = 12_000;
 const MAX_SOURCE_BYTES = 12_000;
+const MAX_DEPENDENCY_CANDIDATE_PROBES_PER_DEPTH = 192;
 const SOURCE_PATH_PATTERN = /(?:^|[\s("'`])(?<path>(?:\.\/)?(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+\.(?:json|[cm]?[jt]sx?|pyi?|ini|txt|ya?ml|toml))(?![A-Za-z0-9_.-])(?:(?:\(|:)(?<line>\d+))?/g;
 const WORKSPACE_SOURCE_PATTERN = /(?:^|[\t\n \]])(?<workspace>(?:apps|packages)\/(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+)\s+[A-Za-z0-9_:@./-]+:\s+(?<path>(?:\.\/)?(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+\.(?:json|[cm]?[jt]sx?|pyi?|ini|txt|ya?ml|toml))(?![A-Za-z0-9_.-])(?:(?:\(|:)(?<line>\d+))?/g;
 const GITHUB_WORKSPACE_PREFIX_PATTERN = /(^|[\s("'`])(?:(?:file:\/\/)?\/home\/runner\/work|(?:file:\/\/)?\/__w)\/([A-Za-z0-9_.-]+)\/\2\//gm;
@@ -354,18 +358,20 @@ export async function readRepairSourceContext(
     }
   }
   if (references.length === 0) return { sources: [] };
-  const requested = new Map(references.map((reference) => [reference.path, reference]));
-  const sources = await repository.readSourceExcerpts(
-    checkoutDir,
-    references,
-    REPAIR_SOURCE_LIMITS,
-  );
-  if (sources.length > REPAIR_SOURCE_LIMITS.maxFiles) {
-    throw new OrchestrationError('Repository source port exceeded the file limit');
-  }
-  const accepted = new Set<string>();
-  return {
-    sources: sources.map((source) => {
+  const accepted = new Map<string, RepairSourceContext['sources'][number]>();
+  const validateSources = (
+    requestedReferences: readonly SourceReference[],
+    sources: readonly RepositorySourceExcerpt[],
+  ): RepairSourceContext['sources'] => {
+    if (sources.length > REPAIR_SOURCE_LIMITS.maxFiles) {
+      throw new OrchestrationError('Repository source port exceeded the file limit');
+    }
+    if (sources.length > requestedReferences.length) {
+      throw new OrchestrationError('Repository source port returned an unsafe or unbounded excerpt');
+    }
+    const requested = new Map(requestedReferences.map((reference) => [reference.path, reference]));
+    const returned = new Set<string>();
+    return sources.flatMap((source) => {
       const path = safeSourcePath(source.path);
       const reference = path ? requested.get(path) : undefined;
       const lineCount = source.content === ''
@@ -374,7 +380,7 @@ export async function readRepairSourceContext(
       if (
         !path ||
         !reference ||
-        accepted.has(path) ||
+        returned.has(path) ||
         !Number.isSafeInteger(source.startLine) ||
         source.startLine <= 0 ||
         typeof source.truncated !== 'boolean' ||
@@ -387,14 +393,61 @@ export async function readRepairSourceContext(
           'Repository source port returned an unsafe or unbounded excerpt',
         );
       }
-      accepted.add(path);
-      return {
+      returned.add(path);
+      if (redactExternalText(source.content).count > 0) return [];
+      return [{
         path,
         startLine: source.startLine,
         content: source.content,
         truncated: source.truncated,
-      };
-    }),
+      }];
+    });
+  };
+
+  const roots = validateSources(
+    references,
+    await repository.readSourceExcerpts(checkoutDir, references, REPAIR_SOURCE_LIMITS),
+  );
+  for (const source of roots) accepted.set(source.path, source);
+  let frontier = roots;
+  for (let depth = 0; depth < 2 && frontier.length > 0 && accepted.size < REPAIR_SOURCE_LIMITS.maxFiles; depth += 1) {
+    const next: RepairSourceContext['sources'] = [];
+    const groups = sourceDependencyGroups(frontier, runtimeId, new Set(accepted.keys()));
+    const resolved = new Map<string, RepairSourceContext['sources'][number] | null>();
+    let candidateProbes = 0;
+    for (let groupStart = 0; groupStart < groups.length;) {
+      const remainingFiles = REPAIR_SOURCE_LIMITS.maxFiles - accepted.size - next.length;
+      if (remainingFiles < 1) break;
+      const window = groups.slice(groupStart, groupStart + remainingFiles);
+      groupStart += window.length;
+      const candidatesByGroup = window.map((group) => group.candidates.filter((path) =>
+        policy === undefined || policyAllowsSourceRead(path, policy),
+      ));
+      const candidates = [...new Set(candidatesByGroup.flat())]
+        .filter((path) => !resolved.has(path))
+        .slice(0, MAX_DEPENDENCY_CANDIDATE_PROBES_PER_DEPTH - candidateProbes);
+      candidateProbes += candidates.length;
+      for (let start = 0; start < candidates.length; start += REPAIR_SOURCE_LIMITS.maxFiles) {
+        const batch = candidates.slice(start, start + REPAIR_SOURCE_LIMITS.maxFiles).map((path) => ({ path }));
+        for (const { path } of batch) resolved.set(path, null);
+        for (const source of validateSources(
+          batch,
+          await repository.readSourceExcerpts(checkoutDir, batch, REPAIR_SOURCE_LIMITS),
+        )) resolved.set(source.path, source);
+      }
+      for (const groupCandidates of candidatesByGroup) {
+        if (!groupCandidates.every((path) => resolved.has(path))) continue;
+        const matches = groupCandidates.flatMap((path) => resolved.get(path) ?? []);
+        if (matches.length !== 1) continue;
+        const match = matches[0]!;
+        if (!accepted.has(match.path) && !next.some(({ path }) => path === match.path)) next.push(match);
+      }
+    }
+    for (const source of next) accepted.set(source.path, source);
+    frontier = next;
+  }
+  return {
+    sources: [...accepted.values()],
   };
 }
 
@@ -585,10 +638,10 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     return caseFile;
   }
 
-  const winner = selectWinner(caseFile.race);
-  if (!winner) {
-    throw new OrchestrationError('Fixed case file does not contain a held candidate');
-  }
+  const selected = caseFile.selectedCandidate;
+  if (selected === undefined) throw new OrchestrationError('Fixed case file does not identify its audited candidate');
+  const winner = findSelectedCandidate(caseFile.race, selected);
+  if (winner === null) throw new OrchestrationError('Fixed case file audited candidate identity is ambiguous');
   const branch = `sutura/fix-${run.runId}`;
   const report = await prepareReport(ctx.github, run, caseFile, marker);
   await ctx.repository.publishFix({

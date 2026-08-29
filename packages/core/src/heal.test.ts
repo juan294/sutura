@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -33,6 +34,11 @@ const HONEST_DIFF = [
   '+export function pageCount(items, size) { return Math.ceil(items / size); }',
 ].join('\n') + '\n';
 
+const WRONG_REPLACEMENT_DIFF = HONEST_DIFF.replace(
+  '+export function pageCount(items, size) { return Math.ceil(items / size); }',
+  '+export function pageCount(items, size) { return Math.round(items / size); }',
+);
+
 const UPSTREAM_DIFF = [
   'diff --git a/app.cjs b/app.cjs',
   '--- a/app.cjs',
@@ -62,21 +68,12 @@ function diagnosis(failureClass: Diagnosis['class']): Diagnosis {
   };
 }
 
-function repairToolCall(
-  candidate: Candidate,
-  index: number,
-): { text: string; toolCalls: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>; usd: number } {
-  const steps = [
-    ['apply_patch', { diff: candidate.diff }],
-    ['run_test', { commandId: 'diagnosed' }],
-    ['submit_candidate', { id: candidate.id, rationale: candidate.rationale }],
-  ] as const;
-  const [name, args] = steps[Math.min(index, steps.length - 1)]!;
-  return {
-    text: '',
-    toolCalls: [{ id: `repair-${index + 1}`, type: 'function', function: { name, arguments: JSON.stringify(args) } }],
-    usd: 0.001,
-  };
+function repairProposal(candidate: Candidate): { text: string; usd: number } {
+  const lines = candidate.diff.split('\n');
+  const path = lines.find((line) => line.startsWith('+++ b/'))?.slice(6) ?? '';
+  const old = lines.filter((line) => line.startsWith('-') && !line.startsWith('---')).map((line) => line.slice(1)).join('\n');
+  const replacement = lines.filter((line) => line.startsWith('+') && !line.startsWith('+++')).map((line) => line.slice(1)).join('\n');
+  return { text: JSON.stringify({ id: candidate.id, rationale: candidate.rationale, edits: [{ path, old, new: replacement }] }), usd: 0.001 };
 }
 
 function scriptedLlm(
@@ -84,10 +81,9 @@ function scriptedLlm(
   candidates: Candidate[] = [{ id: 'repair', rationale: 'fix the source', diff: HONEST_DIFF }],
   auditApproved = true,
 ): { llm: TierLlm<'nano' | 'super' | 'ultra'>; chat: ReturnType<typeof vi.fn> } {
-  let superCall = 0;
   const chat = vi.fn(async (tier: 'nano' | 'super' | 'ultra') => {
     if (tier === 'nano') return { text: JSON.stringify(diagnosis(failureClass)) };
-    if (tier === 'super') return repairToolCall(candidates[0]!, superCall++);
+    if (tier === 'super') return repairProposal(candidates[0]!);
     const verdict: Pick<AuditVerdict, 'approved' | 'reasoning'> = {
       approved: auditApproved,
       reasoning: auditApproved ? 'The source repair holds.' : 'REFUSED: wrong cause.',
@@ -175,15 +171,161 @@ describe('healCase', () => {
     )).toBe(true);
   });
 
-  it('reserves enough shared model turns for one complete initial repair branch', async () => {
-    const value = context('repair-off-by-one', [1, 1, 1, 1, 1, 0, 0], 'test-assertion', {
+  it('replays live run 3: shared budgets admit multiple complete initial repair branches', async () => {
+    const value = context('repair-off-by-one', [1, 1, 1, 1, 1, 0, 0, 0, 0, 0], 'test-assertion', {
       search: { initialBranches: 4, beamWidth: 2, maximumDepth: 4, maximumTotalBranches: 12 },
     });
 
     const caseFile = await healCase(value.ctx);
 
     expect(caseFile.outcome).toBe('fixed');
-    expect(caseFile.search?.map(({ nodeId }) => nodeId)).toEqual(['search-001']);
+    expect(caseFile.search?.map(({ nodeId }) => nodeId)).toEqual([
+      'search-001', 'search-002', 'search-003', 'search-004',
+    ]);
+  });
+
+  it.each([
+    ['tool calls', { toolCalls: 2 }],
+    ['inference cost', { inferenceCostUsd: 0.01 }],
+  ] as const)('admits no expansion when only partial %s capacity fits the controller path', async (_label, repairBudgets) => {
+    const value = context('repair-off-by-one', [1, 1, 1, 1, 1], 'test-assertion', {
+      repairBudgets,
+    });
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(caseFile.search).toEqual([]);
+    expect(value.chat.mock.calls.filter(([tier]) => tier === 'super')).toHaveLength(0);
+    expect(value.executor.calls.filter((call) =>
+      call.kind === 'run' && call.cmd.includes('git apply'),
+    )).toHaveLength(0);
+    expect(caseFile.stages).toContainEqual(expect.objectContaining({
+      note: 'No complete controller-owned repair attempt fits the configured budgets',
+    }));
+  });
+
+  it('admits no expansion when ConTree has no operation capacity', async () => {
+    let scenarioIndex = 0;
+    const executor = new InMemoryExecutor((command) => {
+      if (
+        command.includes('corepack pnpm install --frozen-lockfile') ||
+        command.includes('git init --quiet')
+      ) return result(0);
+      return result([1, 1, 1, 1, 1][scenarioIndex++] ?? 1);
+    }, { operationLimit: 0 });
+    const value = context('repair-off-by-one', [], 'test-assertion', { executor });
+    value.ctx.executor = executor;
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(caseFile.search).toEqual([]);
+    expect(value.chat.mock.calls.filter(([tier]) => tier === 'super')).toHaveLength(0);
+  });
+
+  it('uses the routed worst-case repair quote for inference admission', async () => {
+    const value = context('repair-off-by-one', [1, 1, 1, 1, 1], 'test-assertion');
+    value.ctx.llm = {
+      ...value.ctx.llm,
+      modelQuote: (tier) => tier === 'super'
+        ? {
+            role: tier, modelId: 'expensive-super', price: { input: 100, output: 100 },
+            profileId: DEFAULT_ROUTING_PROFILE_ID,
+          }
+        : {
+            role: tier, modelId: DEFAULT_MODELS[tier], price: DEFAULT_MODEL_PRICES[tier],
+            profileId: DEFAULT_ROUTING_PROFILE_ID,
+          },
+    };
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(caseFile.search).toEqual([]);
+    expect(value.chat.mock.calls.filter(([tier]) => tier === 'super')).toHaveLength(0);
+  });
+
+  it('replaces a failed first-depth proposal from the clean baseline with bounded feedback', async () => {
+    let applyCount = 0;
+    let ordinaryTestCount = 0;
+    let awaitingCandidateTest = false;
+    const executor = new InMemoryExecutor((command) => {
+      if (
+        command.includes('corepack pnpm install --frozen-lockfile') ||
+        command.includes('git init --quiet')
+      ) return result(0);
+      if (command.includes('git apply - && git diff')) {
+        applyCount += 1;
+        awaitingCandidateTest = true;
+        return { ...result(0), stdout: applyCount === 1 ? WRONG_REPLACEMENT_DIFF : HONEST_DIFF };
+      }
+      if (awaitingCandidateTest) {
+        awaitingCandidateTest = false;
+        return applyCount === 1
+          ? result(1, 'still failing after rounded division')
+          : result(0);
+      }
+      ordinaryTestCount += 1;
+      return ordinaryTestCount <= 5 ? result(1) : result(0);
+    });
+    let superCall = 0;
+    const chat = vi.fn(async (
+      tier: 'nano' | 'super' | 'ultra',
+      messages: readonly { role: string; content?: string | null }[],
+    ) => {
+      if (tier === 'nano') return { text: JSON.stringify(diagnosis('test-assertion')) };
+      if (tier === 'super') {
+        superCall += 1;
+        if (superCall === 2) {
+          const request = JSON.parse(messages.find(({ role }) => role === 'user')?.content ?? '{}') as {
+            previousAttempt?: { candidateDiff: string; testOutput: string; errorFingerprint: string };
+          };
+          expect(request.previousAttempt).toEqual({
+            candidateDiff: WRONG_REPLACEMENT_DIFF,
+            testOutput: expect.stringContaining('still failing after rounded division'),
+            errorFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u),
+          });
+        }
+        return repairProposal(superCall === 1
+          ? { id: 'rounded', rationale: 'Round the division result.', diff: WRONG_REPLACEMENT_DIFF }
+          : { id: 'ceiling', rationale: 'Use ceiling division.', diff: HONEST_DIFF });
+      }
+      return { text: JSON.stringify({ approved: true, reasoning: 'The ceiling repair holds.' }) };
+    });
+    const base = context('repair-off-by-one', [], 'test-assertion', {
+      executor,
+      search: { initialBranches: 1, beamWidth: 1, maximumDepth: 2, maximumTotalBranches: 2 },
+    });
+    base.ctx.executor = executor;
+    base.ctx.llm = {
+      chat,
+      modelQuote: (tier) => ({
+        role: tier, modelId: DEFAULT_MODELS[tier], price: DEFAULT_MODEL_PRICES[tier],
+        profileId: DEFAULT_ROUTING_PROFILE_ID,
+      }),
+    };
+
+    const caseFile = await healCase(base.ctx);
+
+    expect(caseFile.outcome).toBe('fixed');
+    expect(caseFile.search).toEqual([
+      expect.objectContaining({ nodeId: 'search-001', depth: 1 }),
+      expect.objectContaining({ nodeId: 'search-002', depth: 2, parentNodeId: 'search-001', terminalReason: 'passed' }),
+    ]);
+    expect(caseFile.race[0]?.candidate).toMatchObject({ id: 'ceiling', diff: HONEST_DIFF });
+    expect(caseFile.selectedCandidate).toEqual({
+      id: 'ceiling', diffHash: createHash('sha256').update(HONEST_DIFF).digest('hex'),
+    });
+    const applyParents = executor.calls.flatMap((call) =>
+      call.kind === 'run' && call.cmd.includes('git apply - && git diff')
+        ? [call.parent]
+        : [],
+    );
+    expect(applyParents).toHaveLength(2);
+    expect(new Set(applyParents).size).toBe(1);
+    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super', 'super', 'ultra']);
+    expect(JSON.stringify(caseFile.trace)).not.toContain('Math.round');
   });
 
   it('refuses the first adaptive expansion when the current provider snapshot has no capacity', async () => {
@@ -529,7 +671,6 @@ describe('sandbox command resolution', () => {
       'test-assertion',
       { failureCommand: observed },
     );
-    let superCall = 0;
     chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
       if (tier === 'nano') {
         return {
@@ -540,10 +681,7 @@ describe('sandbox command resolution', () => {
         };
       }
       if (tier === 'super') {
-        return repairToolCall(
-          { id: 'repair', rationale: 'fix the source', diff: HONEST_DIFF },
-          superCall++,
-        );
+        return repairProposal({ id: 'repair', rationale: 'fix the source', diff: HONEST_DIFF });
       }
       return {
         text: JSON.stringify({ approved: true, reasoning: 'The source repair holds.' }),

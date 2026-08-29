@@ -62,7 +62,7 @@ export interface AdaptiveSearchOptions {
   beamWidth?: number;
   maximumDepth?: number;
   maximumTotalBranches?: number;
-  availableBranches(): number;
+  availableBranches(frontier?: readonly (SearchNode | undefined)[]): number;
   concurrencyCapacity?(): number;
   cancel?(nodeId: string): Promise<void>;
   onDecision?(decision: { summary: string; nodeId?: string; parentNodeId?: string }): void;
@@ -94,16 +94,17 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
 
   for (let depth = 1; depth <= maximumDepth && frontier.length > 0; depth += 1) {
     const remaining = maximumTotalBranches - nodes.length;
-    const authorized = Math.max(0, Math.floor(options.availableBranches()));
+    const authorized = Math.max(0, Math.floor(options.availableBranches(frontier)));
     const parents = frontier.slice(0, Math.min(remaining, authorized));
     if (parents.length === 0) {
       return { nodes, candidates: [], terminalReason: remaining === 0 ? 'branch-budget' : 'operation-capacity' };
     }
     const children: SearchNode[] = [];
     const concurrency = Math.max(1, Math.floor(options.concurrencyCapacity?.() ?? parents.length));
-    for (let start = 0; start < parents.length; start += concurrency) {
-      if (options.availableBranches() < 1) break;
-      const batch = parents.slice(start, start + concurrency);
+    for (let start = 0; start < parents.length;) {
+      const authorizedBatchSize = Math.max(0, Math.floor(options.availableBranches(parents.slice(start))));
+      if (authorizedBatchSize < 1) break;
+      const batch = parents.slice(start, start + Math.min(concurrency, authorizedBatchSize));
       const controllers = batch.map(() => new AbortController());
       const settled = batch.map(() => false);
       const ids = batch.map((_parent, index) =>
@@ -178,6 +179,7 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
       });
       }
       if (children.some(({ terminalReason }) => terminalReason === 'passed')) break;
+      start += batch.length;
     }
     nodes.push(...children);
     const candidates = children.filter(({ terminalReason }) => terminalReason === 'passed').sort(compareSearchNodes);

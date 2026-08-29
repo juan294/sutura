@@ -54,6 +54,17 @@ describe('redactExternalText', () => {
     expect(result.text).not.toContain('wrapped secret');
   });
 
+  it.each([
+    'const TOKEN = "source-secret";',
+    'const TOKEN: string = "source-secret";',
+    'let clientSecret: string | undefined = "source-secret";',
+  ])('redacts JavaScript and TypeScript credential literal %s', (input) => {
+    const result = redactExternalText(input);
+
+    expect(result.count).toBe(1);
+    expect(result.text).not.toContain('source-secret');
+  });
+
   it('does not redact ordinary code and security vocabulary', () => {
     const input = [
       'const token = cursor.next();',

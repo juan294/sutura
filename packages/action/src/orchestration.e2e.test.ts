@@ -10,7 +10,6 @@ import {
   attemptMarker,
   orchestrate,
   type CostLedger,
-  type FunctionToolCall,
   type OrchestrationContext,
   type OrchestratorLlm,
   type PublishFixInput,
@@ -42,10 +41,22 @@ const HONEST_DIFF = [
   'diff --git a/src/value.ts b/src/value.ts',
   '--- a/src/value.ts',
   '+++ b/src/value.ts',
-  '@@ -1 +1 @@',
+  '@@ -1,1 +1,1 @@',
   '-export const value: string = 1;',
   '+export const value: string = "1";',
 ].join('\n') + '\n';
+
+const DOGFOOD_DIFF = [
+  'diff --git a/packages/core/src/dogfood-add.ts b/packages/core/src/dogfood-add.ts',
+  '--- a/packages/core/src/dogfood-add.ts',
+  '+++ b/packages/core/src/dogfood-add.ts',
+  '@@ -1,3 +1,3 @@',
+  ' export function add(left: number, right: number): number {',
+  '-  return left - right;',
+  '+  return left + right;',
+  ' }',
+  '',
+].join('\n');
 
 interface RawWorkflowRun {
   id: number;
@@ -53,6 +64,7 @@ interface RawWorkflowRun {
   repository: { full_name: string };
   event: string;
   conclusion: string | null;
+  head_branch?: string | null;
   pull_requests: Array<{ number: number }>;
 }
 
@@ -146,11 +158,13 @@ class RecordedGitHubApi implements GitHubApi {
       repository: run.repository.full_name,
       event: run.event,
       conclusion: run.conclusion,
+      ...(run.head_branch === undefined ? {} : { headBranch: run.head_branch }),
       pullRequests: run.pull_requests,
     };
   }
 
   async listPullRequestsForCommit(): Promise<Array<{ number: number }>> {
+    if (this.fixtures.workflowRun.event === 'workflow_dispatch') return [];
     throw new Error('The recorded workflow run must resolve its exact PR directly');
   }
 
@@ -236,6 +250,9 @@ class RecordedGitHubApi implements GitHubApi {
   }
 
   async getRefSha(ref: string): Promise<string> {
+    if (ref === `heads/${this.fixtures.workflowRun.head_branch ?? ''}`) {
+      return this.fixtures.workflowRun.head_sha;
+    }
     const sha = this.fixBranches.get(ref);
     if (!sha) throw new Error(`Unknown branch ${ref}`);
     return sha;
@@ -327,6 +344,11 @@ class RecordedRepository implements RepositoryPort {
   }> = [];
   readonly fixes: PublishFixInput[] = [];
   readonly sourceRequests: SourceReference[][] = [];
+  readonly sources = new Map([
+    ['src/value.ts', 'export const value: string = 1;\n'],
+    ['package.json', '{"scripts":{"test":"vitest run"}}'],
+    ['tsconfig.json', '{"compilerOptions":{"strict":true}}'],
+  ]);
 
   constructor(private readonly api: RecordedGitHubApi) {}
 
@@ -357,13 +379,8 @@ class RecordedRepository implements RepositoryPort {
     if (checkoutDir !== CHECKOUT_DIR) throw new Error('Unexpected checkout directory');
     if (references.length > limits.maxFiles) throw new Error('Unbounded source request');
     this.sourceRequests.push([...references]);
-    const sources = new Map([
-      ['src/value.ts', 'export const value: string = 1;'],
-      ['package.json', '{"scripts":{"test":"vitest run"}}'],
-      ['tsconfig.json', '{"compilerOptions":{"strict":true}}'],
-    ]);
     return references.flatMap(({ path }) => {
-      const content = sources.get(path);
+      const content = this.sources.get(path);
       return content === undefined
         ? []
         : [{ path, startLine: 1, content, truncated: false }];
@@ -378,7 +395,6 @@ class RecordedRepository implements RepositoryPort {
 
 class ScriptedLlm implements OrchestratorLlm {
   readonly calls: Array<'nano' | 'super' | 'ultra'> = [];
-  private superCall = 0;
 
   constructor(private readonly auditApproved: boolean) {}
 
@@ -393,7 +409,7 @@ class ScriptedLlm implements OrchestratorLlm {
 
   async chat(
     tier: 'nano' | 'super' | 'ultra',
-  ): Promise<{ text: string; toolCalls?: readonly FunctionToolCall[]; usd?: number }> {
+  ): Promise<{ text: string; usd?: number }> {
     this.calls.push(tier);
     if (tier === 'nano') {
       return {
@@ -407,21 +423,17 @@ class ScriptedLlm implements OrchestratorLlm {
       };
     }
     if (tier === 'super') {
-      const steps = [
-        ['apply_patch', { diff: HONEST_DIFF }],
-        ['run_test', { commandId: 'diagnosed' }],
-        ['submit_candidate', { id: 'source', rationale: 'Correct the source value.' }],
-      ] as const;
-      const [name, args] = steps[Math.min(this.superCall, steps.length - 1)]!;
-      this.superCall += 1;
       return {
-        text: '',
+        text: JSON.stringify({
+          id: 'source',
+          rationale: 'Correct the source value.',
+          edits: [{
+            path: 'src/value.ts',
+            old: 'export const value: string = 1;',
+            new: 'export const value: string = "1";',
+          }],
+        }),
         usd: 0.001,
-        toolCalls: [{
-          id: `repair-${this.superCall}`,
-          type: 'function',
-          function: { name, arguments: JSON.stringify(args) },
-        }],
       };
     }
     return {
@@ -439,14 +451,18 @@ function ledger(): CostLedger {
   return { entries: [], totalUsd: () => 0 };
 }
 
-function executorFor(exits: readonly number[], preparationFails = false): InMemoryExecutor {
+function executorFor(
+  exits: readonly number[],
+  preparationFails = false,
+  repairDiff = HONEST_DIFF,
+): InMemoryExecutor {
   let scenarioIndex = 0;
   let agentPatched = false;
   return new InMemoryExecutor((command) => {
     if (command.includes('git apply - && git diff')) {
       agentPatched = true;
       return {
-        exitCode: 0, stdout: HONEST_DIFF, stderr: '', truncated: false, metrics: {},
+        exitCode: 0, stdout: repairDiff, stderr: '', truncated: false, metrics: {},
       };
     }
     if (agentPatched) {
@@ -560,6 +576,110 @@ async function harnessFor(storyline: Storyline): Promise<{
 }
 
 describe('recorded GitHub API orchestration E2E', () => {
+  it('repairs the recorded direct workflow-dispatch dogfood failure and redelivers once', async () => {
+    const fixtures = await loadFixtures();
+    fixtures.workflowRun = {
+      ...fixtures.workflowRun,
+      event: 'workflow_dispatch',
+      head_branch: 'dogfood/sutura-v02-live-replay',
+      pull_requests: [],
+    };
+    fixtures.jobLog = [
+      '2026-08-27T10:00:12Z Run pnpm --filter @sutura/core test',
+      '2026-08-27T10:00:13Z packages/core test: src/dogfood-add.test.ts:7: expected -1 to be 5',
+    ].join('\n');
+    const api = new RecordedGitHubApi(fixtures);
+    const artifact = new RecordedArtifactApi();
+    const github = new CapturingGitHubAdapter(api, {
+      owner: 'acme', repo: 'widget', runId: RUN_ID, actionRunId: ACTION_RUN_ID, artifact,
+    });
+    const repository = new RecordedRepository(api);
+    repository.sources.clear();
+    repository.sources.set(
+      'packages/core/src/dogfood-add.test.ts',
+      "import { add } from './dogfood-add.js';\n\nit('adds', () => { expect(add(2, 3)).toBe(5); });\n",
+    );
+    repository.sources.set(
+      'packages/core/src/dogfood-add.ts',
+      'export function add(left: number, right: number): number {\n  return left - right;\n}\n',
+    );
+    const llmCalls: Array<'nano' | 'super' | 'ultra'> = [];
+    const llm: OrchestratorLlm = {
+      modelQuote: (tier) => ({
+        role: tier, modelId: DEFAULT_MODELS[tier], price: DEFAULT_MODEL_PRICES[tier],
+        profileId: DEFAULT_ROUTING_PROFILE_ID,
+      }),
+      chat: async (tier, messages, options) => {
+        llmCalls.push(tier);
+        if (tier === 'nano') return { text: JSON.stringify({
+          class: 'test-assertion', confidence: 0.99, signals: ['expected -1 to be 5'],
+          failingCmd: 'pnpm --filter @sutura/core test', errorExcerpt: 'expected -1 to be 5',
+        }) };
+        if (tier === 'super') {
+          const request = JSON.parse(messages.find(({ role }) => role === 'user')?.content ?? '{}') as {
+            sources?: Array<{ path: string }>;
+          };
+          expect(request.sources?.map(({ path }) => path)).toEqual([
+            'packages/core/src/dogfood-add.test.ts',
+            'packages/core/src/dogfood-add.ts',
+          ]);
+          expect(options).toMatchObject({ responseFormat: { type: 'json_schema' } });
+          expect(options).not.toHaveProperty('tools');
+          expect(options).not.toHaveProperty('toolChoice');
+          return { text: JSON.stringify({
+            id: 'dogfood-addition', rationale: 'Use addition in the add function.',
+            edits: [{
+              path: 'packages/core/src/dogfood-add.ts', old: 'left - right', new: 'left + right',
+            }],
+          }), usd: 0.001 };
+        }
+        return { text: JSON.stringify({ approved: true, reasoning: 'The addition repair holds.' }) };
+      },
+    };
+    const executor = executorFor([1, 1, 1, 0, 1, 1, 0], false, DOGFOOD_DIFF);
+    const ctx: OrchestrationContext = {
+      runId: RUN_ID, github, repository, executor, llm, cost: ledger(),
+      triageN: 2, raceK: 3, runtimeId: 'node',
+    };
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(caseFile.outcome).toBe('fixed');
+    expect(github.resolvedRuns[0]).toMatchObject({
+      headRef: 'dogfood/sutura-v02-live-replay',
+      baseRef: 'dogfood/sutura-v02-live-replay',
+      headSha: HEAD_SHA,
+    });
+    expect(repository.fixes).toEqual([expect.objectContaining({
+      branch: `sutura/fix-${RUN_ID}`, headSha: HEAD_SHA, diff: DOGFOOD_DIFF,
+    })]);
+    expect(repository.fixes[0]?.diff).not.toContain('dogfood-add.test.ts');
+    expect(api.createdPullRequests).toEqual([expect.objectContaining({
+      head: `acme:sutura/fix-${RUN_ID}`,
+      base: 'dogfood/sutura-v02-live-replay',
+    })]);
+    expect(api.comments).toHaveLength(1);
+    expect(llmCalls).toEqual(['nano', 'super', 'ultra']);
+
+    const mutationCounts = {
+      artifacts: artifact.uploads.length,
+      comments: api.comments.length,
+      executor: executor.calls.length,
+      fixes: repository.fixes.length,
+      llm: llmCalls.length,
+      pulls: api.createdPullRequests.length,
+    };
+    await expect(orchestrate(ctx)).rejects.toBeInstanceOf(AlreadyAttemptedError);
+    expect({
+      artifacts: artifact.uploads.length,
+      comments: api.comments.length,
+      executor: executor.calls.length,
+      fixes: repository.fixes.length,
+      llm: llmCalls.length,
+      pulls: api.createdPullRequests.length,
+    }).toEqual(mutationCounts);
+  });
+
   it.each(STORYLINES)(
     'resolves the exact recorded PR and completes the $name storyline once',
     async (storyline) => {

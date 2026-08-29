@@ -69,6 +69,21 @@ function runResult(exitCode: number, error = 'case.test.js: assertion failed'): 
   return { exitCode, stdout: exitCode === 0 ? 'passed' : '', stderr: exitCode === 0 ? '' : error, truncated: false, metrics: {} };
 }
 
+function proposalFor(candidate: Candidate): object {
+  const edits = candidate.diff === UPSTREAM_DIFF
+    ? [{
+        path: 'app.cjs',
+        old: "const fetch = require('node-fetch');\nexports.fetchName = () => fetch('data:Juan').then((response) => response.text());",
+        new: "exports.fetchName = () => import('node-fetch').then(({default: fetch}) => fetch('data:Juan'))\n  .then((response) => response.text());",
+      }]
+    : [{
+        path: 'page-count.js',
+        old: 'export function pageCount(items, size) { return Math.floor(items / size) + 1; }',
+        new: 'export function pageCount(items, size) { return Math.ceil(items / size); }',
+      }];
+  return { id: candidate.id, rationale: candidate.rationale, edits };
+}
+
 function runtime(
   exits: number[],
   failureClass: Diagnosis['class'],
@@ -92,7 +107,6 @@ function runtime(
     const index = scenarioIndex++;
     return runResult(exits[index] ?? 1, index === 0 ? reproductionError : 'case.test.js: assertion failed');
   });
-  let superCall = 0;
   const chat = vi.fn(async (tier: ModelTier) => {
     if (tier === 'nano') {
       return { text: JSON.stringify({
@@ -101,17 +115,7 @@ function runtime(
       }) };
     }
     if (tier === 'super') {
-      const steps = [
-        ['apply_patch', { diff: candidate.diff }],
-        ['run_test', { commandId: 'diagnosed' }],
-        ['submit_candidate', { id: candidate.id, rationale: candidate.rationale }],
-      ] as const;
-      const [name, args] = steps[Math.min(superCall, steps.length - 1)]!;
-      superCall += 1;
-      return {
-        text: '', usd: 0.001,
-        toolCalls: [{ id: `repair-${superCall}`, type: 'function' as const, function: { name, arguments: JSON.stringify(args) } }],
-      };
+      return { text: JSON.stringify(proposalFor(candidate)), usd: 0.001 };
     }
     return { text: JSON.stringify({ approved: true, reasoning: 'The source repair holds.' }) };
   });

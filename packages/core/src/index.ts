@@ -72,10 +72,12 @@ export {
   repairBudgetLimits,
 } from './engine/repair-budget.js';
 export { runRepairAgent } from './engine/repair-agent.js';
+export { REPAIR_ATTEMPT_COSTS, runControlledRepairAttempt } from './engine/repair-attempt.js';
 export { diffFingerprint, errorFingerprint, failureSignatureCount } from './engine/fingerprint.js';
 export { compareSearchNodes, searchScore } from './engine/search-score.js';
 export { adaptiveSearch, DEFAULT_SEARCH_LIMITS } from './engine/search.js';
 export { REPAIR_TOOL_DEFINITIONS, RepairToolRuntime } from './engine/repair-tools.js';
+export { sourceDependencyGroups } from './engine/source-context.js';
 export {
   generateCandidates,
   prepareRepair,
@@ -87,6 +89,7 @@ export type {
   RepairBudgetSnapshot,
 } from './engine/repair-budget.js';
 export type { RepairAgentContext, RepairAgentOutcome } from './engine/repair-agent.js';
+export type { ControlledRepairAttemptContext, RepairAttemptFeedback } from './engine/repair-attempt.js';
 export { triage } from './engine/triage.js';
 export {
   AlreadyAttemptedError,
@@ -258,6 +261,7 @@ export type {
   SearchNode,
   SearchPolicyEvidence,
 } from './engine/search.js';
+export type { SourceDependencyGroup } from './engine/source-context.js';
 export type { SearchScore } from './engine/search-score.js';
 export type {
   RepositoryPolicy,

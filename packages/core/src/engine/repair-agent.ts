@@ -6,8 +6,9 @@ import type { Executor, ImageId, RunResult } from '../executor/types.js';
 import type { CapacitySnapshot, ChatMessage, FunctionToolCall, TierLlm } from '../llm/types.js';
 import type { ModelPrice } from '../llm/cost.js';
 import type { RepositoryPolicy } from '../policy/schema.js';
-import { redactExternalJsonValue, redactExternalText } from '../security/external-text.js';
-import { BudgetExceededError, type RepairBudget } from './repair-budget.js';
+import { redactExternalJsonValue } from '../security/external-text.js';
+import type { RepairBudget } from './repair-budget.js';
+import { publicRepairReason, requestRepairModel } from './repair-model-call.js';
 import {
   REPAIR_TOOL_DEFINITIONS,
   RepairToolRuntime,
@@ -80,10 +81,6 @@ function initialMessages(ctx: RepairAgentContext): ChatMessage[] {
 
 function fingerprint(call: FunctionToolCall): string {
   return `${call.function.name}:${call.function.arguments}`;
-}
-
-function publicReason(value: string): string {
-  return redactExternalText(value).text.replace(/[\u0000-\u001f\u007f]/gu, ' ').slice(0, 300);
 }
 
 function digest(value: string): string {
@@ -165,7 +162,7 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
   try {
     ctx.budget.reserveBranch();
   } catch (error) {
-    return { status: 'gave-up', failureKind: 'budget', reason: publicReason(error instanceof Error ? error.message : String(error)) };
+    return { status: 'gave-up', failureKind: 'budget', reason: publicRepairReason(error instanceof Error ? error.message : String(error)) };
   }
   const tools = new RepairToolRuntime({
     executor: ctx.executor,
@@ -219,7 +216,7 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
       return {
         status: 'gave-up',
         failureKind: 'budget',
-        reason: publicReason(error instanceof Error ? error.message : String(error)),
+        reason: publicRepairReason(error instanceof Error ? error.message : String(error)),
       };
     }
   };
@@ -281,59 +278,14 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
       toolChoice: 'auto' as const,
       routing,
     };
-    let reservation;
-    try {
-      const quote = ctx.llm.modelQuote?.('super', messages, requestOptions);
-      if (quote === undefined) throw new Error('Repair model routing quote is unavailable');
-      reservation = ctx.budget.reserveModelTurn(worstCaseRequestUsd(messages, quote.price));
-    } catch (error) {
-      return {
-        status: 'gave-up',
-        failureKind: error instanceof BudgetExceededError ? 'budget' : 'provider',
-        reason: publicReason(error instanceof Error ? error.message : String(error)),
-      };
-    }
-    let reply;
-    const controller = new AbortController();
-    const timeoutMs = Math.max(
-      1,
-      Math.floor(ctx.budget.remainingElapsedTimeSec() * 1_000),
-    );
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const requestSignal = ctx.signal === undefined
-        ? controller.signal
-        : AbortSignal.any([controller.signal, ctx.signal]);
-      const request = ctx.llm.chat('super', messages, {
-        ...requestOptions,
-        signal: requestSignal,
-      });
-      const elapsed = new Promise<never>((_resolve, reject) => {
-        requestSignal.addEventListener(
-          'abort',
-          () => reject(controller.signal.aborted
-            ? new BudgetExceededError('elapsedTimeSec')
-            : new Error('Repair branch was cancelled')),
-          { once: true },
-        );
-      });
-      reply = await Promise.race([request, elapsed]);
-      if (reply.capacity !== undefined) ctx.observeCapacity?.(reply.capacity);
-      const actualUsd = reply.usd ?? reservation.reservedUsd;
-      if (actualUsd > reservation.reservedUsd) {
-        return { status: 'gave-up', failureKind: 'budget', reason: 'Model response exceeded its reserved worst-case cost' };
-      }
-      ctx.budget.settleModelTurn(reservation, actualUsd);
-    } catch (error) {
-      const reason = publicReason(error instanceof Error ? error.message : String(error));
-      return error instanceof BudgetExceededError || controller.signal.aborted
-        ? { status: 'gave-up', failureKind: 'budget', reason }
-        : ctx.signal?.aborted
-          ? { status: 'gave-up', failureKind: 'sandbox', reason: 'Repair branch was cancelled' }
-        : { status: 'infra-stop', failureKind: 'provider', reason };
-    } finally {
-      clearTimeout(timeout);
-    }
+    const response = await requestRepairModel({
+      llm: ctx.llm, budget: ctx.budget, messages, options: requestOptions,
+      worstCaseUsd: (price) => worstCaseRequestUsd(messages, price),
+      ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
+      ...(ctx.observeCapacity === undefined ? {} : { observeCapacity: ctx.observeCapacity }),
+    });
+    if (!response.ok) return response.outcome;
+    const { reply } = response;
     const calls = reply.toolCalls ?? [];
     if (calls.length === 0 || (calls.length > 1 && calls.some(({ function: tool }) => MUTATING_TOOLS.has(tool.name)))) {
       const invalid = calls.length === 0 ? 'missing required tool call' : 'parallel mutating tool calls are forbidden';
@@ -361,7 +313,7 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
       } else {
         result = await executeRecordedTool(call.id, call.function.name, args);
       }
-      const toolMessage = publicReason(JSON.stringify({ ok: result.ok, kind: result.kind, message: result.message, exitCode: result.exitCode }));
+      const toolMessage = publicRepairReason(JSON.stringify({ ok: result.ok, kind: result.kind, message: result.message, exitCode: result.exitCode }));
       messages.push({ role: 'tool', toolCallId: call.id, content: toolMessage });
       if (result.submitted && result.candidate && result.imageId) {
         return submissionOutcome(result, tools.state());

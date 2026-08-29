@@ -120,6 +120,10 @@ describe('domain model', () => {
       stages: StageEvidence[];
       search?: SearchEvidence[];
       trace?: import('./trace/types.js').TraceEvent[];
+      selectedCandidate?: {
+        id: string;
+        diffHash: string;
+      };
     }>();
   });
 

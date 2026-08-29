@@ -152,6 +152,10 @@ export interface CaseFile {
   triage: TriageVerdict;
   race: RaceResult[];
   audit?: AuditVerdict;
+  selectedCandidate?: {
+    id: string;
+    diffHash: string;
+  };
   outcome: 'fixed' | 'flaky-no-patch' | 'refused' | 'gave-up' | 'infra-stop';
   cost: CostLedger;
   policy: PolicyEvidence;

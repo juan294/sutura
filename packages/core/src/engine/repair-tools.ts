@@ -15,6 +15,7 @@ import {
   type RepairSourceContext,
   type RepairSourceExcerpt,
 } from './repair.js';
+import { typescriptSourceVariants } from './source-context.js';
 import { shellQuote } from './shell.js';
 
 const MAX_TOOL_OUTPUT_BYTES = 16_000;
@@ -126,12 +127,6 @@ function failure(kind: RepairToolFailureKind, message: string): RepairToolResult
 
 function allowsSourceRead(path: string, policy: RepositoryPolicy): boolean {
   return !isSensitiveRepositoryPath(path) && policyAllowsSourceRead(path, policy);
-}
-
-function typescriptSourceVariants(path: string): string[] {
-  if (!path.endsWith('.js')) return [];
-  const stem = path.slice(0, -3);
-  return [`${stem}.ts`, `${stem}.tsx`];
 }
 
 function typescriptSourceFallbacks(path: string, policy: RepositoryPolicy): string[] {

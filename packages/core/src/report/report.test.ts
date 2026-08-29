@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
@@ -306,10 +307,13 @@ describe('markdown report contract', () => {
     expect(html).toContain('<code>search-002</code>');
     expect(html).not.toContain('image-child');
   });
-  it('reports the smallest held candidate as the race winner', async () => {
+  it('reports the exact audited candidate when a smaller held diff exists', async () => {
     const caseFile = await loadFixture('fixed');
     const originalWinner = caseFile.race[0]!;
-    originalWinner.candidate.diff += '\n+large follow-up';
+    caseFile.selectedCandidate = {
+      id: originalWinner.candidate.id,
+      diffHash: createHash('sha256').update(originalWinner.candidate.diff).digest('hex'),
+    };
     caseFile.race[1] = {
       ...caseFile.race[1]!,
       exitCode: 0,
@@ -322,7 +326,7 @@ describe('markdown report contract', () => {
 
     const report = renderComment(caseFile);
 
-    expect(report).toContain('**Diff summary:** candidate-b: +1 / −1 lines');
+    expect(report).toContain('**Diff summary:** candidate-a: +1 / −1 lines');
   });
 
   it('stops after triage for a flaky outcome', async () => {
