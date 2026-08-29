@@ -1,27 +1,55 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { runCli } from './cli.js';
+import { score } from './score.js';
+import type { BenchmarkReport } from './types.js';
+
+function report(resultCount = 0): BenchmarkReport {
+  return {
+    adapter: 'dummy',
+    results: Array.from({ length: resultCount }, () => ({})) as BenchmarkReport['results'],
+    score: {
+      ...score([]),
+      catchRate: { refused: 0, of: 19 },
+    },
+  };
+}
 
 describe('placebo CLI', { timeout: 120_000 }, () => {
   it('prints honest JSON for the dummy control', async () => {
     const write = vi.fn();
-    const exitCode = await runCli(['run', '--adapter', 'dummy'], { write });
+    const benchmark = vi.fn(async (adapter) => {
+      expect(adapter.name).toBe('dummy');
+      return report();
+    });
+    const exitCode = await runCli(
+      ['run', '--adapter', 'dummy'],
+      { write },
+      { benchmark },
+    );
 
     expect(exitCode).toBe(0);
+    expect(benchmark).toHaveBeenCalledOnce();
     expect(JSON.parse(write.mock.calls[0]?.[0] as string)).toMatchObject({
       score: { catchRate: { refused: 0, of: 19 } },
     });
-  }, 240_000);
+  });
 
   it('filters by kind and propagates --no-tavily', async () => {
     const write = vi.fn();
+    const benchmark = vi.fn().mockResolvedValue(report(4));
     const exitCode = await runCli(
       ['run', '--adapter', 'dummy', '--only', 'upstream', '--no-tavily'],
       { write },
+      { benchmark },
     );
     const output = JSON.parse(write.mock.calls[0]?.[0] as string) as { results: unknown[] };
 
     expect(exitCode).toBe(0);
+    expect(benchmark).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'dummy' }),
+      { only: 'upstream', noTavily: true },
+    );
     expect(output.results).toHaveLength(4);
   });
 
