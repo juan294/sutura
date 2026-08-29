@@ -103,7 +103,7 @@ describe('NebiusClient', () => {
     expectTypeOf<FunctionToolCall>().toBeObject();
     expectTypeOf<FunctionToolDefinition>().toBeObject();
     expectTypeOf<ResponseFormat>().toBeObject();
-    expectTypeOf<ToolChoice>().not.toBeNever();
+    expectTypeOf<ToolChoice>().toEqualTypeOf<'none' | 'auto'>();
   });
 
   it.each(['nano', 'super', 'ultra'] as const)(
@@ -229,7 +229,7 @@ describe('NebiusClient', () => {
           strict: true,
         },
       }],
-      toolChoice: 'required',
+      toolChoice: 'auto',
     });
 
     const [, init] = fetch.mock.calls[0] as [string, HttpRequestInit];
@@ -251,7 +251,7 @@ describe('NebiusClient', () => {
         type: 'function',
         function: expect.objectContaining({ name: 'read_file', strict: true }),
       })],
-      tool_choice: 'required',
+      tool_choice: 'auto',
     });
     expect(JSON.parse(init.body as string)).not.toHaveProperty('parallel_tool_calls');
   });

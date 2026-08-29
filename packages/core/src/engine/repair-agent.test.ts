@@ -65,7 +65,7 @@ describe('runRepairAgent', () => {
     expect(outcome).toMatchObject({ status: 'submitted', candidate: { id: 'fix', diff }, imageId: 'patched' });
     expect(run).toHaveBeenCalledTimes(2);
     expect(chat.mock.calls.every(([, , options]) =>
-      options?.toolChoice === 'required' && !('parallelToolCalls' in options),
+      options?.toolChoice === 'auto' && !('parallelToolCalls' in options),
     )).toBe(true);
   });
 

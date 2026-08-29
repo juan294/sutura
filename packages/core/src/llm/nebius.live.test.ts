@@ -57,7 +57,7 @@ describe.skipIf(environment.SUTURA_LIVE !== '1')('NebiusClient live', () => {
     expect(reply.usage.outTok + reply.usage.reasoningTok).toBeGreaterThan(0);
   });
 
-  it('returns a required nano function call with valid JSON arguments', async () => {
+  it('returns a nano function call with valid JSON arguments in auto mode', async () => {
     const client = createLiveClient();
 
     const reply = await client.chat(
@@ -79,7 +79,7 @@ describe.skipIf(environment.SUTURA_LIVE !== '1')('NebiusClient live', () => {
             strict: true,
           },
         }],
-        toolChoice: 'required',
+        toolChoice: 'auto',
       },
     );
 

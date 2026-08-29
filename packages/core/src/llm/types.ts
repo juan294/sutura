@@ -51,14 +51,7 @@ export interface FunctionToolDefinition {
   };
 }
 
-export type ToolChoice =
-  | 'none'
-  | 'auto'
-  | 'required'
-  | {
-      type: 'function';
-      function: { name: string };
-    };
+export type ToolChoice = 'none' | 'auto';
 
 export type ResponseFormat =
   | { type: 'json_object' }

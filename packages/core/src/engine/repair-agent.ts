@@ -66,7 +66,7 @@ function initialMessages(ctx: RepairAgentContext): ChatMessage[] {
       role: 'system',
       content: [
         'Repair the diagnosed CI failure using only the supplied tools.',
-        'Call exactly the tools needed. tool_choice is required.',
+        'Call exactly the tools needed. A tool call is required on every turn.',
         'Do not reveal hidden reasoning. Do not weaken tests or policy.',
         'Only submit after the latest trusted test passes.',
       ].join('\n'),
@@ -199,7 +199,7 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
       temperature: 0.2,
       reasoningEffort: 'low' as const,
       tools: REPAIR_TOOL_DEFINITIONS,
-      toolChoice: 'required' as const,
+      toolChoice: 'auto' as const,
       routing,
     };
     let reservation;
