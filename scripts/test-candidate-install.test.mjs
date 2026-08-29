@@ -87,8 +87,9 @@ test('candidate wrapper rejects a different HEAD or relevant dirty files', async
   await assert.rejects(() => assertCandidateCheckout('/repo', 'b'.repeat(40), clean), /HEAD/u);
   await assert.rejects(() => assertCandidateCheckout('/repo', ACTION_SHA, async (command, args, options) => {
     if (args[0] === 'diff') throw new Error('dirty');
+    if (args[0] === 'status') return ' M packages/action/dist/index.cjs\n';
     return clean(command, args, options);
-  }), /differs/u);
+  }), /differs from the candidate commit; changed paths:\n M packages\/action\/dist\/index\.cjs/u);
   await assert.rejects(() => assertCandidateCheckout('/repo', ACTION_SHA, async (command, args, options) => {
     if (args[0] === 'ls-files') return 'packages/cli/src/untracked.ts\n';
     return clean(command, args, options);

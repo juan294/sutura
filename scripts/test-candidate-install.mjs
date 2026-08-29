@@ -36,7 +36,10 @@ export async function assertCandidateCheckout(root, actionCommit, execute) {
     await run('git', ['diff', '--quiet', actionCommit, '--', ...CANDIDATE_PATHS], { cwd: root });
     await run('git', ['diff', '--cached', '--quiet', actionCommit, '--', ...CANDIDATE_PATHS], { cwd: root });
   } catch {
-    throw new Error('Candidate package or Action source differs from the candidate commit');
+    const changed = (await run('git', ['status', '--porcelain', '--', ...CANDIDATE_PATHS], { cwd: root })).trimEnd();
+    throw new Error(
+      `Candidate package or Action source differs from the candidate commit; changed paths:\n${changed}`,
+    );
   }
   const untracked = await run('git', [
     'ls-files', '--others', '--exclude-standard', '--', ...CANDIDATE_PATHS,
