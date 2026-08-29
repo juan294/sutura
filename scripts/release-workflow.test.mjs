@@ -38,9 +38,6 @@ test('publication validates tag and bundle before publish, then verifies public 
   assert.match(workflow, /v\$\{version\}/u);
   assert.match(workflow, /git diff --exit-code -- packages\/action\/dist\/index\.cjs/u);
   assert.match(workflow, /test-candidate-install\.mjs/u);
-  assert.match(workflow, /pnpm run typecheck/u);
-  assert.match(workflow, /pnpm run lint/u);
-  assert.match(workflow, /pnpm run test\n/u);
   assert.match(workflow, /origin\/main/u);
   assert.match(workflow, /actions\/workflows\/ci\.yml\/runs/u);
   assert.match(workflow, /\.head_branch == \\"main\\" and \.event == \\"push\\"/u);
@@ -49,6 +46,14 @@ test('publication validates tag and bundle before publish, then verifies public 
   assert.match(workflow, /packageContentHash/u);
   assert.match(workflow, /upload-artifact/u);
   assert.match(workflow, /id-token: write/u);
+});
+
+test('publication trusts the exact-head CI check instead of re-running the full local gate', async () => {
+  const workflow = await text('.github/workflows/publish.yml');
+  assert.doesNotMatch(workflow, /pnpm run typecheck/u);
+  assert.doesNotMatch(workflow, /pnpm run lint/u);
+  assert.doesNotMatch(workflow, /pnpm run test\n/u);
+  assert.doesNotMatch(workflow, /pnpm run test:release-contracts/u);
 });
 
 test('release candidate workflow is local-only and requires an exact commit', async () => {

@@ -42,10 +42,6 @@ jobs:
             "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$release_sha&status=completed&per_page=100" \
             --jq "[.workflow_runs[] | select(.head_sha == \"$release_sha\" and .head_branch == \"main\" and .event == \"push\" and .conclusion == \"success\")] | length")
           test "$successful_runs" -ge 1
-      - run: pnpm run test:release-contracts
-      - run: pnpm run typecheck
-      - run: pnpm run lint
-      - run: pnpm run test
       - run: pnpm run build
       - run: git diff --exit-code -- packages/action/dist/index.cjs
       - name: Verify candidate artifacts
