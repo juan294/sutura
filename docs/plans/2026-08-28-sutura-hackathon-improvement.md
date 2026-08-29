@@ -369,6 +369,6 @@ External retention behavior, provider spending, remote test state, publication, 
 - [x] Phase 6: Evaluation Lab records and ATIF export
 - [x] Phase 7: Nemotron routing and progressive flake confidence
 - [x] Phase 8: GitHub Checks and audit-only distribution
-- [ ] Phase 9: Placebo v0.2 benchmark expansion
+- [x] Phase 9: Placebo v0.2 benchmark expansion
 - [ ] Phase 10: Python project support
 - [ ] Phase 11: Public demo, external proof, feedback, and release readiness

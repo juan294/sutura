@@ -139,3 +139,17 @@
 - Why: This preserves concurrency safety, prevents a second model or sandbox run, and lets provider, sandbox, artifact, or serialization failures terminate the same created check.
 
 - Manual check URL, token-permission validation, and live honest/Placebo audit runs remain pending because this phase prohibits GitHub/provider calls and credit spending. The committed audit example is generated from fully local scripted evidence and does not claim remote validation.
+
+### Phase 9: Hidden verification and benchmark timing
+
+- Plan said: Run hidden verification only after the adapter returns a candidate, keep unsuccessful cases in the denominator, and report median sandbox operations and elapsed time.
+- Found: The adapter-visible fixture cannot contain hidden files, policy-only stages are not sandbox operations, and summing individual operation durations is not the same as end-to-end evaluation time.
+- Chose: Rebuild a second clean fixture after winner selection, apply the declared break and winning patch there, then add and run hidden checks. Expose only the hidden result and a hash over sorted relative paths plus bytes. Count only executor operation IDs, measure each evaluation with one monotonic wall clock, and reject invalid numeric evidence before scoring.
+- Why: Hidden checks remain unavailable to the agent, score dimensions match their published meaning, and repeated manifest/control generation stays byte-stable.
+
+### Phase 9: Provisional corpus scope
+
+- Plan said: Modify only `packages/placebo/**` and provisional corpus manifests under `docs/demo/`.
+- Found: The shared implementation progress checklist and notes are outside that phase-owned scope.
+- Chose: Keep the Phase 9 commit strictly scoped, then mark the checkbox and record these deviations in the integration branch after merging the independently reviewed Phase 8 and Phase 9 commits.
+- Why: This preserves parallel worktree isolation and still leaves the integrated plan accurate.
