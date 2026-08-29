@@ -8,7 +8,7 @@ const execFileAsync = promisify(execFile);
 
 describe('published CLI bundle', () => {
   beforeAll(async () => {
-    await execFileAsync(process.execPath, ['scripts/bundle.mjs'], {
+    await execFileAsync('pnpm', ['run', 'build'], {
       cwd: new URL('..', import.meta.url),
     });
   });

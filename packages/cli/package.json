@@ -35,7 +35,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "pnpm --filter @sutura/core build && pnpm run typecheck && node scripts/bundle.mjs",
+    "build": "pnpm --filter @sutura/core build && pnpm --filter @sutura/evaluation build && pnpm run typecheck && node scripts/bundle.mjs",
     "bundle": "node scripts/bundle.mjs",
     "lint": "eslint src scripts",
     "prepack": "pnpm run build",
