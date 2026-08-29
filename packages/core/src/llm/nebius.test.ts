@@ -230,7 +230,6 @@ describe('NebiusClient', () => {
         },
       }],
       toolChoice: 'required',
-      parallelToolCalls: false,
     });
 
     const [, init] = fetch.mock.calls[0] as [string, HttpRequestInit];
@@ -253,8 +252,8 @@ describe('NebiusClient', () => {
         function: expect.objectContaining({ name: 'read_file', strict: true }),
       })],
       tool_choice: 'required',
-      parallel_tool_calls: false,
     });
+    expect(JSON.parse(init.body as string)).not.toHaveProperty('parallel_tool_calls');
   });
 
   it('rejects a reasoning budget below 2000 tokens before sending a request', async () => {

@@ -403,9 +403,6 @@ export class NebiusClient {
         : {}),
       ...(options.tools ? { tools: options.tools } : {}),
       ...(options.toolChoice ? { tool_choice: options.toolChoice } : {}),
-      ...(options.parallelToolCalls !== undefined
-        ? { parallel_tool_calls: options.parallelToolCalls }
-        : {}),
     };
     const requestUrl = endpoint(this.config.baseUrl);
     const request: HttpRequestInit = {

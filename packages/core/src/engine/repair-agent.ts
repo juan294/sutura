@@ -200,7 +200,6 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
       reasoningEffort: 'low' as const,
       tools: REPAIR_TOOL_DEFINITIONS,
       toolChoice: 'required' as const,
-      parallelToolCalls: false,
       routing,
     };
     let reservation;

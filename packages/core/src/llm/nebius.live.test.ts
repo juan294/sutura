@@ -80,7 +80,6 @@ describe.skipIf(environment.SUTURA_LIVE !== '1')('NebiusClient live', () => {
           },
         }],
         toolChoice: 'required',
-        parallelToolCalls: false,
       },
     );
 

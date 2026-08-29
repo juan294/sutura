@@ -78,7 +78,6 @@ export interface ChatOptions {
   responseFormat?: ResponseFormat;
   tools?: readonly FunctionToolDefinition[];
   toolChoice?: ToolChoice;
-  parallelToolCalls?: boolean;
   signal?: AbortSignal;
   routing?: {
     failureClass: FailureClass | null;
