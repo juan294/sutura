@@ -31,7 +31,7 @@ export interface SearchNode {
   transcriptReference: string;
   metrics?: RunMetrics;
   candidate?: Candidate;
-  terminalReason?: 'passed' | 'policy' | 'repeated-state' | 'depth' | 'cancelled' | 'failed';
+  terminalReason?: 'passed' | 'policy' | 'repeated-state' | 'depth' | 'cancelled' | 'failed' | 'completion-limit';
 }
 
 export interface SearchExpansion {
@@ -72,7 +72,17 @@ export interface AdaptiveSearchOptions {
 export interface AdaptiveSearchResult {
   nodes: SearchNode[];
   candidates: SearchNode[];
-  terminalReason: 'candidate-found' | 'frontier-exhausted' | 'branch-budget' | 'operation-capacity' | 'depth';
+  terminalReason: 'candidate-found' | 'frontier-exhausted' | 'branch-budget' | 'operation-capacity' | 'depth' | 'completion-limit';
+}
+
+function isGlobalTerminal(reason: SearchNode['terminalReason']): reason is 'completion-limit' {
+  return reason === 'completion-limit';
+}
+
+function isEvidenceTerminal(
+  reason: SearchNode['terminalReason'],
+): reason is 'cancelled' | 'completion-limit' {
+  return reason === 'cancelled' || isGlobalTerminal(reason);
 }
 
 function limit(value: number | undefined, fallback: number, name: string): number {
@@ -128,12 +138,10 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
           signal: controllers[index]!.signal,
         });
         settled[index] = true;
-        if (
-          !cancellationStarted &&
-          expansion.policyEvidence.valid &&
+        const passed = expansion.policyEvidence.valid &&
           expansion.testEvidence.exitCode === 0 &&
-          expansion.candidate !== undefined
-        ) {
+          expansion.candidate !== undefined;
+        if (!cancellationStarted && (passed || isGlobalTerminal(expansion.terminalReason))) {
           cancellationStarted = true;
           await Promise.all(ids.flatMap((otherId, otherIndex) => {
             if (otherIndex === index || settled[otherIndex]) return [];
@@ -152,11 +160,13 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
       const passed = expansion.testEvidence.exitCode === 0 && expansion.candidate !== undefined;
       const terminalReason = !expansion.policyEvidence.valid
         ? 'policy' as const
-        : repeated
-          ? 'repeated-state' as const
-          : passed
-            ? 'passed' as const
-            : expansion.terminalReason ?? (depth === maximumDepth ? 'depth' as const : undefined);
+        : passed
+          ? 'passed' as const
+          : isEvidenceTerminal(expansion.terminalReason)
+            ? expansion.terminalReason
+            : repeated
+              ? 'repeated-state' as const
+              : expansion.terminalReason ?? (depth === maximumDepth ? 'depth' as const : undefined);
       children.push({
         id,
         ...(parent === undefined ? {} : { parentId: parent.id }),
@@ -179,6 +189,10 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
       });
       }
       if (children.some(({ terminalReason }) => terminalReason === 'passed')) break;
+      if (children.some(({ terminalReason }) => isGlobalTerminal(terminalReason))) {
+        nodes.push(...children);
+        return { nodes, candidates: [], terminalReason: 'completion-limit' };
+      }
       start += batch.length;
     }
     nodes.push(...children);

@@ -7,9 +7,12 @@ import { assertExternalEditableText, redactExternalJsonValue } from '../security
 import type { RepairAgentContext, RepairAgentOutcome } from './repair-agent.js';
 import { publicRepairReason, requestRepairModel } from './repair-model-call.js';
 import { RepairToolRuntime, type RepairToolResult } from './repair-tools.js';
-import { anchoredEditsDiff, REPAIR_PROPOSAL_LIMITS } from './repair.js';
+import {
+  anchoredEditsDiff,
+  REPAIR_PROPOSAL_LIMITS,
+  SUPER_REPAIR_MAX_TOKENS,
+} from './repair.js';
 
-const MAX_PROPOSAL_TOKENS = 8_192;
 const REPAIR_ATTEMPT_MINIMUM_INFERENCE_USD = 0.05;
 
 export const REPAIR_ATTEMPT_COSTS = Object.freeze({
@@ -78,6 +81,7 @@ function proposalMessages(ctx: ControlledRepairAttemptContext): ChatMessage[] {
       role: 'system',
       content: [
         'Return one complete replacement repair proposal as strict JSON.',
+        'Return exactly this shape: {"id":"short-id","rationale":"short reason","edits":[{"path":"supplied/path.ts","startLine":1,"endLine":1,"new":"complete replacement"}]}',
         'Use only exact supplied source paths and inclusive line ranges inside supplied excerpts.',
         'For each edit, new must be the complete replacement text for startLine through endLine, not a partial expression.',
         'Use an empty new value only to delete the selected lines.',
@@ -115,14 +119,14 @@ function parseProposal(text: string): RepairProposal {
 
 function worstCaseRequestUsd(messages: readonly ChatMessage[], inputPrice: number, outputPrice: number): number {
   const requestBytes = Buffer.byteLength(JSON.stringify({ messages, responseSchema: REPAIR_PROPOSAL_SCHEMA }), 'utf8');
-  const priced = (requestBytes * inputPrice + MAX_PROPOSAL_TOKENS * outputPrice) / 1_000_000;
+  const priced = (requestBytes * inputPrice + SUPER_REPAIR_MAX_TOKENS * outputPrice) / 1_000_000;
   return Math.max(REPAIR_ATTEMPT_MINIMUM_INFERENCE_USD, Math.ceil(priced * 1_000_000) / 1_000_000);
 }
 
 function proposalOptions(ctx: ControlledRepairAttemptContext): ChatOptions {
   return {
-    maxTokens: MAX_PROPOSAL_TOKENS,
-    temperature: 0.4,
+    maxTokens: SUPER_REPAIR_MAX_TOKENS,
+    temperature: 1,
     reasoningEffort: 'low',
     responseFormat: {
       type: 'json_schema',
@@ -175,6 +179,12 @@ export async function runControlledRepairAttempt(
   });
   if (!response.ok) return response.outcome;
   const { reply } = response;
+  if (reply.finishReason === 'length') {
+    return {
+      status: 'gave-up', failureKind: 'completion-limit',
+      reason: 'Repair proposal reached the provider completion-token limit',
+    };
+  }
   let proposal: RepairProposal;
   let proposalDiff: string;
   try {

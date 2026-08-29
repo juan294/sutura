@@ -75,3 +75,13 @@ Expected: Token Factory strict JSON output passes the same local validation cont
 Found: four branches returned provider-schema-valid proposals that local length checks rejected. Two more branches reached patch conversion but failed because the proposal protocol required Super to copy the exact `old` source text. The provider schema did not declare the local ID and rationale bounds, and exact source copying was not needed because Sutura already held the bounded source excerpt.
 
 Why it matters: strict provider output is not enough when the provider schema and local parser differ. Requiring the model to echo exact source also creates a second, avoidable fidelity test. The production protocol must declare identical bounds at both validation layers and let Super identify inclusive source line ranges while the controller derives the exact old bytes and unified diff.
+
+## Live proof 12 addendum
+
+The anchored-proposal candidate, `d23da3d49627b2709841ad3c0278d5e1bd5a297d`, passed exact-SHA CI at [run 33256021182](https://github.com/juan294/sutura/actions/runs/33256021182). Dogfood SHA `6539ec9b949c4ba0049b3331c1e379a6dc182ef7` then failed only the declared arithmetic assertion at [run 33256572917](https://github.com/juan294/sutura/actions/runs/33256572917). Sutura [run 33256632878](https://github.com/juan294/sutura/actions/runs/33256632878) reached Super six times but completed with `gave-up` and no repair pull request.
+
+Expected: low-effort Super returns one compact anchored JSON proposal before the configured completion budget ends.
+
+Found: five replies consumed the full 8,192-token completion allowance and produced truncated or non-JSON content. The sixth stopped after 5,484 combined output and reasoning tokens but did not match the strict schema. Token Factory counts hidden reasoning inside the completion limit, while Sutura discarded the provider `finish_reason` at the shared LLM interface and reported length terminals as malformed JSON.
+
+Why it matters: the production completion budget was below NVIDIA's documented 16,000-token low-effort Super example and below the repository's existing 16,384-token Super candidate request. Production must reserve the larger bounded envelope, put the compact schema shape in the prompt as Token Factory recommends, and preserve `finish_reason: length` as explicit terminal evidence.

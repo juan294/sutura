@@ -39,6 +39,21 @@ describe('adaptiveSearch', () => {
     expect(result.terminalReason).toBe('frontier-exhausted');
   });
 
+  it('still prunes repeated generic failed states', async () => {
+    const expand = vi.fn(async () => ({
+      ...expansion('same-failed-diff', 1, 'same failed output'),
+      terminalReason: 'failed' as const,
+    }));
+    const result = await adaptiveSearch({
+      baselineImageId: 'base', initialBranches: 2, beamWidth: 1, maximumDepth: 2,
+      maximumTotalBranches: 3, availableBranches: () => 3, expand,
+    });
+    expect(expand).toHaveBeenCalledTimes(3);
+    expect(result.nodes.map(({ terminalReason }) => terminalReason)).toEqual([
+      'failed', 'repeated-state', 'repeated-state',
+    ]);
+  });
+
   it('does not expand policy failures', async () => {
     const expand = vi.fn(async () => ({
       ...expansion('denied', 1),
@@ -94,7 +109,7 @@ describe('adaptiveSearch', () => {
   });
 
   it('cancels unfinished siblings and preserves their terminal node', async () => {
-    const cancel = vi.fn(async () => undefined);
+    const cancel = vi.fn(async (nodeId: string) => { void nodeId; });
     const result = await adaptiveSearch({
       baselineImageId: 'base', initialBranches: 2, beamWidth: 2, maximumDepth: 1,
       maximumTotalBranches: 2, availableBranches: () => 2,
@@ -108,6 +123,44 @@ describe('adaptiveSearch', () => {
     expect(cancel).toHaveBeenCalledWith('search-002');
     expect(result.candidates.map(({ id }) => id)).toEqual(['search-001']);
     expect(result.nodes[1]?.terminalReason).toBe('cancelled');
+  });
+
+  it('stops globally on a completion limit and preserves cancelled sibling evidence', async () => {
+    const cancel = vi.fn(async (nodeId: string) => { void nodeId; });
+    const expand = vi.fn(async ({ branch, signal }: { branch: number; signal: AbortSignal }) => {
+      if (branch === 1) {
+        return { ...expansion('limited', 1), terminalReason: 'completion-limit' as const };
+      }
+      await new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve(), { once: true }));
+      return { ...expansion('cancelled', 1, 'cancelled'), terminalReason: 'cancelled' as const };
+    });
+    const result = await adaptiveSearch({
+      baselineImageId: 'base', initialBranches: 4, beamWidth: 2, maximumDepth: 2,
+      maximumTotalBranches: 8, availableBranches: () => 4,
+      concurrencyCapacity: () => 3, cancel, expand,
+    });
+    expect(expand).toHaveBeenCalledTimes(3);
+    expect(cancel.mock.calls.map(([nodeId]) => nodeId)).toEqual(['search-002', 'search-003']);
+    expect(result.terminalReason).toBe('completion-limit');
+    expect(result.nodes.map(({ terminalReason }) => terminalReason)).toEqual([
+      'completion-limit', 'cancelled', 'cancelled',
+    ]);
+  });
+
+  it('keeps a passing candidate when its batch also reaches a completion limit', async () => {
+    const result = await adaptiveSearch({
+      baselineImageId: 'base', initialBranches: 2, beamWidth: 2, maximumDepth: 2,
+      maximumTotalBranches: 4, availableBranches: () => 2,
+      concurrencyCapacity: () => 2, cancel: async () => undefined,
+      expand: async ({ branch }) => branch === 1
+        ? { ...expansion('limited', 1), terminalReason: 'completion-limit' }
+        : expansion('winner', 0),
+    });
+    expect(result.terminalReason).toBe('candidate-found');
+    expect(result.candidates.map(({ id }) => id)).toEqual(['search-002']);
+    expect(result.nodes.map(({ terminalReason }) => terminalReason)).toEqual([
+      'completion-limit', 'passed',
+    ]);
   });
 
   it('collects all passing children that complete in the same expansion batch', async () => {

@@ -177,6 +177,38 @@ describe('healCase', () => {
     ]);
   });
 
+  it('replays live run 12: one completion limit stops the remaining repair branches', async () => {
+    let scenarioIndex = 0;
+    const executor = new InMemoryExecutor((command) => {
+      if (
+        command.includes('corepack pnpm install --frozen-lockfile') ||
+        command.includes('git init --quiet')
+      ) return result(0);
+      return result([1, 1, 1, 1, 1][scenarioIndex++] ?? 1);
+    }, { operationLimit: 1 });
+    const value = context('repair-off-by-one', [], 'test-assertion', {
+      executor,
+      search: { initialBranches: 4, beamWidth: 2, maximumDepth: 4, maximumTotalBranches: 12 },
+    });
+    value.ctx.executor = executor;
+    value.chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
+      if (tier === 'nano') return { text: JSON.stringify(diagnosis('test-assertion')) };
+      if (tier === 'super') return { text: '{"id":"truncated"', finishReason: 'length' as const };
+      return { text: JSON.stringify({ approved: true, reasoning: 'unused' }) };
+    });
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(value.chat.mock.calls.filter(([tier]) => tier === 'super')).toHaveLength(1);
+    expect(caseFile.search).toEqual([
+      expect.objectContaining({ nodeId: 'search-001', terminalReason: 'completion-limit' }),
+    ]);
+    expect(executor.calls.filter((call) =>
+      call.kind === 'run' && call.cmd.includes('git apply'),
+    )).toHaveLength(0);
+  });
+
   it.each([
     ['tool calls', { toolCalls: 2 }],
     ['inference cost', { inferenceCostUsd: 0.01 }],

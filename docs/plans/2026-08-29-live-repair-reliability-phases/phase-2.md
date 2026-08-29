@@ -12,6 +12,7 @@ Refactor the repair-agent and structured repair modules, repair tools, LLM schem
 
 1. Define one strict repair proposal schema with candidate ID, concise rationale, and non-empty inclusive source line anchors plus complete replacement text. Declare the same bounds in the provider schema and local parser.
 2. Send diagnosis, bounded source closure, trusted command identity, and optional parent feedback to one Super request.
+   Use a 16,384-token low-effort completion envelope and include the compact JSON shape in the prompt because reasoning shares the provider completion limit.
 3. Do not expose production control tools to that request.
 4. Validate each anchor against the supplied source excerpt. Derive the exact old bytes and unified diff in the controller so the model never has to copy source text verbatim.
 5. Start every attempt from the clean prepared baseline image.
@@ -41,6 +42,8 @@ if fail: return checkpoint with complete diff and bounded test evidence
 - An empty replacement deletes only the anchored lines; multiline replacements preserve LF, CRLF, and final-newline state from controller-owned source.
 - One valid dogfood proposal produces the correct patch, automatically runs the trusted test, and creates a held candidate.
 - A patch failure, test failure, provider failure, invalid schema, policy refusal, timeout, cancellation, and budget exhaustion return typed terminal evidence.
+- A provider completion-length terminal is preserved explicitly and cannot be mislabeled as malformed JSON.
+- Completion exhaustion is a non-retryable search terminal: cancel unfinished siblings, stop later branches, and keep a valid same-batch candidate if one completed.
 - No candidate exists without passing trusted-test evidence from its patched image.
 - Exact cost, model-turn, action, sandbox-operation, and elapsed-time accounting is asserted.
 - Trace events prove the state order for pass and fail paths.

@@ -107,6 +107,8 @@ export interface LlmReply {
   requestId: string | null;
 }
 
+export type TierLlmReply = { text: string } & Partial<Omit<LlmReply, 'text'>>;
+
 export interface TierLlm<Tier extends ModelTier> {
   capacitySnapshot?(): CapacitySnapshot | undefined;
   modelId?(tier: Tier): string;
@@ -119,14 +121,5 @@ export interface TierLlm<Tier extends ModelTier> {
     tier: Tier,
     messages: readonly ChatMessage[],
     options?: ChatOptions,
-  ): Promise<{
-    text: string;
-    toolCalls?: readonly FunctionToolCall[];
-    usd?: number;
-    capacity?: CapacitySnapshot;
-    model?: string;
-    latencyMs?: number;
-    requestId?: string | null;
-    usage?: TokenUsage;
-  }>;
+  ): Promise<TierLlmReply>;
 }

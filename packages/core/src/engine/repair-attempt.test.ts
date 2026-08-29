@@ -75,6 +75,7 @@ describe('runControlledRepairAttempt', () => {
     expect(chat).toHaveBeenCalledOnce();
     const options = chat.mock.calls[0]?.[2] as ChatOptions | undefined;
     expect(options).toMatchObject({ responseFormat: { type: 'json_schema' } });
+    expect(options).toMatchObject({ maxTokens: 16_384, temperature: 1, reasoningEffort: 'low' });
     expect(JSON.stringify(options)).toContain('"startLine"');
     expect(JSON.stringify(options)).not.toContain('"old"');
     expect(options).not.toHaveProperty('tools');
@@ -127,6 +128,26 @@ describe('runControlledRepairAttempt', () => {
     });
     expect(invalid).toMatchObject({ status: 'gave-up', failureKind: 'invalid' });
     expect(chat).toHaveBeenCalledOnce();
+    expect(executor.calls).toHaveLength(0);
+  });
+
+  it('replays live run 12: a provider length terminal is not misreported as malformed JSON', async () => {
+    const executor = new InMemoryExecutor(() => runResult(1));
+    const value = llm('{"id":"truncated"');
+    value.chat.mockResolvedValueOnce({
+      text: '{"id":"truncated"', usd: 0.01, finishReason: 'length',
+    });
+
+    const outcome = await runControlledRepairAttempt({
+      llm: value.model, executor, initialImageId: 'baseline', diagnosis,
+      policy: createDefaultRepositoryPolicy(), budget: new RepairBudget(),
+      trustedCommands: { diagnosed: 'pnpm test' }, sourceContext,
+    });
+
+    expect(outcome).toMatchObject({
+      status: 'gave-up', failureKind: 'completion-limit',
+      reason: 'Repair proposal reached the provider completion-token limit',
+    });
     expect(executor.calls).toHaveLength(0);
   });
 

@@ -1,8 +1,13 @@
+import { Buffer } from 'node:buffer';
+
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_MODELS } from '../config.js';
 import type { Diagnosis } from '../domain.js';
-import { generateCandidates } from '../engine/repair.js';
+import { runControlledRepairAttempt } from '../engine/repair-attempt.js';
+import { RepairBudget } from '../engine/repair-budget.js';
+import { InMemoryExecutor } from '../executor/memory.js';
+import { createDefaultRepositoryPolicy } from '../policy/load.js';
 import { DEFAULT_MODEL_PRICES } from './cost.js';
 import { NebiusClient } from './nebius.js';
 
@@ -107,27 +112,52 @@ describe.skipIf(environment.SUTURA_LIVE !== '1')('NebiusClient live', () => {
     expect(client.ledger.totalUsd()).toBe(reply.usd);
   });
 
-  it('generates one locally valid Super candidate with bounded reasoning', async () => {
+  it('runs the production Super anchored-proposal contract with bounded reasoning', async () => {
     const client = createLiveClient();
     const diagnosis: Diagnosis = {
-      class: 'typecheck',
+      class: 'test-assertion',
       confidence: 0.99,
-      signals: ['mechanical:typecheck'],
-      failingCmd: 'pnpm typecheck',
-      errorExcerpt: "src/value.ts(1,7): error TS2322: Type 'string' is not assignable to type 'number'.",
+      signals: ['expected -1 to be 5'],
+      failingCmd: 'pnpm test',
+      errorExcerpt: 'src/add.test.ts: expected -1 to be 5',
     };
-
-    const candidates = await generateCandidates(client, diagnosis, 1, {
-      sources: [{
-        path: 'src/value.ts',
-        startLine: 1,
-        content: "const value: number = '1';",
-        truncated: false,
-      }],
+    const expectedDiff = [
+      'diff --git a/src/add.ts b/src/add.ts',
+      '--- a/src/add.ts', '+++ b/src/add.ts',
+      '@@ -1,3 +1,3 @@',
+      ' export function add(left: number, right: number): number {',
+      '-  return left - right;', '+  return left + right;', ' }', '',
+    ].join('\n');
+    const executor = new InMemoryExecutor((command, _parent, index) => {
+      if (index === 0) {
+        expect(command).toContain(Buffer.from(expectedDiff, 'utf8').toString('base64'));
+        return { exitCode: 0, stdout: expectedDiff, stderr: '', truncated: false, metrics: {} };
+      }
+      return { exitCode: 0, stdout: '1 passed', stderr: '', truncated: false, metrics: {} };
     });
 
-    expect(candidates).toHaveLength(1);
-    expect(candidates[0]?.diff).toContain('diff --git a/src/value.ts b/src/value.ts');
+    const outcome = await runControlledRepairAttempt({
+      llm: client,
+      executor,
+      initialImageId: 'baseline',
+      diagnosis,
+      policy: createDefaultRepositoryPolicy(),
+      budget: new RepairBudget(),
+      trustedCommands: { diagnosed: 'pnpm test' },
+      sourceContext: {
+        sources: [{
+          path: 'src/add.ts',
+          startLine: 1,
+          content: 'export function add(left: number, right: number): number {\n  return left - right;\n}\n',
+          truncated: false,
+        }],
+      },
+    });
+
+    expect(outcome).toMatchObject({
+      status: 'submitted',
+      candidate: { diff: expectedDiff },
+    });
     expect(client.ledger.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({
         role: 'super',

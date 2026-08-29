@@ -28,6 +28,7 @@ import { triage } from './triage.js';
 import { shellQuote } from './shell.js';
 
 const DEFAULT_RACE_CANDIDATES = 3;
+export const SUPER_REPAIR_MAX_TOKENS = 16_384;
 
 export const REPAIR_PROPOSAL_LIMITS = Object.freeze({
   idCodePoints: 80,
@@ -520,7 +521,7 @@ export async function generateCandidates(
     },
   ]);
   const options = {
-    maxTokens: 16_384,
+    maxTokens: SUPER_REPAIR_MAX_TOKENS,
     temperature: 1,
     reasoningEffort: 'low' as const,
     responseFormat: { type: 'json_object' as const },

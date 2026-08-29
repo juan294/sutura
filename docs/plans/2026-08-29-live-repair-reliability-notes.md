@@ -94,4 +94,35 @@ The complete local gate passed against the implementation tree. Candidate packag
 - Efficiency review: clean
 - `git diff --check`: passed
 
+### Completion-budget revision
+
+- Develop candidate: `d23da3d49627b2709841ad3c0278d5e1bd5a297d`
+- Develop CI: [33256021182](https://github.com/juan294/sutura/actions/runs/33256021182), passed
+- Dogfood SHA: `6539ec9b949c4ba0049b3331c1e379a6dc182ef7`
+- Intentional CI: [33256572917](https://github.com/juan294/sutura/actions/runs/33256572917), failed only the declared arithmetic assertion
+- Sutura: [33256632878](https://github.com/juan294/sutura/actions/runs/33256632878), `gave-up`
+- Terminal evidence: five Super replies reached the exact 8,192 combined output and reasoning token ceiling and returned invalid JSON; one shorter reply failed the strict schema
+- Response: reserve a 16,384-token low-effort completion envelope, include the compact schema shape in the prompt, preserve provider length terminals through the shared LLM contract, and stop adaptive search globally after cancelling unfinished siblings
+
+### Completion-budget local gate
+
+- Core: 725 passed, 8 skipped
+- Action: 70 passed
+- Evaluation: 5 passed
+- CLI: 81 passed
+- Placebo: 70 passed in 780 seconds
+- Repository total: 951 passed, 8 skipped
+- Typecheck: passed for all five buildable workspace packages
+- Lint: passed for all five buildable workspace packages
+- Build and Action bundle rebuild: passed
+- README setup tests: 3 passed
+- README isolated setup verification: passed
+- Vendored runtime verification and offline `darwin-arm64` smoke: passed
+- Release contracts: 22 passed
+- Focused completion-limit orchestration and concurrent-search tests: 63 passed
+- Reuse review: clean
+- Quality review: clean
+- Efficiency review: clean
+- `git diff --check`: passed
+
 Final Phase 5 exact-SHA CI and live dogfood evidence remain pending.

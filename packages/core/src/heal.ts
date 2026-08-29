@@ -992,7 +992,7 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
           },
           policyEvidence: { valid: true, violations: [], changedFiles: [], diffBytes: Buffer.byteLength(inheritedDiff, 'utf8') },
           stageEvidence: ledger.entries().slice(before), transcriptReference: nodeId,
-          terminalReason: 'failed',
+          terminalReason: agent.failureKind === 'completion-limit' ? 'completion-limit' : 'failed',
         };
       },
     });

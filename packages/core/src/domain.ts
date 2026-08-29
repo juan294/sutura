@@ -53,6 +53,7 @@ export interface Candidate {
 
 export type RepairFailureKind =
   | 'provider'
+  | 'completion-limit'
   | 'sandbox'
   | 'policy'
   | 'budget'
