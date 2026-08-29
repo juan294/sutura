@@ -121,4 +121,6 @@ The local implementation tree passed the complete pre-commit gate:
 - Efficiency review: clean
 - `git diff --check`: passed
 
-Candidate package verification binds to the final clean commit after it is created. The live canary and Phase 5 remain pending and require separate remote authorization.
+The CLI unit suite now injects its benchmark boundary instead of running a second complete Placebo corpus. The canonical full-corpus integration remains in the harness suite, which removes a filesystem-sensitive timeout without reducing integration coverage.
+
+Candidate package verification passed from a clean commit and bound the installed Action to the same exact branch tip. The live canary and Phase 5 remain pending and require separate remote authorization.
