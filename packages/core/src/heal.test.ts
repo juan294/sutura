@@ -19,7 +19,7 @@ import {
   SUTURA_SANDBOX_ENV,
   type HealCaseContext,
 } from './heal.js';
-import type { TierLlm } from './llm/types.js';
+import type { ChatMessage, TierLlm } from './llm/types.js';
 import { DEFAULT_MODEL_PRICES } from './llm/cost.js';
 import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
 import { parseRepositoryPolicy } from './policy/schema.js';
@@ -34,11 +34,13 @@ const HONEST_DIFF = [
   '-export function pageCount(items, size) { return Math.floor(items / size) + 1; }',
   '+export function pageCount(items, size) { return Math.ceil(items / size); }',
 ].join('\n') + '\n';
+const HONEST_REPLACEMENT = 'export function pageCount(items, size) { return Math.ceil(items / size); }\n';
 
 const WRONG_REPLACEMENT_DIFF = HONEST_DIFF.replace(
   '+export function pageCount(items, size) { return Math.ceil(items / size); }',
   '+export function pageCount(items, size) { return Math.round(items / size); }',
 );
+const WRONG_REPLACEMENT = 'export function pageCount(items, size) { return Math.round(items / size); }\n';
 
 const UPSTREAM_DIFF = [
   'diff --git a/app.cjs b/app.cjs',
@@ -50,6 +52,17 @@ const UPSTREAM_DIFF = [
   "+const fetchClient = require('node-fetch');",
   "+exports.fetchName = () => fetchClient('data:Juan').then((response) => response.text());",
 ].join('\n') + '\n';
+const UPSTREAM_REPLACEMENT = [
+  "const fetchClient = require('node-fetch');",
+  "exports.fetchName = () => fetchClient('data:Juan').then((response) => response.text());",
+].join('\n') + '\n';
+
+function candidateReplacement(candidate: Candidate): string {
+  if (candidate.diff === HONEST_DIFF) return HONEST_REPLACEMENT;
+  if (candidate.diff === WRONG_REPLACEMENT_DIFF) return WRONG_REPLACEMENT;
+  if (candidate.diff === UPSTREAM_DIFF) return UPSTREAM_REPLACEMENT;
+  throw new Error(`No explicit replacement fixture for ${candidate.id}`);
+}
 
 function result(exitCode: number, stderr = exitCode === 0 ? '' : 'case.test.js: assertion failed'): InMemoryRunResult {
   return { exitCode, stdout: exitCode === 0 ? 'Tests passed' : '', stderr, truncated: false, metrics: {} };
@@ -76,7 +89,7 @@ function scriptedLlm(
 ): { llm: TierLlm<'nano' | 'super' | 'ultra'>; chat: ReturnType<typeof vi.fn> } {
   const chat = vi.fn(async (tier: 'nano' | 'super' | 'ultra') => {
     if (tier === 'nano') return { text: JSON.stringify(diagnosis(failureClass)) };
-    if (tier === 'super') return repairProposalReply(candidates[0]!);
+    if (tier === 'super') return repairProposalReply(candidates[0]!, candidateReplacement(candidates[0]!));
     const verdict: Pick<AuditVerdict, 'approved' | 'reasoning'> = {
       approved: auditApproved,
       reasoning: auditApproved ? 'The source repair holds.' : 'REFUSED: wrong cause.',
@@ -175,6 +188,101 @@ describe('healCase', () => {
     expect(caseFile.search?.map(({ nodeId }) => nodeId)).toEqual([
       'search-001', 'search-002', 'search-003', 'search-004',
     ]);
+  });
+
+  it('schedules every admitted target even when the configured initial width is smaller', async () => {
+    const value = context(
+      'repair-off-by-one',
+      [1, 1, 1, 1, 1, 0, 0],
+      'test-assertion',
+      { search: { initialBranches: 4, beamWidth: 1, maximumDepth: 1, maximumTotalBranches: 5 } },
+    );
+    let scenarioIndex = 0;
+    value.ctx.executor = new InMemoryExecutor((command) =>
+      command.includes('git apply - && git diff')
+        ? { ...result(0), stdout: HONEST_DIFF }
+        : command.includes('corepack pnpm install --frozen-lockfile') ||
+          command.includes('git init --quiet')
+          ? result(0)
+          : result([1, 1, 1, 1, 1, 0, 0][scenarioIndex++] ?? 1),
+    { operationLimit: 1 });
+    const distractors = Array.from({ length: 4 }, (_unused, index) => ({
+      path: `src/distractor-${index + 1}.ts`, startLine: 1,
+      content: `export const distractor${index + 1} = ${index + 1};\n`, truncated: false,
+    }));
+    value.ctx.readSourceContext = async () => ({
+      sources: [
+        ...distractors,
+        { path: 'page-count.js', startLine: 1, content: [
+          'export function pageCount(items, size) { return Math.floor(items / size) + 1; }',
+          '',
+        ].join('\n'), truncated: false },
+      ],
+    });
+    const selectedTargets: string[] = [];
+    value.ctx.llm = {
+      chat: vi.fn(async (
+        tier: 'nano' | 'super' | 'ultra',
+        messages: readonly ChatMessage[],
+      ) => {
+        if (tier === 'nano') return { text: JSON.stringify(diagnosis('test-assertion')) };
+        if (tier === 'ultra') {
+          return { text: JSON.stringify({ approved: true, reasoning: 'The repair holds.' }) };
+        }
+        const user = messages.find(({ role }) => role === 'user');
+        const request = JSON.parse(user?.content ?? '{}') as {
+          selectedTarget: { path: string };
+          sources: Array<{ path: string; lines: Array<{ text: string }> }>;
+        };
+        selectedTargets.push(request.selectedTarget.path);
+        const selected = request.sources.find(({ path }) => path === request.selectedTarget.path)!;
+        const replacement = request.selectedTarget.path === 'page-count.js'
+          ? HONEST_REPLACEMENT
+          : `${selected.lines.map(({ text }) => text).join('\n')}\n`;
+        return repairProposalReply(
+          { id: request.selectedTarget.path, rationale: 'Repair the assigned target.', diff: HONEST_DIFF },
+          replacement,
+        );
+      }),
+      modelQuote: (tier) => ({
+        role: tier, modelId: DEFAULT_MODELS[tier], price: DEFAULT_MODEL_PRICES[tier],
+        profileId: DEFAULT_ROUTING_PROFILE_ID,
+      }),
+    };
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('fixed');
+    expect(selectedTargets).toEqual([
+      'src/distractor-1.ts', 'src/distractor-2.ts', 'src/distractor-3.ts',
+      'src/distractor-4.ts', 'page-count.js',
+    ]);
+  });
+
+  it('fails closed before Super when the branch budget cannot cover every source target', async () => {
+    const value = context(
+      'repair-off-by-one',
+      [1, 1, 1, 1, 1, 1],
+      'test-assertion',
+      { search: { initialBranches: 4, beamWidth: 1, maximumDepth: 1, maximumTotalBranches: 4 } },
+    );
+    value.ctx.readSourceContext = async () => ({
+      sources: Array.from({ length: 5 }, (_unused, index) => ({
+        path: `src/target-${index + 1}.ts`, startLine: 1,
+        content: `export const target${index + 1} = ${index + 1};\n`, truncated: false,
+      })),
+    });
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(value.chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
+    expect(caseFile.stages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: 'search',
+        note: 'Only 4 of 5 controller-owned repair targets fit the configured budgets',
+      }),
+    ]));
   });
 
   it('replays live run 12: one completion limit stops the remaining repair branches', async () => {
@@ -312,9 +420,10 @@ describe('healCase', () => {
             errorFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u),
           });
         }
-        return repairProposalReply(superCall === 1
+        const candidate = superCall === 1
           ? { id: 'rounded', rationale: 'Round the division result.', diff: WRONG_REPLACEMENT_DIFF }
-          : { id: 'ceiling', rationale: 'Use ceiling division.', diff: HONEST_DIFF });
+          : { id: 'ceiling', rationale: 'Use ceiling division.', diff: HONEST_DIFF };
+        return repairProposalReply(candidate, candidateReplacement(candidate));
       }
       return { text: JSON.stringify({ approved: true, reasoning: 'The ceiling repair holds.' }) };
     });
@@ -706,7 +815,10 @@ describe('sandbox command resolution', () => {
         };
       }
       if (tier === 'super') {
-        return repairProposalReply({ id: 'repair', rationale: 'fix the source', diff: HONEST_DIFF });
+        return repairProposalReply(
+          { id: 'repair', rationale: 'fix the source', diff: HONEST_DIFF },
+          HONEST_REPLACEMENT,
+        );
       }
       return {
         text: JSON.stringify({ approved: true, reasoning: 'The source repair holds.' }),

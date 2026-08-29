@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
 
-import { MAX_POLICY_BYTES } from '@sutura/core';
+import {
+  MAX_POLICY_BYTES,
+  selectBoundedSourceWindow,
+  SourceWindowError,
+} from '@sutura/core';
 import type {
   PublishFixInput,
   RepositoryPort,
@@ -118,50 +122,6 @@ function isOmittableSourceError(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   const code = (error as NodeJS.ErrnoException).code;
   return code === 'ENOENT' || code === 'ENOTDIR' || code === 'EACCES' || code === 'EPERM';
-}
-
-function boundWindow(
-  bytes: Buffer,
-  fileSize: number,
-  requestedLine: number | undefined,
-  limits: Readonly<SourceReadLimits>,
-): { content: string; startLine: number; truncated: boolean } {
-  const scanned = new TextDecoder().decode(bytes);
-  const allLines: string[] = [];
-  let lineStart = 0;
-  for (let index = 0; index < scanned.length; index += 1) {
-    if (scanned[index] !== '\n') continue;
-    allLines.push(scanned.slice(lineStart, index + 1));
-    lineStart = index + 1;
-  }
-  if (lineStart < scanned.length || scanned.length === 0) {
-    allLines.push(scanned.slice(lineStart));
-  }
-  if (
-    requestedLine !== undefined &&
-    requestedLine > allLines.length
-  ) {
-    throw new RepositoryError('Referenced source line exceeds the available source window');
-  }
-  const target = Math.min(
-    Math.max(requestedLine ?? 1, 1),
-    Math.max(allLines.length, 1),
-  );
-  const before = Math.floor(limits.maxLinesPerFile / 2);
-  const startIndex = Math.max(0, target - 1 - before);
-  const selected = allLines.slice(startIndex, startIndex + limits.maxLinesPerFile);
-  let text = selected.join('');
-  let truncated = startIndex > 0 || startIndex + selected.length < allLines.length || fileSize > bytes.length;
-  if (text.length > limits.maxCharactersPerFile) {
-    text = text.slice(0, limits.maxCharactersPerFile);
-    truncated = true;
-  }
-  const encoded = Buffer.from(text, 'utf8');
-  if (encoded.length > limits.maxBytesPerFile) {
-    text = new TextDecoder().decode(encoded.subarray(0, limits.maxBytesPerFile));
-    truncated = true;
-  }
-  return { content: text, startLine: startIndex + 1, truncated };
 }
 
 export class GitRepository implements RepositoryPort {
@@ -284,12 +244,20 @@ export class GitRepository implements RepositoryPort {
             bytesReadTotal += bytesRead;
             for (const byte of value) if (byte === 0x0a) newlineCount += 1;
           }
-          const bounded = boundWindow(
-            Buffer.concat(chunks),
-            metadata.size,
-            reference.line,
-            limits,
-          );
+          const bytes = Buffer.concat(chunks);
+          let bounded;
+          try {
+            bounded = selectBoundedSourceWindow({
+              scanned: new TextDecoder().decode(bytes),
+              scannedBytes: bytes.length,
+              fileSize: metadata.size,
+              ...(reference.line === undefined ? {} : { requestedLine: reference.line }),
+              limits,
+            });
+          } catch (error) {
+            if (error instanceof SourceWindowError) throw new RepositoryError(error.message);
+            throw error;
+          }
           excerpts.push({
             path: reference.path.replace(/^\.\//, ''),
             ...bounded,

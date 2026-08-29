@@ -32,7 +32,7 @@ The next live proof reached Super and exposed a proposal-fidelity gap. The provi
 
 The anchored-proposal live proof then exposed a completion-budget gap. Five of six Super replies reached the exact 8,192-token ceiling because reasoning shares the completion allowance. Production must use the documented 16,000-token low-effort envelope rounded to 16,384, include the compact schema shape in the prompt, and preserve a provider length terminal as typed evidence.
 
-The completion-budget live proof then exposed a remaining path/range contract gap. The static provider schema accepted any positive line number while local validation knew the exact bounds for each supplied path. Production must derive a path-discriminated provider schema and explicit numbered source evidence from the same bounded source closure.
+The completion-budget live proof then exposed a remaining path/range contract gap. The static provider schema accepted any positive line number while local validation knew the exact bounds for each supplied path. Numbered source evidence and a path-discriminated schema aligned the declared contracts, but live proof 14 showed that the provider could still return target fields that local validation rejected and could produce accepted but incorrect anchored patches. Production must remove target selection from provider output: Sutura selects one exact excerpt, and Super returns only its complete replacement text.
 
 At the pre-redesign baseline, unit and end-to-end tests scripted ideal LLM tool calls, no live test called the complete orchestration path, and production admission reduced the four-branch search default to one branch by reserving all eight model turns for it. The implementation phases replace those conditions with strict proposals, recorded production-path orchestration, exact attempt reservation, and locally replayed live terminal evidence.
 
@@ -52,7 +52,7 @@ The live model endpoint rejected one documented `tool_choice` form and accepted 
 
 ### Option C: strict structured patch proposals with controller-owned execution
 
-Super returns one bounded, schema-validated repair proposal with inclusive source line anchors and complete replacement text. Sutura derives the exact old bytes and diff from its supplied source excerpt, applies the diff through the existing policy-aware repair runtime, runs the diagnosed trusted test, and creates a candidate only after the test passes. A failed proposal becomes feedback for a new baseline-based replacement proposal.
+Super returns one bounded, schema-validated repair proposal with complete replacement text for one controller-selected source excerpt. Sutura owns the path, inclusive range, old bytes, and diff, applies the diff through the existing policy-aware repair runtime, runs the diagnosed trusted test, and creates a candidate only after the test passes. Each target is limited to 1,000 code points so even a maximally JSON-escaped reply uses less than half the 16,384-token completion envelope. Initial search expands to cover every admitted target when budgets permit; a failed proposal becomes feedback for a new baseline-based replacement proposal against the same target.
 
 This reuses the already tested structured candidate contract, removes model-selected control transitions, gives every branch an exact operation schedule, and keeps ConTree verification and Ultra audit unchanged. Selected.
 
@@ -85,9 +85,9 @@ failed GitHub run
 3. A candidate exists only after the latest diagnosed trusted test passes.
 4. Every search expansion begins from the clean prepared baseline and proposes a complete replacement candidate. Parent nodes supply feedback, not mutable filesystem state.
 5. Every admitted expansion reserves one branch, one model turn, up to three controller actions, two sandbox operations, remaining elapsed time, worst-case inference cost, and diff capacity.
-6. Source closure is bounded by the existing source limits, repository policy, sensitive-path rules, regular-file checks, exact checkout containment, and redaction rules.
+6. Source closure is bounded by the shared 1,000-code-point full-replacement limit, preserves complete target-centered lines, and remains subject to repository policy, sensitive-path rules, regular-file checks, exact checkout containment, and redaction rules.
 7. The candidate selected for audit is the candidate published to GitHub. Candidate ID and diff hash must agree at both boundaries.
-8. A failed or invalid branch cannot consume the capacity reserved for another admitted branch.
+8. A failed or invalid branch cannot consume the capacity reserved for another admitted branch, and every admitted target is reachable before replacement depth begins.
 9. No remote candidate is pushed until all local gates and replay cases pass.
 10. If the final live proof fails, do not push an immediate incremental repair. Add the new terminal path to the local replay suite, revise the design locally, and repeat all gates before another candidate.
 
@@ -98,7 +98,7 @@ failed GitHub run
 | 1 | Bounded repair source closure | None | Sequential |
 | 2 | Controller-owned repair attempt | Phase 1 | Sequential |
 | 3 | Search budgets, feedback, and exact winner identity | Phase 2 | Sequential |
-| 4 | Thirteen-run replay and production-path integration gates | Phase 3 | Sequential |
+| 4 | Fourteen-run replay and production-path integration gates | Phase 3 | Sequential |
 | 5 | Exact-SHA CI and final live dogfood proof | Phase 4 | Sequential |
 
 Detailed phase files:
@@ -136,8 +136,8 @@ Run the `codex-simplify` reuse, quality, and efficiency reviews after implementa
 
 - The realistic arithmetic dogfood fixture reaches Super with both the test and imported implementation source.
 - The realistic fixture retains the actual ANSI-colored Vitest reporter prefix and pnpm workspace task line.
-- The provider response schema and local parser enforce the same ID, rationale, path, line, edit-count, and replacement bounds.
-- A proposal selects inclusive lines from supplied source; the controller, not Super, derives the exact old bytes and unified diff.
+- The provider response schema and local parser enforce the same ID, rationale, and 1,000-code-point replacement bounds.
+- The controller selects the path and complete inclusive source range, then derives the exact old bytes and unified diff without accepting target metadata from Super.
 - A scripted search-only, read-only, test-only, or submit-only model response cannot control the production attempt.
 - A valid proposal always runs patch, diagnosed test, and candidate creation in controller order.
 - A failing proposal supplies its complete diff and bounded test failure to the next search depth.
@@ -146,12 +146,15 @@ Run the `codex-simplify` reuse, quality, and efficiency reviews after implementa
 - Provider, invalid-schema, policy, timeout, cancellation, and budget failures terminate with typed evidence.
 - A provider `finish_reason: length` is recorded as a completion-limit terminal, not malformed JSON.
 - A completion-limit terminal cancels unfinished siblings, stops later batches and depths, and never discards a valid candidate that completed in the same batch.
-- Provider schema and prompt evidence bind each edit path to the exact inclusive line range in its supplied source excerpt.
+- Provider output contains no target fields; prompt evidence binds each branch to one exact controller-selected source excerpt.
+- Every admitted source target is scheduled when the complete attempt fits, including targets beyond the configured default initial width.
+- Maximally JSON-escaped output at every declared field bound remains below half the 16,384-token completion envelope.
 - Node ESM, TypeScript extension, monorepo, and Python relative-source closure cases pass.
 - Source traversal, symlink, sensitive path, policy denial, ambiguity, oversized content, and credential redaction fail closed.
+- Character and byte limits never admit a partial source line, and the observed target line remains inside a non-empty bounded excerpt.
 - Audit and publication use one exact candidate ID and diff hash.
 - The recorded GitHub action E2E creates one repair branch and PR for the realistic direct-run dogfood fixture.
-- All nine historical model-control terminal classes and the four post-redesign live terminal classes have local regression coverage.
+- All nine historical model-control terminal classes and the five post-redesign live terminal classes have local regression coverage.
 - The complete local verification gate and simplification reviews pass.
 
 ## Final live acceptance
@@ -180,5 +183,5 @@ This reliability cycle does not publish v0.2.0, create a tag or GitHub release, 
 - [x] Phase 1: Bounded repair source closure
 - [x] Phase 2: Controller-owned repair attempt
 - [x] Phase 3: Search budgets, feedback, and exact winner identity
-- [x] Phase 4: Thirteen-run replay and production-path integration gates
+- [x] Phase 4: Fourteen-run replay and production-path integration gates
 - [ ] Phase 5: Exact-SHA CI and final live dogfood proof

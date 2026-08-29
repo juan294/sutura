@@ -427,12 +427,7 @@ class ScriptedLlm implements OrchestratorLlm {
         text: JSON.stringify({
           id: 'source',
           rationale: 'Correct the source value.',
-          edits: [{
-            path: 'src/value.ts',
-            startLine: 1,
-            endLine: 1,
-            new: 'export const value: string = "1";',
-          }],
+          replacement: 'export const value: string = "1";',
         }),
         usd: 0.001,
       };
@@ -619,6 +614,7 @@ describe('recorded GitHub API orchestration E2E', () => {
         if (tier === 'super') {
           const request = JSON.parse(messages.find(({ role }) => role === 'user')?.content ?? '{}') as {
             sources?: Array<{ path: string; endLine: number; editable: boolean; lines: Array<{ line: number; text: string }> }>;
+            selectedTarget?: { path: string; startLine: number; endLine: number };
           };
           expect(request.sources?.map(({ path }) => path)).toEqual([
             'packages/core/src/dogfood-add.test.ts',
@@ -630,18 +626,17 @@ describe('recorded GitHub API orchestration E2E', () => {
           });
           expect(request.sources?.find(({ path }) => path.endsWith('dogfood-add.test.ts')))
             .toMatchObject({ editable: false });
+          expect(request.selectedTarget).toEqual({
+            path: 'packages/core/src/dogfood-add.ts', startLine: 1, endLine: 3,
+          });
           expect(options).toMatchObject({ responseFormat: { type: 'json_schema' } });
-          expect(JSON.stringify(options)).toContain('"const":"packages/core/src/dogfood-add.ts"');
-          expect(JSON.stringify(options)).toContain('"maximum":3');
-          expect(JSON.stringify(options)).not.toContain('"const":"packages/core/src/dogfood-add.test.ts"');
+          expect(JSON.stringify(options)).toContain('"replacement"');
+          expect(JSON.stringify(options)).not.toMatch(/(?:dogfood-add|startLine|endLine|"path")/u);
           expect(options).not.toHaveProperty('tools');
           expect(options).not.toHaveProperty('toolChoice');
           return { text: JSON.stringify({
             id: 'dogfood-addition', rationale: 'Use addition in the add function.',
-            edits: [{
-              path: 'packages/core/src/dogfood-add.ts', startLine: 2, endLine: 2,
-              new: '  return left + right;',
-            }],
+            replacement: 'export function add(left: number, right: number): number {\n  return left + right;\n}\n',
           }), usd: 0.001 };
         }
         return { text: JSON.stringify({ approved: true, reasoning: 'The addition repair holds.' }) };

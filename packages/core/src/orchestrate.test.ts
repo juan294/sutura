@@ -41,6 +41,7 @@ const HONEST_DIFF = [
   '-export const value: string = 1;',
   '+export const value: string = "1";',
 ].join('\n') + '\n';
+const HONEST_REPLACEMENT = 'export const value: string = "1";\n';
 
 const SECOND_DIFF = HONEST_DIFF.replace(
   '+export const value: string = "1";',
@@ -190,8 +191,8 @@ class FakeRepository implements RepositoryPort {
     expect(_limits).toEqual({
       maxFiles: 8,
       maxLinesPerFile: 120,
-      maxCharactersPerFile: 12_000,
-      maxBytesPerFile: 12_000,
+      maxCharactersPerFile: 1_000,
+      maxBytesPerFile: 1_000,
     });
     this.sourceReads.push({
       checkoutDir,
@@ -250,7 +251,7 @@ function scriptedLlm(auditVerdict: AuditVerdict['approved'] = true): {
   const chat = vi.fn(async (tier: 'nano' | 'super' | 'ultra') => {
     if (tier === 'nano') return { text: JSON.stringify(diagnosisReply()) };
     if (tier === 'super') {
-      return repairProposalReply(candidates()[0]!);
+      return repairProposalReply(candidates()[0]!, HONEST_REPLACEMENT);
     }
     return {
       text: JSON.stringify({
@@ -411,7 +412,7 @@ describe('orchestrate', () => {
         ...diagnosisReply(),
         class: 'dep-upstream-breaking',
       }) };
-      if (tier === 'super') return repairProposalReply(candidates()[0]!);
+      if (tier === 'super') return repairProposalReply(candidates()[0]!, HONEST_REPLACEMENT);
       return { text: JSON.stringify({
         approved: true,
         reasoning: 'The patch corrects the diagnosed source type.',
@@ -563,6 +564,7 @@ describe('orchestrate', () => {
       if (tier === 'super') {
         const request = JSON.parse(messages.find(({ role }) => role === 'user')?.content ?? '{}') as {
           sources?: Array<{ path: string; endLine: number; editable: boolean; lines: Array<{ line: number; text: string }> }>;
+          selectedTarget?: { path: string; startLine: number; endLine: number };
         };
         expect(request.sources?.map(({ path }) => path)).toEqual([
           'packages/core/src/dogfood-add.test.ts',
@@ -574,20 +576,17 @@ describe('orchestrate', () => {
         });
         expect(request.sources?.find(({ path }) => path.endsWith('dogfood-add.test.ts')))
           .toMatchObject({ editable: false });
-        expect(JSON.stringify(options)).toContain('"const":"packages/core/src/dogfood-add.ts"');
-        expect(JSON.stringify(options)).toContain('"maximum":3');
-        expect(JSON.stringify(options)).not.toContain('"const":"packages/core/src/dogfood-add.test.ts"');
+        expect(request.selectedTarget).toEqual({
+          path: 'packages/core/src/dogfood-add.ts', startLine: 1, endLine: 3,
+        });
+        expect(JSON.stringify(options)).toContain('"replacement"');
+        expect(JSON.stringify(options)).not.toMatch(/(?:dogfood-add|startLine|endLine|"path")/u);
         expect(options).not.toHaveProperty('tools');
         expect(options).not.toHaveProperty('toolChoice');
         expect(options).not.toHaveProperty('parallelToolCalls');
         return { text: JSON.stringify({
           id: 'dogfood-addition', rationale: 'Use addition in the add function.',
-          edits: [{
-            path: 'packages/core/src/dogfood-add.ts',
-            startLine: 2,
-            endLine: 2,
-            new: '  return left + right;',
-          }],
+          replacement: 'export function add(left: number, right: number): number {\n  return left + right;\n}\n',
         }), usd: 0.001 };
       }
       const auditRequest = JSON.parse(messages.find(({ role }) => role === 'user')?.content ?? '{}') as {
@@ -623,6 +622,7 @@ describe('orchestrate', () => {
       if (tier === 'super') {
         return repairProposalReply(
           { id: 'smallest', rationale: 'repair the observed source', diff: HONEST_DIFF },
+          HONEST_REPLACEMENT,
         );
       }
       return { text: JSON.stringify({ approved: true, reasoning: 'The smallest held repair is correct.' }) };
@@ -681,7 +681,7 @@ describe('orchestrate', () => {
       .toBeGreaterThan(1);
   });
 
-  it('vets every candidate before race and reports deterministic refusals', async () => {
+  it('rejects model-selected candidate paths before sandbox repair work', async () => {
     const testPathRun: FailingWorkflowRun = {
       ...RUN,
       failedSteps: [{
@@ -697,16 +697,15 @@ describe('orchestrate', () => {
     for (let index = 0; index < 3; index += 1) {
       repository.sources.set(`src/value-${index}.test.ts`, 'export const value: string = 1;');
     }
-    const invalidCandidates = candidates().map((candidate, index) => ({
-      ...candidate,
-      diff: candidate.diff.replaceAll(
-        'src/value.ts',
-        `src/value-${index}.test.ts`,
-      ),
-    }));
     chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
       if (tier === 'nano') return { text: JSON.stringify(diagnosisReply()) };
-      if (tier === 'super') return repairProposalReply(invalidCandidates[0]!);
+      if (tier === 'super') return { text: JSON.stringify({
+        id: 'model-selected-path', rationale: 'Attempt to select a protected test target.',
+        edits: [{
+          path: 'src/value-0.test.ts', startLine: 1, endLine: 1,
+          new: 'export const value: string = "1";',
+        }],
+      }) };
       return { text: JSON.stringify({ approved: true, reasoning: 'not reached' }) };
     });
 
@@ -715,7 +714,7 @@ describe('orchestrate', () => {
     expect(caseFile.outcome).toBe('gave-up');
     expect(caseFile.race).toEqual([]);
     expect(github.comments[0]?.body).toContain('NO PATCH HELD');
-    expect(runCalls(executor)).toHaveLength(5);
+    expect(runCalls(executor).filter(({ cmd }) => cmd.includes('git apply'))).toHaveLength(0);
   });
 
   it('does not spend or mutate twice for the same failing run id', async () => {
@@ -941,6 +940,7 @@ describe('orchestrate', () => {
         placeboSuperCall += 1;
         return repairProposalReply(
           { id: 'placebo-fix', rationale: 'restore numeric conversion', diff: repairDiff },
+          pristineSource,
         );
       }
       return { text: JSON.stringify({ approved: true, reasoning: 'The repair restores numeric conversion.' }) };
@@ -1014,6 +1014,7 @@ describe('orchestrate', () => {
         dependencySuperCall += 1;
         return repairProposalReply(
           { id: 'pin-a', rationale: 'pin compatible release', diff: dependencyDiff('3.9.0') },
+          '{"dependencies":{"@acme/money":"3.9.0"}}',
         );
       }
       return { text: JSON.stringify({ approved: true, reasoning: 'not reached' }) };

@@ -827,8 +827,12 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       return makeCaseFile(fullContext, diagnosis, triageVerdict, [], 'gave-up', undefined, []);
     }
     const attemptContexts = new Map<string, ControlledRepairAttemptContext>();
-    const attemptContext = (parent: SearchNode | undefined): ControlledRepairAttemptContext => {
-      const key = parent?.id ?? 'baseline';
+    const nodeTargets = new Map<string, number>();
+    const attemptContext = (
+      parent: SearchNode | undefined,
+      targetIndex: number,
+    ): ControlledRepairAttemptContext => {
+      const key = `${parent?.id ?? 'baseline'}:${targetIndex}`;
       const existing = attemptContexts.get(key);
       if (existing !== undefined) return existing;
       const feedback = parent === undefined ? undefined : {
@@ -846,18 +850,30 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
         trustedCommands,
         sourceContext,
         proposalTemplate,
-        proposalContract: proposalTemplate.contract(feedback),
+        proposalContract: proposalTemplate.contract(feedback, targetIndex),
         ...(feedback === undefined ? {} : { feedback }),
       };
       attemptContexts.set(key, prepared);
       return prepared;
     };
+    const targetIndexes = (parent: SearchNode | undefined): number[] => {
+      if (parent !== undefined) return [nodeTargets.get(parent.id) ?? 0];
+      return Array.from({ length: proposalTemplate.targetCount }, (_value, index) => index);
+    };
     const inferenceCapacity = (parents: readonly (SearchNode | undefined)[]): number => {
       const remainingUsd = budget.limits.inferenceCostUsd - budget.snapshot().inferenceCostUsd;
       try {
+        const uniqueContexts = new Map<string, ControlledRepairAttemptContext>();
+        for (const parent of parents.length > 0 ? parents : [undefined]) {
+          for (const targetIndex of targetIndexes(parent)) {
+            const key = `${parent?.id ?? 'baseline'}:${targetIndex}`;
+            uniqueContexts.set(key, attemptContext(parent, targetIndex));
+          }
+        }
         const reservationUsd = Math.max(
-          ...(parents.length > 0 ? parents : [undefined])
-            .map((parent) => controlledRepairAttemptReservationUsd(attemptContext(parent))),
+          ...[...uniqueContexts.values()].map((context) =>
+            controlledRepairAttemptReservationUsd(context),
+          ),
         );
         return Math.max(0, Math.floor(remainingUsd / reservationUsd));
       } catch {
@@ -870,10 +886,17 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       Math.floor(budget.limits.sandboxOperations / REPAIR_ATTEMPT_COSTS.sandboxOperations),
       inferenceCapacity([undefined]),
     );
-    if (initialBranchCapacity < 1) {
+    const reachableTargetCapacity = Math.min(
+      budget.limits.branches,
+      searchLimits.maximumTotalBranches,
+      initialBranchCapacity,
+    );
+    if (reachableTargetCapacity < proposalTemplate.targetCount) {
       ledger.record({
         stage: 'search', attempt: 1, network: 'disabled',
-        note: 'No complete controller-owned repair attempt fits the configured budgets',
+        note: reachableTargetCapacity === 0
+          ? 'No complete controller-owned repair attempt fits the configured budgets'
+          : `Only ${reachableTargetCapacity} of ${proposalTemplate.targetCount} controller-owned repair targets fit the configured budgets`,
       });
       return makeCaseFile(fullContext, diagnosis, triageVerdict, [], 'gave-up', undefined, []);
     }
@@ -883,8 +906,9 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
     const result = await adaptiveSearch({
       baselineImageId: ctx.failingImage,
       initialBranches: Math.min(
-        searchLimits.initialBranches,
+        Math.max(searchLimits.initialBranches, proposalTemplate.targetCount),
         budget.limits.branches,
+        searchLimits.maximumTotalBranches,
         initialBranchCapacity,
       ),
       beamWidth: searchLimits.beamWidth,
@@ -892,20 +916,25 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       maximumTotalBranches: Math.min(searchLimits.maximumTotalBranches, budget.limits.branches),
       availableBranches: (parents = []) => {
         const snapshot = budget.snapshot();
+        if (
+          providerCapacityAvailable(providerCapacity) < 1 ||
+          ctx.executor.operationCapacity().available < 1
+        ) return 0;
         return Math.min(
           budget.limits.branches - snapshot.branches,
           Math.floor((budget.limits.sandboxOperations - snapshot.sandboxOperations) / REPAIR_ATTEMPT_COSTS.sandboxOperations),
           Math.floor((budget.limits.modelTurns - snapshot.modelTurns) / REPAIR_ATTEMPT_COSTS.modelTurns),
           Math.floor((budget.limits.toolCalls - snapshot.toolCalls) / REPAIR_ATTEMPT_COSTS.toolCalls),
           inferenceCapacity(parents),
-          providerCapacityAvailable(providerCapacity),
-          ctx.executor.operationCapacity().available,
           budget.remainingElapsedTimeSec() > 0 ? Number.MAX_SAFE_INTEGER : 0,
         );
       },
       concurrencyCapacity: () => ctx.search === undefined
         ? 1
-        : Math.max(1, ctx.executor.operationCapacity().available),
+        : Math.max(1, Math.min(
+          providerCapacityAvailable(providerCapacity),
+          ctx.executor.operationCapacity().available,
+        )),
       cancel: async (nodeId) => {
         const activeOperation = activeOperations.get(nodeId);
         if (!activeOperation) {
@@ -933,10 +962,14 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
         ...(nodeId === undefined ? {} : { childNodeId: nodeId }),
         ...(parentNodeId === undefined ? {} : { parentNodeId }),
       }),
-      expand: async ({ parent, parentImageId, nodeId, operationId, signal }) => {
+      expand: async ({ parent, parentImageId, branch, nodeId, operationId, signal }) => {
         const before = ledger.entries().length;
+        const targetIndex = parent === undefined
+          ? (branch - 1) % proposalTemplate.targetCount
+          : nodeTargets.get(parent.id) ?? 0;
+        nodeTargets.set(nodeId, targetIndex);
         const agent = await runControlledRepairAttempt({
-          ...attemptContext(parent),
+          ...attemptContext(parent, targetIndex),
           branchId: nodeId,
           operationIdPrefix: operationId,
           signal,

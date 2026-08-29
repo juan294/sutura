@@ -29,16 +29,17 @@ import { shellQuote } from './shell.js';
 
 const DEFAULT_RACE_CANDIDATES = 3;
 export const SUPER_REPAIR_MAX_TOKENS = 16_384;
+export const REPAIR_FULL_REPLACEMENT_MAX_CODE_POINTS = 1_000;
 
 export const REPAIR_PROPOSAL_LIMITS = Object.freeze({
   idCodePoints: 80,
   rationaleCodePoints: 240,
   edits: 8,
   pathCodePoints: 240,
-  replacementCodePoints: 12_000,
+  replacementCodePoints: REPAIR_FULL_REPLACEMENT_MAX_CODE_POINTS,
 });
 export const REPAIR_PROPOSAL_FIELDS = Object.freeze({
-  id: 'id', rationale: 'rationale', edits: 'edits',
+  id: 'id', rationale: 'rationale', replacement: 'replacement',
 } as const);
 export const REPAIR_EDIT_FIELDS = Object.freeze({
   path: 'path', startLine: 'startLine', endLine: 'endLine', replacement: 'new',
@@ -63,6 +64,7 @@ export interface RepairSourceExcerpt {
   startLine: number;
   content: string;
   truncated: boolean;
+  boundaryComplete?: boolean;
 }
 
 export interface RepairSourceContext {

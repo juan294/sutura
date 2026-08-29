@@ -110,6 +110,7 @@ export { AuditEvidenceError, auditOnly, validateAuditEvidence } from './audit-on
 export { aggregateStageEvidence } from './report/format.js';
 export { isSensitiveRepositoryPath } from './security/repository-path.js';
 export { TraceRecorder } from './trace/recorder.js';
+export { selectBoundedSourceWindow, SourceWindowError } from './source-window.js';
 export { RuntimeDetectionError, detectRuntime, detectRuntimeAtPath, runtimeEvidencePaths } from './runtime/detect.js';
 export { NODE_IMAGE_REF, NODE_RUNTIME, nodePreparationCommand, normalizeNodeCommand } from './runtime/node.js';
 export { PYTHON_IMAGE_REF, PYTHON_RUNTIME, PythonDependencyError, normalizePythonCommand, validatePythonDependencyInputs } from './runtime/python.js';

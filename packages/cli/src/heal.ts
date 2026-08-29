@@ -14,6 +14,8 @@ import {
   loadRepositoryPolicy,
   MAX_POLICY_BYTES,
   readRepairSourceContext,
+  selectBoundedSourceWindow,
+  SourceWindowError,
   detectRuntimeAtPath,
   type CaseFile,
   type AuditFile,
@@ -104,67 +106,54 @@ async function readLineWindow(
   path: string,
   targetLine: number | undefined,
   limits: Readonly<SourceReadLimits>,
-): Promise<{ startLine: number; content: string; truncated: boolean }> {
-  const halfWindow = Math.floor(limits.maxLinesPerFile / 2);
-  const startLine = targetLine === undefined ? 1 : Math.max(1, targetLine - halfWindow);
-  const endLine = startLine + limits.maxLinesPerFile - 1;
+): Promise<{
+  startLine: number;
+  content: string;
+  truncated: boolean;
+  boundaryComplete: true;
+}> {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   const chunks: Buffer[] = [];
-  let keptBytes = 0;
   let scannedBytes = 0;
-  let line = 1;
-  let position = 0;
-  let stoppedAtLimit = false;
+  let fileSize = 0;
   try {
+    fileSize = (await handle.stat()).size;
+    const desiredEndLine = Math.max(targetLine ?? 1, 1) +
+      Math.ceil(limits.maxLinesPerFile / 2);
+    const scanLimit = Math.min(
+      MAX_SOURCE_SCAN_BYTES,
+      limits.maxBytesPerFile * limits.maxLinesPerFile * 4,
+      fileSize,
+    );
+    let newlineCount = 0;
     const buffer = Buffer.alloc(4_096);
-    while (
-      line <= endLine &&
-      scannedBytes < MAX_SOURCE_SCAN_BYTES &&
-      (line < startLine || keptBytes <= limits.maxBytesPerFile)
-    ) {
-      const available = Math.min(buffer.length, MAX_SOURCE_SCAN_BYTES - scannedBytes);
-      const { bytesRead } = await handle.read(buffer, 0, available, position);
+    while (scannedBytes < scanLimit && newlineCount < desiredEndLine) {
+      const available = Math.min(buffer.length, scanLimit - scannedBytes);
+      const { bytesRead } = await handle.read(buffer, 0, available, scannedBytes);
       if (bytesRead === 0) break;
-      position += bytesRead;
+      const chunk = Buffer.from(buffer.subarray(0, bytesRead));
+      chunks.push(chunk);
       scannedBytes += bytesRead;
-      let segmentStart = 0;
-      for (let index = 0; index < bytesRead; index += 1) {
-        if (buffer[index] !== 10) continue;
-        if (line >= startLine && line <= endLine && keptBytes <= limits.maxBytesPerFile) {
-          const segment = buffer.subarray(segmentStart, index + 1);
-          const remaining = limits.maxBytesPerFile + 1 - keptBytes;
-          if (remaining > 0) {
-            const kept = segment.subarray(0, remaining);
-            chunks.push(Buffer.from(kept));
-            keptBytes += kept.length;
-          }
-        }
-        line += 1;
-        segmentStart = index + 1;
-        if (line > endLine) break;
-      }
-      if (line >= startLine && line <= endLine && segmentStart < bytesRead && keptBytes <= limits.maxBytesPerFile) {
-        const segment = buffer.subarray(segmentStart, bytesRead);
-        const remaining = limits.maxBytesPerFile + 1 - keptBytes;
-        if (remaining > 0) {
-          const kept = segment.subarray(0, remaining);
-          chunks.push(Buffer.from(kept));
-          keptBytes += kept.length;
-        }
-      }
+      for (const byte of chunk) if (byte === 0x0a) newlineCount += 1;
     }
-    stoppedAtLimit = scannedBytes === MAX_SOURCE_SCAN_BYTES || line > endLine || keptBytes > limits.maxBytesPerFile;
   } finally {
     await handle.close();
   }
-  if (line < startLine) throw new CliConfigError('Referenced source line exceeds the bounded scan limit');
-  const decoded = Buffer.concat(chunks).subarray(0, limits.maxBytesPerFile).toString('utf8');
-  const content = decoded.slice(0, limits.maxCharactersPerFile);
-  return {
-    startLine,
-    content,
-    truncated: stoppedAtLimit || decoded.length > limits.maxCharactersPerFile,
-  };
+
+  try {
+    return selectBoundedSourceWindow({
+      scanned: Buffer.concat(chunks).toString('utf8'),
+      scannedBytes,
+      fileSize,
+      ...(targetLine === undefined ? {} : { requestedLine: targetLine }),
+      limits,
+    });
+  } catch (error) {
+    if (error instanceof SourceWindowError) {
+      throw new CliConfigError('Referenced source line exceeds the bounded scan limit');
+    }
+    throw error;
+  }
 }
 
 async function readBoundedSource(

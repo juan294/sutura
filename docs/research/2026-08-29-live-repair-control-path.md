@@ -95,3 +95,15 @@ Expected: strict provider output selects an inclusive line range from the same s
 Found: all seven Super replies finished below the 16,384-token completion limit. Six proposals selected line ranges outside `packages/core/src/dogfood-add.ts`. One proposal applied but did not satisfy the trusted test. The static provider schema allowed any positive line through `Number.MAX_SAFE_INTEGER`; only local validation knew that this source contained lines 1 through 3. The prompt supplied a start line and unnumbered content but no explicit end line or per-line records.
 
 Why it matters: provider and local validation still represented different contracts for the most important proposal fields. The controller must derive one path-discriminated schema from the exact source closure, constrain each path to its real line bounds, and send the same source as explicit numbered records. This makes an out-of-file stack-trace line structurally invalid before local parsing or sandbox work.
+
+## Live proof 14 addendum
+
+The path-range candidate, `1f7a768d9940905f1c4e619d77f204ecc74bb4c1`, passed exact-SHA CI at [run 33261011801](https://github.com/juan294/sutura/actions/runs/33261011801). Dogfood SHA `f71a7d136a664a84f21ed44096d82cd132e72b6e` then failed only the declared arithmetic assertion at [run 33261605582](https://github.com/juan294/sutura/actions/runs/33261605582). Sutura [run 33261662501](https://github.com/juan294/sutura/actions/runs/33261662501) reached Super eight times but completed with `gave-up` and no repair pull request.
+
+Expected: the path-discriminated response schema and numbered source records prevent provider output from selecting an invalid target, and at least one accepted proposal repairs the arithmetic source.
+
+Found: six branches still ended with `repair edits must use line ranges inside supplied source packages/core/src/dogfood-add.ts`. Two proposals applied, but each failed the trusted test. The live provider boundary did not make detailed path and numeric constraints a dependable control mechanism, and the model still controlled the exact repair target inside the excerpt.
+
+Why it matters: declared structured-output constraints are validation aids, not a sufficient ownership boundary. Sutura must select the path and the complete bounded excerpt before inference. Super should return only replacement text for that fixed target, while the controller derives the old bytes, line range, diff, test, and submission.
+
+The local redesign review also found that a 12,000-character complete replacement could compete with hidden reasoning inside the 16,384-token completion allowance, that a four-branch initial width could leave later source targets unreachable, and that arbitrary byte truncation could expose an incomplete source line. The corrected control path uses one shared 1,000-code-point source and replacement limit, preserves complete target-centered lines, schedules every admitted target when the full attempt fits, fails closed when aggregate budgets cannot cover them, and deduplicates identical baseline admission quotes.

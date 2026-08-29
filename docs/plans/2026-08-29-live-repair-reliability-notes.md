@@ -158,3 +158,35 @@ The complete local gate passed against the implementation tree. Candidate packag
 - `git diff --check`: passed
 
 Final Phase 5 exact-SHA CI and live dogfood evidence remain pending.
+
+### Controller-selected replacement revision
+
+- Develop candidate: `1f7a768d9940905f1c4e619d77f204ecc74bb4c1`
+- Develop CI: [33261011801](https://github.com/juan294/sutura/actions/runs/33261011801), passed
+- Dogfood SHA: `f71a7d136a664a84f21ed44096d82cd132e72b6e`
+- Intentional CI: [33261605582](https://github.com/juan294/sutura/actions/runs/33261605582), failed only the declared arithmetic assertion after 730 core tests passed and 8 live tests skipped
+- Sutura: [33261662501](https://github.com/juan294/sutura/actions/runs/33261662501), `gave-up`
+- Terminal evidence: six invalid target ranges and two applied patches that failed the trusted test
+- Response: remove path and line selection from provider output; assign one policy-admissible complete excerpt to each repair branch and accept only its complete replacement text
+- Local review response: share a 1,000-code-point source and replacement bound, prove the worst JSON-escaped reply stays below half the completion envelope, deduplicate baseline admission quotes, and expand the initial search to reach every admitted target when budgets permit
+- Final review response: treat executor and provider availability as batch concurrency rather than total target authorization, fail closed when aggregate budgets cannot cover every target, center bounded excerpts on the observed line, and omit incomplete boundary lines before inference
+
+### Controller-selected replacement local gate
+
+- Core: 740 passed, 8 skipped
+- Action: 70 passed
+- Evaluation: 5 passed
+- CLI: 81 passed
+- Placebo: 70 passed in 863 seconds
+- Repository total: 966 passed, 8 skipped
+- Typecheck: passed for all five buildable workspace packages
+- Lint: passed for all five buildable workspace packages
+- Build and Action bundle rebuild: passed
+- README setup tests: 3 passed
+- Release contracts: 22 passed
+- Reuse review: clean
+- Quality review: clean
+- Efficiency review: clean
+- `git diff --check`: passed
+
+The new Phase 5 exact-SHA and live dogfood proof remains pending.

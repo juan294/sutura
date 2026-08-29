@@ -11,7 +11,10 @@ import type {
   FailureClass,
   PolicyEvidence,
 } from './domain.js';
-import type { RepairSourceContext } from './engine/repair.js';
+import {
+  REPAIR_FULL_REPLACEMENT_MAX_CODE_POINTS,
+  type RepairSourceContext,
+} from './engine/repair.js';
 import { findSelectedCandidate } from './engine/candidate-identity.js';
 import { sourceDependencyGroups } from './engine/source-context.js';
 import {
@@ -44,8 +47,6 @@ import type { RuntimeId } from './runtime/types.js';
 const FAILED_STEP_LINES = 200;
 const MAX_SOURCE_FILES = 8;
 const MAX_SOURCE_LINES = 120;
-const MAX_SOURCE_CHARACTERS = 12_000;
-const MAX_SOURCE_BYTES = 12_000;
 const MAX_DEPENDENCY_CANDIDATE_PROBES_PER_DEPTH = 192;
 const ANSI_CSI_PATTERN = /\u001B\[[0-?]*[ -/]*[@-~]/gu;
 const SOURCE_PATH_PATTERN = /(?:^|[\s("'`])(?<path>(?:\.\/)?(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+\.(?:json|[cm]?[jt]sx?|pyi?|ini|txt|ya?ml|toml))(?![A-Za-z0-9_.-])(?:(?:\(|:)(?<line>\d+))?/g;
@@ -151,13 +152,14 @@ export interface RepositorySourceExcerpt {
   startLine: number;
   content: string;
   truncated: boolean;
+  boundaryComplete?: boolean;
 }
 
 export const REPAIR_SOURCE_LIMITS: Readonly<SourceReadLimits> = Object.freeze({
   maxFiles: MAX_SOURCE_FILES,
   maxLinesPerFile: MAX_SOURCE_LINES,
-  maxCharactersPerFile: MAX_SOURCE_CHARACTERS,
-  maxBytesPerFile: MAX_SOURCE_BYTES,
+  maxCharactersPerFile: REPAIR_FULL_REPLACEMENT_MAX_CODE_POINTS,
+  maxBytesPerFile: REPAIR_FULL_REPLACEMENT_MAX_CODE_POINTS,
 });
 
 export interface RepositoryPort {
@@ -381,6 +383,7 @@ export async function readRepairSourceContext(
         !Number.isSafeInteger(source.startLine) ||
         source.startLine <= 0 ||
         typeof source.truncated !== 'boolean' ||
+        (source.boundaryComplete !== undefined && source.boundaryComplete !== true) ||
         lineCount > REPAIR_SOURCE_LIMITS.maxLinesPerFile ||
         source.content.length > REPAIR_SOURCE_LIMITS.maxCharactersPerFile ||
         Buffer.byteLength(source.content, 'utf8') >
@@ -397,6 +400,7 @@ export async function readRepairSourceContext(
         startLine: source.startLine,
         content: source.content,
         truncated: source.truncated,
+        ...(source.boundaryComplete === undefined ? {} : { boundaryComplete: source.boundaryComplete }),
       }];
     });
   };

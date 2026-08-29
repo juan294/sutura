@@ -70,20 +70,10 @@ function runResult(exitCode: number, error = 'case.test.js: assertion failed'): 
 }
 
 function proposalFor(candidate: Candidate): object {
-  const edits = candidate.diff === UPSTREAM_DIFF
-    ? [{
-        path: 'app.cjs',
-        startLine: 1,
-        endLine: 2,
-        new: "exports.fetchName = () => import('node-fetch').then(({default: fetch}) => fetch('data:Juan'))\n  .then((response) => response.text());",
-      }]
-    : [{
-        path: 'page-count.js',
-        startLine: 1,
-        endLine: 1,
-        new: 'export function pageCount(items, size) { return Math.ceil(items / size); }',
-      }];
-  return { id: candidate.id, rationale: candidate.rationale, edits };
+  const replacement = candidate.diff === UPSTREAM_DIFF
+    ? "exports.fetchName = () => import('node-fetch').then(({default: fetch}) => fetch('data:Juan'))\n  .then((response) => response.text());\n"
+    : 'export function pageCount(items, size) { return Math.ceil(items / size); }\n';
+  return { id: candidate.id, rationale: candidate.rationale, replacement };
 }
 
 function runtime(
@@ -418,9 +408,11 @@ describe('CLI runtime configuration and source boundaries', () => {
         'Run pnpm test\nsrc/far.ts:250: failure',
         { class: 'test-assertion', confidence: 1, signals: [], failingCmd: 'pnpm test', errorExcerpt: 'failed' },
       );
-      expect(context.sources[0]).toMatchObject({ path: 'src/far.ts', startLine: 190, truncated: true });
+      expect(context.sources[0]).toMatchObject({ path: 'src/far.ts', truncated: true });
+      expect(context.sources[0]!.startLine).toBeLessThanOrEqual(250);
       expect(context.sources[0]?.content).toContain('line250');
       expect(context.sources[0]?.content).not.toContain('line1 =');
+      expect(context.sources[0]?.content.endsWith('\n')).toBe(true);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
