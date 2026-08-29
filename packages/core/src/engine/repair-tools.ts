@@ -16,6 +16,7 @@ import { shellQuote } from './shell.js';
 const MAX_TOOL_OUTPUT_BYTES = 16_000;
 const MAX_READ_BYTES = 12_000;
 const MAX_READ_LINES = 160;
+const RESOLVED_SOURCE_PREFIX = 'SUTURA_RESOLVED_SOURCE=';
 const SAFE_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9_@./ -]+$/u;
 const SENSITIVE_SEARCH_GLOBS = [
   '.env', '**/.env', '.env.*', '**/.env.*', '.netrc', '**/.netrc',
@@ -26,7 +27,7 @@ const SENSITIVE_SEARCH_GLOBS = [
 ] as const;
 
 export const REPAIR_TOOL_DEFINITIONS: readonly FunctionToolDefinition[] = [
-  ['read_file', 'Read one bounded repository file.', { path: { type: 'string' }, startLine: { type: 'integer' }, endLine: { type: 'integer' } }, ['path']],
+  ['read_file', 'Read one bounded repository file. Missing ESM .js source references can resolve to a TypeScript sibling; the result names the resolved path.', { path: { type: 'string' }, startLine: { type: 'integer' }, endLine: { type: 'integer' } }, ['path']],
   ['search_repo', 'Search tracked repository files for a literal string.', { query: { type: 'string' }, paths: { type: 'array', items: { type: 'string' } } }, ['query']],
   ['run_test', 'Run one trusted test command by identifier.', { commandId: { type: 'string' } }, ['commandId']],
   ['apply_patch', 'Apply a complete unified diff or structured edits.', { diff: { type: 'string' }, edits: { type: 'array', items: { type: 'object' } } }, []],
@@ -109,6 +110,16 @@ function failure(kind: RepairToolFailureKind, message: string): RepairToolResult
   return { ok: false, kind, message: bounded(message) };
 }
 
+function allowsSourceRead(path: string, policy: RepositoryPolicy): boolean {
+  return !isSensitiveRepositoryPath(path) && policyAllowsSourceRead(path, policy);
+}
+
+function typescriptSourceFallbacks(path: string, policy: RepositoryPolicy): string[] {
+  if (!path.endsWith('.js')) return [];
+  const stem = path.slice(0, -3);
+  return [`${stem}.ts`, `${stem}.tsx`].filter((candidate) => allowsSourceRead(candidate, policy));
+}
+
 export class RepairToolRuntime {
   private current: RepairToolState;
   private operationIndex = 0;
@@ -173,7 +184,7 @@ export class RepairToolRuntime {
     const args = exactObject(value, ['path', 'startLine', 'endLine']);
     const path = safePath(args?.path);
     if (!args || !path) return failure('invalid', 'read_file requires one valid repository-relative path');
-    if (isSensitiveRepositoryPath(path) || !policyAllowsSourceRead(path, this.options.policy)) {
+    if (!allowsSourceRead(path, this.options.policy)) {
       return failure('policy', 'Repository policy denies this source read');
     }
     const start = args.startLine === undefined ? 1 : Number(args.startLine);
@@ -185,15 +196,27 @@ export class RepairToolRuntime {
       segments.slice(0, index + 1).join('/'),
     );
     const noSymlinks = prefixes.map((prefix) => `test ! -L ${shellQuote(prefix)}`).join(' && ');
-    const command = `path=${shellQuote(path)}; ${noSymlinks} && test -f "$path" && test "$(wc -c < "$path")" -le ${MAX_READ_BYTES} && { LC_ALL=C grep -Iq . "$path" || test ! -s "$path"; } && sed -n '${start},${end}p' "$path"`;
+    const fallbackPaths = typescriptSourceFallbacks(path, this.options.policy);
+    const fallbacks = fallbackPaths.map((fallback) =>
+      `if test "$path" = "$requested" && test ! -e "$requested" && test ! -L "$requested"; then fallback=${shellQuote(fallback)}; if test -f "$fallback" && test ! -L "$fallback" && git ls-files --error-unmatch -- "$fallback" >/dev/null 2>&1; then path="$fallback"; resolved="$fallback"; fi; fi`,
+    ).join('; ');
+    const command = `requested=${shellQuote(path)}; path="$requested"; resolved=''; ${noSymlinks} && { ${fallbacks}${fallbacks ? '; ' : ''}test ! -L "$path" && test -f "$path" && test "$(wc -c < "$path")" -le ${MAX_READ_BYTES} && { LC_ALL=C grep -Iq . "$path" || test ! -s "$path"; } && { if test -n "$resolved"; then printf '${RESOLVED_SOURCE_PREFIX}%s\\n' "$resolved" >&2; fi; sed -n '${start},${end}p' "$path"; }; }`;
     const result = await this.run(command);
     this.observe(result, this.current.editableImageId, `read_file ${path}`);
     if (result.truncated || Buffer.byteLength(result.stdout, 'utf8') > MAX_READ_BYTES) {
       return failure('sandbox', 'File output exceeded the bounded tool limit');
     }
-    return result.exitCode === 0
-      ? { ok: true, message: bounded(result.stdout), imageId: result.imageId, exitCode: result.exitCode }
-      : failure('sandbox', 'File is missing, binary, oversized, or symlinked');
+    if (result.exitCode !== 0) return failure('sandbox', 'File is missing, binary, oversized, or symlinked');
+    const resolution = result.stderr.trim();
+    const resolvedPath = fallbackPaths.find((candidate) => resolution === `${RESOLVED_SOURCE_PREFIX}${candidate}`);
+    if (resolution && resolvedPath === undefined) return failure('sandbox', 'File resolution metadata was invalid');
+    const content = bounded(result.stdout);
+    return {
+      ok: true,
+      message: resolvedPath === undefined ? content : `Sutura resolved source: ${resolvedPath}\n${content}`,
+      imageId: result.imageId,
+      exitCode: result.exitCode,
+    };
   }
 
   private async searchRepo(value: unknown): Promise<RepairToolResult> {
@@ -205,7 +228,7 @@ export class RepairToolRuntime {
     if (!Array.isArray(pathsValue) || pathsValue.length === 0 || pathsValue.length > 8) return failure('invalid', 'search_repo paths are invalid');
     const paths = pathsValue.map((path) => path === '.' ? '.' : safePath(path));
     if (paths.some((path) => path === null)) return failure('invalid', 'search_repo paths must be repository-relative');
-    if ((paths as string[]).some((path) => isSensitiveRepositoryPath(path) || !policyAllowsSourceRead(path, this.options.policy))) {
+    if ((paths as string[]).some((path) => !allowsSourceRead(path, this.options.policy))) {
       return failure('policy', 'Repository policy denies one search path');
     }
     const excluded = [...SENSITIVE_SEARCH_GLOBS, ...this.options.policy.deniedReadPaths]
@@ -221,9 +244,7 @@ export class RepairToolRuntime {
       const separator = line.indexOf(':');
       if (separator < 1) return false;
       const resultPath = line.slice(0, separator);
-      return safePath(resultPath) !== null &&
-        !isSensitiveRepositoryPath(resultPath) &&
-        policyAllowsSourceRead(resultPath, this.options.policy);
+      return safePath(resultPath) !== null && allowsSourceRead(resultPath, this.options.policy);
     }).join('\n');
     return result.exitCode <= 1
       ? { ok: true, message: bounded(filtered || 'No matches'), imageId: result.imageId, exitCode: result.exitCode }

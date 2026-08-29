@@ -1,3 +1,9 @@
+import { execFile } from 'node:child_process';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Diagnosis } from '../domain.js';
@@ -14,8 +20,26 @@ const diff = [
   '@@ -1 +1 @@', '-export const a = 1;', '+export const a = 2;', '',
 ].join('\n');
 
-function runResult(imageId: string, stdout = '', exitCode = 0): RunResult {
-  return { imageId, stdout, stderr: '', exitCode, truncated: false, metrics: {} };
+const execFileAsync = promisify(execFile);
+
+function runResult(imageId: string, stdout = '', exitCode = 0, stderr = ''): RunResult {
+  return { imageId, stdout, stderr, exitCode, truncated: false, metrics: {} };
+}
+
+function toolsFor(
+  executor: Executor,
+  policy = createDefaultRepositoryPolicy(),
+  budget = new RepairBudget(DEFAULT_REPAIR_BUDGET_LIMITS),
+): RepairToolRuntime {
+  return new RepairToolRuntime({
+    executor, initialImageId: 'baseline', diagnosis, policy, budget,
+    trustedCommands: { diagnosed: 'pnpm test', 'policy-1': 'pnpm lint' },
+    sourceContext: { sources: [] },
+  });
+}
+
+function executorFor(run: ReturnType<typeof vi.fn>): Executor {
+  return { run, runMany: vi.fn(), importImage: vi.fn(), snapshot: vi.fn() } as unknown as Executor;
 }
 
 function runtime(
@@ -23,14 +47,7 @@ function runtime(
   policy = createDefaultRepositoryPolicy(),
 ) {
   const run = vi.fn(async () => script.shift() ?? runResult('unexpected', '', 1));
-  const executor = { run, runMany: vi.fn(), importImage: vi.fn(), snapshot: vi.fn() } as unknown as Executor;
-  return { run, tools: new RepairToolRuntime({
-    executor, initialImageId: 'baseline', diagnosis,
-    policy,
-    budget: new RepairBudget(DEFAULT_REPAIR_BUDGET_LIMITS),
-    trustedCommands: { diagnosed: 'pnpm test', 'policy-1': 'pnpm lint' },
-    sourceContext: { sources: [] },
-  }) };
+  return { run, tools: toolsFor(executorFor(run), policy) };
 }
 
 describe('RepairToolRuntime', () => {
@@ -57,6 +74,71 @@ describe('RepairToolRuntime', () => {
     });
     const command = (run.mock.calls[0] as unknown as [string, string])[1];
     expect(command).toContain(condition);
+  });
+
+  it('resolves an absent ESM .js source reference to an allowed TypeScript sibling', async () => {
+    const { tools, run } = runtime([
+      runResult(
+        'read-child',
+        'export const add = () => 4;',
+        0,
+        'SUTURA_RESOLVED_SOURCE=packages/core/src/dogfood-add.ts\n',
+      ),
+    ]);
+
+    await expect(tools.execute('read_file', { path: 'packages/core/src/dogfood-add.js' }))
+      .resolves.toMatchObject({
+        ok: true,
+        message: expect.stringContaining('Sutura resolved source: packages/core/src/dogfood-add.ts'),
+      });
+    const command = (run.mock.calls[0] as unknown as [string, string])[1];
+    expect(command).toContain("fallback='packages/core/src/dogfood-add.ts'");
+    expect(command).toContain("fallback='packages/core/src/dogfood-add.tsx'");
+    expect(command).toContain('test ! -L "$fallback"');
+    expect(command.indexOf("test ! -L 'packages/core'")).toBeLessThan(command.indexOf('test -f "$fallback"'));
+  });
+
+  it('executes the fallback without losing its path at the line boundary and requires a tracked source', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-read-file-'));
+    try {
+      await mkdir(join(directory, 'src'));
+      await writeFile(join(directory, 'src', 'value.ts'), Array.from({ length: 160 }, (_, index) => `line ${index + 1}`).join('\n'));
+      await writeFile(join(directory, 'src', 'untracked.ts'), 'not tracked');
+      await execFileAsync('git', ['init', '--quiet'], { cwd: directory });
+      await execFileAsync('git', ['add', 'src/value.ts'], { cwd: directory });
+      const run = vi.fn(async (_imageId: string, command: string) => {
+        try {
+          const result = await execFileAsync('/bin/sh', ['-c', command], { cwd: directory });
+          return runResult('read-child', result.stdout, 0, result.stderr);
+        } catch (error) {
+          const failed = error as { stdout?: string; stderr?: string; code?: number };
+          return runResult('read-child', failed.stdout ?? '', failed.code ?? 1, failed.stderr ?? '');
+        }
+      });
+      const tools = toolsFor(executorFor(run));
+
+      const resolved = await tools.execute('read_file', { path: 'src/value.js' });
+      expect(resolved).toMatchObject({ ok: true });
+      expect(resolved.message.split('\n')[0]).toBe('Sutura resolved source: src/value.ts');
+      expect(resolved.message).toContain('line 160');
+      await expect(tools.execute('read_file', { path: 'src/untracked.js' }))
+        .resolves.toMatchObject({ ok: false, kind: 'sandbox' });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('does not offer TypeScript fallbacks denied by repository policy', async () => {
+    const { tools, run } = runtime(
+      [runResult('read-child', '', 1)],
+      { ...createDefaultRepositoryPolicy(), deniedReadPaths: ['src/*.ts', 'src/*.tsx'] },
+    );
+
+    await expect(tools.execute('read_file', { path: 'src/a.js' }))
+      .resolves.toMatchObject({ ok: false, kind: 'sandbox' });
+    const command = (run.mock.calls[0] as unknown as [string, string])[1];
+    expect(command).not.toContain("fallback='src/a.ts'");
+    expect(command).not.toContain("fallback='src/a.tsx'");
   });
 
   it.each([
@@ -152,12 +234,7 @@ describe('RepairToolRuntime', () => {
     const budget = new RepairBudget({ ...DEFAULT_REPAIR_BUDGET_LIMITS, elapsedTimeSec: 1 }, () => now);
     now = 750;
     const run = vi.fn(async () => runResult('child', 'text'));
-    const executor = { run, runMany: vi.fn(), importImage: vi.fn(), snapshot: vi.fn() } as unknown as Executor;
-    const tools = new RepairToolRuntime({
-      executor, initialImageId: 'baseline', diagnosis,
-      policy: createDefaultRepositoryPolicy(), budget,
-      trustedCommands: { diagnosed: 'pnpm test' }, sourceContext: { sources: [] },
-    });
+    const tools = toolsFor(executorFor(run), createDefaultRepositoryPolicy(), budget);
 
     await tools.execute('read_file', { path: 'src/a.ts' });
     const options = (run.mock.calls[0] as unknown as [string, string, { timeoutSec: number }])[2];

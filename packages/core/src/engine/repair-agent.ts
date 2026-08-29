@@ -68,6 +68,7 @@ function initialMessages(ctx: RepairAgentContext): ChatMessage[] {
         'Repair the diagnosed CI failure using only the supplied tools.',
         'Call exactly the tools needed. A tool call is required on every turn.',
         'Do not reveal hidden reasoning. Do not weaken tests or policy.',
+        'When read_file names a resolved source path, use that path for edits.',
         'Only submit after the latest trusted test passes.',
       ].join('\n'),
     },
