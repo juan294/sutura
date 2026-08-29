@@ -400,6 +400,11 @@ export async function generateCandidates(
     temperature: 1,
     reasoningEffort: 'low' as const,
     responseFormat: { type: 'json_object' as const },
+    routing: {
+      failureClass: diagnosis.class,
+      diagnosisConfidence: diagnosis.confidence,
+      remainingInferenceBudgetUsd: Number.MAX_SAFE_INTEGER,
+    },
   };
   const reply = await llm.chat('super', messages, options);
   const result = await extractJson(

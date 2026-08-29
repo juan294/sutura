@@ -14,7 +14,7 @@ describe('Ledger', () => {
   it('prices normal and reasoning output tokens to exactly six decimals', () => {
     const ledger = new Ledger(DEFAULT_MODEL_PRICES);
 
-    const entry = ledger.add('nano', {
+    const entry = ledger.add('nano', 'nvidia/nano', {
       inTok: 1_000,
       outTok: 2_000,
       reasoningTok: 3_000,
@@ -23,7 +23,8 @@ describe('Ledger', () => {
     expect(entry.usd).toBe(0.00126);
     expect(ledger.entries).toEqual([
       {
-        model: 'nano',
+        role: 'nano',
+        model: 'nvidia/nano',
         inTok: 1_000,
         outTok: 2_000,
         reasoningTok: 3_000,
@@ -36,8 +37,8 @@ describe('Ledger', () => {
   it('keeps an exact six-decimal running total across tiers', () => {
     const ledger = new Ledger(DEFAULT_MODEL_PRICES);
 
-    ledger.add('super', { inTok: 2_000, outTok: 1_000, reasoningTok: 0 });
-    ledger.add('ultra', { inTok: 1_000, outTok: 2_000, reasoningTok: 1_000 });
+    ledger.add('super', 'nvidia/super', { inTok: 2_000, outTok: 1_000, reasoningTok: 0 });
+    ledger.add('ultra', 'nvidia/ultra', { inTok: 1_000, outTok: 2_000, reasoningTok: 1_000 });
 
     expect(ledger.totalUsd()).toBe(0.0115);
   });
@@ -46,7 +47,7 @@ describe('Ledger', () => {
     const ledger = new Ledger(DEFAULT_MODEL_PRICES);
 
     expect(() =>
-      ledger.add('unknown', { inTok: 1, outTok: 1, reasoningTok: 0 }),
-    ).toThrow(/No token prices configured for model: unknown/);
+      ledger.add('unknown' as 'nano', 'unknown', { inTok: 1, outTok: 1, reasoningTok: 0 }),
+    ).toThrow(/No token prices configured for role: unknown/);
   });
 });

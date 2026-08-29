@@ -36,6 +36,13 @@ export interface TriageVerdict {
   status: 'real' | 'flaky' | 'intermittent' | 'not-run';
   reproduced: number;
   of: number;
+  attemptsUsed: number;
+  maximumAttempts: number;
+  reproductionProbability: number;
+  confidenceLower: number;
+  confidenceUpper: number;
+  stopReason: 'failure-boundary' | 'pass-boundary' | 'maximum-attempts' | 'not-run';
+  methodVersion: 'sprt-p20-p80-a05-b05-v1';
 }
 
 export interface Candidate {
@@ -83,6 +90,7 @@ export interface AuditVerdict {
 
 export interface CostLedger {
   entries: Array<{
+    role: 'nano' | 'super' | 'ultra';
     model: string;
     inTok: number;
     outTok: number;

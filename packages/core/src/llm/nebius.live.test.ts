@@ -130,7 +130,11 @@ describe.skipIf(environment.SUTURA_LIVE !== '1')('NebiusClient live', () => {
     expect(candidates).toHaveLength(1);
     expect(candidates[0]?.diff).toContain('diff --git a/src/value.ts b/src/value.ts');
     expect(client.ledger.entries).toEqual(expect.arrayContaining([
-      expect.objectContaining({ model: 'super', outTok: expect.any(Number) }),
+      expect.objectContaining({
+        role: 'super',
+        model: DEFAULT_MODELS.super,
+        outTok: expect.any(Number),
+      }),
     ]));
     expect(client.ledger.entries.at(-1)?.outTok).toBeGreaterThan(0);
   });

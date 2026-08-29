@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { access, readFile } from 'node:fs/promises';
 
 import { DummyAdapter, RefuseAllAdapter } from './adapters.js';
+import { DEFAULT_ROUTING_PROFILE_ID, completedTriageVerdict } from '@sutura/core';
 import { runBenchmark } from './harness.js';
 import type { Adapter, CaseFile } from './types.js';
 
@@ -13,7 +14,7 @@ function approved(grounded = false): CaseFile {
       class: 'test-assertion', confidence: 1, signals: [], failingCmd: 'pnpm test', errorExcerpt: 'failed',
       ...(grounded ? { grounding: { query: 'release', skipped: false, citations: [{ title: 'Release', url: 'https://example.test/release', snippet: 'breaking change' }] } } : {}),
     },
-    triage: { status: 'real', reproduced: 5, of: 5 }, race: [],
+    triage: completedTriageVerdict([1, 1, 1, 1], 5), race: [],
     audit: { approved: true, checks: [], reasoning: 'approved' }, outcome: 'fixed',
     cost: { entries: [], totalUsd: () => 0 },
     policy: { baseRef: 'local', baseSha: 'local', policySha: 'default' },
@@ -50,6 +51,7 @@ describe('runBenchmark', { timeout: 120_000 }, () => {
     expect(recorded.score).toEqual(baseline.score);
     expect(recorded.results.every(({ caseFile }) => caseFile.trace?.at(0)?.type === 'run-start')).toBe(true);
     expect(recorded.manifest?.cases).toHaveLength(recorded.results.length);
+    expect(recorded.manifest?.routingProfile).toBe(DEFAULT_ROUTING_PROFILE_ID);
     expect(recorded.manifest?.cases.every(({ trace }) => trace.at(-1)?.type === 'run-finish')).toBe(true);
   });
 

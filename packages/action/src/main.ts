@@ -37,6 +37,7 @@ export async function runAction(): Promise<void> {
       baseUrl: NEBIUS_BASE_URL,
       models: config.models,
       prices: DEFAULT_MODEL_PRICES,
+      routingProfileId: config.routingProfileId,
     });
     const githubPort = new GitHubAdapter(
       createGitHubApi(octokit, owner, repo),
@@ -75,7 +76,7 @@ export async function runAction(): Promise<void> {
       ...(tavily ? { tavily } : {}),
     });
     core.setOutput('outcome', result.outcome);
-    for (const evidence of runtimeEvidence(result, config.models)) core.info(evidence);
+    for (const evidence of runtimeEvidence(result)) core.info(evidence);
     core.info(`Sutura outcome: ${result.outcome}`);
   } catch (error) {
     if (error instanceof AlreadyAttemptedError) {

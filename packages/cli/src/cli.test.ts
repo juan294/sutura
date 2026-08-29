@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { CaseFile } from '@sutura/core';
+import { completedTriageVerdict, notRunTriageVerdict, type CaseFile } from '@sutura/core';
 
 import { runCli } from './cli.js';
 
@@ -12,7 +12,7 @@ function fixed(): CaseFile {
       class: 'test-assertion', confidence: 1, signals: [],
       failingCmd: 'pnpm test', errorExcerpt: 'failed',
     },
-    triage: { status: 'real', reproduced: 5, of: 5 },
+    triage: completedTriageVerdict([1, 1, 1, 1], 5),
     race: [],
     audit: { approved: true, checks: [], reasoning: 'approved' },
     outcome: 'fixed',
@@ -70,7 +70,7 @@ describe('runCli', () => {
     expect(JSON.parse(stdout.join(''))).toMatchObject({
       outcome: 'infra-stop',
       diagnosis: { class: 'infra', errorExcerpt: expect.stringContaining('CONTREE_TOKEN is required') },
-      triage: { status: 'not-run', reproduced: 0, of: 0 },
+      triage: notRunTriageVerdict(),
     });
     expect(stdout.join('')).not.toContain('private');
     expect(stdout.join('')).not.toContain('abc123');

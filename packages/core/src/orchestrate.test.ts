@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 
 import { describe, expect, it, vi } from 'vitest';
 
+import { DEFAULT_MODELS } from './config.js';
 import type {
   AuditVerdict,
   Candidate,
@@ -11,7 +12,10 @@ import type {
 } from './domain.js';
 import { InMemoryExecutor } from './executor/memory.js';
 import type { InMemoryCall, InMemoryRunResult } from './executor/memory.js';
+import { completedTriageVerdict, notRunTriageVerdict } from './engine/triage.js';
 import type { TierLlm } from './llm/types.js';
+import { DEFAULT_MODEL_PRICES } from './llm/cost.js';
+import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
 import {
   AlreadyAttemptedError,
   SUTURA_SANDBOX_ENV,
@@ -251,7 +255,13 @@ function scriptedLlm(auditVerdict: AuditVerdict['approved'] = true): {
       }),
     };
   });
-  return { llm: { chat }, chat };
+  const modelQuote = (tier: 'nano' | 'super' | 'ultra') => ({
+    role: tier,
+    modelId: DEFAULT_MODELS[tier],
+    price: DEFAULT_MODEL_PRICES[tier],
+    profileId: DEFAULT_ROUTING_PROFILE_ID,
+  });
+  return { llm: { chat, modelQuote }, chat };
 }
 
 function runResult(exitCode: number): InMemoryRunResult {
@@ -547,7 +557,7 @@ describe('orchestrate', () => {
     const caseFile = await orchestrate(ctx);
 
     expect(caseFile.outcome).toBe('flaky-no-patch');
-    expect(caseFile.triage).toEqual({ status: 'flaky', reproduced: 0, of: 2 });
+    expect(caseFile.triage).toEqual(completedTriageVerdict([0, 0], 2));
     expect(repository.fixes).toEqual([]);
     expect(github.pullRequests).toEqual([]);
     expect(github.comments[0]?.body).toContain('FLAKY');
@@ -666,7 +676,7 @@ describe('orchestrate', () => {
     expect(caseFile.outcome).toBe('infra-stop');
     expect(caseFile.diagnosis.class).toBe('infra');
     expect(caseFile.diagnosis.signals).toContain('reproduction:passed');
-    expect(caseFile.triage).toEqual({ status: 'not-run', reproduced: 0, of: 0 });
+    expect(caseFile.triage).toEqual(notRunTriageVerdict());
     expect(github.comments[0]?.body).toContain('INFRA — STOPPED');
     expect(github.comments[0]?.body).toContain('stopped before inference');
     expect(repository.fixes).toEqual([]);

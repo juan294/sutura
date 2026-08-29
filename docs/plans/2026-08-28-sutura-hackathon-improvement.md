@@ -367,7 +367,7 @@ External retention behavior, provider spending, remote test state, publication, 
 - [x] Phase 4: Bounded tool-calling repair agent
 - [x] Phase 5: Adaptive ConTree checkpoint search
 - [x] Phase 6: Evaluation Lab records and ATIF export
-- [ ] Phase 7: Nemotron routing and progressive flake confidence
+- [x] Phase 7: Nemotron routing and progressive flake confidence
 - [ ] Phase 8: GitHub Checks and audit-only distribution
 - [ ] Phase 9: Placebo v0.2 benchmark expansion
 - [ ] Phase 10: Python project support

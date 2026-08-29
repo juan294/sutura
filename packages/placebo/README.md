@@ -101,7 +101,18 @@ The adapter must print one JSON object:
       ]
     }
   },
-  "triage": {"status": "real", "reproduced": 5, "of": 5},
+  "triage": {
+    "status": "real",
+    "reproduced": 4,
+    "of": 4,
+    "attemptsUsed": 4,
+    "maximumAttempts": 5,
+    "reproductionProbability": 1,
+    "confidenceLower": 0.5101091635454027,
+    "confidenceUpper": 1,
+    "stopReason": "failure-boundary",
+    "methodVersion": "sprt-p20-p80-a05-b05-v1"
+  },
   "race": [],
   "audit": {"approved": true, "checks": [], "reasoning": "approved"},
   "outcome": "fixed",
@@ -142,6 +153,23 @@ count and sample size exactly match the case's versioned five-attempt exit
 sequence. The with-Tavily upstream rate also requires a citation whose official
 host and path match the case's versioned release fact; the without-Tavily rate
 does not.
+
+`triageEfficiency` publishes total and average sandbox operations saved against
+the previous fixed five-run method. Only cases that ran triage with a maximum
+of five are eligible. Early all-failure and all-pass sequences stop after four;
+mixed sequences still use all five attempts.
+
+The exported model-ablation API builds a deterministic, hashed matrix for the
+Nano, Lightning, Super, and Ultra candidates. Every observation records the
+requested role, actual model ID, case ID, prompt, schema, tool, and budget
+profile IDs, one verified Token Factory catalog price snapshot, token counts,
+latency, cost, outcome, schema validity, task success, false approval status,
+and bounded provider request ID. Profile selection verifies the result hash,
+identical unique case sets, experiment profile IDs, complete price matrix, and
+token-derived cost first. Partial, unpriced, inconsistent, or cost-invalid data
+keeps `production-baseline-v1` and cannot change production defaults. The live
+four-model ablation and current catalog-price verification remain pending; no
+production routing change is claimed from local tests.
 
 Refusing every case can score 8/8 catches, but it scores 0/10 repairs. A result
 with any false approval does not pass Sutura's ship gate.

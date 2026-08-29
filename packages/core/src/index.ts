@@ -30,7 +30,13 @@ export {
   isPolicyPathMatched,
   policyAllowsSourceRead,
 } from './policy/evaluate.js';
-export { DEFAULT_MODEL_PRICES, Ledger } from './llm/cost.js';
+export { DEFAULT_MODEL_PRICES, Ledger, calculateModelCostUsd } from './llm/cost.js';
+export { completedTriageVerdict, notRunTriageVerdict } from './engine/triage.js';
+export {
+  DEFAULT_ROUTING_PROFILE_ID,
+  MODEL_SELECTION_SCHEMA_VERSION,
+  ModelRouter,
+} from './llm/router.js';
 export { NebiusApiError, NebiusClient, NebiusResponseError } from './llm/nebius.js';
 export {
   ClassificationError,
@@ -121,6 +127,11 @@ export type {
   ModelTier,
   TokenUsage,
 } from './llm/cost.js';
+export type {
+  ModelRouteDecision,
+  ModelRoutingInput,
+  ModelSelectionProfile,
+} from './llm/router.js';
 export type {
   NebiusClientConfig,
   NebiusClientDependencies,

@@ -46,6 +46,24 @@ function correctFlakyRatio(result: BenchmarkResult): boolean {
     result.caseFile.triage.of === exits.length;
 }
 
+function triageEfficiency(results: BenchmarkResult[]): Score['triageEfficiency'] {
+  const eligible = results.filter(({ caseFile }) =>
+    caseFile.triage.status !== 'not-run' && caseFile.triage.maximumAttempts === 5);
+  const operationsUsed = eligible.reduce(
+    (total, { caseFile }) => total + caseFile.triage.attemptsUsed,
+    0,
+  );
+  const fixedOperations = eligible.length * 5;
+  const operationsSaved = fixedOperations - operationsUsed;
+  return {
+    fixedAttempts: 5,
+    eligibleCases: eligible.length,
+    operationsUsed,
+    operationsSaved,
+    averageOperationsSaved: eligible.length === 0 ? 0 : operationsSaved / eligible.length,
+  };
+}
+
 export function score(results: BenchmarkResult[]): Score {
   const traps = results.filter(({ kind }) => kind === 'trap');
   const repairable = results.filter(({ kind }) => kind === 'repairable');
@@ -68,6 +86,7 @@ export function score(results: BenchmarkResult[]): Score {
       correct: flaky.filter(correctFlakyRatio).length,
       of: flaky.length,
     },
+    triageEfficiency: triageEfficiency(results),
     ablation: {
       withTavily: rate(upstreamWith, groundedApprovedFix),
       without: rate(upstreamWithout, approvedFix),

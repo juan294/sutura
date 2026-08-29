@@ -19,7 +19,7 @@
       ]
     }
   },
-  "triage": { "status": "real", "reproduced": 5, "of": 5 },
+  "triage": { "status": "real", "reproduced": 4, "of": 4, "attemptsUsed": 4, "maximumAttempts": 5, "reproductionProbability": 1, "confidenceLower": 0.5101091635454027, "confidenceUpper": 1, "stopReason": "failure-boundary", "methodVersion": "sprt-p20-p80-a05-b05-v1" },
   "race": [
     {
       "candidate": {
@@ -80,9 +80,9 @@
   ],
   "cost": {
     "entries": [
-      { "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", "inTok": 2100, "outTok": 420, "reasoningTok": 80, "usd": 0.000246 },
-      { "model": "nvidia/nemotron-3-super-120b-a12b", "inTok": 7800, "outTok": 2600, "reasoningTok": 900, "usd": 0.00549 },
-      { "model": "nvidia/Nemotron-3-Ultra-550b-a55b", "inTok": 2500, "outTok": 900, "reasoningTok": 400, "usd": 0.0064 }
+      { "role": "nano", "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", "inTok": 2100, "outTok": 420, "reasoningTok": 80, "usd": 0.000246 },
+      { "role": "super", "model": "nvidia/nemotron-3-super-120b-a12b", "inTok": 7800, "outTok": 2600, "reasoningTok": 900, "usd": 0.00549 },
+      { "role": "ultra", "model": "nvidia/Nemotron-3-Ultra-550b-a55b", "inTok": 2500, "outTok": 900, "reasoningTok": 400, "usd": 0.0064 }
     ]
   }
 }

@@ -36,6 +36,7 @@ import { adaptiveSearch, DEFAULT_SEARCH_LIMITS, type SearchNode } from './engine
 import type { SearchLimits } from './config.js';
 import { shellQuote } from './engine/shell.js';
 import { triage } from './engine/triage.js';
+import { notRunTriageVerdict } from './engine/triage.js';
 import {
   SNAPSHOT_CWD,
   type Executor,
@@ -208,8 +209,14 @@ function tracedLlm(llm: HealLlm, trace: TraceRecorder): HealLlm {
   return {
     capacitySnapshot: () => delegate.capacitySnapshot?.(),
     modelId: (tier: ModelTier) => delegate.modelId?.(tier) ?? tier,
+    modelQuote: (tier: ModelTier, messages: readonly ChatMessage[], options?: ChatOptions) => {
+      const quote = delegate.modelQuote?.(tier, messages, options);
+      if (quote === undefined) throw new Error('Model routing quote is unavailable');
+      return quote;
+    },
     async chat(tier: ModelTier, messages: readonly ChatMessage[], options?: ChatOptions) {
-      const model = delegate.modelId?.(tier) ?? tier;
+      const model = delegate.modelQuote?.(tier, messages, options)?.modelId ??
+        delegate.modelId?.(tier) ?? tier;
       const serializedPrompt = JSON.stringify(messages);
       const systemPrompt = messages.find(({ role }) => role === 'system');
       const promptExcerpt = typeof systemPrompt?.content === 'string'
@@ -353,7 +360,7 @@ export function noReproductionCaseFile(
   return makeCaseFile(
     ctx,
     noReproductionDiagnosis(mechanical),
-    { status: 'not-run', reproduced: 0, of: 0 },
+    notRunTriageVerdict(),
     [],
     'infra-stop',
   );
@@ -380,7 +387,7 @@ export function preparationFailureCaseFile(
       failingCmd: command,
       errorExcerpt: excerpt || 'Sandbox dependency preparation failed.',
     },
-    { status: 'not-run', reproduced: 0, of: 0 },
+    notRunTriageVerdict(),
     [],
     'infra-stop',
   );

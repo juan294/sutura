@@ -8,12 +8,14 @@ describe('parseArgs', () => {
   it('parses the Placebo-compatible heal contract', () => {
     expect(parseArgs([
       'heal', '--case-dir', '/tmp/case', '--format', 'json',
-      '--candidate-diff', 'diff --git a/a.js b/a.js\n', '--no-tavily',
+      '--candidate-diff', 'diff --git a/a.js b/a.js\n',
+      '--routing-profile', 'production-baseline-v1', '--no-tavily',
     ])).toEqual({
       command: 'heal',
       caseDir: '/tmp/case',
       format: 'json',
       candidateDiff: 'diff --git a/a.js b/a.js\n',
+      routingProfile: 'production-baseline-v1',
       tavilyEnabled: false,
     });
   });

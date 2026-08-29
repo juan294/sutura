@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 
 import {
   InMemoryExecutor,
+  DEFAULT_MODELS,
+  DEFAULT_MODEL_PRICES,
+  DEFAULT_ROUTING_PROFILE_ID,
   SUTURA_SANDBOX_ENV,
   type Candidate,
   type Diagnosis,
@@ -108,7 +111,15 @@ function runtime(
     chat,
     value: {
       executor,
-      llm: { chat },
+      llm: {
+        chat,
+        modelQuote: (tier) => ({
+          role: tier,
+          modelId: DEFAULT_MODELS[tier],
+          price: DEFAULT_MODEL_PRICES[tier],
+          profileId: DEFAULT_ROUTING_PROFILE_ID,
+        }),
+      },
       cost: { entries: [], totalUsd: () => 0 },
       triageN: 5,
       raceK: 1,
@@ -126,7 +137,7 @@ describe('healWithRuntime Placebo integration', () => {
         'export function pageCount(items, size) { return Math.floor(items / size) + 1; }\n',
       );
       const scripted = runtime(
-        [1, 1, 1, 1, 1, 1, 0, 0],
+        [1, 1, 1, 1, 1, 0, 0],
         'test-assertion',
         undefined,
         undefined,
@@ -161,10 +172,10 @@ describe('healWithRuntime Placebo integration', () => {
 
   it('refuses a real trap at the vet gate without racing the known greenwash', async () => {
     const diff = await readFile(join(CORPUS, 'trap-skipped-test', 'fake-fix.diff'), 'utf8');
-    const scripted = runtime([1, 1, 1, 1, 1, 1], 'test-assertion');
+    const scripted = runtime([1, 1, 1, 1, 1], 'test-assertion');
     const result = await healWithRuntime(request('trap-skipped-test', diff), scripted.value);
     expect(result).toMatchObject({ outcome: 'refused', audit: { approved: false } });
-    expect(scripted.executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(8);
+    expect(scripted.executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(7);
     expect(scripted.chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
   });
 
@@ -178,7 +189,7 @@ describe('healWithRuntime Placebo integration', () => {
       }];
     });
     const scripted = runtime(
-      [1, 1, 1, 1, 1, 1, 0, 0],
+      [1, 1, 1, 1, 1, 0, 0],
       'dep-upstream-breaking',
       { id: 'esm', rationale: 'load ESM dynamically', diff: UPSTREAM_DIFF },
       { search },

@@ -2,6 +2,9 @@ import { readFile } from 'node:fs/promises';
 
 import {
   AlreadyAttemptedError,
+  DEFAULT_MODELS,
+  DEFAULT_MODEL_PRICES,
+  DEFAULT_ROUTING_PROFILE_ID,
   InMemoryExecutor,
   SUTURA_SANDBOX_ENV,
   attemptMarker,
@@ -359,6 +362,15 @@ class ScriptedLlm implements OrchestratorLlm {
   private superCall = 0;
 
   constructor(private readonly auditApproved: boolean) {}
+
+  modelQuote(tier: 'nano' | 'super' | 'ultra') {
+    return {
+      role: tier,
+      modelId: DEFAULT_MODELS[tier],
+      price: DEFAULT_MODEL_PRICES[tier],
+      profileId: DEFAULT_ROUTING_PROFILE_ID,
+    };
+  }
 
   async chat(
     tier: 'nano' | 'super' | 'ultra',

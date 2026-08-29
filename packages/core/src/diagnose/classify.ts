@@ -184,6 +184,11 @@ export async function classify(
     maxTokens: 2_048,
     temperature: 0,
     responseFormat: { type: 'json_object' as const },
+    routing: {
+      failureClass: mechanical.class,
+      diagnosisConfidence: mechanical.confidence,
+      remainingInferenceBudgetUsd: Number.MAX_SAFE_INTEGER,
+    },
   };
   let reply: { text: string };
 

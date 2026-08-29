@@ -4,6 +4,7 @@ import {
   type RepairBudgetLimits,
 } from './engine/repair-budget.js';
 import { DEFAULT_SEARCH_LIMITS } from './engine/search.js';
+import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
 
 export const DEFAULT_MODELS = {
   nano: 'nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B',
@@ -23,6 +24,7 @@ export interface Config {
   triageN: number;
   raceK: number;
   models: Record<keyof typeof DEFAULT_MODELS, string>;
+  routingProfileId: string;
   maxOps: number;
   repairBudgets: RepairBudgetLimits;
   search: SearchLimits;
@@ -105,6 +107,12 @@ function boundedPositiveNumber(
 }
 
 export function loadConfig(env: ConfigEnvironment): Config {
+  const routingProfileId = optional(env, 'SUTURA_ROUTING_PROFILE') ?? DEFAULT_ROUTING_PROFILE_ID;
+  if (routingProfileId !== DEFAULT_ROUTING_PROFILE_ID) {
+    throw new ConfigError(
+      `SUTURA_ROUTING_PROFILE must be ${DEFAULT_ROUTING_PROFILE_ID} until a complete price-verified profile is shipped`,
+    );
+  }
   const config: Config = {
     nebiusApiKey: required(env, 'NEBIUS_API_KEY'),
     triageN: boundedPositiveInteger(
@@ -124,6 +132,7 @@ export function loadConfig(env: ConfigEnvironment): Config {
       super: optional(env, 'SUTURA_MODEL_SUPER') ?? DEFAULT_MODELS.super,
       ultra: optional(env, 'SUTURA_MODEL_ULTRA') ?? DEFAULT_MODELS.ultra,
     },
+    routingProfileId,
     maxOps: positiveInteger(env, 'SUTURA_MAX_OPS', 40),
     repairBudgets: repairBudgetLimits({
       modelTurns: boundedPositiveInteger(

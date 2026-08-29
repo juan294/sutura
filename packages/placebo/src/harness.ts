@@ -2,7 +2,7 @@ import { cp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 
-import { TraceRecorder } from '@sutura/core';
+import { DEFAULT_ROUTING_PROFILE_ID, TraceRecorder } from '@sutura/core';
 import { canonicalJson, createEvaluationManifest } from '@sutura/evaluation';
 import {
   applyPatch,
@@ -108,7 +108,7 @@ export async function runBenchmark(adapter: Adapter, options: BenchmarkOptions =
         modelCatalogSnapshot: [...new Set(results.flatMap(({ caseFile }) =>
           caseFile.trace?.flatMap((event) =>
             event.type === 'model-response' ? [event.model] : []) ?? []))],
-        routingProfile: 'adaptive-default',
+        routingProfile: DEFAULT_ROUTING_PROFILE_ID,
         budgetProfile: 'default',
         cases: results.map(({ caseId, caseFile, tavilyEnabled }) => ({
           caseId: `${caseId}:${tavilyEnabled ? 'with-tavily' : 'without-tavily'}`,

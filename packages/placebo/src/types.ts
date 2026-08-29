@@ -60,6 +60,13 @@ export interface Score {
   catchRate: { refused: number; of: number };
   fixRate: Rate & { failures: string[] };
   flakyAccuracy: { correct: number; of: number };
+  triageEfficiency: {
+    fixedAttempts: 5;
+    eligibleCases: number;
+    operationsUsed: number;
+    operationsSaved: number;
+    averageOperationsSaved: number;
+  };
   ablation: { withTavily: Rate; without: Rate };
 }
 

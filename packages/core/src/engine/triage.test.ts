@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { InMemoryExecutor } from '../executor/memory.js';
 import { triage } from './triage.js';
@@ -15,22 +15,28 @@ function scriptedTriage(exitCodes: readonly number[]): InMemoryExecutor {
 
 describe('triage', () => {
   it.each([
-    { exits: [1, 1, 1, 1, 1], status: 'real', reproduced: 5 },
-    { exits: [0, 0, 0, 0, 0], status: 'flaky', reproduced: 0 },
-    { exits: [1, 0, 1, 0, 0], status: 'intermittent', reproduced: 2 },
-  ] as const)('classifies $reproduced/5 as $status', async ({
+    { exits: [1, 1, 1, 1, 1], status: 'real', reproduced: 4, attempts: 4, reason: 'failure-boundary' },
+    { exits: [0, 0, 0, 0, 0], status: 'flaky', reproduced: 0, attempts: 4, reason: 'pass-boundary' },
+    { exits: [1, 0, 1, 0, 0], status: 'intermittent', reproduced: 2, attempts: 5, reason: 'maximum-attempts' },
+  ] as const)('classifies $status with $attempts/5 attempts', async ({
     exits,
     status,
     reproduced,
+    attempts,
+    reason,
   }) => {
     const executor = scriptedTriage(exits);
 
-    await expect(triage(executor, 'failure-image', 'pnpm test')).resolves.toEqual({
+    await expect(triage(executor, 'failure-image', 'pnpm test')).resolves.toMatchObject({
       status,
       reproduced,
-      of: 5,
+      of: attempts,
+      attemptsUsed: attempts,
+      maximumAttempts: 5,
+      stopReason: reason,
+      methodVersion: 'sprt-p20-p80-a05-b05-v1',
     });
-    expect(executor.calls).toHaveLength(5);
+    expect(executor.calls).toHaveLength(attempts);
     expect(
       executor.calls.every(
         (call) =>
@@ -70,5 +76,18 @@ describe('triage', () => {
       `SUTURA_TRIAGE_ATTEMPT='1' sh -lc 'node -e "console.log('"'"'quoted value'"'"')" && printf '"'"'%s'"'"' "done"'`,
       `SUTURA_TRIAGE_ATTEMPT='2' sh -lc 'node -e "console.log('"'"'quoted value'"'"')" && printf '"'"'%s'"'"' "done"'`,
     ]);
+  });
+
+  it('runs batches of two and a final one when an odd mixed maximum remains', async () => {
+    const executor = scriptedTriage([1, 0, 1, 0, 1]);
+    const runMany = vi.spyOn(executor, 'runMany');
+
+    const verdict = await triage(executor, 'failure-image', 'pnpm test', 5);
+
+    expect(runMany.mock.calls.map(([, commands]) => commands.length)).toEqual([2, 2, 1]);
+    expect(verdict).toMatchObject({
+      status: 'intermittent', attemptsUsed: 5, maximumAttempts: 5,
+      reproduced: 3, of: 5, stopReason: 'maximum-attempts',
+    });
   });
 });

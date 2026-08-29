@@ -102,3 +102,24 @@
 - Found: GitHub Action orchestration creates its stage ledger before it calls `repairFailure`.
 - Chose: Create the recorder with that production ledger in `orchestrate.ts` and pass it through every early and repair outcome.
 - Why: Attaching the recorder only inside `repairFailure` would omit preparation and reproduction events from production traces.
+
+### Phase 7: Routed reservation and integration files
+
+- Plan said: Route model roles from measured profiles and reserve the worst-case repair request cost before inference.
+- Found: The existing repair reservation used the static Super price before the provider resolved a routed model. The listed Phase 7 files also omitted the shared LLM option types, diagnosis and audit callers, and Placebo adapters and harness that construct or validate the affected contracts.
+- Chose: Resolve and quote the routed Super model before reserving its worst-case request, pass the bounded routing context through diagnosis, repair, and audit, and update the omitted shared types, adapters, harness, fixtures, and tests. A missing repair quote fails closed; it does not use a static compatibility price.
+- Why: A static reservation could understate a selected model's price. Every producer and validator must preserve the same role, actual model, and progressive-triage evidence.
+
+### Phase 7: Live selection gate
+
+- Plan said: Compare four Nemotron candidates, verify prices against the live Token Factory catalog, and publish the selected profile.
+- Found: This implementation phase prohibits live model-role ablation and catalog calls. Local data cannot establish current price or production quality.
+- Chose: Ship deterministic ablation, hashing, validation, scoring, and selection machinery while retaining `production-baseline-v1`. Require a complete 3-role by 4-model matrix with identical unique case sets and matching prompt, schema, tool, and budget profile IDs. Also require one internally consistent verified catalog snapshot, token-derived cost reconciliation, and a valid result hash before a profile is eligible. Record the live ablation and price verification as pending.
+- Why: Incomplete, stale, or internally inconsistent evidence must not change production defaults.
+
+### Phase 7: Progressive triage compatibility
+
+- Plan said: Treat `SUTURA_TRIAGE_N` as a maximum and stop early on strong all-pass or all-failure evidence.
+- Found: Placebo and orchestration fixtures encoded the old fixed five-run operation count, while public consumers still need the existing `status`, `reproduced`, and `of` fields.
+- Chose: Run strict SPRT checks after batches of two, run an odd final attempt only when needed, preserve the three compatibility fields, and add versioned probability, Wilson interval, stop-reason, and attempt evidence. Publish Placebo operations saved against the fixed-five baseline.
+- Why: The new method reduces work without letting a mixed sequence stop early or authorizing an additional unsafe repair attempt.

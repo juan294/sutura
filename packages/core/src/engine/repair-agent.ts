@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import type { Candidate, Diagnosis, RepairFailureKind } from '../domain.js';
 import type { Executor, ImageId, RunResult } from '../executor/types.js';
 import type { CapacitySnapshot, ChatMessage, FunctionToolCall, TierLlm } from '../llm/types.js';
-import { DEFAULT_MODEL_PRICES } from '../llm/cost.js';
+import type { ModelPrice } from '../llm/cost.js';
 import type { RepositoryPolicy } from '../policy/schema.js';
 import { redactExternalJsonValue, redactExternalText } from '../security/external-text.js';
 import { BudgetExceededError, type RepairBudget } from './repair-budget.js';
@@ -143,14 +143,14 @@ function traceToolResult(
   });
 }
 
-function worstCaseRequestUsd(messages: readonly ChatMessage[]): number {
+function worstCaseRequestUsd(messages: readonly ChatMessage[], price: ModelPrice): number {
   const requestBytes = Buffer.byteLength(JSON.stringify({
     messages,
     tools: REPAIR_TOOL_DEFINITIONS,
   }), 'utf8');
   const priced = (
-    requestBytes * DEFAULT_MODEL_PRICES.super.input +
-    MAX_AGENT_OUTPUT_TOKENS * DEFAULT_MODEL_PRICES.super.output
+    requestBytes * price.input +
+    MAX_AGENT_OUTPUT_TOKENS * price.output
   ) / 1_000_000;
   return Math.max(
     MINIMUM_AGENT_TURN_RESERVATION_USD,
@@ -186,11 +186,34 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
     if (ctx.signal?.aborted) {
       return { status: 'gave-up', failureKind: 'sandbox', reason: 'Repair branch was cancelled' };
     }
+    const routing = {
+      failureClass: ctx.diagnosis.class,
+      diagnosisConfidence: ctx.diagnosis.confidence,
+      remainingInferenceBudgetUsd: Math.max(
+        0,
+        ctx.budget.limits.inferenceCostUsd - ctx.budget.snapshot().inferenceCostUsd,
+      ),
+    };
+    const requestOptions = {
+      maxTokens: MAX_AGENT_OUTPUT_TOKENS,
+      temperature: 0.2,
+      reasoningEffort: 'low' as const,
+      tools: REPAIR_TOOL_DEFINITIONS,
+      toolChoice: 'required' as const,
+      parallelToolCalls: false,
+      routing,
+    };
     let reservation;
     try {
-      reservation = ctx.budget.reserveModelTurn(worstCaseRequestUsd(messages));
+      const quote = ctx.llm.modelQuote?.('super', messages, requestOptions);
+      if (quote === undefined) throw new Error('Repair model routing quote is unavailable');
+      reservation = ctx.budget.reserveModelTurn(worstCaseRequestUsd(messages, quote.price));
     } catch (error) {
-      return { status: 'gave-up', failureKind: 'budget', reason: publicReason(error instanceof Error ? error.message : String(error)) };
+      return {
+        status: 'gave-up',
+        failureKind: error instanceof BudgetExceededError ? 'budget' : 'provider',
+        reason: publicReason(error instanceof Error ? error.message : String(error)),
+      };
     }
     let reply;
     const controller = new AbortController();
@@ -204,12 +227,7 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
         ? controller.signal
         : AbortSignal.any([controller.signal, ctx.signal]);
       const request = ctx.llm.chat('super', messages, {
-        maxTokens: MAX_AGENT_OUTPUT_TOKENS,
-        temperature: 0.2,
-        reasoningEffort: 'low',
-        tools: REPAIR_TOOL_DEFINITIONS,
-        toolChoice: 'required',
-        parallelToolCalls: false,
+        ...requestOptions,
         signal: requestSignal,
       });
       const elapsed = new Promise<never>((_resolve, reject) => {

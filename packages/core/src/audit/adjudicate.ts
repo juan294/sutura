@@ -99,6 +99,15 @@ export async function adjudicate(
     };
   }
 
+  const options = {
+    ...OPTIONS,
+    routing: {
+      failureClass: context.diagnosis.class,
+      diagnosisConfidence: context.diagnosis.confidence,
+      remainingInferenceBudgetUsd: Number.MAX_SAFE_INTEGER,
+    },
+  };
+
   try {
     const initial = await llm.chat(
       'ultra',
@@ -106,7 +115,7 @@ export async function adjudicate(
         { role: 'system' as const, content: ADVERSARIAL_AUDIT_PROMPT },
         { role: 'user' as const, content: userContent },
       ]),
-      OPTIONS,
+      options,
     );
 
     return await extractJson(initial, validateAdjudication, async (repairPrompt) =>
@@ -118,7 +127,7 @@ export async function adjudicate(
           { role: 'assistant' as const, content: initial.text },
           { role: 'user' as const, content: repairPrompt },
         ]),
-        OPTIONS,
+        options,
       ),
     );
   } catch {

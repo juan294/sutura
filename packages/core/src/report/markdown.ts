@@ -10,7 +10,7 @@ import {
   outcomeLabel,
   raceNote,
   safeWebUrl,
-  stageForModel,
+  stageForRole,
   triageSentence,
 } from './format.js';
 
@@ -113,7 +113,7 @@ function renderDischarge(caseFile: CaseFile): string[] {
 
 function renderFooter(caseFile: CaseFile, artifactUrl?: string): string[] {
   const models = caseFile.cost.entries.map(
-    (entry, index) => `${stageForModel(entry.model, index)}: <code>${escapeHtml(entry.model)}</code>`,
+    (entry) => `${stageForRole(entry.role)} (${entry.role}): <code>${escapeHtml(entry.model)}</code>`,
   );
   const artifactLink = artifactUrl ? safeWebUrl(artifactUrl) : undefined;
   return [

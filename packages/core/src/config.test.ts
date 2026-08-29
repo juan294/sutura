@@ -18,6 +18,7 @@ describe('loadConfig', () => {
     expect(config.triageN).toBe(5);
     expect(config.raceK).toBe(3);
     expect(config.maxOps).toBe(40);
+    expect(config.routingProfileId).toBe('production-baseline-v1');
     expect(config.repairBudgets).toEqual({
       modelTurns: 8, toolCalls: 24, branches: 12, sandboxOperations: 32,
       elapsedTimeSec: 600, inferenceCostUsd: 0.25, diffBytes: 65_536,
@@ -70,6 +71,7 @@ describe('loadConfig', () => {
         super: 'super-override',
         ultra: 'ultra-override',
       },
+      routingProfileId: 'production-baseline-v1',
       maxOps: 24,
       repairBudgets: {
         modelTurns: 4, toolCalls: 12, branches: 2, sandboxOperations: 16,
@@ -77,6 +79,12 @@ describe('loadConfig', () => {
       },
       search: { initialBranches: 2, beamWidth: 1, maximumDepth: 3, maximumTotalBranches: 6 },
     });
+  });
+
+  it('rejects a routing profile until complete price-verified evidence ships', () => {
+    expect(() => loadConfig({
+      ...REQUIRED_ENV, SUTURA_ROUTING_PROFILE: 'partial-ablation',
+    })).toThrow(/complete price-verified profile/u);
   });
 
   it.each(['SUTURA_TRIAGE_N', 'SUTURA_RACE_K', 'SUTURA_MAX_OPS'])(

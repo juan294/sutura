@@ -1,4 +1,4 @@
-import type { CaseFile, CostLedger } from '@sutura/core';
+import { notRunTriageVerdict, type CaseFile, type CostLedger } from '@sutura/core';
 
 import {
   CliUsageError,
@@ -52,7 +52,7 @@ function infraStop(caseDir: string, error: unknown): CaseFile {
       failingCmd: 'pnpm test',
       errorExcerpt: reason.slice(0, 2_000),
     },
-    triage: { status: 'not-run', reproduced: 0, of: 0 },
+    triage: notRunTriageVerdict(),
     race: [],
     outcome: 'infra-stop',
     cost: emptyLedger(),

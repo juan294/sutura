@@ -22,9 +22,13 @@ inputs:
     description: Nebius ConTree project ID.
     required: true
   triage-n:
-    description: Number of independent failure reproductions.
+    description: Maximum independent failure reproductions; progressive confidence can stop earlier.
     required: false
     default: '5'
+  routing-profile:
+    description: Price-verified model-selection profile. Incomplete profiles cannot change defaults.
+    required: false
+    default: production-baseline-v1
   repair-model-turns:
     description: Lower-only repair-agent model turn limit.
     required: false

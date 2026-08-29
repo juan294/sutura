@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { AuditVerdict, Candidate, CostLedger, Diagnosis } from './domain.js';
+import { DEFAULT_MODELS } from './config.js';
 import { InMemoryExecutor, type InMemoryRunResult } from './executor/memory.js';
 import {
   buildSandboxRepositoryInitializationCommandForTest,
@@ -18,6 +19,8 @@ import {
   type HealCaseContext,
 } from './heal.js';
 import type { TierLlm } from './llm/types.js';
+import { DEFAULT_MODEL_PRICES } from './llm/cost.js';
+import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
 import { parseRepositoryPolicy } from './policy/schema.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'placebo', 'corpus');
@@ -91,7 +94,13 @@ function scriptedLlm(
     };
     return { text: JSON.stringify(verdict) };
   });
-  return { llm: { chat }, chat };
+  const modelQuote = (tier: 'nano' | 'super' | 'ultra') => ({
+    role: tier,
+    modelId: DEFAULT_MODELS[tier],
+    price: DEFAULT_MODEL_PRICES[tier],
+    profileId: DEFAULT_ROUTING_PROFILE_ID,
+  });
+  return { llm: { chat, modelQuote }, chat };
 }
 
 function context(
@@ -146,12 +155,12 @@ function context(
 
 describe('healCase', () => {
   it('uses raceK only as a direct-call compatibility width when search settings are absent', async () => {
-    const legacy = context('repair-off-by-one', [1, 1, 1, 1, 1, 1, 0, 0], 'test-assertion');
+    const legacy = context('repair-off-by-one', [1, 1, 1, 1, 1, 0, 0], 'test-assertion');
     const legacyCase = await healCase(legacy.ctx);
     expect(legacy.chat.mock.calls.filter(([tier]) => tier === 'super')).toHaveLength(3);
     expect(legacyCase.search?.[0]).toMatchObject({ nodeId: 'search-001', terminalReason: 'passed' });
 
-    const adaptive = context('repair-off-by-one', [1, 1, 1, 1, 1, 1, 0, 0, 1], 'test-assertion', {
+    const adaptive = context('repair-off-by-one', [1, 1, 1, 1, 1, 0, 0, 1], 'test-assertion', {
       search: { initialBranches: 2, beamWidth: 1, maximumDepth: 1, maximumTotalBranches: 2 },
     });
     const adaptiveCase = await healCase(adaptive.ctx);
@@ -199,7 +208,7 @@ describe('healCase', () => {
       );
       let scenarioIndex = 0;
       let policyCommandRuns = 0;
-      const ordinaryExits = [1, 1, 1, 1, 1, 1, 0, 0];
+      const ordinaryExits = [1, 1, 1, 1, 1, 0, 0];
       const executor = new InMemoryExecutor((command) => {
         if (command.includes('git apply - && git diff')) {
           return { ...result(0), stdout: HONEST_DIFF };
@@ -243,7 +252,7 @@ describe('healCase', () => {
   it('repairs a real Placebo fixture after one snapshot and one pre-inference reproduction', async () => {
     const { ctx, executor, chat } = context(
       'repair-off-by-one',
-      [1, 1, 1, 1, 1, 1, 0, 0],
+      [1, 1, 1, 1, 1, 0, 0],
       'test-assertion',
     );
 
@@ -302,7 +311,7 @@ describe('healCase', () => {
     const candidateDiff = await readFile(join(ROOT, 'trap-skipped-test', 'fake-fix.diff'), 'utf8');
     const { ctx, executor, chat } = context(
       'trap-skipped-test',
-      [1, 1, 1, 1, 1, 1, 0],
+      [1, 1, 1, 1, 1, 0],
       'test-assertion',
       { candidateDiff },
     );
@@ -312,7 +321,7 @@ describe('healCase', () => {
     expect(caseFile.outcome).toBe('refused');
     expect(caseFile.audit?.approved).toBe(false);
     expect(caseFile.audit?.checks).toContainEqual(expect.objectContaining({ name: 'skipped-test', passed: false }));
-    expect(executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(8);
+    expect(executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(7);
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
   });
 
@@ -323,7 +332,7 @@ describe('healCase', () => {
     );
     const { ctx, executor, chat } = context(
       'trap-pass-with-no-tests',
-      [1, 1, 1, 1, 1, 1],
+      [1, 1, 1, 1, 1],
       'test-assertion',
       { candidateDiff },
     );
@@ -337,7 +346,7 @@ describe('healCase', () => {
         reasoning: expect.stringContaining('adds pass-with-no-tests bypass'),
       },
     });
-    expect(executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(8);
+    expect(executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(7);
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
   });
 
@@ -349,7 +358,7 @@ describe('healCase', () => {
     }]);
     const { ctx } = context(
       'upstream-parser-release',
-      [1, 1, 1, 1, 1, 1, 0, 0],
+      [1, 1, 1, 1, 1, 0, 0],
       'dep-upstream-breaking',
       { tavily: { search } },
     );
@@ -484,7 +493,7 @@ describe('sandbox command resolution', () => {
     const observed = 'vitest run;';
     const { ctx, executor, chat } = context(
       'repair-off-by-one',
-      [1, 1, 1, 1, 1, 1, 0, 0],
+      [1, 1, 1, 1, 1, 0, 0],
       'test-assertion',
       { failureCommand: observed },
     );
@@ -523,7 +532,7 @@ describe('sandbox command resolution', () => {
       outcome: 'fixed',
       diagnosis: { failingCmd: observed },
     });
-    expect(stageCommands).toHaveLength(8);
+    expect(stageCommands).toHaveLength(7);
     expect(stageCommands.every((command) =>
       command.includes('corepack pnpm exec sh -c') && command.includes('vitest run;'),
     )).toBe(true);

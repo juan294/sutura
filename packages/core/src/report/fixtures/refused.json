@@ -8,7 +8,7 @@
     "failingCmd": "pnpm test -- billing",
     "errorExcerpt": "AssertionError: expected 1000 to equal 1050"
   },
-  "triage": { "status": "real", "reproduced": 5, "of": 5 },
+  "triage": { "status": "real", "reproduced": 4, "of": 4, "attemptsUsed": 4, "maximumAttempts": 5, "reproductionProbability": 1, "confidenceLower": 0.5101091635454027, "confidenceUpper": 1, "stopReason": "failure-boundary", "methodVersion": "sprt-p20-p80-a05-b05-v1" },
   "race": [
     {
       "candidate": {
@@ -43,9 +43,9 @@
   ],
   "cost": {
     "entries": [
-      { "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", "inTok": 2000, "outTok": 500, "reasoningTok": 0, "usd": 0.00024 },
-      { "model": "nvidia/nemotron-3-super-120b-a12b", "inTok": 6000, "outTok": 2000, "reasoningTok": 500, "usd": 0.00405 },
-      { "model": "nvidia/Nemotron-3-Ultra-550b-a55b", "inTok": 2000, "outTok": 1000, "reasoningTok": 500, "usd": 0.00651 }
+      { "role": "nano", "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", "inTok": 2000, "outTok": 500, "reasoningTok": 0, "usd": 0.00024 },
+      { "role": "super", "model": "nvidia/nemotron-3-super-120b-a12b", "inTok": 6000, "outTok": 2000, "reasoningTok": 500, "usd": 0.00405 },
+      { "role": "ultra", "model": "nvidia/Nemotron-3-Ultra-550b-a55b", "inTok": 2000, "outTok": 1000, "reasoningTok": 500, "usd": 0.00651 }
     ]
   }
 }

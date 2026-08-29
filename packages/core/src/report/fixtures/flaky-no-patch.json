@@ -8,7 +8,7 @@
     "failingCmd": "pnpm test -- notifications",
     "errorExcerpt": "Timed out waiting for delivery receipt"
   },
-  "triage": { "status": "flaky", "reproduced": 0, "of": 5 },
+  "triage": { "status": "flaky", "reproduced": 0, "of": 4, "attemptsUsed": 4, "maximumAttempts": 5, "reproductionProbability": 0, "confidenceLower": 0, "confidenceUpper": 0.4898908364545973, "stopReason": "pass-boundary", "methodVersion": "sprt-p20-p80-a05-b05-v1" },
   "race": [],
   "outcome": "flaky-no-patch",
   "policy": {
@@ -22,7 +22,7 @@
   ],
   "cost": {
     "entries": [
-      { "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", "inTok": 1400, "outTok": 260, "reasoningTok": 40, "usd": 0.000156 }
+      { "role": "nano", "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", "inTok": 1400, "outTok": 260, "reasoningTok": 40, "usd": 0.000156 }
     ]
   }
 }

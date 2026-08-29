@@ -8,7 +8,7 @@
     "failingCmd": "pnpm install --frozen-lockfile",
     "errorExcerpt": "Dependency preparation exited 1"
   },
-  "triage": { "status": "not-run", "reproduced": 0, "of": 0 },
+  "triage": { "status": "not-run", "reproduced": 0, "of": 0, "attemptsUsed": 0, "maximumAttempts": 0, "reproductionProbability": 0, "confidenceLower": 0, "confidenceUpper": 1, "stopReason": "not-run", "methodVersion": "sprt-p20-p80-a05-b05-v1" },
   "race": [],
   "outcome": "infra-stop",
   "policy": {

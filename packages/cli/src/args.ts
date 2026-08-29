@@ -6,7 +6,7 @@ export const USAGE = [
   'Usage:',
   '  sutura init [--workflow <name>] [--repo <owner/repo>] [--force] [--no-tavily]',
   '  sutura doctor [--repo <owner/repo>]',
-  '  sutura heal --case-dir <dir> --format json [--candidate-diff <diff>] [--no-tavily]',
+  '  sutura heal --case-dir <dir> --format json [--candidate-diff <diff>] [--routing-profile <id>] [--no-tavily]',
   '  sutura eval validate --manifest <file>',
   '  sutura eval export --manifest <file> --format <atif|jsonl> --output <file> [--force]',
   '  sutura --help',
@@ -18,6 +18,7 @@ export interface HealArguments {
   caseDir: string;
   format: 'json';
   candidateDiff?: string;
+  routingProfile?: string;
   tavilyEnabled: boolean;
 }
 
@@ -90,12 +91,13 @@ function parseHeal(args: readonly string[]): HealArguments {
   let caseDir: string | undefined;
   let format: string | undefined;
   let candidateDiff: string | undefined;
+  let routingProfile: string | undefined;
   let tavilyEnabled = true;
   const seen = new Set<string>();
 
   for (let index = 1; index < args.length; index += 1) {
     const flag = args[index];
-    if (!flag || !['--case-dir', '--format', '--candidate-diff', '--no-tavily'].includes(flag)) {
+    if (!flag || !['--case-dir', '--format', '--candidate-diff', '--routing-profile', '--no-tavily'].includes(flag)) {
       throw new CliUsageError(`Unknown argument: ${flag ?? '(missing)'}`);
     }
     if (seen.has(flag)) throw new CliUsageError(`Duplicate argument: ${flag}`);
@@ -108,7 +110,8 @@ function parseHeal(args: readonly string[]): HealArguments {
     index += 1;
     if (flag === '--case-dir') caseDir = value;
     else if (flag === '--format') format = value;
-    else candidateDiff = value;
+    else if (flag === '--candidate-diff') candidateDiff = value;
+    else routingProfile = value;
   }
 
   if (!caseDir) throw new CliUsageError('--case-dir is required');
@@ -124,6 +127,7 @@ function parseHeal(args: readonly string[]): HealArguments {
     caseDir,
     format: 'json',
     ...(candidateDiff === undefined ? {} : { candidateDiff }),
+    ...(routingProfile === undefined ? {} : { routingProfile }),
     tavilyEnabled,
   };
 }

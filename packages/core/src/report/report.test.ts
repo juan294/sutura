@@ -37,6 +37,13 @@ const TRIAGE_STATUSES = new Set<CaseFile['triage']['status']>([
   'intermittent',
   'not-run',
 ]);
+const TRIAGE_STOP_REASONS = new Set<CaseFile['triage']['stopReason']>([
+  'failure-boundary',
+  'pass-boundary',
+  'maximum-attempts',
+  'not-run',
+]);
+const MODEL_ROLES = new Set(['nano', 'super', 'ultra']);
 const AUDIT_CHECKS = new Set<GreenwashCheck>([
   'deleted-test',
   'skipped-test',
@@ -115,12 +122,37 @@ function isAudit(value: unknown): boolean {
 function isCostEntry(value: unknown): boolean {
   return (
     isRecord(value) &&
+    MODEL_ROLES.has(value.role as string) &&
     typeof value.model === 'string' &&
     typeof value.inTok === 'number' &&
     typeof value.outTok === 'number' &&
     typeof value.reasoningTok === 'number' &&
     typeof value.usd === 'number'
   );
+}
+
+function isTriage(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const { reproduced, of, attemptsUsed, maximumAttempts } = value;
+  const { reproductionProbability, confidenceLower, confidenceUpper } = value;
+  if (
+    ![reproduced, of, attemptsUsed, maximumAttempts].every(
+      (entry) => Number.isSafeInteger(entry) && Number(entry) >= 0,
+    ) ||
+    ![reproductionProbability, confidenceLower, confidenceUpper].every(
+      (entry) => typeof entry === 'number' && entry >= 0 && entry <= 1,
+    )
+  ) return false;
+  return TRIAGE_STATUSES.has(value.status as CaseFile['triage']['status']) &&
+    Number(reproduced) <= Number(of) &&
+    of === attemptsUsed &&
+    Number(attemptsUsed) <= Number(maximumAttempts) &&
+    Number(confidenceLower) <= Number(reproductionProbability) &&
+    Number(reproductionProbability) <= Number(confidenceUpper) &&
+    TRIAGE_STOP_REASONS.has(value.stopReason as CaseFile['triage']['stopReason']) &&
+    value.methodVersion === 'sprt-p20-p80-a05-b05-v1' &&
+    ((value.status === 'not-run' && value.stopReason === 'not-run' && attemptsUsed === 0) ||
+      (value.status !== 'not-run' && value.stopReason !== 'not-run' && Number(attemptsUsed) > 0));
 }
 
 function isPolicyEvidence(value: unknown): boolean {
@@ -169,10 +201,7 @@ function assertSerializedCaseFile(value: unknown): asserts value is SerializedCa
     typeof diagnosis.failingCmd !== 'string' ||
     typeof diagnosis.errorExcerpt !== 'string' ||
     !isGrounding(diagnosis.grounding) ||
-    !isRecord(triage) ||
-    !TRIAGE_STATUSES.has(triage.status as CaseFile['triage']['status']) ||
-    typeof triage.reproduced !== 'number' ||
-    typeof triage.of !== 'number' ||
+    !isTriage(triage) ||
     !Array.isArray(fixture.race) ||
     !fixture.race.every(isRaceResult) ||
     !isAudit(fixture.audit) ||
@@ -232,7 +261,8 @@ describe('fixture contract', () => {
           checks: [{ name: 'invented-check', passed: true }],
         },
       },
-      { ...fixture, cost: { entries: [{ model: 'nano', usd: 'free' }] } },
+      { ...fixture, cost: { entries: [{ role: 'nano', model: 'nano', usd: 'free' }] } },
+      { ...fixture, triage: { ...(isRecord(fixture.triage) ? fixture.triage : {}), methodVersion: 'unknown' } },
     ];
 
     for (const invalid of invalidFixtures) {
@@ -244,6 +274,23 @@ describe('fixture contract', () => {
 });
 
 describe('markdown report contract', () => {
+  it('uses the explicit ledger role for routed model stage labels', async () => {
+    const caseFile = await loadFixture('fixed');
+    caseFile.cost.entries = [{
+      role: 'nano',
+      model: 'nvidia/NVIDIA-Nemotron-3-Super-49B-v1.5',
+      inTok: 10,
+      outTok: 5,
+      reasoningTok: 0,
+      usd: 0.001,
+    }];
+
+    const report = renderComment(caseFile);
+
+    expect(report).toContain('Diagnosis (nano): <code>nvidia/NVIDIA-Nemotron-3-Super-49B-v1.5</code>');
+    expect(report).not.toContain('Procedure (super): <code>nvidia/NVIDIA-Nemotron-3-Super-49B-v1.5</code>');
+  });
+
   it('renders stable adaptive node lineage without provider image identifiers', async () => {
     const caseFile = await loadFixture('fixed');
     caseFile.search = [{

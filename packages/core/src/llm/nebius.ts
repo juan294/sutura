@@ -11,12 +11,20 @@ import type {
   LlmReply,
   ResponseFormat,
 } from './types.js';
+import {
+  DEFAULT_ROUTING_PROFILE_ID,
+  ModelRouter,
+  type ModelRouteDecision,
+  type ModelSelectionProfile,
+} from './router.js';
 
 export interface NebiusClientConfig {
   apiKey: string;
   baseUrl: string;
   models: Readonly<Record<ModelTier, string>>;
   prices: ModelPrices;
+  routingProfileId?: string;
+  selectionProfiles?: readonly ModelSelectionProfile[];
 }
 
 export interface HttpResponse {
@@ -324,6 +332,7 @@ export class NebiusClient {
   private readonly sleep: Sleep;
   private readonly random: () => number;
   private readonly now: () => number;
+  private readonly router: ModelRouter;
 
   constructor(
     private readonly config: NebiusClientConfig,
@@ -338,6 +347,7 @@ export class NebiusClient {
     this.random = dependencies.random ?? Math.random;
     this.now = dependencies.now ?? Date.now;
     this.ledger = new Ledger(config.prices);
+    this.router = new ModelRouter(config.models, config.prices, config.selectionProfiles);
   }
 
   capacitySnapshot(): CapacitySnapshot | undefined {
@@ -345,7 +355,27 @@ export class NebiusClient {
   }
 
   modelId(tier: ModelTier): string {
-    return this.config.models[tier];
+    return this.modelQuote(tier, []).modelId;
+  }
+
+  modelQuote(
+    tier: ModelTier,
+    messages: readonly ChatMessage[],
+    options: ChatOptions = {},
+  ): ModelRouteDecision {
+    const boundedContextBytes = Math.min(
+      64_000,
+      Buffer.byteLength(JSON.stringify(wireMessages(messages)), 'utf8'),
+    );
+    return this.router.select({
+      requestedRole: tier,
+      failureClass: options.routing?.failureClass ?? null,
+      diagnosisConfidence: options.routing?.diagnosisConfidence ?? null,
+      boundedContextBytes,
+      remainingInferenceBudgetUsd:
+        options.routing?.remainingInferenceBudgetUsd ?? Number.MAX_SAFE_INTEGER,
+      profileId: this.config.routingProfileId ?? DEFAULT_ROUTING_PROFILE_ID,
+    });
   }
 
   async chat(
@@ -359,8 +389,9 @@ export class NebiusClient {
       throw new RangeError('maxTokens must be an integer of at least 2000');
     }
 
+    const decision = this.modelQuote(tier, messages, options);
     const body = {
-      model: this.config.models[tier],
+      model: decision.modelId,
       messages: wireMessages(messages),
       max_tokens: maxTokens,
       temperature: options.temperature ?? 0,
@@ -418,7 +449,7 @@ export class NebiusClient {
 
       if (response.ok) {
         return this.parseReply(
-          tier,
+          decision,
           await response.json(),
           response.headers,
           Math.max(0, this.now() - startedAt),
@@ -463,7 +494,7 @@ export class NebiusClient {
   }
 
   private parseReply(
-    tier: ModelTier,
+    decision: ModelRouteDecision,
     value: unknown,
     headers: HttpHeaders,
     latencyMs: number,
@@ -518,7 +549,7 @@ export class NebiusClient {
       outTok: completionTok - reasoningTok,
       reasoningTok,
     };
-    const entry = this.ledger.add(tier, usage);
+    const entry = this.ledger.add(decision.role, decision.modelId, usage, decision.price);
     const finishReason = choice?.finish_reason;
     if (
       finishReason !== undefined &&
@@ -539,7 +570,7 @@ export class NebiusClient {
       usage,
       usd: entry.usd,
       capacity,
-      model: this.config.models[tier],
+      model: decision.modelId,
       latencyMs,
       requestId: capacity.requestId,
     };

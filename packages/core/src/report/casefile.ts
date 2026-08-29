@@ -9,7 +9,7 @@ import {
   outcomeLabel,
   raceNote,
   safeWebUrl,
-  stageForModel,
+  stageForRole,
   triageSentence,
 } from './format.js';
 
@@ -185,8 +185,8 @@ function renderPathology(caseFile: CaseFile): string {
 function renderDischarge(caseFile: CaseFile): string {
   const ledgerRows = caseFile.cost.entries
     .map(
-      (entry, index) => `<tr>
-        <th scope="row">${escapeHtml(stageForModel(entry.model, index))}</th>
+      (entry) => `<tr>
+        <th scope="row">${escapeHtml(stageForRole(entry.role))}</th>
         <td><code>${escapeHtml(entry.model)}</code></td>
         <td>${entry.inTok.toLocaleString('en-US')}</td>
         <td>${(entry.outTok + entry.reasoningTok).toLocaleString('en-US')}</td>

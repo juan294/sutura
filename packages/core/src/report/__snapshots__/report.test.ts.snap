@@ -168,7 +168,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
   </section>
     <section class="sheet triage" aria-labelledby="triage-title">
     <div class="section-label"><span>T</span><h2 id="triage-title">Triage</h2></div>
-    <div class="section-body"><p class="triage-reading">Reproduced 5/5 across forked sandbox states — real.</p></div>
+    <div class="section-body"><p class="triage-reading">Reproduced 4/4 (maximum 5); probability 100.0% (95% Wilson 51.0–100.0%); sprt-p20-p80-a05-b05-v1; failure-boundary — real.</p></div>
   </section>
     <section class="sheet procedure" aria-labelledby="procedure-title">
     <div class="section-label"><span>P</span><h2 id="procedure-title">Procedure</h2></div>
@@ -366,7 +366,7 @@ Failing command: <code>pnpm build</code>
 
 ### Triage
 
-**Reproduced 5/5 across forked sandbox states — real.**
+**Reproduced 4/4 (maximum 5); probability 100.0% (95% Wilson 51.0–100.0%); sprt-p20-p80-a05-b05-v1; failure-boundary — real.**
 
 ### Procedure
 
@@ -406,7 +406,7 @@ Failing command: <code>pnpm build</code>
 
 ---
 
-Models — Diagnosis: <code>nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</code> · Procedure: <code>nvidia/nemotron-3-super-120b-a12b</code> · Pathology: <code>nvidia/Nemotron-3-Ultra-550b-a55b</code>
+Models — Diagnosis (nano): <code>nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</code> · Procedure (super): <code>nvidia/nemotron-3-super-120b-a12b</code> · Pathology (ultra): <code>nvidia/Nemotron-3-Ultra-550b-a55b</code>
 
 [Open case-file artifact](<https://github.com/acme/repo/actions/runs/42/artifacts/7>)
 "
@@ -576,7 +576,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
   </section>
     <section class="sheet triage" aria-labelledby="triage-title">
     <div class="section-label"><span>T</span><h2 id="triage-title">Triage</h2></div>
-    <div class="section-body"><p class="triage-reading">Reproduced 0/5 across forked sandbox states — flaky. No patch proposed.</p></div>
+    <div class="section-body"><p class="triage-reading">Reproduced 0/4 (maximum 5); probability 0.0% (95% Wilson 0.0–49.0%); sprt-p20-p80-a05-b05-v1; pass-boundary — flaky. No patch proposed.</p></div>
   </section>
     <section class="sheet discharge" aria-labelledby="discharge-title">
     <div class="section-label"><span>D</span><h2 id="discharge-title">Discharge</h2></div>
@@ -658,7 +658,7 @@ Failing command: <code>pnpm test -- notifications</code>
 
 ### Triage
 
-**Reproduced 0/5 across forked sandbox states — flaky. No patch proposed.**
+**Reproduced 0/4 (maximum 5); probability 0.0% (95% Wilson 0.0–49.0%); sprt-p20-p80-a05-b05-v1; pass-boundary — flaky. No patch proposed.**
 
 ### Discharge
 
@@ -674,7 +674,7 @@ Failing command: <code>pnpm test -- notifications</code>
 
 ---
 
-Models — Diagnosis: <code>nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</code>
+Models — Diagnosis (nano): <code>nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</code>
 
 [Open case-file artifact](<https://github.com/acme/repo/actions/runs/42/artifacts/7>)
 "
@@ -844,7 +844,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
   </section>
     <section class="sheet triage" aria-labelledby="triage-title">
     <div class="section-label"><span>T</span><h2 id="triage-title">Triage</h2></div>
-    <div class="section-body"><p class="triage-reading">Reproduced 5/5 across forked sandbox states — real.</p></div>
+    <div class="section-body"><p class="triage-reading">Reproduced 4/4 (maximum 5); probability 100.0% (95% Wilson 51.0–100.0%); sprt-p20-p80-a05-b05-v1; failure-boundary — real.</p></div>
   </section>
     <section class="sheet procedure" aria-labelledby="procedure-title">
     <div class="section-label"><span>P</span><h2 id="procedure-title">Procedure</h2></div>
@@ -980,7 +980,7 @@ Failing command: <code>pnpm typecheck</code>
 
 ### Triage
 
-**Reproduced 5/5 across forked sandbox states — real.**
+**Reproduced 4/4 (maximum 5); probability 100.0% (95% Wilson 51.0–100.0%); sprt-p20-p80-a05-b05-v1; failure-boundary — real.**
 
 ### Procedure
 
@@ -1007,7 +1007,7 @@ Failing command: <code>pnpm typecheck</code>
 
 ---
 
-Models — Diagnosis: <code>nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</code> · Procedure: <code>nvidia/nemotron-3-super-120b-a12b</code>
+Models — Diagnosis (nano): <code>nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</code> · Procedure (super): <code>nvidia/nemotron-3-super-120b-a12b</code>
 
 [Open case-file artifact](<https://github.com/acme/repo/actions/runs/42/artifacts/7>)
 "
@@ -1438,7 +1438,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
   </section>
     <section class="sheet triage" aria-labelledby="triage-title">
     <div class="section-label"><span>T</span><h2 id="triage-title">Triage</h2></div>
-    <div class="section-body"><p class="triage-reading">Reproduced 5/5 across forked sandbox states — real.</p></div>
+    <div class="section-body"><p class="triage-reading">Reproduced 4/4 (maximum 5); probability 100.0% (95% Wilson 51.0–100.0%); sprt-p20-p80-a05-b05-v1; failure-boundary — real.</p></div>
   </section>
     <section class="sheet procedure" aria-labelledby="procedure-title">
     <div class="section-label"><span>P</span><h2 id="procedure-title">Procedure</h2></div>
@@ -1584,7 +1584,7 @@ Failing command: <code>pnpm test -- billing</code>
 
 ### Triage
 
-**Reproduced 5/5 across forked sandbox states — real.**
+**Reproduced 4/4 (maximum 5); probability 100.0% (95% Wilson 51.0–100.0%); sprt-p20-p80-a05-b05-v1; failure-boundary — real.**
 
 ### Procedure
 
@@ -1618,7 +1618,7 @@ Failing command: <code>pnpm test -- billing</code>
 
 ---
 
-Models — Diagnosis: <code>nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</code> · Procedure: <code>nvidia/nemotron-3-super-120b-a12b</code> · Pathology: <code>nvidia/Nemotron-3-Ultra-550b-a55b</code>
+Models — Diagnosis (nano): <code>nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</code> · Procedure (super): <code>nvidia/nemotron-3-super-120b-a12b</code> · Pathology (ultra): <code>nvidia/Nemotron-3-Ultra-550b-a55b</code>
 
 [Open case-file artifact](<https://github.com/acme/repo/actions/runs/42/artifacts/7>)
 "

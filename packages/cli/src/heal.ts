@@ -348,7 +348,12 @@ export function runtimeFromEnvironment(
   request: HealArguments,
   environment: ConfigEnvironment = process.env,
 ): HealRuntime {
-  const config = loadConfig(environment);
+  const config = loadConfig({
+    ...environment,
+    ...(request.routingProfile === undefined
+      ? {}
+      : { SUTURA_ROUTING_PROFILE: request.routingProfile }),
+  });
   if (!config.contreeToken) throw new CliConfigError('CONTREE_TOKEN is required');
   if (!config.contreeProject) throw new CliConfigError('CONTREE_PROJECT is required');
   if (request.tavilyEnabled && !config.tavilyApiKey) {
@@ -359,6 +364,7 @@ export function runtimeFromEnvironment(
     baseUrl: NEBIUS_BASE_URL,
     models: config.models,
     prices: DEFAULT_MODEL_PRICES,
+    routingProfileId: config.routingProfileId,
   });
   return {
     executor: new ContreeExecutor({

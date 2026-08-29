@@ -14,6 +14,10 @@ import type {
 
 import { DEFAULT_MODEL_PRICES } from './cost.js';
 import {
+  MODEL_SELECTION_SCHEMA_VERSION,
+  type ModelSelectionProfile,
+} from './router.js';
+import {
   NebiusApiError,
   NebiusClient,
   NebiusResponseError,
@@ -36,6 +40,22 @@ const CONFIG: NebiusClientConfig = {
 };
 
 const MESSAGES = [{ role: 'user', content: 'Diagnose this.' }] as const;
+const SELECTED_PROFILE: ModelSelectionProfile = {
+  schemaVersion: MODEL_SELECTION_SCHEMA_VERSION,
+  profileId: 'ablation:complete-local',
+  complete: true,
+  pricesVerified: true,
+  models: {
+    nano: 'nvidia/Nemotron-3_5-Lightning',
+    super: MODELS.super,
+    ultra: MODELS.ultra,
+  },
+  prices: {
+    nano: { input: 0.2, output: 0.4 },
+    super: DEFAULT_MODEL_PRICES.super,
+    ultra: DEFAULT_MODEL_PRICES.ultra,
+  },
+};
 
 function response(
   body: unknown,
@@ -116,6 +136,26 @@ describe('NebiusClient', () => {
       });
     },
   );
+
+  it('sends a completed selected profile and records its actual model and routed role', async () => {
+    const fetch = vi.fn().mockResolvedValue(successResponse());
+    const client = new NebiusClient({
+      ...CONFIG,
+      routingProfileId: SELECTED_PROFILE.profileId,
+      selectionProfiles: [SELECTED_PROFILE],
+    }, { fetch });
+
+    const reply = await client.chat('nano', MESSAGES);
+
+    const [, init] = fetch.mock.calls[0] as [string, HttpRequestInit];
+    expect(JSON.parse(init.body as string).model).toBe('nvidia/Nemotron-3_5-Lightning');
+    expect(reply.model).toBe('nvidia/Nemotron-3_5-Lightning');
+    expect(client.ledger.entries[0]).toMatchObject({
+      role: 'nano',
+      model: 'nvidia/Nemotron-3_5-Lightning',
+      usd: 0.001,
+    });
+  });
 
   it('defaults max_tokens to 4096 and temperature to zero', async () => {
     const fetch = vi.fn().mockResolvedValue(successResponse());
@@ -230,7 +270,7 @@ describe('NebiusClient', () => {
   it('strips a think prefix from all returned content and meters reasoning output', async () => {
     const raw = '<think>hidden chain of thought</think>\nFinal answer';
     const fetch = vi.fn().mockResolvedValue(successResponse(raw, 16));
-    const client = new NebiusClient(CONFIG, { fetch });
+    const client = new NebiusClient(CONFIG, { fetch, now: () => 0 });
 
     const reply = await client.chat('nano', MESSAGES);
 

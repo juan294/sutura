@@ -23,6 +23,7 @@ describe('mapActionInputs', () => {
         CONTREE_TOKEN: 'con_test',
         CONTREE_PROJECT: 'project_test',
         SUTURA_TRIAGE_N: '5',
+        SUTURA_ROUTING_PROFILE: 'production-baseline-v1',
         SUTURA_REPAIR_MODEL_TURNS: '8',
         SUTURA_REPAIR_TOOL_CALLS: '24',
         SUTURA_REPAIR_BRANCHES: '12',
@@ -46,6 +47,7 @@ describe('mapActionInputs', () => {
       'model-nano': 'nano-override',
       'model-super': 'super-override',
       'model-ultra': 'ultra-override',
+      'routing-profile': 'production-baseline-v1',
     };
     const config = mapActionInputs((name) => values[name as keyof typeof values] ?? '');
 
@@ -55,6 +57,7 @@ describe('mapActionInputs', () => {
       CONTREE_TOKEN: 'con_test',
       CONTREE_PROJECT: 'project_test',
       SUTURA_TRIAGE_N: '7',
+      SUTURA_ROUTING_PROFILE: 'production-baseline-v1',
       SUTURA_REPAIR_MODEL_TURNS: '8',
       SUTURA_REPAIR_TOOL_CALLS: '24',
       SUTURA_REPAIR_BRANCHES: '12',

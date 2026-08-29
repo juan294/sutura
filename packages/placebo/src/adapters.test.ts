@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { completedTriageVerdict, notRunTriageVerdict } from '@sutura/core';
 
 import { CliAdapter, SuturaAdapter } from './adapters.js';
 
@@ -8,7 +9,7 @@ const VALID_CASE_FILE = JSON.stringify({
     class: 'dep-upstream-breaking', confidence: 0.9, signals: [], failingCmd: 'pnpm test', errorExcerpt: 'ERR_MODULE_NOT_FOUND',
     grounding: { query: 'chalk 5 esm', skipped: false, citations: [{ title: 'Chalk 5', url: 'https://github.com/chalk/chalk/releases/tag/v5.0.0', snippet: 'ESM only' }] },
   },
-  triage: { status: 'real', reproduced: 5, of: 5 }, race: [],
+  triage: completedTriageVerdict([1, 1, 1, 1], 5), race: [],
   audit: { approved: true, checks: [], reasoning: 'approved' }, outcome: 'fixed', cost: { entries: [] },
   policy: { baseRef: 'local', baseSha: 'local', policySha: 'default' },
   stages: [{ stage: 'policy', attempt: 1, nodeId: 'node-001', metrics: {}, network: 'disabled' }],
@@ -60,7 +61,7 @@ describe('CLI adapters', () => {
   it('accepts a fail-closed infra-stop with triage not run', async () => {
     const value = JSON.parse(VALID_CASE_FILE) as Record<string, unknown>;
     value.outcome = 'infra-stop';
-    value.triage = { status: 'not-run', reproduced: 0, of: 0 };
+    value.triage = notRunTriageVerdict();
     delete value.audit;
     const execute = vi.fn().mockResolvedValue({ stdout: JSON.stringify(value), stderr: '', exitCode: 0 });
 

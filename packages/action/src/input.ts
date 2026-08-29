@@ -1,4 +1,5 @@
 import {
+  DEFAULT_ROUTING_PROFILE_ID,
   DEFAULT_REPAIR_BUDGET_LIMITS,
   DEFAULT_SEARCH_LIMITS,
   MAX_TRIAGE_RUNS,
@@ -70,6 +71,7 @@ export function mapActionInputs(read: InputReader): ActionConfiguration {
     CONTREE_TOKEN: required(read, 'contree-token'),
     CONTREE_PROJECT: required(read, 'contree-project'),
     SUTURA_TRIAGE_N: String(triageN),
+    SUTURA_ROUTING_PROFILE: read('routing-profile').trim() || DEFAULT_ROUTING_PROFILE_ID,
     SUTURA_REPAIR_MODEL_TURNS: String(boundedInteger(read('repair-model-turns'), DEFAULT_REPAIR_BUDGET_LIMITS.modelTurns, DEFAULT_REPAIR_BUDGET_LIMITS.modelTurns, 'repair-model-turns')),
     SUTURA_REPAIR_TOOL_CALLS: String(boundedInteger(read('repair-tool-calls'), DEFAULT_REPAIR_BUDGET_LIMITS.toolCalls, DEFAULT_REPAIR_BUDGET_LIMITS.toolCalls, 'repair-tool-calls')),
     SUTURA_REPAIR_BRANCHES: String(boundedInteger(read('repair-branches'), DEFAULT_REPAIR_BUDGET_LIMITS.branches, DEFAULT_REPAIR_BUDGET_LIMITS.branches, 'repair-branches')),

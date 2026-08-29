@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Diagnosis } from '../domain.js';
 import type { Executor, RunResult } from '../executor/types.js';
 import type { ChatMessage, ChatOptions, FunctionToolCall, TierLlm } from '../llm/types.js';
+import { DEFAULT_MODEL_PRICES, type ModelPrice } from '../llm/cost.js';
 import { createDefaultRepositoryPolicy } from '../policy/load.js';
 import { DEFAULT_REPAIR_BUDGET_LIMITS, RepairBudget } from './repair-budget.js';
 import { runRepairAgent } from './repair-agent.js';
@@ -19,6 +20,19 @@ function call(name: string, args: unknown, index: number): FunctionToolCall {
 }
 function result(imageId: string, stdout = '', exitCode = 0): RunResult {
   return { imageId, stdout, stderr: '', exitCode, truncated: false, metrics: {} };
+}
+
+function quotedLlm(
+  chat: TierLlm<'super'>['chat'],
+  price: ModelPrice = DEFAULT_MODEL_PRICES.super,
+): TierLlm<'super'> {
+  return {
+    chat,
+    modelQuote: () => ({
+      role: 'super', modelId: 'nvidia/test-super', price,
+      profileId: 'test-profile',
+    }),
+  };
 }
 
 describe('runRepairAgent', () => {
@@ -42,7 +56,7 @@ describe('runRepairAgent', () => {
     const run = vi.fn(async () => runs.shift()!);
     const executor = { run, runMany: vi.fn(), importImage: vi.fn(), snapshot: vi.fn() } as unknown as Executor;
     const outcome = await runRepairAgent({
-      llm: { chat } as TierLlm<'super'>, executor, initialImageId: 'baseline', diagnosis,
+      llm: quotedLlm(chat), executor, initialImageId: 'baseline', diagnosis,
       policy: createDefaultRepositoryPolicy(),
       budget: new RepairBudget(DEFAULT_REPAIR_BUDGET_LIMITS),
       trustedCommands: { diagnosed: 'pnpm test' }, sourceContext: { sources: [] },
@@ -60,7 +74,7 @@ describe('runRepairAgent', () => {
     const chat = vi.fn(async () => ({ text: 'hidden reasoning', toolCalls: [invalid], usd: 0.001 }));
     const executor = { run: vi.fn(), runMany: vi.fn(), importImage: vi.fn(), snapshot: vi.fn() } as unknown as Executor;
     const outcome = await runRepairAgent({
-      llm: { chat } as TierLlm<'super'>, executor, initialImageId: 'baseline', diagnosis,
+      llm: quotedLlm(chat), executor, initialImageId: 'baseline', diagnosis,
       policy: createDefaultRepositoryPolicy(), budget: new RepairBudget(DEFAULT_REPAIR_BUDGET_LIMITS),
       trustedCommands: { diagnosed: 'pnpm test' }, sourceContext: { sources: [] },
     });
@@ -76,7 +90,7 @@ describe('runRepairAgent', () => {
     const run = vi.fn(async () => result('test-child', 'still failing', 1));
     const executor = { run, runMany: vi.fn(), importImage: vi.fn(), snapshot: vi.fn() } as unknown as Executor;
     const outcome = await runRepairAgent({
-      llm: { chat } as TierLlm<'super'>, executor, initialImageId: 'baseline', diagnosis,
+      llm: quotedLlm(chat), executor, initialImageId: 'baseline', diagnosis,
       policy: createDefaultRepositoryPolicy(), budget: new RepairBudget(DEFAULT_REPAIR_BUDGET_LIMITS),
       trustedCommands: { diagnosed: 'pnpm test' }, sourceContext: { sources: [] },
     });
@@ -94,7 +108,7 @@ describe('runRepairAgent', () => {
     const chat = vi.fn(async () => ({ text: '', toolCalls: parallel, usd: 0.001 }));
     const executor = { run: vi.fn(), runMany: vi.fn(), importImage: vi.fn(), snapshot: vi.fn() } as unknown as Executor;
     const outcome = await runRepairAgent({
-      llm: { chat } as TierLlm<'super'>, executor, initialImageId: 'baseline', diagnosis,
+      llm: quotedLlm(chat), executor, initialImageId: 'baseline', diagnosis,
       policy: createDefaultRepositoryPolicy(), budget: new RepairBudget(DEFAULT_REPAIR_BUDGET_LIMITS),
       trustedCommands: { diagnosed: 'pnpm test' }, sourceContext: { sources: [] },
     });
@@ -116,7 +130,7 @@ describe('runRepairAgent', () => {
       }));
       const executor = { run: vi.fn(), runMany: vi.fn(), importImage: vi.fn(), snapshot: vi.fn() } as unknown as Executor;
       const pending = runRepairAgent({
-        llm: { chat } as TierLlm<'super'>, executor, initialImageId: 'baseline', diagnosis,
+        llm: quotedLlm(chat), executor, initialImageId: 'baseline', diagnosis,
         policy: createDefaultRepositoryPolicy(),
         budget: new RepairBudget({ ...DEFAULT_REPAIR_BUDGET_LIMITS, elapsedTimeSec: 1 }),
         trustedCommands: { diagnosed: 'pnpm test' }, sourceContext: { sources: [] },
@@ -128,5 +142,22 @@ describe('runRepairAgent', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('reserves the routed model quote before sending repair inference', async () => {
+    const chat = vi.fn(async () => ({ text: '', toolCalls: [], usd: 0 }));
+    const executor = {
+      run: vi.fn(), runMany: vi.fn(), importImage: vi.fn(), snapshot: vi.fn(),
+    } as unknown as Executor;
+
+    const outcome = await runRepairAgent({
+      llm: quotedLlm(chat, { input: 100, output: 100 }),
+      executor, initialImageId: 'baseline', diagnosis,
+      policy: createDefaultRepositoryPolicy(), budget: new RepairBudget(DEFAULT_REPAIR_BUDGET_LIMITS),
+      trustedCommands: { diagnosed: 'pnpm test' }, sourceContext: { sources: [] },
+    });
+
+    expect(outcome).toMatchObject({ status: 'gave-up', failureKind: 'budget' });
+    expect(chat).not.toHaveBeenCalled();
   });
 });

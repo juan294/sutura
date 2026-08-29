@@ -22,8 +22,8 @@ flowchart LR
   A[Failed GitHub Actions run] --> B[Exact PR head SHA and failed-step log]
   B --> C[Nemotron Nano diagnosis]
   C --> D[ConTree dependency-prepared snapshot]
-  D -->|Branching use 1| E1[Triage reproduction 1]
-  D -->|Same image| E2[Triage reproduction N]
+  D -->|Branching use 1| E1[Progressive triage batch 1]
+  D -->|Same image| E2[Next batch when evidence is mixed]
   E1 --> F[Nemotron Super repair tools]
   E2 --> F
   D -->|Branching use 2| G1[Initial checkpoint branches]
@@ -61,8 +61,9 @@ workflow artifact.
 | Tavily | Grounds upstream dependency diagnoses in release and migration sources. It is optional for non-upstream cases and for the benchmark ablation. |
 
 The report identifies the model calls that actually occurred. Cost is reported
-as **inference cost** from the token ledger. It is not presented as total
-operating cost.
+as **inference cost** from the token ledger. Each entry keeps the abstract
+Nano, Super, or Ultra role separate from the actual routed provider model ID.
+It is not presented as total operating cost.
 
 ## Evidence, with claims discipline
 
@@ -193,8 +194,9 @@ credentials. Normal tests use recorded fixtures and do not spend API credit.
 
 Sutura records a versioned, bounded trace for model, tool, sandbox, search,
 candidate, and audit events. The recorder removes hidden reasoning, credentials,
-full source, provider URLs, unbounded logs, and unstable request IDs before
-storage. Manifest result hashes also normalize timing fields.
+full source, provider URLs, and unbounded logs before storage. Stored traces
+retain bounded provider request IDs for investigation. Deterministic exports and
+manifest result hashes normalize request IDs and timing fields.
 
 Validate and export a captured manifest with the CLI:
 
@@ -230,8 +232,14 @@ repository secrets. Configure `CONTREE_PROJECT` as a repository variable. The
 checked-in [workflow](.github/workflows/sutura.yml) shows the complete wiring.
 Pin external use to an immutable release tag or commit SHA.
 
-Defaults are five triage reproductions and a bounded repair agent. Model IDs,
-triage count, and lower-only repair budgets are configurable action inputs.
+The triage default is a maximum of five reproductions. Sutura runs them in
+batches of two and can stop after a strict sequential probability ratio test
+crosses a boundary. Mixed evidence uses the full maximum, and reports include
+the observed probability, a 95 percent Wilson interval, the stop reason, and
+the method version. Model IDs, the selected price-verified routing profile,
+the triage maximum, and lower-only repair budgets are configurable action
+inputs. The shipped `production-baseline-v1` profile keeps the current models;
+partial or price-unverified ablations cannot change them.
 
 ## Placebo
 

@@ -1,6 +1,9 @@
 import { spawn } from 'node:child_process';
 
-import { MAX_STAGE_EVIDENCE_ENTRIES } from '@sutura/core';
+import {
+  MAX_STAGE_EVIDENCE_ENTRIES,
+  completedTriageVerdict,
+} from '@sutura/core';
 
 import type { Adapter, AdapterContext, CaseFile } from './types.js';
 
@@ -17,7 +20,7 @@ function failureCaseFile(reason: string): CaseFile {
   return {
     runId: 'placebo-adapter-failure', repo: 'placebo/adapter',
     diagnosis: { class: 'infra', confidence: 1, signals: ['adapter-failure'], failingCmd: 'adapter', errorExcerpt: reason.slice(0, 2_000) },
-    triage: { status: 'real', reproduced: 1, of: 1 }, race: [], outcome: 'gave-up',
+    triage: completedTriageVerdict([1], 1), race: [], outcome: 'gave-up',
     cost: { entries: [], totalUsd: () => 0 },
     policy: { baseRef: 'local', baseSha: 'local', policySha: 'unavailable' },
     stages: [{
@@ -89,7 +92,13 @@ function validTriage(value: unknown): boolean {
   if (!triage || !['real', 'flaky', 'intermittent', 'not-run'].includes(String(triage.status)) ||
       !Number.isSafeInteger(triage.reproduced) || !Number.isSafeInteger(triage.of) ||
       Number(triage.reproduced) < 0 || Number(triage.reproduced) > Number(triage.of)) return false;
-  if (triage.status === 'not-run') return triage.reproduced === 0 && triage.of === 0;
+  if (!Number.isSafeInteger(triage.attemptsUsed) || !Number.isSafeInteger(triage.maximumAttempts) ||
+      triage.attemptsUsed !== triage.of || Number(triage.maximumAttempts) < Number(triage.attemptsUsed) ||
+      typeof triage.reproductionProbability !== 'number' ||
+      typeof triage.confidenceLower !== 'number' || typeof triage.confidenceUpper !== 'number' ||
+      triage.methodVersion !== 'sprt-p20-p80-a05-b05-v1' ||
+      !['failure-boundary', 'pass-boundary', 'maximum-attempts', 'not-run'].includes(String(triage.stopReason))) return false;
+  if (triage.status === 'not-run') return triage.reproduced === 0 && triage.of === 0 && triage.stopReason === 'not-run';
   if (Number(triage.of) <= 0) return false;
   if (triage.status === 'real') return triage.reproduced === triage.of;
   if (triage.status === 'flaky') return triage.reproduced === 0;
@@ -150,7 +159,7 @@ function validCost(value: unknown): boolean {
   const cost = record(value);
   return Boolean(cost && Array.isArray(cost.entries) && cost.entries.every((entry) => {
     const item = record(entry);
-    return item && typeof item.model === 'string' &&
+    return item && ['nano', 'super', 'ultra'].includes(String(item.role)) && typeof item.model === 'string' &&
       ['inTok', 'outTok', 'reasoningTok', 'usd'].every((key) => typeof item[key] === 'number' && Number.isFinite(item[key]));
   }));
 }
@@ -261,7 +270,9 @@ function controlCaseFile(outcome: CaseFile['outcome'], approved: boolean | undef
       class: 'test-assertion', confidence: 1, signals: ['scripted-control'], failingCmd: 'pnpm test', errorExcerpt: 'scripted',
       ...(tavilyEnabled ? { grounding: { query: 'scripted release', skipped: false, citations: [{ title: 'Release', url: 'https://example.test/release', snippet: 'Scripted control citation' }] } } : {}),
     },
-    triage: { status: outcome === 'flaky-no-patch' ? 'intermittent' : 'real', reproduced: outcome === 'flaky-no-patch' ? 2 : 5, of: 5 },
+    triage: outcome === 'flaky-no-patch'
+      ? completedTriageVerdict([1, 0, 1, 0, 0], 5)
+      : completedTriageVerdict([1, 1, 1, 1], 5),
     race: [], ...(approved === undefined ? {} : { audit: { approved, checks: [], reasoning: approved ? 'approved' : 'refused' } }),
     outcome, cost: { entries: [], totalUsd: () => 0 },
     policy: { baseRef: 'local', baseSha: 'local', policySha: 'default' },

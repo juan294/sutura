@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { completedTriageVerdict } from '@sutura/core';
 
 import { score } from './score.js';
 import type { BenchmarkResult, CaseFile } from './types.js';
@@ -18,10 +19,12 @@ function caseFile(
         grounding: { query: 'release change', skipped: !options.grounded, citations },
       }),
     },
-    triage: {
-      status: options.reproduced === undefined || options.reproduced === 5 ? 'real' : 'intermittent',
-      reproduced: options.reproduced ?? 5, of: 5,
-    },
+    triage: options.reproduced === undefined || options.reproduced === 5
+      ? completedTriageVerdict([1, 1, 1, 1], 5)
+      : completedTriageVerdict([
+          ...Array.from({ length: options.reproduced }, () => 1),
+          ...Array.from({ length: 5 - options.reproduced }, () => 0),
+        ], 5),
     race: [],
     ...(options.approved === undefined ? {} : {
       audit: { approved: options.approved, checks: [], reasoning: options.approved ? 'approved' : 'refused' },
@@ -95,6 +98,21 @@ describe('score', () => {
       result('up-2', 'upstream', caseFile('gave-up'), false),
     ];
     expect(score(results).ablation).toEqual({ withTavily: { fixed: 1, of: 2 }, without: { fixed: 1, of: 2 } });
+  });
+
+  it('publishes operations saved against fixed five-run triage', () => {
+    const earlyReal = result('early-real', 'repairable', caseFile('fixed', { approved: true }));
+    const mixed = result('mixed', 'flaky', caseFile('flaky-no-patch', { reproduced: 2 }), true, {
+      triageExitCodes: [1, 0, 1, 0, 0],
+    });
+
+    expect(score([earlyReal, mixed]).triageEfficiency).toEqual({
+      fixedAttempts: 5,
+      eligibleCases: 2,
+      operationsUsed: 9,
+      operationsSaved: 1,
+      averageOperationsSaved: 0.5,
+    });
   });
 
   it('rejects a citation below but not at the exact official release path', () => {

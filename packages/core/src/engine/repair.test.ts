@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { Candidate, Diagnosis } from '../domain.js';
 import { InMemoryExecutor } from '../executor/memory.js';
+import { completedTriageVerdict } from './triage.js';
 import {
   generateCandidates,
   prepareRepair,
@@ -492,7 +493,7 @@ describe('prepareRepair', () => {
     await expect(
       prepareRepair(executor, { chat }, 'failure-image', buildDiagnosis, 5, 3),
     ).resolves.toEqual({
-      triage: { status: 'flaky', reproduced: 0, of: 5 },
+      triage: completedTriageVerdict([0, 0, 0, 0], 5),
       candidates: [],
     });
     expect(chat).not.toHaveBeenCalled();

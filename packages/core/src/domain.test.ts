@@ -47,6 +47,13 @@ describe('domain model', () => {
       status: 'real' | 'flaky' | 'intermittent' | 'not-run';
       reproduced: number;
       of: number;
+      attemptsUsed: number;
+      maximumAttempts: number;
+      reproductionProbability: number;
+      confidenceLower: number;
+      confidenceUpper: number;
+      stopReason: 'failure-boundary' | 'pass-boundary' | 'maximum-attempts' | 'not-run';
+      methodVersion: 'sprt-p20-p80-a05-b05-v1';
     }>();
     expectTypeOf<Candidate>().toEqualTypeOf<{
       id: string;
@@ -83,6 +90,7 @@ describe('domain model', () => {
     }>();
     expectTypeOf<CostLedger>().toEqualTypeOf<{
       entries: Array<{
+        role: 'nano' | 'super' | 'ultra';
         model: string;
         inTok: number;
         outTok: number;

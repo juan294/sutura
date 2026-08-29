@@ -1,4 +1,6 @@
 import type { ModelTier, TokenUsage } from './cost.js';
+import type { FailureClass } from '../domain.js';
+import type { ModelRouteDecision } from './router.js';
 
 export type JsonSchema = Readonly<Record<string, unknown>>;
 
@@ -78,6 +80,11 @@ export interface ChatOptions {
   toolChoice?: ToolChoice;
   parallelToolCalls?: boolean;
   signal?: AbortSignal;
+  routing?: {
+    failureClass: FailureClass | null;
+    diagnosisConfidence: number | null;
+    remainingInferenceBudgetUsd: number;
+  };
 }
 
 export interface CapacitySnapshot {
@@ -111,6 +118,11 @@ export interface LlmReply {
 export interface TierLlm<Tier extends ModelTier> {
   capacitySnapshot?(): CapacitySnapshot | undefined;
   modelId?(tier: Tier): string;
+  modelQuote?(
+    tier: Tier,
+    messages: readonly ChatMessage[],
+    options?: ChatOptions,
+  ): ModelRouteDecision;
   chat(
     tier: Tier,
     messages: readonly ChatMessage[],
