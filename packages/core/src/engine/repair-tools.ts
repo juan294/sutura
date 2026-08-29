@@ -10,13 +10,18 @@ import { isSensitiveRepositoryPath } from '../security/repository-path.js';
 import { boundedTail } from '../text/bounded-tail.js';
 import { validateCandidateDiff } from './candidate-validation.js';
 import { BudgetExceededError, type RepairBudget } from './repair-budget.js';
-import { structuredEditsDiff, type RepairSourceContext } from './repair.js';
+import {
+  structuredEditsDiff,
+  type RepairSourceContext,
+  type RepairSourceExcerpt,
+} from './repair.js';
 import { shellQuote } from './shell.js';
 
 const MAX_TOOL_OUTPUT_BYTES = 16_000;
 const MAX_READ_BYTES = 12_000;
 const MAX_READ_LINES = 160;
 const MAX_SUFFIX_RESOLUTION_BYTES = 3_000;
+const MAX_DYNAMIC_SOURCE_EXCERPTS = 24;
 const RESOLVED_SOURCE_PREFIX = 'SUTURA_RESOLVED_SOURCE=';
 const SAFE_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9_@./ -]+$/u;
 const SENSITIVE_SEARCH_GLOBS = [
@@ -80,6 +85,7 @@ export interface RepairToolResult {
 interface ReadPathOutcome {
   result: RepairToolResult;
   resolvedPath?: string;
+  editableContent?: string;
 }
 
 export interface RepairToolRuntimeOptions {
@@ -138,10 +144,14 @@ function noSymlinksFor(path: string): string {
 
 export class RepairToolRuntime {
   private current: RepairToolState;
+  private readonly sourceExcerpts: RepairSourceExcerpt[] = [];
   private operationIndex = 0;
 
   constructor(private readonly options: RepairToolRuntimeOptions) {
     this.current = { editableImageId: options.initialImageId, cumulativeDiff: '' };
+    for (const source of options.sourceContext.sources) {
+      if (redactExternalText(source.content).count === 0) this.upsertSourceExcerpt(source);
+    }
   }
 
   state(): Readonly<RepairToolState> { return { ...this.current }; }
@@ -209,22 +219,47 @@ export class RepairToolRuntime {
       return failure('invalid', `read_file line window must contain at most ${MAX_READ_LINES} lines`);
     }
     const direct = await this.readPath(path, start, end);
-    if (direct.result.ok || !path.startsWith('src/')) return this.renderReadResult(path, direct);
+    if (direct.result.ok || !path.startsWith('src/')) return this.renderReadResult(path, start, direct);
     const resolvedPath = await this.resolveMonorepoSuffix(path);
     if (resolvedPath === undefined) return direct.result;
     const resolved = await this.readPath(resolvedPath, start, end);
-    return this.renderReadResult(path, {
+    return this.renderReadResult(path, start, {
       result: resolved.result,
       resolvedPath: resolved.resolvedPath ?? resolvedPath,
+      ...(resolved.editableContent === undefined ? {} : { editableContent: resolved.editableContent }),
     });
   }
 
-  private renderReadResult(requestedPath: string, outcome: ReadPathOutcome): RepairToolResult {
+  private renderReadResult(requestedPath: string, startLine: number, outcome: ReadPathOutcome): RepairToolResult {
     if (!outcome.result.ok) return outcome.result;
     const finalPath = outcome.resolvedPath ?? requestedPath;
+    if (outcome.editableContent !== undefined) {
+      this.upsertSourceExcerpt({
+        path: finalPath,
+        startLine,
+        content: outcome.editableContent,
+        truncated: true,
+      });
+    }
     return finalPath === requestedPath
       ? outcome.result
       : { ...outcome.result, message: `Sutura resolved source: ${finalPath}\n${outcome.result.message}` };
+  }
+
+  private upsertSourceExcerpt(source: RepairSourceExcerpt): void {
+    const existing = this.sourceExcerpts.findIndex((candidate) =>
+      candidate.path === source.path && candidate.startLine === source.startLine,
+    );
+    if (existing !== -1) this.sourceExcerpts.splice(existing, 1);
+    this.sourceExcerpts.push(source);
+    if (this.sourceExcerpts.length > MAX_DYNAMIC_SOURCE_EXCERPTS) this.sourceExcerpts.shift();
+  }
+
+  private invalidateSourceExcerpts(paths: readonly string[]): void {
+    const changed = new Set(paths);
+    for (let index = this.sourceExcerpts.length - 1; index >= 0; index -= 1) {
+      if (changed.has(this.sourceExcerpts[index]!.path)) this.sourceExcerpts.splice(index, 1);
+    }
   }
 
   private async readPath(path: string, start: number, end: number): Promise<ReadPathOutcome> {
@@ -243,15 +278,16 @@ export class RepairToolRuntime {
     const resolution = result.stderr.trim();
     const resolvedPath = fallbackPaths.find((candidate) => resolution === `${RESOLVED_SOURCE_PREFIX}${candidate}`);
     if (resolution && resolvedPath === undefined) return { result: failure('sandbox', 'File resolution metadata was invalid') };
-    const content = bounded(result.stdout);
+    const redaction = redactExternalText(result.stdout);
     return {
       result: {
         ok: true,
-        message: content,
+        message: redaction.text,
         imageId: result.imageId,
         exitCode: result.exitCode,
       },
       ...(resolvedPath === undefined ? {} : { resolvedPath }),
+      ...(redaction.count === 0 ? { editableContent: result.stdout } : {}),
     };
   }
 
@@ -349,7 +385,11 @@ export class RepairToolRuntime {
     }
     let diff: string;
     try {
-      diff = typeof args.diff === 'string' ? args.diff : structuredEditsDiff(args.edits, this.options.sourceContext);
+      diff = typeof args.diff === 'string'
+        ? args.diff
+        : structuredEditsDiff(args.edits, {
+            sources: this.sourceExcerpts.toReversed(),
+          });
     } catch (error) {
       return failure('invalid', error instanceof Error ? error.message : String(error));
     }
@@ -365,6 +405,7 @@ export class RepairToolRuntime {
     const validation = validateCandidateDiff(cumulative, this.options.diagnosis, this.options.policy, this.options.budget.limits.diffBytes);
     if (!validation.ok) return failure('policy', validation.violations.join('; '));
     this.options.budget.assertDiffBytes(validation.diffBytes);
+    this.invalidateSourceExcerpts(proposed.changedFiles);
     const nodeId = this.observe(result, parent, 'apply_patch accepted');
     this.current = {
       editableImageId: result.imageId,

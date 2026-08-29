@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { Buffer } from 'node:buffer';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +11,7 @@ import type { Diagnosis } from '../domain.js';
 import type { Executor, RunResult } from '../executor/types.js';
 import { createDefaultRepositoryPolicy } from '../policy/load.js';
 import { RepairBudget, DEFAULT_REPAIR_BUDGET_LIMITS } from './repair-budget.js';
+import type { RepairSourceContext } from './repair.js';
 import { RepairToolRuntime } from './repair-tools.js';
 
 const diagnosis: Diagnosis = {
@@ -18,6 +20,14 @@ const diagnosis: Diagnosis = {
 const diff = [
   'diff --git a/src/a.ts b/src/a.ts', '--- a/src/a.ts', '+++ b/src/a.ts',
   '@@ -1 +1 @@', '-export const a = 1;', '+export const a = 2;', '',
+].join('\n');
+const line42Diff = [
+  'diff --git a/src/window.ts b/src/window.ts', '--- a/src/window.ts', '+++ b/src/window.ts',
+  '@@ -41,2 +41,2 @@', ' line 41', '-line 42', '+updated line 42', '',
+].join('\n');
+const line20Diff = [
+  'diff --git a/src/a.ts b/src/a.ts', '--- a/src/a.ts', '+++ b/src/a.ts',
+  '@@ -20,1 +20,1 @@', '-export const a = 1;', '+export const a = 2;', '',
 ].join('\n');
 
 const execFileAsync = promisify(execFile);
@@ -30,11 +40,12 @@ function toolsFor(
   executor: Executor,
   policy = createDefaultRepositoryPolicy(),
   budget = new RepairBudget(DEFAULT_REPAIR_BUDGET_LIMITS),
+  sourceContext: RepairSourceContext = { sources: [] },
 ): RepairToolRuntime {
   return new RepairToolRuntime({
     executor, initialImageId: 'baseline', diagnosis, policy, budget,
     trustedCommands: { diagnosed: 'pnpm test', 'policy-1': 'pnpm lint' },
-    sourceContext: { sources: [] },
+    sourceContext,
   });
 }
 
@@ -103,7 +114,7 @@ describe('RepairToolRuntime', () => {
     try {
       await mkdir(join(directory, 'src'));
       await mkdir(join(directory, 'packages', 'core', 'src'), { recursive: true });
-      await writeFile(join(directory, 'src', 'value.ts'), Array.from({ length: 160 }, (_, index) => `line ${index + 1}`).join('\n'));
+      await writeFile(join(directory, 'src', 'value.ts'), `${Array.from({ length: 160 }, (_, index) => `line ${index + 1}`).join('\n')}\n`);
       await writeFile(join(directory, 'src', 'untracked.ts'), 'not tracked');
       await writeFile(join(directory, 'packages', 'core', 'src', 'package-value.ts'), 'package source');
       await execFileAsync('git', ['init', '--quiet'], { cwd: directory });
@@ -122,6 +133,7 @@ describe('RepairToolRuntime', () => {
       const resolved = await tools.execute('read_file', { path: 'src/value.js' });
       expect(resolved).toMatchObject({ ok: true });
       expect(resolved.message.split('\n')[0]).toBe('Sutura resolved source: src/value.ts');
+      expect(resolved.message).toContain('line 1\n');
       expect(resolved.message).toContain('line 160');
       await expect(tools.execute('read_file', { path: 'src/untracked.js' }))
         .resolves.toMatchObject({ ok: false, kind: 'sandbox' });
@@ -242,6 +254,97 @@ describe('RepairToolRuntime', () => {
     const command = (run.mock.calls[0] as unknown as [string, string])[1];
     expect(command).not.toContain("fallback='src/a.ts'");
     expect(command).not.toContain("fallback='src/a.tsx'");
+  });
+
+  it('uses a dynamically resolved source excerpt for a later structured edit', async () => {
+    const { tools, run } = runtime([
+      runResult('read-child', 'export const a = 1;\n', 0, 'SUTURA_RESOLVED_SOURCE=src/a.ts\n'),
+      runResult('patched', diff),
+    ]);
+
+    await expect(tools.execute('read_file', { path: 'src/a.js' }))
+      .resolves.toMatchObject({ ok: true, message: expect.stringContaining('src/a.ts') });
+    await expect(tools.execute('apply_patch', {
+      edits: [{ path: 'src/a.ts', old: 'export const a = 1;', new: 'export const a = 2;' }],
+    })).resolves.toMatchObject({ ok: true });
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not register redacted model output as exact editable source', async () => {
+    const { tools, run } = runtime([
+      runResult('read-child', 'TOKEN=super-secret-value\n'),
+    ]);
+
+    const read = await tools.execute('read_file', { path: 'src/secrets.ts' });
+    expect(read.message).toContain('[redacted credential]');
+    await expect(tools.execute('apply_patch', {
+      edits: [{ path: 'src/secrets.ts', old: read.message.trim(), new: 'TOKEN=safe' }],
+    })).resolves.toMatchObject({ ok: false, kind: 'invalid' });
+    expect(run).toHaveBeenCalledOnce();
+  });
+
+  it('preserves a non-default read start line for structured edits', async () => {
+    const { tools, run } = runtime([
+      runResult('read-child', 'line 41\nline 42\n'),
+      runResult('patched', line42Diff),
+    ]);
+
+    await tools.execute('read_file', { path: 'src/window.ts', startLine: 41, endLine: 42 });
+    await expect(tools.execute('apply_patch', {
+      edits: [{ path: 'src/window.ts', old: 'line 42', new: 'updated line 42' }],
+    })).resolves.toMatchObject({ ok: true });
+    const patchCommand = (run.mock.calls[1] as unknown as [string, string])[1];
+    expect(patchCommand).toContain(Buffer.from(line42Diff, 'utf8').toString('base64'));
+  });
+
+  it('prefers the newest matching source window for a structured edit', async () => {
+    const run = vi.fn()
+      .mockResolvedValueOnce(runResult('read-child', 'export const a = 1;\n', 0))
+      .mockResolvedValueOnce(runResult('patched', line20Diff));
+    const tools = toolsFor(
+      executorFor(run),
+      createDefaultRepositoryPolicy(),
+      new RepairBudget(DEFAULT_REPAIR_BUDGET_LIMITS),
+      { sources: [{ path: 'src/a.ts', startLine: 1, content: 'export const a = 1;\n', truncated: true }] },
+    );
+
+    await tools.execute('read_file', { path: 'src/a.ts', startLine: 20, endLine: 20 });
+    await expect(tools.execute('apply_patch', {
+      edits: [{ path: 'src/a.ts', old: 'export const a = 1;', new: 'export const a = 2;' }],
+    })).resolves.toMatchObject({ ok: true });
+    const patchCommand = (run.mock.calls[1] as unknown as [string, string])[1];
+    expect(patchCommand).toContain(Buffer.from(line20Diff, 'utf8').toString('base64'));
+  });
+
+  it('invalidates source excerpts after a patch changes their file', async () => {
+    const { tools, run } = runtime([
+      runResult('read-child', 'export const a = 1;\n'),
+      runResult('patched', diff),
+    ]);
+
+    await tools.execute('read_file', { path: 'src/a.ts' });
+    await expect(tools.execute('apply_patch', {
+      edits: [{ path: 'src/a.ts', old: 'export const a = 1;', new: 'export const a = 2;' }],
+    })).resolves.toMatchObject({ ok: true });
+    await expect(tools.execute('apply_patch', {
+      edits: [{ path: 'src/a.ts', old: 'export const a = 1;', new: 'export const a = 3;' }],
+    })).resolves.toMatchObject({ ok: false, kind: 'invalid' });
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not trust credential-like initial source as editable context', async () => {
+    const run = vi.fn();
+    const tools = toolsFor(
+      executorFor(run),
+      createDefaultRepositoryPolicy(),
+      new RepairBudget(DEFAULT_REPAIR_BUDGET_LIMITS),
+      { sources: [{ path: 'src/secrets.ts', startLine: 1, content: 'TOKEN=super-secret-value\n', truncated: false }] },
+    );
+
+    await expect(tools.execute('apply_patch', {
+      edits: [{ path: 'src/secrets.ts', old: 'TOKEN=super-secret-value', new: 'TOKEN=safe' }],
+    })).resolves.toMatchObject({ ok: false, kind: 'invalid' });
+    expect(run).not.toHaveBeenCalled();
   });
 
   it.each([
