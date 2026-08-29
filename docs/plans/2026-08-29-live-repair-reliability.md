@@ -26,6 +26,8 @@ The target path must:
 
 Nine live dogfood runs exercised one simple arithmetic defect. The first two stopped at Token Factory request compatibility. The next four stopped during model-directed evidence acquisition. The seventh accepted the correct patch but did not retain valid trusted-test evidence. The eighth accepted the correct patch but continued model-directed exploration. The ninth used all turns without applying a patch. The exact chronology is in `docs/research/2026-08-29-live-repair-control-path.md`.
 
+The first post-redesign live proof exposed a separate fixture-fidelity gap before Super: ANSI-colored Vitest output and its `❯` reporter marker prevented pnpm workspace path reconstruction. This terminal class is also documented in the research addendum and must remain in the replay gate.
+
 Current unit and end-to-end tests script ideal LLM tool calls. No live test calls `orchestrate`, `repairFailure`, `runRepairAgent`, or `adaptiveSearch`. Current production admission also reduces the four-branch search default to one branch by reserving all eight model turns for it.
 
 ## Design options
@@ -127,6 +129,7 @@ Run the `codex-simplify` reuse, quality, and efficiency reviews after implementa
 ## Final automated acceptance
 
 - The realistic arithmetic dogfood fixture reaches Super with both the test and imported implementation source.
+- The realistic fixture retains the actual ANSI-colored Vitest reporter prefix and pnpm workspace task line.
 - A scripted search-only, read-only, test-only, or submit-only model response cannot control the production attempt.
 - A valid proposal always runs patch, diagnosed test, and candidate creation in controller order.
 - A failing proposal supplies its complete diff and bounded test failure to the next search depth.
@@ -137,7 +140,7 @@ Run the `codex-simplify` reuse, quality, and efficiency reviews after implementa
 - Source traversal, symlink, sensitive path, policy denial, ambiguity, oversized content, and credential redaction fail closed.
 - Audit and publication use one exact candidate ID and diff hash.
 - The recorded GitHub action E2E creates one repair branch and PR for the realistic direct-run dogfood fixture.
-- All nine historical live terminal classes have local regression coverage.
+- All nine historical model-control terminal classes and the post-redesign raw-log source terminal have local regression coverage.
 - The complete local verification gate and simplification reviews pass.
 
 ## Final live acceptance

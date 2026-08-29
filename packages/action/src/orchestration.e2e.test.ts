@@ -586,7 +586,7 @@ describe('recorded GitHub API orchestration E2E', () => {
     };
     fixtures.jobLog = [
       '2026-08-27T10:00:12Z Run pnpm --filter @sutura/core test',
-      '2026-08-27T10:00:13Z packages/core test: src/dogfood-add.test.ts:7: expected -1 to be 5',
+      '2026-08-27T10:00:13Z packages/core test: \u001b[31m❯\u001b[39m src/dogfood-add.test.ts:7: expected -1 to be 5',
     ].join('\n');
     const api = new RecordedGitHubApi(fixtures);
     const artifact = new RecordedArtifactApi();

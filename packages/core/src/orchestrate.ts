@@ -47,8 +47,9 @@ const MAX_SOURCE_LINES = 120;
 const MAX_SOURCE_CHARACTERS = 12_000;
 const MAX_SOURCE_BYTES = 12_000;
 const MAX_DEPENDENCY_CANDIDATE_PROBES_PER_DEPTH = 192;
+const ANSI_CSI_PATTERN = /\u001B\[[0-?]*[ -/]*[@-~]/gu;
 const SOURCE_PATH_PATTERN = /(?:^|[\s("'`])(?<path>(?:\.\/)?(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+\.(?:json|[cm]?[jt]sx?|pyi?|ini|txt|ya?ml|toml))(?![A-Za-z0-9_.-])(?:(?:\(|:)(?<line>\d+))?/g;
-const WORKSPACE_SOURCE_PATTERN = /(?:^|[\t\n \]])(?<workspace>(?:apps|packages)\/(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+)\s+[A-Za-z0-9_:@./-]+:\s+(?<path>(?:\.\/)?(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+\.(?:json|[cm]?[jt]sx?|pyi?|ini|txt|ya?ml|toml))(?![A-Za-z0-9_.-])(?:(?:\(|:)(?<line>\d+))?/g;
+const WORKSPACE_LOG_LINE_PATTERN = /(?:^|[\t\n \]])(?<workspace>(?:apps|packages)\/(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+)\s+[A-Za-z0-9_:@./-]+:\s*(?<message>[^\r\n]{0,2000})/g;
 const GITHUB_WORKSPACE_PREFIX_PATTERN = /(^|[\s("'`])(?:(?:file:\/\/)?\/home\/runner\/work|(?:file:\/\/)?\/__w)\/([A-Za-z0-9_.-]+)\/\2\//gm;
 const NODE_FALLBACK_SOURCE_PATHS: Readonly<Partial<Record<FailureClass, readonly string[]>>> = {
   typecheck: ['tsconfig.json', 'package.json'],
@@ -288,19 +289,12 @@ function safeSourcePath(path: string): string | null {
 
 export function extractSourceReferences(log: string): SourceReference[] {
   const normalizedLog = log
+    .replace(ANSI_CSI_PATTERN, '')
     .replaceAll('file:///workspace/', '')
     .replaceAll('/workspace/', '')
     .replace(GITHUB_WORKSPACE_PREFIX_PATTERN, '$1');
   const references = new Map<string, SourceReference>();
-
-  for (const match of normalizedLog.matchAll(WORKSPACE_SOURCE_PATTERN)) {
-    const workspace = safeSourcePath(match.groups?.workspace ?? '');
-    const relativePath = safeSourcePath(match.groups?.path ?? '');
-    const path = workspace && relativePath
-      ? safeSourcePath(`${workspace}/${relativePath}`)
-      : null;
-    if (!path) continue;
-    const lineValue = Number(match.groups?.line);
+  const remember = (path: string, lineValue: number): void => {
     const line = Number.isSafeInteger(lineValue) && lineValue > 0
       ? lineValue
       : undefined;
@@ -311,24 +305,27 @@ export function extractSourceReferences(log: string): SourceReference[] {
       }
     } else if (references.size < MAX_SOURCE_FILES) {
       references.set(path, line === undefined ? { path } : { path, line });
+    }
+  };
+
+  for (const match of normalizedLog.matchAll(WORKSPACE_LOG_LINE_PATTERN)) {
+    const workspace = safeSourcePath(match.groups?.workspace ?? '');
+    if (!workspace) continue;
+    for (const sourceMatch of (match.groups?.message ?? '').matchAll(SOURCE_PATH_PATTERN)) {
+      const relativePath = safeSourcePath(sourceMatch.groups?.path ?? '');
+      const path = relativePath === null
+        ? null
+        : /^(?:apps|packages)\//u.test(relativePath)
+          ? relativePath
+          : safeSourcePath(`${workspace}/${relativePath}`);
+      if (path) remember(path, Number(sourceMatch.groups?.line));
     }
   }
 
   for (const match of normalizedLog.matchAll(SOURCE_PATH_PATTERN)) {
     const path = safeSourcePath(match.groups?.path ?? '');
     if (!path) continue;
-    const lineValue = Number(match.groups?.line);
-    const line = Number.isSafeInteger(lineValue) && lineValue > 0
-      ? lineValue
-      : undefined;
-    const existing = references.get(path);
-    if (existing) {
-      if (existing.line === undefined && line !== undefined) {
-        references.set(path, { path, line });
-      }
-    } else if (references.size < MAX_SOURCE_FILES) {
-      references.set(path, line === undefined ? { path } : { path, line });
-    }
+    remember(path, Number(match.groups?.line));
   }
 
   return [...references.values()];

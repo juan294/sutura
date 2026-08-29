@@ -21,6 +21,7 @@ Add sanitized dogfood log/source/provider fixtures. Extend core orchestration an
    - trusted-test timeout or missing evidence;
    - accepted patch followed by exploration;
    - search-only model-turn exhaustion.
+   - ANSI-colored Vitest reporter output that previously lost its pnpm workspace source path.
 3. Prove each class is rejected at its boundary or structurally impossible in the production path.
 4. Add a recorded direct `workflow_dispatch` GitHub action E2E with realistic failed logs, exact checkout source closure, Nano diagnosis, Super repair proposal, ConTree patch/test, Ultra audit, fix branch, PR, check, comment, and artifact.
 5. Add a two-depth failed-first-proposal storyline.
@@ -30,7 +31,7 @@ Add sanitized dogfood log/source/provider fixtures. Extend core orchestration an
 
 ## Automated success criteria
 
-- All nine historical terminal classes have named regression tests.
+- All nine historical model-control terminals and the raw-log source terminal have named regression tests.
 - The realistic arithmetic E2E reaches `fixed` and publishes only the addition patch.
 - The repair test and `.sutura.json` remain unchanged.
 - The repair branch parent is the exact failed SHA and the PR base is the failed branch.

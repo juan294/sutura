@@ -24,6 +24,7 @@ Add a core source-context module and matching tests. Modify orchestration source
 ## Automated success criteria
 
 - The arithmetic dogfood test resolves `./dogfood-add.js` to `packages/core/src/dogfood-add.ts`.
+- ANSI-colored Vitest reporter lines retain their pnpm workspace and resolve the exact test path before dependency closure.
 - Direct TypeScript, TSX, MTS, CTS, JavaScript, and index variants resolve deterministically.
 - Monorepo root prefixes remain exact.
 - Python relative modules resolve without execution.

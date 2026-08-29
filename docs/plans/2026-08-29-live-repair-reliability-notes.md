@@ -29,12 +29,12 @@ Plan: `docs/plans/2026-08-29-live-repair-reliability.md`
 
 The complete local gate passed against the implementation tree. Candidate package verification was repeated after the implementation commit so it could bind to an exact clean `HEAD`.
 
-- Core: 710 passed, 8 skipped
+- Core: 711 passed, 8 skipped
 - Action: 70 passed
 - Evaluation: 5 passed
 - CLI: 81 passed
 - Placebo: 70 passed
-- Repository total: 936 passed, 8 skipped
+- Repository total: 937 passed, 8 skipped
 - Typecheck: passed for all five buildable workspace packages
 - Lint: passed for all five buildable workspace packages
 - Build: passed for all five buildable workspace packages
@@ -47,4 +47,24 @@ The complete local gate passed against the implementation tree. Candidate packag
 
 ## Remote proof
 
-Pending Phase 5 exact-SHA CI and live dogfood evidence.
+### First post-redesign proof
+
+- Develop candidate: `c82eeb9e3601eb1ed229d7c4ddc7e59d1d636623`
+- Develop CI: [33251773179](https://github.com/juan294/sutura/actions/runs/33251773179), passed
+- Dogfood SHA: `c1f0c767d688d98b7d88a347e7f1afc35c4aae96`
+- Intentional CI: [33252323239](https://github.com/juan294/sutura/actions/runs/33252323239), failed only the declared arithmetic assertion
+- Sutura: [33252374229](https://github.com/juan294/sutura/actions/runs/33252374229), `gave-up`
+- Terminal evidence: actual ANSI-colored Vitest output and its `❯` reporter marker prevented pnpm workspace source reconstruction, so no bounded editable source reached Super
+- Response: added the exact raw log shape to core and Action production-path replay before another candidate
+
+### Raw-log revision gate
+
+- Core: 711 passed, 8 skipped
+- Action: 70 passed
+- Evaluation: 5 passed
+- CLI: 81 passed
+- Placebo: 70 passed in 855 seconds
+- Repository total: 937 passed, 8 skipped
+- Typecheck, lint, Action bundle rebuild, and all three simplification reviews: passed
+
+Final Phase 5 exact-SHA CI and live dogfood evidence remain pending.

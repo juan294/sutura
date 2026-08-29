@@ -55,3 +55,13 @@ Core orchestration tests combine fake GitHub and repository ports, an in-memory 
 The opt-in live tests exercise direct successful ConTree, Nano JSON, Nano tool-call, Super candidate-generation, cost, and Tavily contracts (`packages/core/src/executor/contree.live.test.ts:18-97`, `packages/core/src/llm/nebius.live.test.ts:28-140`, `packages/core/src/diagnose/tavily.live.test.ts:7-27`). None of those live test files calls `orchestrate`, `repairFailure`, `runRepairAgent`, or `adaptiveSearch` (`packages/core/src/executor/contree.live.test.ts:7-9`, `packages/core/src/llm/nebius.live.test.ts:3-7`, `packages/core/src/diagnose/tavily.live.test.ts:1-9`).
 
 The Phase 4 and Phase 5 documents retain a live repair and a two-depth live trajectory as manual evidence (`docs/plans/2026-08-28-sutura-hackathon-improvement-phases/phase-4.md:180-184`, `docs/plans/2026-08-28-sutura-hackathon-improvement-phases/phase-5.md:147-151`). The main plan also lists live Token Factory and ConTree probes in final acceptance (`docs/plans/2026-08-28-sutura-hackathon-improvement.md:307-315`).
+
+## Live proof 10 addendum
+
+The first post-redesign candidate, `c82eeb9e3601eb1ed229d7c4ddc7e59d1d636623`, passed exact-SHA CI at [run 33251773179](https://github.com/juan294/sutura/actions/runs/33251773179). Dogfood SHA `c1f0c767d688d98b7d88a347e7f1afc35c4aae96` then failed only the declared arithmetic assertion at [run 33252323239](https://github.com/juan294/sutura/actions/runs/33252323239). Sutura [run 33252374229](https://github.com/juan294/sutura/actions/runs/33252374229) completed with `gave-up`, five search nodes, no Super calls, and `No bounded editable repair source was available` for every node.
+
+Expected: the pnpm workspace prefix `packages/core test:` maps `src/dogfood-add.test.ts` to `packages/core/src/dogfood-add.test.ts`, then static import closure adds `packages/core/src/dogfood-add.ts`.
+
+Found: the real Vitest line contains ANSI control sequences and the reporter marker `❯` between the workspace task prefix and source path. The recorded production-path fixtures omitted both. The workspace regex therefore did not match. Generic extraction retained only root-relative `src/dogfood-add.test.ts`, which does not exist at repository root.
+
+Why it matters: controller ownership removed the nine model-control failures, but the source-evidence gate still depended on a simplified log fixture. Production log normalization must remove bounded terminal formatting and map source references anywhere in the bounded pnpm task message before dependency closure starts.

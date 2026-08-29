@@ -542,7 +542,7 @@ describe('orchestrate', () => {
         stepName: 'Test core',
         log: [
           'Run pnpm --filter @sutura/core test',
-          'packages/core test: src/dogfood-add.test.ts:7: expected -1 to be 5',
+          'packages/core test: \u001b[31m❯\u001b[39m src/dogfood-add.test.ts:7: expected -1 to be 5',
         ].join('\n'),
       }],
     };
@@ -1292,6 +1292,32 @@ describe('repair source context', () => {
       'src/diagnose/tavily.ts',
       'tsconfig.json',
       'package.json',
+    ]);
+  });
+
+  it('resolves ANSI-colored Vitest reporter paths to their pnpm workspace', async () => {
+    const repository = new FakeRepository();
+    repository.sources.clear();
+    repository.sources.set(
+      'packages/core/src/dogfood-add.test.ts',
+      "import { add } from './dogfood-add.js';\nexpect(add(2, 3)).toBe(5);\n",
+    );
+    repository.sources.set(
+      'packages/core/src/dogfood-add.ts',
+      'export const add = (left: number, right: number) => left - right;\n',
+    );
+    const log = [
+      'packages/core test: \u001b[31m❯\u001b[39m src/dogfood-add.test.ts \u001b[2m(1 test | 1 failed)\u001b[22m',
+      'packages/core test: \u001b[36m ❯\u001b[39m src/dogfood-add.test.ts:\u001b[2m7:23\u001b[22m',
+    ].join('\n');
+
+    const context = await readRepairSourceContext(
+      repository, '/tmp/exact-pr-head', log, { class: 'test-assertion' },
+    );
+
+    expect(context.sources.map(({ path }) => path)).toEqual([
+      'packages/core/src/dogfood-add.test.ts',
+      'packages/core/src/dogfood-add.ts',
     ]);
   });
 
