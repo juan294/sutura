@@ -3,12 +3,17 @@ import { createHash } from 'node:crypto';
 
 import type { Candidate } from '../domain.js';
 import type { ChatMessage, ChatOptions, JsonSchema } from '../llm/types.js';
+import { policyAllowsPatchPath } from '../policy/evaluate.js';
 import { assertExternalEditableText, redactExternalJsonValue } from '../security/external-text.js';
 import type { RepairAgentContext, RepairAgentOutcome } from './repair-agent.js';
 import { publicRepairReason, requestRepairModel } from './repair-model-call.js';
 import { RepairToolRuntime, type RepairToolResult } from './repair-tools.js';
+import { isRepairPathAdmissible } from './patch-rules.js';
 import {
   anchoredEditsDiff,
+  indexRepairSourceLines,
+  REPAIR_EDIT_FIELDS,
+  REPAIR_PROPOSAL_FIELDS,
   REPAIR_PROPOSAL_LIMITS,
   SUPER_REPAIR_MAX_TOKENS,
 } from './repair.js';
@@ -22,32 +27,6 @@ export const REPAIR_ATTEMPT_COSTS = Object.freeze({
   sandboxOperations: 2,
 });
 
-const REPAIR_PROPOSAL_SCHEMA: JsonSchema = {
-  type: 'object',
-  properties: {
-    id: { type: 'string', minLength: 1, maxLength: REPAIR_PROPOSAL_LIMITS.idCodePoints, pattern: '\\S' },
-    rationale: { type: 'string', minLength: 1, maxLength: REPAIR_PROPOSAL_LIMITS.rationaleCodePoints, pattern: '\\S' },
-    edits: {
-      type: 'array',
-      minItems: 1,
-      maxItems: REPAIR_PROPOSAL_LIMITS.edits,
-      items: {
-        type: 'object',
-        properties: {
-          path: { type: 'string', minLength: 1, maxLength: REPAIR_PROPOSAL_LIMITS.pathCodePoints, pattern: '\\S' },
-          startLine: { type: 'integer', minimum: 1, maximum: REPAIR_PROPOSAL_LIMITS.line },
-          endLine: { type: 'integer', minimum: 1, maximum: REPAIR_PROPOSAL_LIMITS.line },
-          new: { type: 'string', maxLength: REPAIR_PROPOSAL_LIMITS.replacementCodePoints },
-        },
-        required: ['path', 'startLine', 'endLine', 'new'],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ['id', 'rationale', 'edits'],
-  additionalProperties: false,
-};
-
 export interface RepairAttemptFeedback {
   candidateDiff: string;
   testOutput: string;
@@ -56,6 +35,8 @@ export interface RepairAttemptFeedback {
 
 export interface ControlledRepairAttemptContext extends RepairAgentContext {
   feedback?: RepairAttemptFeedback;
+  proposalTemplate?: ControlledRepairProposalTemplate;
+  proposalContract?: RepairProposalContract;
 }
 
 interface RepairProposal {
@@ -64,34 +45,177 @@ interface RepairProposal {
   edits: unknown[];
 }
 
+interface SourceEvidence {
+  path: string;
+  startLine: number;
+  endLine: number;
+  truncated: boolean;
+  editable: boolean;
+  lines: Array<{ line: number; text: string }>;
+}
+
+export interface RepairProposalContract {
+  messages: ChatMessage[];
+  schema: JsonSchema;
+  requestBytes: number;
+}
+
+export interface ControlledRepairProposalTemplate {
+  contract(feedback?: RepairAttemptFeedback): RepairProposalContract;
+}
+
+export class RepairProposalPreparationError extends Error {
+  constructor(
+    readonly failureKind: 'invalid' | 'policy',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'RepairProposalPreparationError';
+  }
+}
+
+const PROPOSAL_FIELD_NAMES = new Set<string>(Object.values(REPAIR_PROPOSAL_FIELDS));
+const REPAIR_PROPOSAL_EXAMPLE = Object.freeze({
+  [REPAIR_PROPOSAL_FIELDS.id]: 'short-id',
+  [REPAIR_PROPOSAL_FIELDS.rationale]: 'short reason',
+  [REPAIR_PROPOSAL_FIELDS.edits]: [{
+    [REPAIR_EDIT_FIELDS.path]: 'supplied/path.ts',
+    [REPAIR_EDIT_FIELDS.startLine]: 1,
+    [REPAIR_EDIT_FIELDS.endLine]: 1,
+    [REPAIR_EDIT_FIELDS.replacement]: 'complete replacement',
+  }],
+});
+
 function digest(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function proposalMessages(ctx: ControlledRepairAttemptContext): ChatMessage[] {
-  for (const source of ctx.sourceContext.sources) assertExternalEditableText(source.content);
-  const evidence = redactExternalJsonValue({
-    diagnosis: ctx.diagnosis,
-    sources: ctx.sourceContext.sources,
-    trustedCommandId: 'diagnosed',
-    ...(ctx.feedback === undefined ? {} : { previousAttempt: ctx.feedback }),
+function sourceEvidence(ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 'policy' | 'sourceContext'>): SourceEvidence[] {
+  return ctx.sourceContext.sources.flatMap((source) => {
+    assertExternalEditableText(source.content);
+    let lines: ReturnType<typeof indexRepairSourceLines>;
+    try {
+      lines = indexRepairSourceLines(source);
+    } catch (error) {
+      throw new RepairProposalPreparationError(
+        'invalid', error instanceof Error ? error.message : String(error),
+      );
+    }
+    if (lines.length === 0) return [];
+    return [{
+      path: source.path,
+      startLine: source.startLine,
+      endLine: lines.at(-1)!.line,
+      truncated: source.truncated,
+      editable: isRepairPathAdmissible(source.path, ctx.diagnosis) &&
+        policyAllowsPatchPath(source.path, ctx.policy),
+      lines: lines.map(({ line, text }) => ({ line, text })),
+    }];
   });
-  return [
-    {
-      role: 'system',
-      content: [
-        'Return one complete replacement repair proposal as strict JSON.',
-        'Return exactly this shape: {"id":"short-id","rationale":"short reason","edits":[{"path":"supplied/path.ts","startLine":1,"endLine":1,"new":"complete replacement"}]}',
-        'Use only exact supplied source paths and inclusive line ranges inside supplied excerpts.',
-        'For each edit, new must be the complete replacement text for startLine through endLine, not a partial expression.',
-        'Use an empty new value only to delete the selected lines.',
-        'Repair the diagnosed cause with the smallest direct edit.',
-        'Do not change tests or policy. Do not include analysis or markdown.',
-        'A previousAttempt is feedback only; this proposal will be applied to the clean baseline.',
-      ].join('\n'),
+}
+
+function proposalSchema(sources: readonly SourceEvidence[]): JsonSchema {
+  const editSchemas = sources.map((source) => ({
+    type: 'object',
+    properties: {
+      [REPAIR_EDIT_FIELDS.path]: { type: 'string', const: source.path },
+      [REPAIR_EDIT_FIELDS.startLine]: { type: 'integer', minimum: source.startLine, maximum: source.endLine },
+      [REPAIR_EDIT_FIELDS.endLine]: { type: 'integer', minimum: source.startLine, maximum: source.endLine },
+      [REPAIR_EDIT_FIELDS.replacement]: { type: 'string', maxLength: REPAIR_PROPOSAL_LIMITS.replacementCodePoints },
     },
-    { role: 'user', content: JSON.stringify(evidence) },
-  ];
+    required: Object.values(REPAIR_EDIT_FIELDS),
+    additionalProperties: false,
+  }));
+  return {
+    type: 'object',
+    properties: {
+      [REPAIR_PROPOSAL_FIELDS.id]: { type: 'string', minLength: 1, maxLength: REPAIR_PROPOSAL_LIMITS.idCodePoints, pattern: '\\S' },
+      [REPAIR_PROPOSAL_FIELDS.rationale]: { type: 'string', minLength: 1, maxLength: REPAIR_PROPOSAL_LIMITS.rationaleCodePoints, pattern: '\\S' },
+      [REPAIR_PROPOSAL_FIELDS.edits]: {
+        type: 'array',
+        minItems: 1,
+        maxItems: REPAIR_PROPOSAL_LIMITS.edits,
+        items: editSchemas.length === 1 ? editSchemas[0] : { oneOf: editSchemas },
+      },
+    },
+    required: Object.values(REPAIR_PROPOSAL_FIELDS),
+    additionalProperties: false,
+  };
+}
+
+export function prepareControlledRepairProposalTemplate(
+  ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 'policy' | 'sourceContext'>,
+): ControlledRepairProposalTemplate {
+  const sources = sourceEvidence(ctx);
+  if (sources.length === 0) {
+    throw new RepairProposalPreparationError(
+      'invalid', 'No non-empty anchorable repair source was available',
+    );
+  }
+  const editableSources = sources.filter(({ editable }) => editable);
+  if (editableSources.length === 0) {
+    throw new RepairProposalPreparationError(
+      'policy', 'No policy-admissible bounded repair source was available',
+    );
+  }
+  const schema = proposalSchema(editableSources);
+  const evidence = {
+    diagnosis: redactExternalJsonValue(ctx.diagnosis),
+    sources,
+    trustedCommandId: 'diagnosed',
+  };
+  const systemMessage: ChatMessage = {
+    role: 'system',
+    content: [
+      'Return one complete replacement repair proposal as strict JSON.',
+      `Return exactly this shape: ${JSON.stringify(REPAIR_PROPOSAL_EXAMPLE)}`,
+      'Use only a path permitted by the response schema and its numbered inclusive line range. Never reuse a line number from another path or a stack trace.',
+      'For each edit, new must be the complete replacement text for startLine through endLine, without the supplied line number.',
+      ctx.diagnosis.class === 'test-bug'
+        ? 'Repair the diagnosed test defect; do not change policy.'
+        : 'The failing assertion declares required behavior. Repair production source; do not change tests or policy.',
+      'Use an empty new value only to delete the selected lines.',
+      'Repair the diagnosed cause with the smallest direct edit.',
+      'Do not include analysis or markdown.',
+      'A previousAttempt is feedback only; this proposal will be applied to the clean baseline.',
+    ].join('\n'),
+  };
+  const cache = new Map<string, RepairProposalContract>();
+  return {
+    contract(feedback) {
+      const redactedFeedback = feedback === undefined
+        ? undefined
+        : redactExternalJsonValue(feedback);
+      const key = redactedFeedback === undefined
+        ? 'baseline'
+        : digest(JSON.stringify(redactedFeedback));
+      const existing = cache.get(key);
+      if (existing !== undefined) return existing;
+      const messages: ChatMessage[] = [
+        systemMessage,
+        {
+          role: 'user',
+          content: JSON.stringify({
+            ...evidence,
+            ...(redactedFeedback === undefined ? {} : { previousAttempt: redactedFeedback }),
+          }),
+        },
+      ];
+      const contract = {
+        schema,
+        messages,
+        requestBytes: Buffer.byteLength(JSON.stringify({ messages, responseSchema: schema }), 'utf8'),
+      };
+      cache.set(key, contract);
+      return contract;
+    },
+  };
+}
+
+function proposalContract(ctx: ControlledRepairAttemptContext): RepairProposalContract {
+  if (ctx.proposalContract !== undefined) return ctx.proposalContract;
+  const template = ctx.proposalTemplate ?? prepareControlledRepairProposalTemplate(ctx);
+  return template.contract(ctx.feedback);
 }
 
 function parseProposal(text: string): RepairProposal {
@@ -105,32 +229,36 @@ function parseProposal(text: string): RepairProposal {
     throw new TypeError('Repair proposal must be an object');
   }
   const record = value as Record<string, unknown>;
+  const id = record[REPAIR_PROPOSAL_FIELDS.id];
+  const rationale = record[REPAIR_PROPOSAL_FIELDS.rationale];
+  const edits = record[REPAIR_PROPOSAL_FIELDS.edits];
   if (
-    Object.keys(record).some((key) => !['id', 'rationale', 'edits'].includes(key)) ||
-    typeof record.id !== 'string' || !/\S/u.test(record.id) ||
-    [...record.id].length > REPAIR_PROPOSAL_LIMITS.idCodePoints ||
-    typeof record.rationale !== 'string' || !/\S/u.test(record.rationale) ||
-    [...record.rationale].length > REPAIR_PROPOSAL_LIMITS.rationaleCodePoints ||
-    !Array.isArray(record.edits) || record.edits.length === 0 ||
-    record.edits.length > REPAIR_PROPOSAL_LIMITS.edits
+    Object.keys(record).some((key) => !PROPOSAL_FIELD_NAMES.has(key)) ||
+    typeof id !== 'string' || !/\S/u.test(id) ||
+    [...id].length > REPAIR_PROPOSAL_LIMITS.idCodePoints ||
+    typeof rationale !== 'string' || !/\S/u.test(rationale) ||
+    [...rationale].length > REPAIR_PROPOSAL_LIMITS.rationaleCodePoints ||
+    !Array.isArray(edits) || edits.length === 0 ||
+    edits.length > REPAIR_PROPOSAL_LIMITS.edits
   ) throw new TypeError('Repair proposal does not match the strict schema');
-  return { id: record.id, rationale: record.rationale, edits: record.edits };
+  return { id, rationale, edits };
 }
 
-function worstCaseRequestUsd(messages: readonly ChatMessage[], inputPrice: number, outputPrice: number): number {
-  const requestBytes = Buffer.byteLength(JSON.stringify({ messages, responseSchema: REPAIR_PROPOSAL_SCHEMA }), 'utf8');
+function worstCaseRequestUsd(
+  requestBytes: number, inputPrice: number, outputPrice: number,
+): number {
   const priced = (requestBytes * inputPrice + SUPER_REPAIR_MAX_TOKENS * outputPrice) / 1_000_000;
   return Math.max(REPAIR_ATTEMPT_MINIMUM_INFERENCE_USD, Math.ceil(priced * 1_000_000) / 1_000_000);
 }
 
-function proposalOptions(ctx: ControlledRepairAttemptContext): ChatOptions {
+function proposalOptions(ctx: ControlledRepairAttemptContext, schema: JsonSchema): ChatOptions {
   return {
     maxTokens: SUPER_REPAIR_MAX_TOKENS,
     temperature: 1,
     reasoningEffort: 'low',
     responseFormat: {
       type: 'json_schema',
-      jsonSchema: { name: 'sutura_repair_proposal', strict: true, schema: REPAIR_PROPOSAL_SCHEMA },
+      jsonSchema: { name: 'sutura_repair_proposal', strict: true, schema },
     },
     routing: {
       failureClass: ctx.diagnosis.class,
@@ -143,11 +271,11 @@ function proposalOptions(ctx: ControlledRepairAttemptContext): ChatOptions {
 export function controlledRepairAttemptReservationUsd(
   ctx: ControlledRepairAttemptContext,
 ): number {
-  const messages = proposalMessages(ctx);
-  const options = proposalOptions(ctx);
+  const { messages, schema, requestBytes } = proposalContract(ctx);
+  const options = proposalOptions(ctx, schema);
   const quote = ctx.llm.modelQuote?.('super', messages, options);
   if (quote === undefined) throw new Error('Repair model routing quote is unavailable');
-  return worstCaseRequestUsd(messages, quote.price.input, quote.price.output);
+  return worstCaseRequestUsd(requestBytes, quote.price.input, quote.price.output);
 }
 
 export async function runControlledRepairAttempt(
@@ -164,16 +292,21 @@ export async function runControlledRepairAttempt(
   if (ctx.sourceContext.sources.length === 0) {
     return { status: 'gave-up', failureKind: 'invalid', reason: 'No bounded editable repair source was available' };
   }
-  let messages: ChatMessage[];
+  let contract: RepairProposalContract;
   try {
-    messages = proposalMessages(ctx);
+    contract = proposalContract(ctx);
   } catch (error) {
-    return { status: 'gave-up', failureKind: 'policy', reason: publicRepairReason(error instanceof Error ? error.message : String(error)) };
+    return {
+      status: 'gave-up',
+      failureKind: error instanceof RepairProposalPreparationError ? error.failureKind : 'policy',
+      reason: publicRepairReason(error instanceof Error ? error.message : String(error)),
+    };
   }
-  const options = proposalOptions(ctx);
+  const { messages, schema, requestBytes } = contract;
+  const options = proposalOptions(ctx, schema);
   const response = await requestRepairModel({
     llm: ctx.llm, budget: ctx.budget, messages, options,
-    worstCaseUsd: (price) => worstCaseRequestUsd(messages, price.input, price.output),
+    worstCaseUsd: (price) => worstCaseRequestUsd(requestBytes, price.input, price.output),
     ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
     ...(ctx.observeCapacity === undefined ? {} : { observeCapacity: ctx.observeCapacity }),
   });

@@ -27,9 +27,12 @@ import {
 } from './engine/repair.js';
 import {
   controlledRepairAttemptReservationUsd,
+  prepareControlledRepairProposalTemplate,
+  RepairProposalPreparationError,
   runControlledRepairAttempt,
   REPAIR_ATTEMPT_COSTS,
   type ControlledRepairAttemptContext,
+  type ControlledRepairProposalTemplate,
 } from './engine/repair-attempt.js';
 import { validateCandidateDiff } from './engine/candidate-validation.js';
 import { candidateIdentity } from './engine/candidate-identity.js';
@@ -811,23 +814,44 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       ...DEFAULT_SEARCH_LIMITS,
       initialBranches: Math.min(ctx.raceK, DEFAULT_SEARCH_LIMITS.initialBranches),
     };
-    const attemptContext = (parent: SearchNode | undefined): ControlledRepairAttemptContext => ({
-      llm: fullContext.llm,
-      executor: ctx.executor,
-      initialImageId: ctx.failingImage,
-      diagnosis,
-      policy,
-      budget,
-      trustedCommands,
-      sourceContext,
-      ...(parent === undefined ? {} : {
-        feedback: {
-          candidateDiff: parent.cumulativeDiff,
-          testOutput: parent.testEvidence.output,
-          errorFingerprint: parent.errorFingerprint,
-        },
-      }),
-    });
+    let proposalTemplate: ControlledRepairProposalTemplate;
+    try {
+      proposalTemplate = prepareControlledRepairProposalTemplate({ diagnosis, policy, sourceContext });
+    } catch (error) {
+      ledger.record({
+        stage: 'search', attempt: 1, network: 'disabled',
+        note: `${error instanceof RepairProposalPreparationError ? error.failureKind : 'policy'} failure: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      });
+      return makeCaseFile(fullContext, diagnosis, triageVerdict, [], 'gave-up', undefined, []);
+    }
+    const attemptContexts = new Map<string, ControlledRepairAttemptContext>();
+    const attemptContext = (parent: SearchNode | undefined): ControlledRepairAttemptContext => {
+      const key = parent?.id ?? 'baseline';
+      const existing = attemptContexts.get(key);
+      if (existing !== undefined) return existing;
+      const feedback = parent === undefined ? undefined : {
+        candidateDiff: parent.cumulativeDiff,
+        testOutput: parent.testEvidence.output,
+        errorFingerprint: parent.errorFingerprint,
+      };
+      const prepared = {
+        llm: fullContext.llm,
+        executor: ctx.executor,
+        initialImageId: ctx.failingImage,
+        diagnosis,
+        policy,
+        budget,
+        trustedCommands,
+        sourceContext,
+        proposalTemplate,
+        proposalContract: proposalTemplate.contract(feedback),
+        ...(feedback === undefined ? {} : { feedback }),
+      };
+      attemptContexts.set(key, prepared);
+      return prepared;
+    };
     const inferenceCapacity = (parents: readonly (SearchNode | undefined)[]): number => {
       const remainingUsd = budget.limits.inferenceCostUsd - budget.snapshot().inferenceCostUsd;
       try {

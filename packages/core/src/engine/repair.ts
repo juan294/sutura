@@ -36,8 +36,14 @@ export const REPAIR_PROPOSAL_LIMITS = Object.freeze({
   edits: 8,
   pathCodePoints: 240,
   replacementCodePoints: 12_000,
-  line: Number.MAX_SAFE_INTEGER,
 });
+export const REPAIR_PROPOSAL_FIELDS = Object.freeze({
+  id: 'id', rationale: 'rationale', edits: 'edits',
+} as const);
+export const REPAIR_EDIT_FIELDS = Object.freeze({
+  path: 'path', startLine: 'startLine', endLine: 'endLine', replacement: 'new',
+} as const);
+const REPAIR_EDIT_FIELD_NAMES = new Set<string>(Object.values(REPAIR_EDIT_FIELDS));
 
 export type RepairLlm = TierLlm<'super'>;
 
@@ -309,20 +315,24 @@ function anchoredEditValue(value: unknown, editIndex: number): AnchoredRepairEdi
     throw new Error(`repair edit ${editIndex + 1} must be an object`);
   }
   const edit = value as Record<string, unknown>;
+  const path = edit[REPAIR_EDIT_FIELDS.path];
+  const startLine = edit[REPAIR_EDIT_FIELDS.startLine];
+  const endLine = edit[REPAIR_EDIT_FIELDS.endLine];
+  const replacement = edit[REPAIR_EDIT_FIELDS.replacement];
   if (
-    Object.keys(edit).some((key) => !['path', 'startLine', 'endLine', 'new'].includes(key)) ||
-    typeof edit.path !== 'string' || !/\S/u.test(edit.path) ||
-    [...edit.path].length > REPAIR_PROPOSAL_LIMITS.pathCodePoints ||
-    !Number.isSafeInteger(edit.startLine) || Number(edit.startLine) < 1 ||
-    !Number.isSafeInteger(edit.endLine) || Number(edit.endLine) < Number(edit.startLine) ||
-    typeof edit.new !== 'string' ||
-    [...edit.new].length > REPAIR_PROPOSAL_LIMITS.replacementCodePoints
+    Object.keys(edit).some((key) => !REPAIR_EDIT_FIELD_NAMES.has(key)) ||
+    typeof path !== 'string' || !/\S/u.test(path) ||
+    [...path].length > REPAIR_PROPOSAL_LIMITS.pathCodePoints ||
+    !Number.isSafeInteger(startLine) || Number(startLine) < 1 ||
+    !Number.isSafeInteger(endLine) || Number(endLine) < Number(startLine) ||
+    typeof replacement !== 'string' ||
+    [...replacement].length > REPAIR_PROPOSAL_LIMITS.replacementCodePoints
   ) throw new Error(`repair edit ${editIndex + 1} does not match the anchored line schema`);
   return {
-    path: edit.path,
-    startLine: Number(edit.startLine),
-    endLine: Number(edit.endLine),
-    replacement: edit.new,
+    path,
+    startLine: Number(startLine),
+    endLine: Number(endLine),
+    replacement,
   };
 }
 
@@ -336,6 +346,29 @@ function lineSpans(content: string): Array<{ start: number; end: number }> {
   }
   if (start < content.length) spans.push({ start, end: content.length });
   return spans;
+}
+
+export interface RepairSourceLine {
+  line: number;
+  text: string;
+  start: number;
+  end: number;
+}
+
+export function indexRepairSourceLines(excerpt: RepairSourceExcerpt): RepairSourceLine[] {
+  if (!Number.isSafeInteger(excerpt.startLine) || excerpt.startLine < 1) {
+    throw new RangeError(`repair source ${excerpt.path} must use a safe positive start line`);
+  }
+  const spans = lineSpans(excerpt.content);
+  if (spans.length > 0 && spans.length - 1 > Number.MAX_SAFE_INTEGER - excerpt.startLine) {
+    throw new RangeError(`repair source ${excerpt.path} line range exceeds safe integers`);
+  }
+  return spans.map(({ start, end }, index) => ({
+    line: excerpt.startLine + index,
+    text: excerpt.content.slice(start, end).replace(/\r?\n$/u, ''),
+    start,
+    end,
+  }));
 }
 
 function replacementWithSourceEnding(
@@ -373,9 +406,9 @@ export function anchoredEditsDiff(
     for (const excerpt of sourceContext.sources) {
       if (excerpt.path !== path) continue;
       const spans = lineSpans(excerpt.content);
-      const finalLine = excerpt.startLine + spans.length - 1;
+      const finalLine = spans.length === 0 ? undefined : excerpt.startLine + spans.length - 1;
       if (pathEdits.every(({ startLine, endLine }) =>
-        startLine >= excerpt.startLine && endLine <= finalLine,
+        finalLine !== undefined && startLine >= excerpt.startLine && endLine <= finalLine,
       )) {
         selected = { excerpt, spans };
         break;

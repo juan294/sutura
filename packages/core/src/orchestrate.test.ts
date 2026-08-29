@@ -562,12 +562,21 @@ describe('orchestrate', () => {
       }) };
       if (tier === 'super') {
         const request = JSON.parse(messages.find(({ role }) => role === 'user')?.content ?? '{}') as {
-          sources?: Array<{ path: string; content: string }>;
+          sources?: Array<{ path: string; endLine: number; editable: boolean; lines: Array<{ line: number; text: string }> }>;
         };
         expect(request.sources?.map(({ path }) => path)).toEqual([
           'packages/core/src/dogfood-add.test.ts',
           'packages/core/src/dogfood-add.ts',
         ]);
+        expect(request.sources?.find(({ path }) => path.endsWith('dogfood-add.ts'))).toMatchObject({
+          endLine: 3, editable: true,
+          lines: expect.arrayContaining([{ line: 2, text: '  return left - right;' }]),
+        });
+        expect(request.sources?.find(({ path }) => path.endsWith('dogfood-add.test.ts')))
+          .toMatchObject({ editable: false });
+        expect(JSON.stringify(options)).toContain('"const":"packages/core/src/dogfood-add.ts"');
+        expect(JSON.stringify(options)).toContain('"maximum":3');
+        expect(JSON.stringify(options)).not.toContain('"const":"packages/core/src/dogfood-add.test.ts"');
         expect(options).not.toHaveProperty('tools');
         expect(options).not.toHaveProperty('toolChoice');
         expect(options).not.toHaveProperty('parallelToolCalls');
@@ -916,10 +925,17 @@ describe('orchestrate', () => {
         if (placeboSuperCall === 0) {
           const user = messages.find(({ role }) => role === 'user');
           const request = JSON.parse(user?.content ?? '') as {
-            sources: Array<{ path: string; content: string }>;
+            sources: Array<{ path: string; lines: Array<{ line: number; text: string }> }>;
           };
           expect(request.sources).toEqual([
-            expect.objectContaining({ path: 'parse-port.ts', content: brokenSource }),
+            expect.objectContaining({
+              path: 'parse-port.ts',
+              lines: [
+                { line: 1, text: 'export function parsePort(value: string): number {' },
+                { line: 2, text: '  return value;' },
+                { line: 3, text: '}' },
+              ],
+            }),
           ]);
         }
         placeboSuperCall += 1;

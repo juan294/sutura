@@ -32,6 +32,8 @@ The next live proof reached Super and exposed a proposal-fidelity gap. The provi
 
 The anchored-proposal live proof then exposed a completion-budget gap. Five of six Super replies reached the exact 8,192-token ceiling because reasoning shares the completion allowance. Production must use the documented 16,000-token low-effort envelope rounded to 16,384, include the compact schema shape in the prompt, and preserve a provider length terminal as typed evidence.
 
+The completion-budget live proof then exposed a remaining path/range contract gap. The static provider schema accepted any positive line number while local validation knew the exact bounds for each supplied path. Production must derive a path-discriminated provider schema and explicit numbered source evidence from the same bounded source closure.
+
 At the pre-redesign baseline, unit and end-to-end tests scripted ideal LLM tool calls, no live test called the complete orchestration path, and production admission reduced the four-branch search default to one branch by reserving all eight model turns for it. The implementation phases replace those conditions with strict proposals, recorded production-path orchestration, exact attempt reservation, and locally replayed live terminal evidence.
 
 ## Design options
@@ -96,7 +98,7 @@ failed GitHub run
 | 1 | Bounded repair source closure | None | Sequential |
 | 2 | Controller-owned repair attempt | Phase 1 | Sequential |
 | 3 | Search budgets, feedback, and exact winner identity | Phase 2 | Sequential |
-| 4 | Twelve-run replay and production-path integration gates | Phase 3 | Sequential |
+| 4 | Thirteen-run replay and production-path integration gates | Phase 3 | Sequential |
 | 5 | Exact-SHA CI and final live dogfood proof | Phase 4 | Sequential |
 
 Detailed phase files:
@@ -144,11 +146,12 @@ Run the `codex-simplify` reuse, quality, and efficiency reviews after implementa
 - Provider, invalid-schema, policy, timeout, cancellation, and budget failures terminate with typed evidence.
 - A provider `finish_reason: length` is recorded as a completion-limit terminal, not malformed JSON.
 - A completion-limit terminal cancels unfinished siblings, stops later batches and depths, and never discards a valid candidate that completed in the same batch.
+- Provider schema and prompt evidence bind each edit path to the exact inclusive line range in its supplied source excerpt.
 - Node ESM, TypeScript extension, monorepo, and Python relative-source closure cases pass.
 - Source traversal, symlink, sensitive path, policy denial, ambiguity, oversized content, and credential redaction fail closed.
 - Audit and publication use one exact candidate ID and diff hash.
 - The recorded GitHub action E2E creates one repair branch and PR for the realistic direct-run dogfood fixture.
-- All nine historical model-control terminal classes and the three post-redesign live terminal classes have local regression coverage.
+- All nine historical model-control terminal classes and the four post-redesign live terminal classes have local regression coverage.
 - The complete local verification gate and simplification reviews pass.
 
 ## Final live acceptance
@@ -177,5 +180,5 @@ This reliability cycle does not publish v0.2.0, create a tag or GitHub release, 
 - [x] Phase 1: Bounded repair source closure
 - [x] Phase 2: Controller-owned repair attempt
 - [x] Phase 3: Search budgets, feedback, and exact winner identity
-- [x] Phase 4: Twelve-run replay and production-path integration gates
+- [x] Phase 4: Thirteen-run replay and production-path integration gates
 - [ ] Phase 5: Exact-SHA CI and final live dogfood proof

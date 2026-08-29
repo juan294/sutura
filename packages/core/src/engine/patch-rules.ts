@@ -28,6 +28,21 @@ interface FileChange {
 
 const TOOL_CONFIG =
   /(?:^|\/)(?:tsconfig(?:\.[^/]+)?\.json|eslint\.config\.[^/]+|\.eslintrc(?:\.[^/]+)?|\.eslintignore|vitest\.(?:config|workspace)\.[^/]+|vite\.config\.[^/]+|ruff\.toml|mypy\.ini|pytest\.ini|pyproject\.toml)$/;
+
+function repairPathViolations(path: string, diagnosis: Diagnosis): string[] {
+  const violations: string[] = [];
+  if (diagnosis.class !== 'test-bug' && isConventionalTestPath(path)) {
+    violations.push(`touches test file: ${path}`);
+  }
+  if (diagnosis.class !== 'env-config' && TOOL_CONFIG.test(path)) {
+    violations.push(`touches tool config: ${path}`);
+  }
+  return violations;
+}
+
+export function isRepairPathAdmissible(path: string, diagnosis: Diagnosis): boolean {
+  return repairPathViolations(path, diagnosis).length === 0;
+}
 function parseChanges(diff: string): { changes: FileChange[]; valid: boolean } {
   const parsed = parseUnifiedDiff(diff);
   const changes = new Map<string, FileChange>();
@@ -93,15 +108,8 @@ export function vetPatch(diff: string, diagnosis: Diagnosis): PatchVerdict {
   for (const change of parsed.changes) {
     if (change.deleted && isConventionalTestPath(change.path)) {
       violations.push(`deletes test file: ${change.path}`);
-    } else if (
-      diagnosis.class !== 'test-bug' &&
-      isConventionalTestPath(change.path)
-    ) {
-      violations.push(`touches test file: ${change.path}`);
-    }
-
-    if (diagnosis.class !== 'env-config' && TOOL_CONFIG.test(change.path)) {
-      violations.push(`touches tool config: ${change.path}`);
+    } else {
+      violations.push(...repairPathViolations(change.path, diagnosis));
     }
   }
   const unified = parseUnifiedDiff(diff);

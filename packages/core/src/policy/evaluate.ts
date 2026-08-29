@@ -66,6 +66,10 @@ export function policyAllowsSourceRead(path: string, policy: RepositoryPolicy): 
   return !matchesAny(path, policy.deniedReadPaths);
 }
 
+export function policyAllowsPatchPath(path: string, policy: RepositoryPolicy): boolean {
+  return !matchesAny(path, policy.protectedPaths) && matchesAny(path, policy.allowedPaths);
+}
+
 const WORKSPACE_PATH_PREFIX = /(?:file:\/\/\/workspace\/|\/workspace\/|\/(?:home\/runner\/work|__w)\/([A-Za-z0-9_.-]+)\/\1\/)/gu;
 const REPOSITORY_PATH_IN_TEXT = /(?:^|[\t "'(`=])(?<path>(?:\.\/)?(?:(?:[A-Za-z0-9_@.-][A-Za-z0-9_@. -]*\/)+[A-Za-z0-9_@.-][A-Za-z0-9_@. -]*|[A-Za-z0-9_@.-][A-Za-z0-9_@. -]*\.[A-Za-z0-9_-]+))(?=:\d+|\(|[\t ]|$)/gu;
 
@@ -112,7 +116,7 @@ export function evaluatePatchPolicy(
   for (const path of paths) {
     if (matchesAny(path, policy.protectedPaths)) {
       violations.push(`touches protected path: ${path}`);
-    } else if (!matchesAny(path, policy.allowedPaths)) {
+    } else if (!policyAllowsPatchPath(path, policy)) {
       violations.push(`touches disallowed path: ${path}`);
     }
   }

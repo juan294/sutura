@@ -145,12 +145,20 @@ describe.skipIf(environment.SUTURA_LIVE !== '1')('NebiusClient live', () => {
       budget: new RepairBudget(),
       trustedCommands: { diagnosed: 'pnpm test' },
       sourceContext: {
-        sources: [{
-          path: 'src/add.ts',
-          startLine: 1,
-          content: 'export function add(left: number, right: number): number {\n  return left - right;\n}\n',
-          truncated: false,
-        }],
+        sources: [
+          {
+            path: 'src/add.test.ts',
+            startLine: 1,
+            content: "import { expect, it } from 'vitest';\n\nimport { add } from './add.js';\n\nit('adds', () => {\n  expect(add(2, 3)).toBe(5);\n});\n",
+            truncated: false,
+          },
+          {
+            path: 'src/add.ts',
+            startLine: 1,
+            content: 'export function add(left: number, right: number): number {\n  return left - right;\n}\n',
+            truncated: false,
+          },
+        ],
       },
     });
 

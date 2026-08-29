@@ -618,13 +618,22 @@ describe('recorded GitHub API orchestration E2E', () => {
         }) };
         if (tier === 'super') {
           const request = JSON.parse(messages.find(({ role }) => role === 'user')?.content ?? '{}') as {
-            sources?: Array<{ path: string }>;
+            sources?: Array<{ path: string; endLine: number; editable: boolean; lines: Array<{ line: number; text: string }> }>;
           };
           expect(request.sources?.map(({ path }) => path)).toEqual([
             'packages/core/src/dogfood-add.test.ts',
             'packages/core/src/dogfood-add.ts',
           ]);
+          expect(request.sources?.find(({ path }) => path.endsWith('dogfood-add.ts'))).toMatchObject({
+            endLine: 3, editable: true,
+            lines: expect.arrayContaining([{ line: 2, text: '  return left - right;' }]),
+          });
+          expect(request.sources?.find(({ path }) => path.endsWith('dogfood-add.test.ts')))
+            .toMatchObject({ editable: false });
           expect(options).toMatchObject({ responseFormat: { type: 'json_schema' } });
+          expect(JSON.stringify(options)).toContain('"const":"packages/core/src/dogfood-add.ts"');
+          expect(JSON.stringify(options)).toContain('"maximum":3');
+          expect(JSON.stringify(options)).not.toContain('"const":"packages/core/src/dogfood-add.test.ts"');
           expect(options).not.toHaveProperty('tools');
           expect(options).not.toHaveProperty('toolChoice');
           return { text: JSON.stringify({

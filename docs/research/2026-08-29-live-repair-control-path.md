@@ -85,3 +85,13 @@ Expected: low-effort Super returns one compact anchored JSON proposal before the
 Found: five replies consumed the full 8,192-token completion allowance and produced truncated or non-JSON content. The sixth stopped after 5,484 combined output and reasoning tokens but did not match the strict schema. Token Factory counts hidden reasoning inside the completion limit, while Sutura discarded the provider `finish_reason` at the shared LLM interface and reported length terminals as malformed JSON.
 
 Why it matters: the production completion budget was below NVIDIA's documented 16,000-token low-effort Super example and below the repository's existing 16,384-token Super candidate request. Production must reserve the larger bounded envelope, put the compact schema shape in the prompt as Token Factory recommends, and preserve `finish_reason: length` as explicit terminal evidence.
+
+## Live proof 13 addendum
+
+The completion-budget candidate, `c7f312584d3d801345d49a7873cf4c22995b3761`, passed exact-SHA CI at [run 33258309351](https://github.com/juan294/sutura/actions/runs/33258309351). Dogfood SHA `23d7adb3017bfae10ca59e46a8b0243b11b17221` then failed only the declared arithmetic assertion at [run 33258931783](https://github.com/juan294/sutura/actions/runs/33258931783). Sutura [run 33258981625](https://github.com/juan294/sutura/actions/runs/33258981625) reached Super seven times but completed with `gave-up` and no repair pull request.
+
+Expected: strict provider output selects an inclusive line range from the same supplied path and repairs the source required by the failing assertion.
+
+Found: all seven Super replies finished below the 16,384-token completion limit. Six proposals selected line ranges outside `packages/core/src/dogfood-add.ts`. One proposal applied but did not satisfy the trusted test. The static provider schema allowed any positive line through `Number.MAX_SAFE_INTEGER`; only local validation knew that this source contained lines 1 through 3. The prompt supplied a start line and unnumbered content but no explicit end line or per-line records.
+
+Why it matters: provider and local validation still represented different contracts for the most important proposal fields. The controller must derive one path-discriminated schema from the exact source closure, constrain each path to its real line bounds, and send the same source as explicit numbered records. This makes an out-of-file stack-trace line structurally invalid before local parsing or sandbox work.

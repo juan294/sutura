@@ -125,4 +125,36 @@ The complete local gate passed against the implementation tree. Candidate packag
 - Efficiency review: clean
 - `git diff --check`: passed
 
+### Path-range revision
+
+- Develop candidate: `c7f312584d3d801345d49a7873cf4c22995b3761`
+- Develop CI: [33258309351](https://github.com/juan294/sutura/actions/runs/33258309351), passed in 11 minutes 37 seconds
+- Dogfood SHA: `23d7adb3017bfae10ca59e46a8b0243b11b17221`
+- Intentional CI: [33258931783](https://github.com/juan294/sutura/actions/runs/33258931783), failed only the declared arithmetic assertion after 725 core tests passed and 8 live tests skipped
+- Sutura: [33258981625](https://github.com/juan294/sutura/actions/runs/33258981625), `gave-up`
+- Terminal evidence: seven Super replies finished below the completion cap; six selected ranges outside the three-line source, and one accepted patch failed the trusted test
+- Response: derive one path-discriminated provider schema and numbered prompt evidence from the exact bounded source closure
+
+### Path-range local gate
+
+- Core: 730 passed, 8 skipped
+- Action: 70 passed
+- Evaluation: 5 passed
+- CLI: 81 passed
+- Placebo: 70 passed in 848 seconds
+- Repository total: 956 passed, 8 skipped
+- Focused path-range core replay: 266 passed
+- Focused Action orchestration replay: 6 passed
+- Typecheck: passed for all five buildable workspace packages
+- Lint: passed for all five buildable workspace packages
+- Build and Action bundle rebuild: passed
+- README setup tests: 3 passed
+- README isolated setup verification: passed
+- Vendored runtime verification and offline `darwin-arm64` smoke: passed
+- Release contracts: 22 passed
+- Reuse review: clean
+- Quality review: clean
+- Efficiency review: clean
+- `git diff --check`: passed
+
 Final Phase 5 exact-SHA CI and live dogfood evidence remain pending.

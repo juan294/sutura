@@ -10,7 +10,7 @@ Refactor the repair-agent and structured repair modules, repair tools, LLM schem
 
 ## Implementation
 
-1. Define one strict repair proposal schema with candidate ID, concise rationale, and non-empty inclusive source line anchors plus complete replacement text. Declare the same bounds in the provider schema and local parser.
+1. Define one strict repair proposal schema with candidate ID, concise rationale, and non-empty inclusive source line anchors plus complete replacement text. Derive a path-discriminated provider schema from the exact source closure so every path has its real minimum and maximum line. Declare the same bounds in the prompt evidence and local parser.
 2. Send diagnosis, bounded source closure, trusted command identity, and optional parent feedback to one Super request.
    Use a 16,384-token low-effort completion envelope and include the compact JSON shape in the prompt because reasoning shares the provider completion limit.
 3. Do not expose production control tools to that request.
@@ -44,6 +44,7 @@ if fail: return checkpoint with complete diff and bounded test evidence
 - A patch failure, test failure, provider failure, invalid schema, policy refusal, timeout, cancellation, and budget exhaustion return typed terminal evidence.
 - A provider completion-length terminal is preserved explicitly and cannot be mislabeled as malformed JSON.
 - Completion exhaustion is a non-retryable search terminal: cancel unfinished siblings, stop later branches, and keep a valid same-batch candidate if one completed.
+- Provider output cannot select a stack-trace line or another file's line range for the chosen source path.
 - No candidate exists without passing trusted-test evidence from its patched image.
 - Exact cost, model-turn, action, sandbox-operation, and elapsed-time accounting is asserted.
 - Trace events prove the state order for pass and fail paths.
