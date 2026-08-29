@@ -15,7 +15,12 @@ import type { InMemoryCall, InMemoryRunResult } from './executor/memory.js';
 import { completedTriageVerdict, notRunTriageVerdict } from './engine/triage.js';
 import type { TierLlm } from './llm/types.js';
 import { DEFAULT_MODEL_PRICES } from './llm/cost.js';
+import {
+  type HttpRequestInit,
+  type HttpResponse,
+} from './llm/nebius.js';
 import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
+import { createTokenFactoryClient } from './llm/token-factory.js';
 import { repairProposalReply } from './testing/repair-proposal.test-helper.js';
 import { parseRepositoryPolicy } from './policy/schema.js';
 import {
@@ -281,6 +286,27 @@ function runResult(exitCode: number): InMemoryRunResult {
   };
 }
 
+function providerResponse(content: string): HttpResponse {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    async json() {
+      return {
+        choices: [{ finish_reason: 'stop', message: { content } }],
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 20,
+          completion_tokens_details: { reasoning_tokens: 0 },
+        },
+      };
+    },
+    async text() {
+      return '';
+    },
+  };
+}
+
 function context(
   exits: number[],
   auditVerdict = true,
@@ -523,7 +549,7 @@ describe('orchestrate', () => {
     }));
   });
 
-  it('repairs the realistic direct-run dogfood failure through the production path', async () => {
+  it('replays live runs 3, 4, 5, and 10 through the serialized production path', async () => {
     const dogfoodRun: FailingWorkflowRun = {
       runId: RUN.runId,
       repo: RUN.repo,
@@ -540,7 +566,7 @@ describe('orchestrate', () => {
         ].join('\n'),
       }],
     };
-    const { ctx, github, repository, chat } = context(
+    const { ctx, github, repository } = context(
       [1, 1, 1, 0, 1, 1, 0], true, dogfoodRun,
     );
     repository.sources.clear();
@@ -552,17 +578,18 @@ describe('orchestrate', () => {
       'packages/core/src/dogfood-add.ts',
       'export function add(left: number, right: number): number {\n  return left - right;\n}\n',
     );
-    chat.mockImplementation(async (
-      tier: 'nano' | 'super' | 'ultra',
-      messages: readonly { role: string; content?: string | null }[],
-      options?: Record<string, unknown>,
-    ) => {
-      if (tier === 'nano') return { text: JSON.stringify({
+    const fetch = vi.fn(async (_url: string, init: HttpRequestInit): Promise<HttpResponse> => {
+      const body = JSON.parse(init.body) as {
+        model: string;
+        messages: Array<{ role: string; content?: string | null }>;
+        [key: string]: unknown;
+      };
+      if (body.model === DEFAULT_MODELS.nano) return providerResponse(JSON.stringify({
         class: 'test-assertion', confidence: 0.99, signals: ['expected -1 to be 5'],
         failingCmd: 'pnpm --filter @sutura/core test', errorExcerpt: 'expected -1 to be 5',
-      }) };
-      if (tier === 'super') {
-        const request = JSON.parse(messages.find(({ role }) => role === 'user')?.content ?? '{}') as {
+      }));
+      if (body.model === DEFAULT_MODELS.super) {
+        const request = JSON.parse(body.messages.find(({ role }) => role === 'user')?.content ?? '{}') as {
           sources?: Array<{ path: string; endLine: number; editable: boolean; lines: Array<{ line: number; text: string }> }>;
           selectedTarget?: { path: string; startLine: number; endLine: number };
         };
@@ -579,21 +606,35 @@ describe('orchestrate', () => {
         expect(request.selectedTarget).toEqual({
           path: 'packages/core/src/dogfood-add.ts', startLine: 1, endLine: 3,
         });
-        expect(JSON.stringify(options)).toContain('"replacement"');
-        expect(JSON.stringify(options)).not.toMatch(/(?:dogfood-add|startLine|endLine|"path")/u);
-        expect(options).not.toHaveProperty('tools');
-        expect(options).not.toHaveProperty('toolChoice');
-        expect(options).not.toHaveProperty('parallelToolCalls');
-        return { text: JSON.stringify({
+        expect(JSON.stringify(body.response_format)).toContain('"replacement"');
+        expect(JSON.stringify(body.response_format)).not.toMatch(/(?:dogfood-add|startLine|endLine|"path")/u);
+        expect(body).not.toHaveProperty('tools');
+        expect(body).not.toHaveProperty('tool_choice');
+        expect(body).not.toHaveProperty('parallel_tool_calls');
+        expect(body).not.toHaveProperty('reasoning_effort');
+        expect(body).toMatchObject({
+          max_tokens: 8_192,
+          temperature: 1,
+          top_p: 0.95,
+          extra_body: { chat_template_kwargs: { enable_thinking: false } },
+        });
+        return providerResponse(JSON.stringify({
           replacement: 'export function add(left: number, right: number): number {\n  return left + right;\n}\n',
-        }), usd: 0.001 };
+        }));
       }
-      const auditRequest = JSON.parse(messages.find(({ role }) => role === 'user')?.content ?? '{}') as {
+      expect(body.model).toBe(DEFAULT_MODELS.ultra);
+      const auditRequest = JSON.parse(body.messages.find(({ role }) => role === 'user')?.content ?? '{}') as {
         candidateDiff?: string;
       };
       expect(auditRequest.candidateDiff).toBe(DOGFOOD_DIFF);
-      return { text: JSON.stringify({ approved: true, reasoning: 'The addition repair holds.' }) };
+      return providerResponse(JSON.stringify({ approved: true, reasoning: 'The addition repair holds.' }));
     });
+    const client = createTokenFactoryClient({
+      apiKey: 'test-key',
+      models: DEFAULT_MODELS,
+    }, { fetch });
+    ctx.llm = client;
+    ctx.cost = client.ledger;
 
     const caseFile = await orchestrate(ctx);
 
@@ -612,6 +653,9 @@ describe('orchestrate', () => {
       id: expect.stringMatching(/^repair-[a-f0-9]{12}$/u),
       diffHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
     });
+    expect(fetch.mock.calls.map(([, init]) =>
+      JSON.parse((init as HttpRequestInit).body).model,
+    )).toEqual([DEFAULT_MODELS.nano, DEFAULT_MODELS.super, DEFAULT_MODELS.ultra]);
   });
 
   it('publishes the same smallest held candidate that the audit approved', async () => {

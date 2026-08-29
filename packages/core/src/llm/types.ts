@@ -97,14 +97,21 @@ export interface CapacitySnapshot {
 export interface LlmReply {
   /** Empty for a valid tool-only response. */
   text: string;
-  /** The provider's unmodified message content. */
+  /** The provider message content after hidden-thought redaction. */
   raw: string | null;
   toolCalls: readonly FunctionToolCall[];
   finishReason: string | null;
   usage: TokenUsage;
   usd: number;
   capacity: CapacitySnapshot;
+  /** Model selected locally for routing and billing. */
   model: string;
+  /** Model id reported by the provider response, when present. */
+  providerModel: string | null;
+  /** Whether the original provider content started with a think block. */
+  hadThinkPrefix: boolean;
+  /** Whether the provider reported reasoning-token details. */
+  reasoningTokensReported: boolean;
   latencyMs: number;
   requestId: string | null;
 }

@@ -360,6 +360,9 @@ describe('NebiusClient', () => {
         requestId: null,
       },
       model: 'nano-model',
+      providerModel: null,
+      hadThinkPrefix: true,
+      reasoningTokensReported: true,
       latencyMs: 0,
       requestId: null,
     });
@@ -375,7 +378,42 @@ describe('NebiusClient', () => {
 
     expect(reply.text).toBe('');
     expect(reply.raw).toBe('');
+    expect(reply.hadThinkPrefix).toBe(true);
     expect(JSON.stringify(reply)).not.toContain('hidden chain of thought');
+  });
+
+  it('preserves safe provider-contract metadata without exposing hidden content', async () => {
+    const fetch = vi.fn().mockResolvedValue(response({
+      model: 'provider/actual-model',
+      choices: [{ finish_reason: 'stop', message: { content: 'healthy' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    }));
+    const client = new NebiusClient(CONFIG, { fetch });
+
+    const reply = await client.chat('nano', MESSAGES);
+
+    expect(reply).toMatchObject({
+      providerModel: 'provider/actual-model',
+      hadThinkPrefix: false,
+      reasoningTokensReported: false,
+    });
+  });
+
+  it('treats null reasoning-token details as not reported', async () => {
+    const fetch = vi.fn().mockResolvedValue(response({
+      choices: [{ finish_reason: 'stop', message: { content: 'healthy' } }],
+      usage: {
+        prompt_tokens: 1,
+        completion_tokens: 1,
+        completion_tokens_details: null,
+      },
+    }));
+    const client = new NebiusClient(CONFIG, { fetch });
+
+    await expect(client.chat('nano', MESSAGES)).resolves.toMatchObject({
+      usage: { inTok: 1, outTok: 1, reasoningTok: 0 },
+      reasoningTokensReported: false,
+    });
   });
 
   it('accepts null content only with valid function calls and meters all completion tokens', async () => {

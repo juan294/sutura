@@ -11,6 +11,7 @@ export interface ActionConfiguration {
   githubToken: string;
   runId: string;
   triageN: number;
+  requireFixed: boolean;
   environment: Readonly<Record<string, string>>;
 }
 
@@ -69,6 +70,14 @@ function boundedNumber(value: string, fallback: number, maximum: number, name: s
   return parsed;
 }
 
+function booleanInput(value: string, fallback: boolean, name: string): boolean {
+  const normalized = value.trim();
+  if (!normalized) return fallback;
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  throw new ActionInputError(`${name} must be true or false`);
+}
+
 export function mapActionInputs(read: InputReader): ActionConfiguration {
   const runId = required(read, 'run-id');
   if (!/^[1-9]\d*$/.test(runId)) {
@@ -104,6 +113,7 @@ export function mapActionInputs(read: InputReader): ActionConfiguration {
     githubToken: required(read, 'github-token'),
     runId,
     triageN,
+    requireFixed: booleanInput(read('require-fixed'), false, 'require-fixed'),
     environment,
   };
 }

@@ -18,6 +18,7 @@ describe('mapActionInputs', () => {
       githubToken: 'ghs_test',
       runId: '12345',
       triageN: 5,
+      requireFixed: false,
       environment: {
         NEBIUS_API_KEY: 'neb_test',
         CONTREE_TOKEN: 'con_test',
@@ -39,13 +40,25 @@ describe('mapActionInputs', () => {
     });
   });
 
-  it('maps optional Tavily and model overrides without exposing the GitHub token', () => {
+  it('maps the strict self-hosting acceptance gate', () => {
+    const values = { ...REQUIRED, 'require-fixed': 'true' };
+    expect(mapActionInputs((name) => values[name as keyof typeof values] ?? ''))
+      .toMatchObject({ requireFixed: true });
+
+    for (const value of ['1', 'yes', 'TRUE']) {
+      const invalid = { ...REQUIRED, 'require-fixed': value };
+      expect(() => mapActionInputs((name) => invalid[name as keyof typeof invalid] ?? ''))
+        .toThrow(/require-fixed must be true or false/u);
+    }
+  });
+
+  it('maps optional Tavily and model selectors without exposing the GitHub token', () => {
     const values = {
       ...REQUIRED,
       'tavily-api-key': 'tav_test',
       'triage-n': '7',
       'model-nano': 'nano-override',
-      'model-super': 'super-override',
+      'model-super': 'nvidia/nemotron-3-super-120b-a12b',
       'model-ultra': 'ultra-override',
       'routing-profile': 'production-baseline-v1',
     };
@@ -70,7 +83,7 @@ describe('mapActionInputs', () => {
       SUTURA_SEARCH_MAX_DEPTH: '4',
       SUTURA_SEARCH_MAX_TOTAL_BRANCHES: '12',
       SUTURA_MODEL_NANO: 'nano-override',
-      SUTURA_MODEL_SUPER: 'super-override',
+      SUTURA_MODEL_SUPER: 'nvidia/nemotron-3-super-120b-a12b',
       SUTURA_MODEL_ULTRA: 'ultra-override',
     });
     expect(Object.values(config.environment)).not.toContain('ghs_test');

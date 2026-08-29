@@ -57,6 +57,7 @@ export interface NebiusClientDependencies {
 }
 
 interface CompletionResponse {
+  model?: unknown;
   choices?: Array<{
     finish_reason?: unknown;
     message?: { content?: unknown; tool_calls?: unknown };
@@ -64,7 +65,7 @@ interface CompletionResponse {
   usage?: {
     prompt_tokens?: unknown;
     completion_tokens?: unknown;
-    completion_tokens_details?: { reasoning_tokens?: unknown };
+    completion_tokens_details?: { reasoning_tokens?: unknown } | null;
   };
 }
 
@@ -88,8 +89,12 @@ function defaultSleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+function hasThinkPrefix(content: string): boolean {
+  return /^\s*<think>/iu.test(content);
+}
+
 function stripThinkPrefix(content: string): string {
-  if (!/^\s*<think>/iu.test(content)) return content;
+  if (!hasThinkPrefix(content)) return content;
   return content.replace(/^\s*<think>[\s\S]*?(?:<\/think>\s*|$)/iu, '');
 }
 
@@ -551,8 +556,15 @@ export class NebiusClient {
       response.usage?.completion_tokens,
       'usage.completion_tokens',
     );
+    const reasoningDetails = response.usage?.completion_tokens_details;
+    const reasoningTokensReported = reasoningDetails !== null &&
+      reasoningDetails !== undefined &&
+      Object.prototype.hasOwnProperty.call(
+        reasoningDetails,
+        'reasoning_tokens',
+      );
     const reasoningTok = nonNegativeInteger(
-      response.usage?.completion_tokens_details?.reasoning_tokens ?? 0,
+      reasoningDetails?.reasoning_tokens ?? 0,
       'usage.completion_tokens_details.reasoning_tokens',
     );
     if (reasoningTok > completionTok) {
@@ -578,6 +590,15 @@ export class NebiusClient {
 
     const capacity = capacitySnapshot(headers);
     this.latestCapacity = capacity;
+    const providerModel = response.model;
+    if (
+      providerModel !== undefined &&
+      providerModel !== null &&
+      (typeof providerModel !== 'string' || providerModel.length === 0)
+    ) {
+      throw new NebiusResponseError('Invalid model in Nebius response');
+    }
+    const hadThinkPrefix = typeof rawContent === 'string' && hasThinkPrefix(rawContent);
     const publicContent = typeof rawContent === 'string' ? stripThinkPrefix(rawContent) : null;
     return {
       text: publicContent ?? '',
@@ -588,6 +609,9 @@ export class NebiusClient {
       usd: entry.usd,
       capacity,
       model: decision.modelId,
+      providerModel: providerModel ?? null,
+      hadThinkPrefix,
+      reasoningTokensReported,
       latencyMs,
       requestId: capacity.requestId,
     };

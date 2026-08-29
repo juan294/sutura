@@ -31,6 +31,7 @@ describe('GitHub Action metadata', () => {
       'contree-project',
       'triage-n',
       'routing-profile',
+      'require-fixed',
       'model-nano',
       'model-super',
       'model-ultra',
@@ -38,5 +39,6 @@ describe('GitHub Action metadata', () => {
       expect(metadata).toContain(`  ${input}:\n`);
     }
     expect(metadata).toContain('outputs:\n  outcome:\n');
+    expect(metadata).toContain('  require-fixed:\n');
   });
 });

@@ -208,6 +208,21 @@ Run the complete local gate before you open a pull request:
 Live tests are opt-in with `SUTURA_LIVE=1` and require the corresponding
 credentials. Normal tests use recorded fixtures and do not spend API credit.
 
+Before any self-hosted dogfood run, verify the exact production Super repair
+contract without creating a branch or pull request:
+
+```text
+NEBIUS_API_KEY=... pnpm run canary:provider-contract
+```
+
+The canary uses the same request serializer, strict one-field JSON Schema,
+thinking-off control, 8,192-token envelope, Token Factory endpoint, and Super
+model as production. It requires a canonical arithmetic replacement, the exact
+provider-reported model ID, `finish_reason: stop`, non-zero usage, explicit zero
+reasoning-token details, and no hidden-thought prefix. The manual `Provider
+contract canary` workflow runs the same command with read-only repository
+permissions. Unverified Super model overrides fail closed.
+
 The versioned [release evidence requirements](docs/demo/sutura-v0.2.0-release-evidence-requirements.json)
 define the ten required records, including separate candidate and public
 matrices. Live benchmark, publication, public demo,
@@ -255,6 +270,12 @@ repository secrets. Configure `CONTREE_PROJECT` as a repository variable. The
 checked-in [workflow](.github/workflows/sutura.yml) shows the complete wiring.
 Pin external use to an immutable release tag or commit SHA.
 
+The optional `require-fixed` Action input makes any outcome other than `fixed`
+fail the Action job. Sutura's own workflow enables it, so a green workflow can
+no longer hide a `gave-up` self-repair result. Generated customer workflows keep
+the default advisory behavior and publish the exact outcome through the Action
+output and GitHub Check.
+
 Runtime detection is automatic for single-runtime repositories. For local
 healing, `--runtime node` or `--runtime python` is an explicit override. The
 Action `runtime` input accepts `auto`, `node`, or `python`. Prefer the protected
@@ -279,10 +300,11 @@ The triage default is a maximum of five reproductions. Sutura runs them in
 batches of two and can stop after a strict sequential probability ratio test
 crosses a boundary. Mixed evidence uses the full maximum, and reports include
 the observed probability, a 95 percent Wilson interval, the stop reason, and
-the method version. Model IDs, the selected price-verified routing profile,
-the triage maximum, and lower-only repair budgets are configurable action
-inputs. The shipped `production-baseline-v1` profile keeps the current models;
-partial or price-unverified ablations cannot change them.
+the method version. Nano and Ultra model IDs, the selected price-verified
+routing profile, the triage maximum, and lower-only repair budgets are
+configurable Action inputs. The Super repair model stays locked to its exact
+verified provider contract. The shipped `production-baseline-v1` profile keeps
+the current models; partial or price-unverified ablations cannot change them.
 
 ## Placebo
 

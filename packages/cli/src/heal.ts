@@ -5,9 +5,8 @@ import { basename, resolve, sep } from 'node:path';
 import {
   ContreeExecutor,
   auditOnly,
-  DEFAULT_MODEL_PRICES,
-  NebiusClient,
   TavilyClient,
+  createTokenFactoryClient,
   healCase,
   isSensitiveRepositoryPath,
   loadConfig,
@@ -38,7 +37,6 @@ import {
 
 import type { AuditArguments, HealArguments } from './args.js';
 
-const NEBIUS_BASE_URL = 'https://api.tokenfactory.nebius.com/v1/';
 const MAX_SOURCE_SCAN_BYTES = 1024 * 1024;
 const MAX_MANIFEST_BYTES = 128 * 1024;
 export const MAX_AUDIT_LOG_BYTES = 20_000;
@@ -413,11 +411,9 @@ export function runtimeFromEnvironment(
   if (request.tavilyEnabled && !config.tavilyApiKey) {
     throw new CliConfigError('TAVILY_API_KEY is required unless --no-tavily is set');
   }
-  const llm = new NebiusClient({
+  const llm = createTokenFactoryClient({
     apiKey: config.nebiusApiKey,
-    baseUrl: NEBIUS_BASE_URL,
     models: config.models,
-    prices: DEFAULT_MODEL_PRICES,
     routingProfileId: config.routingProfileId,
   });
   return {
@@ -467,11 +463,9 @@ export function auditRuntimeFromEnvironment(
   environment: ConfigEnvironment = process.env,
 ): AuditRuntime {
   const config = loadConfig(environment);
-  const llm = new NebiusClient({
+  const llm = createTokenFactoryClient({
     apiKey: config.nebiusApiKey,
-    baseUrl: NEBIUS_BASE_URL,
     models: config.models,
-    prices: DEFAULT_MODEL_PRICES,
     routingProfileId: config.routingProfileId,
   });
   return { llm, cost: llm.ledger };

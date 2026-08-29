@@ -34,7 +34,7 @@ describe('loadConfig', () => {
     expect(config).not.toHaveProperty('contreeProject');
   });
 
-  it('accepts valid feature, model, and numeric overrides', () => {
+  it('accepts valid feature, classifier, auditor, and numeric overrides', () => {
     const config = loadConfig({
       ...REQUIRED_ENV,
       TAVILY_API_KEY: 'tavily-secret',
@@ -55,7 +55,6 @@ describe('loadConfig', () => {
       SUTURA_SEARCH_MAX_DEPTH: '3',
       SUTURA_SEARCH_MAX_TOTAL_BRANCHES: '6',
       SUTURA_MODEL_NANO: 'nano-override',
-      SUTURA_MODEL_SUPER: 'super-override',
       SUTURA_MODEL_ULTRA: 'ultra-override',
     });
 
@@ -68,7 +67,7 @@ describe('loadConfig', () => {
       raceK: 4,
       models: {
         nano: 'nano-override',
-        super: 'super-override',
+        super: 'nvidia/nemotron-3-super-120b-a12b',
         ultra: 'ultra-override',
       },
       routingProfileId: 'production-baseline-v1',
@@ -79,6 +78,13 @@ describe('loadConfig', () => {
       },
       search: { initialBranches: 2, beamWidth: 1, maximumDepth: 3, maximumTotalBranches: 6 },
     });
+  });
+
+  it('rejects a Super override without an exact verified provider contract', () => {
+    expect(() => loadConfig({
+      ...REQUIRED_ENV,
+      SUTURA_MODEL_SUPER: 'super-override',
+    })).toThrow(/SUTURA_MODEL_SUPER.*verified provider contract/u);
   });
 
   it.each(['node', 'python'] as const)('accepts explicit %s runtime selection', (runtime) => {

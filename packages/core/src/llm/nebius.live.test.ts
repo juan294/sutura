@@ -1,15 +1,9 @@
-import { Buffer } from 'node:buffer';
-
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_MODELS } from '../config.js';
-import type { Diagnosis } from '../domain.js';
-import { runControlledRepairAttempt } from '../engine/repair-attempt.js';
-import { RepairBudget } from '../engine/repair-budget.js';
-import { InMemoryExecutor } from '../executor/memory.js';
-import { createDefaultRepositoryPolicy } from '../policy/load.js';
-import { DEFAULT_MODEL_PRICES } from './cost.js';
-import { NebiusClient } from './nebius.js';
+import { DEFAULT_MODELS, TOKEN_FACTORY_BASE_URL } from '../config.js';
+import type { NebiusClient } from './nebius.js';
+import { runSuperRepairProviderContractCanary } from './provider-contract-canary.js';
+import { createTokenFactoryClient } from './token-factory.js';
 
 const environment = (
   globalThis as unknown as {
@@ -22,12 +16,7 @@ function createLiveClient(): NebiusClient {
   if (!apiKey) {
     throw new Error('NEBIUS_API_KEY is required when SUTURA_LIVE=1');
   }
-  return new NebiusClient({
-    apiKey,
-    baseUrl: 'https://api.tokenfactory.nebius.com/v1/',
-    models: DEFAULT_MODELS,
-    prices: DEFAULT_MODEL_PRICES,
-  });
+  return createTokenFactoryClient({ apiKey });
 }
 
 describe.skipIf(environment.SUTURA_LIVE !== '1')('NebiusClient live', () => {
@@ -112,67 +101,24 @@ describe.skipIf(environment.SUTURA_LIVE !== '1')('NebiusClient live', () => {
     expect(client.ledger.totalUsd()).toBe(reply.usd);
   });
 
-  it('runs the production Super anchored-proposal contract with bounded reasoning', async () => {
-    const client = createLiveClient();
-    const diagnosis: Diagnosis = {
-      class: 'test-assertion',
-      confidence: 0.99,
-      signals: ['expected -1 to be 5'],
-      failingCmd: 'pnpm test',
-      errorExcerpt: 'src/add.test.ts: expected -1 to be 5',
-    };
-    const expectedDiff = [
-      'diff --git a/src/add.ts b/src/add.ts',
-      '--- a/src/add.ts', '+++ b/src/add.ts',
-      '@@ -1,3 +1,3 @@',
-      ' export function add(left: number, right: number): number {',
-      '-  return left - right;', '+  return left + right;', ' }', '',
-    ].join('\n');
-    const executor = new InMemoryExecutor((command, _parent, index) => {
-      if (index === 0) {
-        expect(command).toContain(Buffer.from(expectedDiff, 'utf8').toString('base64'));
-        return { exitCode: 0, stdout: expectedDiff, stderr: '', truncated: false, metrics: {} };
-      }
-      return { exitCode: 0, stdout: '1 passed', stderr: '', truncated: false, metrics: {} };
-    });
+  it('passes the exact production Super provider-contract canary', async () => {
+    const apiKey = environment.NEBIUS_API_KEY;
+    if (!apiKey) throw new Error('NEBIUS_API_KEY is required when SUTURA_LIVE=1');
 
-    const outcome = await runControlledRepairAttempt({
-      llm: client,
-      executor,
-      initialImageId: 'baseline',
-      diagnosis,
-      policy: createDefaultRepositoryPolicy(),
-      budget: new RepairBudget(),
-      trustedCommands: { diagnosed: 'pnpm test' },
-      sourceContext: {
-        sources: [
-          {
-            path: 'src/add.test.ts',
-            startLine: 1,
-            content: "import { expect, it } from 'vitest';\n\nimport { add } from './add.js';\n\nit('adds', () => {\n  expect(add(2, 3)).toBe(5);\n});\n",
-            truncated: false,
-          },
-          {
-            path: 'src/add.ts',
-            startLine: 1,
-            content: 'export function add(left: number, right: number): number {\n  return left - right;\n}\n',
-            truncated: false,
-          },
-        ],
-      },
-    });
+    const result = await runSuperRepairProviderContractCanary({ apiKey });
 
-    expect(outcome).toMatchObject({
-      status: 'submitted',
-      candidate: { diff: expectedDiff },
-    });
-    expect(client.ledger.entries).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        role: 'super',
-        model: DEFAULT_MODELS.super,
+    expect(result).toMatchObject({
+      endpoint: `${TOKEN_FACTORY_BASE_URL}chat/completions`,
+      model: DEFAULT_MODELS.super,
+      finishReason: 'stop',
+      usage: {
+        inTok: expect.any(Number),
         outTok: expect.any(Number),
-      }),
-    ]));
-    expect(client.ledger.entries.at(-1)?.outTok).toBeGreaterThan(0);
+        reasoningTok: expect.any(Number),
+      },
+      replacementCodePoints: expect.any(Number),
+    });
+    expect(result.usage.inTok).toBeGreaterThan(0);
+    expect(result.usage.outTok + result.usage.reasoningTok).toBeGreaterThan(0);
   });
 });

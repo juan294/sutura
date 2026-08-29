@@ -19,6 +19,7 @@ describe('trusted Sutura workflow', () => {
     expect(workflow).toContain('pull-requests: write');
     expect(workflow).toContain('github-token: ${{ github.token }}');
     expect(workflow).toContain('group: sutura-${{ github.event.workflow_run.id }}');
+    expect(workflow).toContain('require-fixed: true');
     expect(workflow).not.toMatch(/deploy|production|environment:/i);
   });
 

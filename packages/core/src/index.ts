@@ -4,6 +4,7 @@ export {
   MAX_RACE_CANDIDATES,
   MAX_STAGE_EVIDENCE_ENTRIES,
   MAX_TRIAGE_RUNS,
+  TOKEN_FACTORY_BASE_URL,
   loadConfig,
 } from './config.js';
 export { ContreeError, ContreeExecutor } from './executor/contree.js';
@@ -38,6 +39,15 @@ export {
   ModelRouter,
 } from './llm/router.js';
 export { NebiusApiError, NebiusClient, NebiusResponseError } from './llm/nebius.js';
+export {
+  TokenFactoryContractError,
+  createTokenFactoryClient,
+} from './llm/token-factory.js';
+export {
+  SUPER_REPAIR_PROVIDER_CONTRACT_VERSION,
+  SuperRepairProviderContractCanaryError,
+  runSuperRepairProviderContractCanary,
+} from './llm/provider-contract-canary.js';
 export {
   ClassificationError,
   classify,
@@ -142,10 +152,15 @@ export type {
   ModelRoutingInput,
   ModelSelectionProfile,
 } from './llm/router.js';
+export type { TokenFactoryClientOptions } from './llm/token-factory.js';
 export type {
   NebiusClientConfig,
   NebiusClientDependencies,
 } from './llm/nebius.js';
+export type {
+  SuperRepairProviderContractCanaryInput,
+  SuperRepairProviderContractCanaryResult,
+} from './llm/provider-contract-canary.js';
 export type {
   AssistantMessage,
   CapacitySnapshot,

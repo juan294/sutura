@@ -94,6 +94,8 @@ failed GitHub run
 8. A failed or invalid branch cannot consume the capacity reserved for another admitted branch, and every admitted target is reachable before replacement depth begins.
 9. No remote candidate is pushed until all local gates and replay cases pass.
 10. If the final live proof fails, do not push an immediate incremental repair. Add the new terminal path to the local replay suite, revise the design locally, and repeat all gates before another candidate.
+11. Before another dogfood branch exists, the exact production Super provider canary must pass without branch or pull-request mutation.
+12. Sutura's self-hosted workflow must fail unless its product outcome is exactly `fixed`; workflow completion alone is not acceptance evidence.
 
 ## Phase sequence
 
@@ -161,6 +163,9 @@ Run the `codex-simplify` reuse, quality, and efficiency reviews after implementa
 - Audit and publication use one exact candidate ID and diff hash.
 - The recorded GitHub action E2E creates one repair branch and PR for the realistic direct-run dogfood fixture.
 - All nine historical model-control terminal classes and the seven post-redesign live terminal classes have local regression coverage.
+- The exact Super provider-contract canary uses the production Token Factory client, serializer, endpoint, model, one-field schema, and thinking-off control without creating a branch or pull request.
+- The canary rejects a different or missing provider-reported model, non-stop finish reason, missing or empty usage, missing reasoning-token details, non-zero reasoning tokens, hidden-thought prefixes, oversized replacements, and an incorrect arithmetic repair.
+- Sutura's self-hosted workflow cannot finish green for `gave-up` or any outcome other than `fixed`, including `already-attempted` redelivery.
 - The complete local verification gate and simplification reviews pass.
 
 ## Final live acceptance
@@ -170,13 +175,14 @@ After the local candidate is fixed:
 1. Fast-forward the candidate into local `develop`.
 2. Push one exact `develop` SHA.
 3. Wait for all applicable CI on that exact SHA to finish successfully.
-4. Create one new dogfood branch from that green SHA with the same arithmetic defect.
-5. Push and dispatch the intentional CI failure.
-6. Wait for Sutura to report `fixed` and create one repair pull request.
-7. Verify the repair commit is a direct child of the dogfood SHA and changes subtraction to addition without changing the test or policy.
-8. Wait for all repair pull-request CI to finish successfully.
-9. Record the exact develop CI, intentional CI, Sutura workflow, repair PR, repair commit, and repair PR CI URLs.
-10. Clean task-owned local worktrees and local branches. Preserve the user-owned `docs/demo/thumbnail/` directory.
+4. Run the manual read-only provider-contract canary on that exact SHA and require it to pass.
+5. Create one new dogfood branch from that green SHA with the same arithmetic defect.
+6. Push and dispatch the intentional CI failure.
+7. Wait for Sutura to report `fixed` and create one repair pull request.
+8. Verify the repair commit is a direct child of the dogfood SHA and changes subtraction to addition without changing the test or policy.
+9. Wait for all repair pull-request CI to finish successfully.
+10. Record the exact develop CI, provider canary, intentional CI, Sutura workflow, repair PR, repair commit, and repair PR CI URLs.
+11. Clean task-owned local worktrees and local branches. Preserve the user-owned `docs/demo/thumbnail/` directory.
 
 The intentionally failed dogfood CI is expected. A Sutura `gave-up`, `refused`, `infra-stop`, missing PR, incorrect patch, or red repair-PR CI does not satisfy acceptance.
 
@@ -189,5 +195,5 @@ This reliability cycle does not publish v0.2.0, create a tag or GitHub release, 
 - [x] Phase 1: Bounded repair source closure
 - [x] Phase 2: Controller-owned repair attempt
 - [x] Phase 3: Search budgets, feedback, and exact winner identity
-- [ ] Phase 4: Sixteen-run replay and production-path integration gates
+- [x] Phase 4: Sixteen-run replay and production-path integration gates
 - [ ] Phase 5: Exact-SHA CI and final live dogfood proof

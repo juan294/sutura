@@ -34,6 +34,7 @@ jobs:
         with:
           github-token: ${{ github.token }}
           run-id: ${{ github.event.workflow_run.id }}
+          require-fixed: true
           nebius-api-key: ${{ secrets.NEBIUS_API_KEY }}
           tavily-api-key: ${{ secrets.TAVILY_API_KEY }}
           contree-token: ${{ secrets.CONTREE_TOKEN }}

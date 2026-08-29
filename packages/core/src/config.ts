@@ -13,6 +13,8 @@ export const DEFAULT_MODELS = {
   ultra: 'nvidia/Nemotron-3-Ultra-550b-a55b',
 } as const;
 
+export const TOKEN_FACTORY_BASE_URL = 'https://api.tokenfactory.nebius.com/v1/';
+
 export const MAX_TRIAGE_RUNS = 20;
 export const MAX_RACE_CANDIDATES = 10;
 export const MAX_STAGE_EVIDENCE_ENTRIES = 100;
@@ -60,6 +62,16 @@ function required(env: ConfigEnvironment, name: string): string {
 function optional(env: ConfigEnvironment, name: string): string | undefined {
   const value = env[name]?.trim();
   return value || undefined;
+}
+
+function verifiedSuperModel(env: ConfigEnvironment): string {
+  const configured = optional(env, 'SUTURA_MODEL_SUPER');
+  if (configured !== undefined && configured !== DEFAULT_MODELS.super) {
+    throw new ConfigError(
+      `SUTURA_MODEL_SUPER must be ${DEFAULT_MODELS.super} until another exact verified provider contract ships`,
+    );
+  }
+  return DEFAULT_MODELS.super;
 }
 
 function positiveInteger(
@@ -131,7 +143,7 @@ export function loadConfig(env: ConfigEnvironment): Config {
     ),
     models: {
       nano: optional(env, 'SUTURA_MODEL_NANO') ?? DEFAULT_MODELS.nano,
-      super: optional(env, 'SUTURA_MODEL_SUPER') ?? DEFAULT_MODELS.super,
+      super: verifiedSuperModel(env),
       ultra: optional(env, 'SUTURA_MODEL_ULTRA') ?? DEFAULT_MODELS.ultra,
     },
     routingProfileId,

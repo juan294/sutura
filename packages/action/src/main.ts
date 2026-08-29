@@ -4,25 +4,25 @@ import * as github from '@actions/github';
 import {
   AlreadyAttemptedError,
   ContreeExecutor,
-  DEFAULT_MODEL_PRICES,
-  NebiusClient,
   TavilyClient,
+  createTokenFactoryClient,
   loadConfig,
   orchestrate,
 } from '@sutura/core';
 
 import { GitHubAdapter } from './github.js';
+import { reportOutcome } from './acceptance.js';
 import { runtimeEvidence } from './evidence.js';
 import { withFailureSafeCheck } from './failure-safe.js';
 import { mapActionInputs } from './input.js';
 import { createGitHubApi } from './octokit.js';
 import { GitRepository } from './repository.js';
 
-const NEBIUS_BASE_URL = 'https://api.tokenfactory.nebius.com/v1/';
-
 export async function runAction(): Promise<void> {
+  let requireFixed = false;
   try {
     const action = mapActionInputs((name) => core.getInput(name));
+    requireFixed = action.requireFixed;
     const config = loadConfig(action.environment);
     if (!config.contreeToken || !config.contreeProject) {
       throw new Error('ConTree token and project are required by the GitHub Action');
@@ -33,11 +33,9 @@ export async function runAction(): Promise<void> {
       throw new Error('GITHUB_RUN_ID must be a positive decimal id');
     }
     const octokit = github.getOctokit(action.githubToken);
-    const nebius = new NebiusClient({
+    const nebius = createTokenFactoryClient({
       apiKey: config.nebiusApiKey,
-      baseUrl: NEBIUS_BASE_URL,
       models: config.models,
-      prices: DEFAULT_MODEL_PRICES,
       routingProfileId: config.routingProfileId,
     });
     const adapter = new GitHubAdapter(
@@ -77,13 +75,13 @@ export async function runAction(): Promise<void> {
       ...(config.runtimeId === undefined ? {} : { runtimeId: config.runtimeId }),
       ...(tavily ? { tavily } : {}),
     }), (message) => core.warning(message));
-    core.setOutput('outcome', result.outcome);
+    reportOutcome(result.outcome, action.requireFixed, core);
     for (const evidence of runtimeEvidence(result)) core.info(evidence);
     core.info(`Sutura outcome: ${result.outcome}`);
   } catch (error) {
     if (error instanceof AlreadyAttemptedError) {
       core.info(error.message);
-      core.setOutput('outcome', 'already-attempted');
+      reportOutcome('already-attempted', requireFixed, core);
       return;
     }
     core.setFailed(error instanceof Error ? error.message : String(error));

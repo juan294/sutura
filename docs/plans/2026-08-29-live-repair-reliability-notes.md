@@ -227,3 +227,14 @@ The new Phase 5 exact-SHA and live dogfood proof remains pending.
 - Sutura: [33268103281](https://github.com/juan294/sutura/actions/runs/33268103281), workflow passed but product outcome was `gave-up`
 - Terminal evidence: all four search branches stopped at HTTP 400 before Super inference because the endpoint rejected `reasoning_effort: none`
 - Response: add typed model chat-template thinking controls, serialize thinking-off as `extra_body.chat_template_kwargs.enable_thinking: false`, reject conflicting reasoning controls, and omit `reasoning_effort` from production repair requests
+
+### Provider-contract canary revision
+
+- Local branch: `codex/provider-contract-canary`
+- Canonical boundary: one Token Factory client factory now owns the production endpoint, default prices, default models, routing profile, and credential normalization for Action, CLI, replay, live tests, and canary use.
+- Canary: one exact Super request runs the controller-owned arithmetic repair attempt without Git or GitHub mutation. It checks the one-field schema, request controls, canonical replacement and diff, provider-reported model, finish reason, token usage, explicit reasoning-token details, and absence of hidden-thought output.
+- Replay: named tests cover live runs 1 through 16 through the real request serializer and response parser. Real ANSI Vitest output, pnpm workspace reconstruction, ESM `.js` to TypeScript source closure, repair ordering, and publication remain covered by the realistic orchestration replay.
+- Acceptance: the optional `require-fixed` Action input preserves advisory behavior for external users. Sutura's own workflow enables it and fails for every non-`fixed` result, including `already-attempted` redelivery.
+- Review response: a shared client factory removed production/canary configuration drift; safe response metadata now exposes provider model identity, hidden-thought presence, and reasoning-detail presence without exposing hidden content.
+- Local verification: 775 Core tests passed with 8 live tests skipped; 74 Action, 5 Evaluation, 81 CLI, and 70 Placebo tests passed. The repository total was 1,005 passed and 8 skipped. Typecheck, lint, build, Action bundle, README setup, isolated README setup, vendored runtime, offline `darwin-arm64` smoke, 26 release contracts, all three simplification reviews, and `git diff --check` passed.
+- Pending: exact clean-commit package verification, read-only live provider canary, exact-SHA CI, and final dogfood proof. No new dogfood run is authorized before the canary passes.

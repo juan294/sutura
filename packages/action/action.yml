@@ -29,6 +29,10 @@ inputs:
     description: Price-verified model-selection profile. Incomplete profiles cannot change defaults.
     required: false
     default: production-baseline-v1
+  require-fixed:
+    description: Fail the action unless Sutura produces a fixed outcome. Intended for strict self-hosting and acceptance gates.
+    required: false
+    default: 'false'
   runtime:
     description: Runtime selection for polyglot repositories. Auto fails closed when evidence is ambiguous.
     required: false
@@ -81,7 +85,7 @@ inputs:
     description: Optional Nemotron classifier model override.
     required: false
   model-super:
-    description: Optional Nemotron repair model override.
+    description: Optional verified Nemotron repair model selector. Unsupported model IDs fail closed.
     required: false
   model-ultra:
     description: Optional Nemotron adversarial-audit model override.

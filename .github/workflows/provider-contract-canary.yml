@@ -1,0 +1,29 @@
+name: Provider contract canary
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provider-contract-canary-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  super-repair-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.22.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run canary:provider-contract
+        env:
+          NEBIUS_API_KEY: ${{ secrets.NEBIUS_API_KEY }}
