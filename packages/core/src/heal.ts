@@ -69,6 +69,7 @@ import type { RuntimeAdapter, RuntimeId } from './runtime/types.js';
 
 export const SUTURA_DEFAULT_IMAGE_REF = NODE_IMAGE_REF;
 const DEFAULT_FAILURE_COMMAND = 'pnpm test';
+const MINIMUM_INITIAL_BRANCH_MODEL_TURNS = 8;
 const DEPENDENCY_INSTALL_COMMAND = /(?:^|(?:&&|;|\|\|)\s*)(?:(?:corepack\s+)?pnpm\s+(?:install|i)\b|npm\s+(?:ci|install|i)\b|(?:corepack\s+)?yarn\s+(?:install\b|--immutable\b))/iu;
 
 export const SUTURA_SANDBOX_ENV = Object.freeze({
@@ -795,12 +796,22 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       ...DEFAULT_SEARCH_LIMITS,
       initialBranches: Math.min(ctx.raceK, DEFAULT_SEARCH_LIMITS.initialBranches),
     };
+    const initialBranchCapacity = Math.max(
+      1,
+      Math.floor(
+        budget.limits.modelTurns / MINIMUM_INITIAL_BRANCH_MODEL_TURNS,
+      ),
+    );
     let providerCapacity: CapacitySnapshot | undefined = fullContext.llm.capacitySnapshot?.();
     const activeOperations = new Map<string, string>();
     const lastOperations = new Map<string, string>();
     const result = await adaptiveSearch({
       baselineImageId: ctx.failingImage,
-      initialBranches: Math.min(searchLimits.initialBranches, budget.limits.branches),
+      initialBranches: Math.min(
+        searchLimits.initialBranches,
+        budget.limits.branches,
+        initialBranchCapacity,
+      ),
       beamWidth: searchLimits.beamWidth,
       maximumDepth: searchLimits.maximumDepth,
       maximumTotalBranches: Math.min(searchLimits.maximumTotalBranches, budget.limits.branches),

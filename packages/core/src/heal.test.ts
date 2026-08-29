@@ -175,6 +175,17 @@ describe('healCase', () => {
     )).toBe(true);
   });
 
+  it('reserves enough shared model turns for one complete initial repair branch', async () => {
+    const value = context('repair-off-by-one', [1, 1, 1, 1, 1, 0, 0], 'test-assertion', {
+      search: { initialBranches: 4, beamWidth: 2, maximumDepth: 4, maximumTotalBranches: 12 },
+    });
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('fixed');
+    expect(caseFile.search?.map(({ nodeId }) => nodeId)).toEqual(['search-001']);
+  });
+
   it('refuses the first adaptive expansion when the current provider snapshot has no capacity', async () => {
     const value = context('repair-off-by-one', [1, 1, 1, 1, 1, 1], 'test-assertion', {
       search: { initialBranches: 4, beamWidth: 2, maximumDepth: 4, maximumTotalBranches: 12 },
