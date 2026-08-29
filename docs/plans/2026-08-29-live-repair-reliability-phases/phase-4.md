@@ -1,0 +1,44 @@
+# Phase 4: Nine-run replay and production-path integration gates
+
+## Goal
+
+Turn the live failure history into a permanent local release gate.
+
+## Files
+
+Add sanitized dogfood log/source/provider fixtures. Extend core orchestration and recorded GitHub action E2E tests. Update release-contract scripts and documentation where needed.
+
+## Implementation
+
+1. Add the exact arithmetic defect and bounded failed-log shape as a reusable fixture.
+2. Encode the nine historical terminal classes:
+   - unsupported provider request field;
+   - unsupported tool-choice form;
+   - split shared model budget;
+   - unresolved monorepo source;
+   - unresolved ESM-to-TypeScript source;
+   - stale or absent dynamic editable source;
+   - trusted-test timeout or missing evidence;
+   - accepted patch followed by exploration;
+   - search-only model-turn exhaustion.
+3. Prove each class is rejected at its boundary or structurally impossible in the production path.
+4. Add a recorded direct `workflow_dispatch` GitHub action E2E with realistic failed logs, exact checkout source closure, Nano diagnosis, Super repair proposal, ConTree patch/test, Ultra audit, fix branch, PR, check, comment, and artifact.
+5. Add a two-depth failed-first-proposal storyline.
+6. Add Node and Python production-path cases plus provider, sandbox, policy, cancellation, and timeout terminals.
+7. Assert no credentials, full source, hidden reasoning, or unbounded tool output enters the case file or ATIF trace.
+8. Add the production-path replay command to release contracts.
+
+## Automated success criteria
+
+- All nine historical terminal classes have named regression tests.
+- The realistic arithmetic E2E reaches `fixed` and publishes only the addition patch.
+- The repair test and `.sutura.json` remain unchanged.
+- The repair branch parent is the exact failed SHA and the PR base is the failed branch.
+- Redelivery performs no additional model, sandbox, branch, PR, check, or comment mutation.
+- The two-depth, Python, provider, sandbox, policy, cancellation, and timeout cases terminate as declared.
+- The complete local verification gate passes from a clean worktree.
+- Reuse, quality, and efficiency reviews return no findings.
+
+## Exit evidence
+
+Record the exact local command list and passing test counts in the implementation notes.
