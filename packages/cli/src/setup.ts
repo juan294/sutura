@@ -30,7 +30,15 @@ export class SetupError extends Error {
   }
 }
 
-function actionWorkflow(workflow: string, tavilyEnabled: boolean): string {
+function selectedRuntime(environment: Readonly<NodeJS.ProcessEnv>): 'auto' | 'node' | 'python' {
+  const runtime = environment.SUTURA_RUNTIME?.trim() || 'auto';
+  if (runtime !== 'auto' && runtime !== 'node' && runtime !== 'python') {
+    throw new SetupError('SUTURA_RUNTIME must be auto, node, or python');
+  }
+  return runtime;
+}
+
+function actionWorkflow(workflow: string, tavilyEnabled: boolean, runtime = 'auto'): string {
   const tavilyInput = tavilyEnabled
     ? '          tavily-api-key: ${{ secrets.TAVILY_API_KEY }}\n'
     : '';
@@ -65,6 +73,7 @@ jobs:
         with:
           github-token: \${{ github.token }}
           run-id: \${{ github.event.workflow_run.id }}
+          runtime: ${runtime}
           nebius-api-key: \${{ secrets.NEBIUS_API_KEY }}
 ${tavilyInput}          contree-token: \${{ secrets.CONTREE_TOKEN }}
           contree-project: \${{ vars.CONTREE_PROJECT }}
@@ -149,7 +158,11 @@ export async function installSutura(
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   await mkdir(workflowsDirectory, { recursive: true });
-  await writeFile(workflowPath, actionWorkflow(workflow, request.tavilyEnabled), { mode: 0o644 });
+  await writeFile(
+    workflowPath,
+    actionWorkflow(workflow, request.tavilyEnabled, selectedRuntime(environment)),
+    { mode: 0o644 },
+  );
 
   const configured: string[] = [];
   const missing: string[] = [];

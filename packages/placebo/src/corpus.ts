@@ -24,7 +24,7 @@ const TEST_RUNTIME_ARCHIVES = new Map([
 ]);
 const KINDS = new Set<CaseKind>(['trap', 'repairable', 'flaky', 'upstream']);
 const EXPECTED = new Set<ExpectedOutcome>(['refused', 'fixed', 'flaky-no-patch', 'fixed-with-grounding']);
-const LANGUAGES = new Set(['javascript', 'typescript']);
+const LANGUAGES = new Set(['javascript', 'typescript', 'python']);
 const FLAKE_PATTERNS = new Set(['timing', 'port', 'order', 'filesystem', 'simulated-network', 'randomness']);
 const CLASSES = new Set(['typecheck', 'lint', 'build', 'test-assertion', 'test-bug', 'flaky-timing', 'dep-upstream-breaking', 'env-config', 'infra']);
 const PLACEBO_TEMP_ROOT = join(tmpdir(), 'placebo.noindex');
@@ -160,6 +160,7 @@ export async function prepareFixture(
   storeDirectory?: string,
   portableRuntime?: PortableTestRuntime,
 ): Promise<void> {
+  if (await isPythonFixture(fixtureDirectory)) return;
   const runtime = portableRuntime ?? await createPortableTestRuntime(storeDirectory);
   try {
     await copyPortableTestRuntime(fixtureDirectory, runtime);
@@ -169,10 +170,24 @@ export async function prepareFixture(
   }
 }
 
+async function isPythonFixture(fixtureDirectory: string): Promise<boolean> {
+  try {
+    return (await lstat(join(fixtureDirectory, 'pyproject.toml'))).isFile();
+  } catch {
+    return false;
+  }
+}
+
 async function runFixture(
   fixtureDirectory: string,
   extraEnv: Readonly<Record<string, string>> = {},
 ): Promise<boolean> {
+  if (await isPythonFixture(fixtureDirectory)) {
+    return (await run('python3', ['-B', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py'], fixtureDirectory, {
+      PYTHONDONTWRITEBYTECODE: '1',
+      ...extraEnv,
+    })).exitCode === 0;
+  }
   return (await run('pnpm', ['test'], fixtureDirectory, extraEnv)).exitCode === 0;
 }
 
@@ -250,7 +265,7 @@ export async function createCorpusManifest(cases?: CorpusCase[]): Promise<Corpus
 export async function verifyCandidateWithHiddenTests(
   benchmarkCase: CorpusCase,
   candidateDiff: string | undefined,
-  portableRuntime: PortableTestRuntime,
+  portableRuntime?: PortableTestRuntime,
 ): Promise<HiddenVerificationResult | undefined> {
   const testSetHash = await hiddenVerificationHash(benchmarkCase);
   if (testSetHash === undefined) return undefined;
@@ -259,14 +274,24 @@ export async function verifyCandidateWithHiddenTests(
   const fixture = join(temporaryRoot, 'fixture');
   try {
     await cp(benchmarkCase.fixtureDirectory, fixture, { recursive: true });
-    await copyPortableTestRuntime(fixture, portableRuntime);
+    if (benchmarkCase.metadata.language !== 'python') {
+      if (portableRuntime === undefined) throw new Error('Node hidden verification requires the portable runtime');
+      await copyPortableTestRuntime(fixture, portableRuntime);
+    }
     await applyPatch(fixture, benchmarkCase.breakPatch);
     const candidatePatch = join(temporaryRoot, 'candidate.diff');
     await writeFile(candidatePatch, candidateDiff);
     await applyPatch(fixture, candidatePatch);
-    await installFixture(fixture, portableRuntime.storeDirectory);
+    if (benchmarkCase.metadata.language !== 'python') {
+      if (portableRuntime === undefined) throw new Error('Node hidden verification requires the portable runtime');
+      await installFixture(fixture, portableRuntime.storeDirectory);
+    }
     await cp(join(benchmarkCase.directory, 'hidden'), join(fixture, 'hidden'), { recursive: true });
-    const outcome = await run('pnpm', ['exec', 'vitest', 'run', 'hidden', '--no-file-parallelism'], fixture);
+    const outcome = benchmarkCase.metadata.language === 'python'
+      ? await run('python3', ['-B', '-m', 'unittest', 'discover', '-s', 'hidden', '-p', 'test_*.py'], fixture, {
+          PYTHONDONTWRITEBYTECODE: '1',
+        })
+      : await run('pnpm', ['exec', 'vitest', 'run', 'hidden', '--no-file-parallelism'], fixture);
     return { result: outcome.exitCode === 0 ? 'passed' : 'failed', testSetHash };
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
@@ -300,7 +325,9 @@ export async function selfCheckCorpus(
         await prepareFixture(fixture, options.storeDirectory, portableRuntime);
         const cleanPassed = await runFixture(fixture);
         await applyPatch(fixture, benchmarkCase.breakPatch);
-        await installFixture(fixture, portableRuntime.storeDirectory);
+        if (benchmarkCase.metadata.language !== 'python') {
+          await installFixture(fixture, portableRuntime.storeDirectory);
+        }
         let brokenRuns: boolean[] | undefined;
         if (benchmarkCase.metadata.kind === 'flaky') {
           brokenRuns = [];
@@ -319,7 +346,9 @@ export async function selfCheckCorpus(
         }
         const brokenFailed = brokenRuns ? brokenRuns.some(Boolean) : !(await runFixture(fixture));
         await applyPatch(fixture, benchmarkCase.breakPatch, true);
-        await installFixture(fixture, portableRuntime.storeDirectory);
+        if (benchmarkCase.metadata.language !== 'python') {
+          await installFixture(fixture, portableRuntime.storeDirectory);
+        }
         const restoredPassed = await runFixture(fixture);
         if (!restoredPassed) throw new Error(`${benchmarkCase.id}: reverse patch did not restore green`);
 

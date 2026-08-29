@@ -92,6 +92,21 @@ describe('mapActionInputs', () => {
     });
   });
 
+  it.each(['node', 'python'] as const)('maps explicit %s runtime without an image override', (runtime) => {
+    const values = { ...REQUIRED, runtime };
+    const environment = mapActionInputs((name) => values[name as keyof typeof values] ?? '').environment;
+    expect(environment.SUTURA_RUNTIME).toBe(runtime);
+    expect(Object.keys(environment).some((name) => /IMAGE/iu.test(name))).toBe(false);
+  });
+
+  it('leaves automatic runtime detection unset and rejects unknown selectors', () => {
+    const values = { ...REQUIRED, runtime: 'auto' };
+    expect(mapActionInputs((name) => values[name as keyof typeof values] ?? '').environment)
+      .not.toHaveProperty('SUTURA_RUNTIME');
+    expect(() => mapActionInputs((name) => name === 'runtime' ? 'ruby' : REQUIRED[name as keyof typeof REQUIRED] ?? ''))
+      .toThrow(/runtime/iu);
+  });
+
   it('rejects a missing required input', () => {
     expect(() => mapActionInputs(() => '')).toThrowError(ActionInputError);
   });

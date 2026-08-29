@@ -7,6 +7,7 @@ export type SnapshotMode = 'replace' | 'overlay';
 export interface SnapshotOptions {
   profile: SnapshotProfile;
   mode: SnapshotMode;
+  includePaths?: readonly string[];
 }
 
 export interface RunOptions {

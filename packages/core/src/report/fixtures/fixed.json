@@ -1,6 +1,7 @@
 {
   "runId": "run-fixed-042",
   "repo": "acme/checkout",
+  "runtime": "node",
   "diagnosis": {
     "class": "build",
     "confidence": 0.96,

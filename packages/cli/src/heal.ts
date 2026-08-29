@@ -14,6 +14,7 @@ import {
   loadRepositoryPolicy,
   MAX_POLICY_BYTES,
   readRepairSourceContext,
+  detectRuntimeAtPath,
   type CaseFile,
   type AuditFile,
   type ConfigEnvironment,
@@ -30,6 +31,7 @@ import {
   type SourceReadLimits,
   type SourceReference,
   type TavilySearch,
+  type RuntimeId,
 } from '@sutura/core';
 
 import type { AuditArguments, HealArguments } from './args.js';
@@ -52,6 +54,7 @@ export interface HealRuntime {
   search?: SearchLimits;
   tavily?: TavilySearch;
   imageRef?: string;
+  runtimeId?: RuntimeId;
 }
 
 export interface AuditRuntime {
@@ -193,6 +196,7 @@ export async function readLocalSourceContext(
   log: string,
   _diagnosis: Diagnosis,
   policy?: RepositoryPolicy,
+  runtimeId: RuntimeId = 'node',
 ): Promise<RepairSourceContext> {
   const root = await realpath(caseDir);
   return readRepairSourceContext(
@@ -213,6 +217,7 @@ export async function readLocalSourceContext(
     log,
     _diagnosis,
     policy,
+    runtimeId,
   );
 }
 
@@ -362,11 +367,12 @@ export async function healWithRuntime(
     raceK: runtime.raceK,
     ...(runtime.repairBudgets === undefined ? {} : { repairBudgets: runtime.repairBudgets }),
     ...(runtime.search === undefined ? {} : { search: runtime.search }),
-    readSourceContext: (log, diagnosis) => readLocalSourceContext(
+    readSourceContext: (log, diagnosis, selectedRuntime) => readLocalSourceContext(
       caseDir,
       log,
       diagnosis,
       loadedPolicy.policy,
+      selectedRuntime?.id ?? 'node',
     ),
     policy: loadedPolicy.policy,
     policyEvidence: {
@@ -376,9 +382,30 @@ export async function healWithRuntime(
     },
     ...(runtime.tavily ? { tavily: runtime.tavily } : {}),
     ...(runtime.imageRef ? { imageRef: runtime.imageRef } : {}),
+    ...(runtime.runtimeId ? { runtimeId: runtime.runtimeId } : {}),
     ...(dependencyHints.length === 0 ? {} : { dependencyHints }),
     ...(request.candidateDiff === undefined ? {} : { candidateDiff: request.candidateDiff }),
   });
+}
+
+export async function detectLocalRuntimeId(
+  caseDirectory: string,
+  configuredRuntime?: RuntimeId,
+): Promise<RuntimeId> {
+  const caseDir = await canonicalCaseDirectory(caseDirectory);
+  const loadedPolicy = loadRepositoryPolicy(await readLocalPolicy(caseDir));
+  if (
+    configuredRuntime !== undefined &&
+    loadedPolicy.policy.runtime !== undefined &&
+    configuredRuntime !== loadedPolicy.policy.runtime
+  ) {
+    throw new CliConfigError('Configured runtime conflicts with repository policy runtime');
+  }
+  return (await detectRuntimeAtPath(
+    caseDir,
+    'pnpm test',
+    configuredRuntime ?? loadedPolicy.policy.runtime,
+  )).id;
 }
 
 export function runtimeFromEnvironment(
@@ -390,6 +417,7 @@ export function runtimeFromEnvironment(
     ...(request.routingProfile === undefined
       ? {}
       : { SUTURA_ROUTING_PROFILE: request.routingProfile }),
+    ...(request.runtime === undefined ? {} : { SUTURA_RUNTIME: request.runtime }),
   });
   if (!config.contreeToken) throw new CliConfigError('CONTREE_TOKEN is required');
   if (!config.contreeProject) throw new CliConfigError('CONTREE_PROJECT is required');
@@ -415,6 +443,7 @@ export function runtimeFromEnvironment(
     raceK: config.raceK,
     repairBudgets: config.repairBudgets,
     search: config.search,
+    ...(config.runtimeId === undefined ? {} : { runtimeId: config.runtimeId }),
     ...(request.tavilyEnabled ? { tavily: new TavilyClient(config.tavilyApiKey) } : {}),
   };
 }

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { runMechanicalChecks } from '@sutura/core';
 
-import { applyPatch, createCorpusManifest, discoverCases, prepareFixture, selfCheckCorpus } from './corpus.js';
+import { applyPatch, createCorpusManifest, discoverCases, prepareFixture, selfCheckCorpus, verifyCandidateWithHiddenTests } from './corpus.js';
 import type { CaseKind, CorpusCase } from './types.js';
 
 const NEW_CASE_IDS = [
@@ -28,8 +28,18 @@ const NEW_CASE_IDS = [
   'trap-timeout-inflation',
   'trap-workflow-check-removal',
 ] as const;
+const PYTHON_CASE_IDS = [
+  'python-flaky-timer',
+  'python-repair-cache-key',
+  'python-repair-missing-await',
+  'python-repair-type-mismatch',
+  'python-repair-wrong-import',
+  'python-trap-broad-type-ignore',
+  'python-trap-skipped-test',
+  'python-trap-swallowed-exception',
+] as const;
 
-describe('Placebo v0.2-rc1 corpus', () => {
+describe('Placebo v0.2 corpus', () => {
   it('prepares a standalone fixture against a new empty store', async () => {
     const benchmarkCase = (await discoverCases()).find(({ id }) => id === 'repair-off-by-one');
     const temporaryRoot = await mkdtemp(join(tmpdir(), 'placebo-prepare-test-'));
@@ -53,9 +63,9 @@ describe('Placebo v0.2-rc1 corpus', () => {
     for (const kind of ['trap', 'repairable', 'flaky', 'upstream'] as const) counts.set(kind, []);
     for (const benchmarkCase of cases) counts.get(benchmarkCase.metadata.kind)?.push(benchmarkCase);
 
-    expect(counts.get('trap')).toHaveLength(16);
-    expect(counts.get('repairable')).toHaveLength(14);
-    expect(counts.get('flaky')).toHaveLength(9);
+    expect(counts.get('trap')).toHaveLength(19);
+    expect(counts.get('repairable')).toHaveLength(18);
+    expect(counts.get('flaky')).toHaveLength(10);
     expect(counts.get('upstream')).toHaveLength(4);
     expect(cases.filter(({ metadata }) => metadata.difficulty === 'hard')).toHaveLength(2);
     expect(counts.get('trap')?.every(({ metadata }) => metadata.placebo === 'fake-fix.diff')).toBe(true);
@@ -63,17 +73,22 @@ describe('Placebo v0.2-rc1 corpus', () => {
       metadata.expectedWithoutTavily === 'gave-up' && metadata.releaseFact?.url.startsWith('https://github.com/'),
     )).toBe(true);
     for (const benchmarkCase of cases) {
-      expect(benchmarkCase.metadata.version).toBe('0.2-rc1');
+      expect(benchmarkCase.metadata.version).toBe('0.2');
       expect(benchmarkCase.metadata.riskClass).toMatch(/^[a-z0-9-]+$/);
-      expect(['javascript', 'typescript']).toContain(benchmarkCase.metadata.language);
+      expect(['javascript', 'typescript', 'python']).toContain(benchmarkCase.metadata.language);
       expect(benchmarkCase.metadata.failureFingerprint).toMatch(/^[a-f0-9]{64}$/);
       expect(benchmarkCase.metadata.expectedChecks.length).toBeGreaterThan(0);
       expect(benchmarkCase.metadata.source).toMatch(/^Public synthetic /);
-      await expect(access(`${benchmarkCase.fixtureDirectory}/pnpm-lock.yaml`)).resolves.toBeUndefined();
-      const packageJson = JSON.parse(await readFile(`${benchmarkCase.fixtureDirectory}/package.json`, 'utf8')) as {
-        devDependencies?: Record<string, string>;
-      };
-      expect(packageJson.devDependencies?.vitest).toBe('4.1.11');
+      if (benchmarkCase.metadata.language === 'python') {
+        await expect(access(`${benchmarkCase.fixtureDirectory}/uv.lock`)).resolves.toBeUndefined();
+        await expect(access(`${benchmarkCase.fixtureDirectory}/node_modules`)).rejects.toThrow();
+      } else {
+        await expect(access(`${benchmarkCase.fixtureDirectory}/pnpm-lock.yaml`)).resolves.toBeUndefined();
+        const packageJson = JSON.parse(await readFile(`${benchmarkCase.fixtureDirectory}/package.json`, 'utf8')) as {
+          devDependencies?: Record<string, string>;
+        };
+        expect(packageJson.devDependencies?.vitest).toBe('4.1.11');
+      }
     }
     const v01Ids = JSON.parse(await readFile(new URL('../../../docs/demo/placebo-v0.1-2026-08-28.json', import.meta.url), 'utf8')) as {
       results: Array<{ caseId: string }>;
@@ -87,12 +102,12 @@ describe('Placebo v0.2-rc1 corpus', () => {
     const first = await createCorpusManifest();
     const second = await createCorpusManifest(cases.toReversed());
     expect(second).toEqual(first);
-    expect(first.cases).toHaveLength(43);
+    expect(first.cases).toHaveLength(51);
     expect(first.lineage).toEqual([{ version: '0.1', caseIds: expect.any(Array) }]);
     expect(first.lineage[0]?.caseIds).toHaveLength(26);
     expect(first.corpusHash).toMatch(/^[a-f0-9]{64}$/);
     expect(first.cases.every(({ contentHash }) => /^[a-f0-9]{64}$/u.test(contentHash))).toBe(true);
-    expect(first.cases.filter(({ hiddenTestSetHash }) => hiddenTestSetHash !== undefined)).toHaveLength(8);
+    expect(first.cases.filter(({ hiddenTestSetHash }) => hiddenTestSetHash !== undefined)).toHaveLength(15);
   });
 
   it('keeps every corpus file public-safe and the network simulator outbound-free', async () => {
@@ -123,12 +138,16 @@ describe('Placebo v0.2-rc1 corpus', () => {
       'flaky-order-cache': ["['store', 'empty']", 'SUTURA_TRIAGE_ATTEMPT'],
       'flaky-filesystem-visibility': ['writeName', 'staging.txt'],
       'flaky-simulated-network': ['localResponse', '503'],
+      'python-flaky-timer': ['completed_before_deadline', 'attempt not in'],
     } as const;
     for (const benchmarkCase of flaky) {
       const patch = await readFile(benchmarkCase.breakPatch, 'utf8');
-      expect(patch).toContain('SUTURA_TRIAGE_ATTEMPT');
-      expect(patch).not.toContain('.placebo-run-index');
-      expect(patch).not.toContain('process.exitCode');
+      const attemptContract = benchmarkCase.metadata.language === 'python'
+        ? `${patch}\n${await readFile(join(benchmarkCase.fixtureDirectory, 'tests/test_timing.py'), 'utf8')}`
+        : patch;
+      expect(attemptContract).toContain('SUTURA_TRIAGE_ATTEMPT');
+      expect(attemptContract).not.toContain('.placebo-run-index');
+      expect(attemptContract).not.toContain('process.exitCode');
       for (const signal of mechanismSignals[benchmarkCase.id as keyof typeof mechanismSignals]) {
         expect(patch).toContain(signal);
       }
@@ -190,7 +209,44 @@ describe('Placebo v0.2-rc1 corpus', () => {
     }
   });
 
-  it('self-checks every new v0.2-rc1 fixture and hidden trap', async () => {
+  it('self-checks every Python fixture without a Node runtime injection', async () => {
+    const corpus = await mkdtemp(join(tmpdir(), 'placebo-python-corpus-'));
+    try {
+      const source = new URL('../corpus/', import.meta.url);
+      for (const caseId of PYTHON_CASE_IDS) {
+        await cp(new URL(`${caseId}/`, source), join(corpus, caseId), { recursive: true });
+      }
+      const report = await selfCheckCorpus(corpus);
+      expect(report.map(({ caseId }) => caseId)).toEqual(PYTHON_CASE_IDS);
+      expect(report.filter(({ cleanPassed, brokenFailed }) => !cleanPassed || !brokenFailed)).toEqual([]);
+      expect(report.filter(({ placeboPassed }) => placeboPassed).map(({ caseId }) => caseId)).toEqual([
+        'python-trap-broad-type-ignore',
+        'python-trap-skipped-test',
+        'python-trap-swallowed-exception',
+      ]);
+      expect(report.filter(({ hiddenVerification }) => hiddenVerification?.result === 'failed')).toHaveLength(3);
+    } finally {
+      await rm(corpus, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  it('keeps Python repair and trap hidden verification separate from the flaky case', async () => {
+    const cases = (await discoverCases()).filter(({ metadata }) => metadata.language === 'python');
+    const repairs = cases.filter(({ metadata }) => metadata.kind === 'repairable');
+    const traps = cases.filter(({ metadata }) => metadata.kind === 'trap');
+    for (const benchmarkCase of repairs) {
+      const candidate = await readFile(join(benchmarkCase.directory, 'repair.diff'), 'utf8');
+      await expect(verifyCandidateWithHiddenTests(benchmarkCase, candidate)).resolves.toMatchObject({ result: 'passed' });
+    }
+    for (const benchmarkCase of traps) {
+      const candidate = await readFile(join(benchmarkCase.directory, 'fake-fix.diff'), 'utf8');
+      await expect(verifyCandidateWithHiddenTests(benchmarkCase, candidate)).resolves.toMatchObject({ result: 'failed' });
+    }
+    const flaky = cases.find(({ metadata }) => metadata.kind === 'flaky')!;
+    await expect(verifyCandidateWithHiddenTests(flaky, undefined)).resolves.toBeUndefined();
+  }, 120_000);
+
+  it('self-checks every new v0.2 fixture and hidden trap', async () => {
     const corpus = await mkdtemp(join(tmpdir(), 'placebo-v02-corpus-'));
     const emptyStore = await mkdtemp(join(tmpdir(), 'placebo-v02-store-'));
     try {
@@ -215,10 +271,13 @@ describe('Placebo v0.2-rc1 corpus', () => {
       rm(emptyStore, { recursive: true, force: true }),
     );
 
-    expect(report).toHaveLength(43);
+    expect(report).toHaveLength(51);
     expect(report.every(({ brokenFailed, cleanPassed }) => brokenFailed && cleanPassed)).toBe(true);
-    expect(report.filter(({ brokenRuns }) => brokenRuns && brokenRuns.some(Boolean) && brokenRuns.some((failed) => !failed))).toHaveLength(9);
+    expect(report.filter(({ brokenRuns }) => brokenRuns && brokenRuns.some(Boolean) && brokenRuns.some((failed) => !failed))).toHaveLength(10);
     expect(report.filter(({ placeboPassed }) => placeboPassed).map(({ caseId }) => caseId)).toEqual([
+      'python-trap-broad-type-ignore',
+      'python-trap-skipped-test',
+      'python-trap-swallowed-exception',
       'trap-as-any',
       'trap-assertion-tautology',
       'trap-conditional-assertion-deletion',
@@ -237,8 +296,8 @@ describe('Placebo v0.2-rc1 corpus', () => {
       'trap-workflow-check-removal',
     ]);
     expect(report.filter(({ hiddenVerification }) => hiddenVerification !== undefined))
-      .toHaveLength(8);
+      .toHaveLength(11);
     expect(report.filter(({ hiddenVerification }) => hiddenVerification?.result === 'failed'))
-      .toHaveLength(8);
+      .toHaveLength(11);
   }, 1_500_000);
 });

@@ -16,9 +16,14 @@ const DEFAULT_MAX_OUTPUT_BYTES = 1024 * 1024;
 const OUTCOMES = new Set(['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop']);
 const FAILURE_CLASSES = new Set(['typecheck', 'lint', 'build', 'test-assertion', 'test-bug', 'flaky-timing', 'dep-upstream-breaking', 'env-config', 'infra']);
 
-function failureCaseFile(reason: string): CaseFile {
+function runtimeFor(context?: AdapterContext): 'node' | 'python' {
+  return context?.language === 'python' ? 'python' : 'node';
+}
+
+function failureCaseFile(reason: string, runtime: 'node' | 'python' = 'node'): CaseFile {
   return {
     runId: 'placebo-adapter-failure', repo: 'placebo/adapter',
+    runtime,
     diagnosis: { class: 'infra', confidence: 1, signals: ['adapter-failure'], failingCmd: 'adapter', errorExcerpt: reason.slice(0, 2_000) },
     triage: completedTriageVerdict([1], 1), race: [], outcome: 'gave-up',
     cost: { entries: [], totalUsd: () => 0 },
@@ -166,9 +171,9 @@ function validCost(value: unknown): boolean {
   }));
 }
 
-function parseCaseFile(result: ExecutionResult): CaseFile {
-  if (result.failure) return failureCaseFile(result.failure);
-  if (result.exitCode !== 0) return failureCaseFile(result.stderr.trim() || `adapter exited ${result.exitCode}`);
+function parseCaseFile(result: ExecutionResult, runtime: 'node' | 'python'): CaseFile {
+  if (result.failure) return failureCaseFile(result.failure, runtime);
+  if (result.exitCode !== 0) return failureCaseFile(result.stderr.trim() || `adapter exited ${result.exitCode}`, runtime);
   try {
     const value = record(JSON.parse(result.stdout));
     const audit = value?.audit;
@@ -176,6 +181,7 @@ function parseCaseFile(result: ExecutionResult): CaseFile {
     if (!value || typeof value.runId !== 'string' || typeof value.repo !== 'string' ||
         !validDiagnosis(value.diagnosis) || !validTriage(value.triage) || !validRace(value.race) ||
         !OUTCOMES.has(String(value.outcome)) || !validCost(value.cost) ||
+        value.runtime !== runtime ||
         !validPolicyEvidence(value.policy) || !validStages(value.stages) ||
         (audit !== undefined && !validAudit(audit))) {
       throw new Error('does not match Sutura CaseFile');
@@ -187,7 +193,7 @@ function parseCaseFile(result: ExecutionResult): CaseFile {
       cost: { entries, totalUsd: () => entries.reduce((total, entry) => total + entry.usd, 0) },
     };
   } catch (error) {
-    return failureCaseFile(`invalid adapter JSON: ${error instanceof Error ? error.message : String(error)}`);
+    return failureCaseFile(`invalid adapter JSON: ${error instanceof Error ? error.message : String(error)}`, runtime);
   }
 }
 
@@ -232,9 +238,9 @@ export class CliAdapter implements Adapter {
       const result = await this.execute(this.command, this.commandArgs(caseDir, context), {
         timeoutMs: this.timeoutMs, maxOutputBytes: this.maxOutputBytes,
       });
-      return parseCaseFile(result);
+      return parseCaseFile(result, runtimeFor(context));
     } catch (error) {
-      return failureCaseFile(`adapter execution failed: ${error instanceof Error ? error.message : String(error)}`);
+      return failureCaseFile(`adapter execution failed: ${error instanceof Error ? error.message : String(error)}`, runtimeFor(context));
     }
   }
 
@@ -256,6 +262,7 @@ export class SuturaAdapter extends CliAdapter {
   protected override commandArgs(caseDir: string, context?: AdapterContext): string[] {
     return [
       'heal', '--case-dir', caseDir, '--format', 'json',
+      ...(context?.language === undefined ? [] : ['--runtime', runtimeFor(context)]),
       ...(context?.candidateDiff ? ['--candidate-diff', context.candidateDiff] : []),
       ...(!this.tavilyEnabled ? ['--no-tavily'] : []),
     ];
@@ -265,9 +272,15 @@ export class SuturaAdapter extends CliAdapter {
   }
 }
 
-function controlCaseFile(outcome: CaseFile['outcome'], approved: boolean | undefined, tavilyEnabled: boolean): CaseFile {
+function controlCaseFile(
+  outcome: CaseFile['outcome'],
+  approved: boolean | undefined,
+  tavilyEnabled: boolean,
+  runtime: 'node' | 'python',
+): CaseFile {
   return {
     runId: 'placebo-control', repo: 'placebo/control',
+    runtime,
     diagnosis: {
       class: 'test-assertion', confidence: 1, signals: ['scripted-control'], failingCmd: 'pnpm test', errorExcerpt: 'scripted',
       ...(tavilyEnabled ? { grounding: { query: 'scripted release', skipped: false, citations: [{ title: 'Release', url: 'https://example.test/release', snippet: 'Scripted control citation' }] } } : {}),
@@ -288,12 +301,16 @@ function controlCaseFile(outcome: CaseFile['outcome'], approved: boolean | undef
 export class DummyAdapter implements Adapter {
   readonly name = 'dummy';
   constructor(private readonly tavilyEnabled = true) {}
-  async heal(): Promise<CaseFile> { return controlCaseFile('fixed', true, this.tavilyEnabled); }
+  async heal(_caseDir: string, context?: AdapterContext): Promise<CaseFile> {
+    return controlCaseFile('fixed', true, this.tavilyEnabled, runtimeFor(context));
+  }
   withTavily(enabled: boolean): Adapter { return new DummyAdapter(enabled); }
 }
 
 export class RefuseAllAdapter implements Adapter {
   readonly name = 'refuse-all';
-  async heal(): Promise<CaseFile> { return controlCaseFile('refused', false, false); }
+  async heal(_caseDir: string, context?: AdapterContext): Promise<CaseFile> {
+    return controlCaseFile('refused', false, false, runtimeFor(context));
+  }
   withTavily(): Adapter { return this; }
 }

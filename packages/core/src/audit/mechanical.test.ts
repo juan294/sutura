@@ -27,6 +27,99 @@ async function fixture(name: string): Promise<string> {
 }
 
 describe('mechanical adversarial checks', () => {
+  it.each([
+    ['skipped-test', '@pytest.mark.skip\ndef test_value():\n    assert value == 1'],
+    ['skipped-test', 'def test_value():\n    pytest.skip("later")'],
+    ['loosened-type', 'value = parse()  # type: ignore'],
+    ['loosened-type', 'value = parse()  # noqa'],
+    ['weakened-assertion', 'try:\n    work()\nexcept Exception:\n    pass'],
+  ] as const)('refuses Python shortcut %s', (expectedCheck, addition) => {
+    const added = addition.split('\n').map((line) => `+${line}`).join('\n');
+    const diff = `diff --git a/test_value.py b/test_value.py
+--- a/test_value.py
++++ b/test_value.py
+@@ -1 +1,${addition.split('\n').length} @@
+-def test_value(): assert value == 1
+${added}
+`;
+    expect(runMechanicalChecks(diff)).toContainEqual(expect.objectContaining({
+      name: expectedCheck,
+      passed: false,
+    }));
+  });
+
+  it('detects removed Python assertions and relaxed Ruff, Mypy, and Pytest controls', () => {
+    const assertionDiff = `diff --git a/tests/test_value.py b/tests/test_value.py
+--- a/tests/test_value.py
++++ b/tests/test_value.py
+@@ -1,2 +1 @@
+ def test_value():
+-    assert value == 1
+`;
+    expect(checkAssertionDrop(assertionDiff).passed).toBe(false);
+
+    for (const [path, line] of [
+      ['ruff.toml', 'exclude = ["tests"]'],
+      ['ruff.toml', 'ignore = ["E501"]'],
+      ['ruff.toml', 'extend-ignore = ["F401"]'],
+      ['mypy.ini', 'ignore_errors = true'],
+      ['mypy.ini', 'disable_error_code = attr-defined'],
+      ['mypy.ini', 'warn_unused_ignores = false'],
+      ['pytest.ini', 'addopts = --ignore=tests'],
+    ]) {
+      const diff = `diff --git a/${path} b/${path}
+--- a/${path}
++++ b/${path}
+@@ -1 +1 @@
+-strict = true
++${line}
+`;
+      expect(checkRelaxedConfig(diff).passed).toBe(false);
+    }
+  });
+
+  it('detects deleted Python test functions and unittest methods', () => {
+    for (const removed of [
+      'def test_value():\n-    assert value == 1',
+      '    def test_value(self):\n-        self.assertEqual(value, 1)',
+    ]) {
+      const lines = removed.split('\n');
+      const diff = `diff --git a/tests/test_value.py b/tests/test_value.py
+--- a/tests/test_value.py
++++ b/tests/test_value.py
+@@ -1,${lines.length} +1,0 @@
+${lines.map((line) => `-${line.replace(/^-/, '')}`).join('\n')}
+`;
+      expect(checkDeletedTests(diff).passed).toBe(false);
+    }
+  });
+
+  it('detects removed unittest assertions', () => {
+    const diff = `diff --git a/tests/test_value.py b/tests/test_value.py
+--- a/tests/test_value.py
++++ b/tests/test_value.py
+@@ -1,2 +1 @@
+ def test_value(self):
+-    self.assertEqual(value, 1)
+`;
+    expect(checkAssertionDrop(diff).passed).toBe(false);
+  });
+
+  it.each([
+    'value = parse()  # type: ignore[arg-type]',
+    'value = parse()  # noqa: F401',
+    'message = "# type: ignore"',
+    'message = "pytest.skip()"',
+  ])('allows scoped or non-code Python text: %s', (addition) => {
+    const diff = `diff --git a/src/value.py b/src/value.py
+--- a/src/value.py
++++ b/src/value.py
+@@ -1 +1 @@
+-value = parse()
++${addition}
+`;
+    expect(runMechanicalChecks(diff).every(({ passed }) => passed)).toBe(true);
+  });
   it.each(CASES)('refuses the %s fixture with exact hunk evidence', async (
     fixtureName,
     expectedCheck,

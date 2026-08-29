@@ -63,12 +63,13 @@ import { createDefaultRepositoryPolicy } from './policy/load.js';
 import type { RepositoryPolicy } from './policy/schema.js';
 import { boundedTail } from './text/bounded-tail.js';
 import { TraceRecorder } from './trace/recorder.js';
+import { detectRuntimeAtPath } from './runtime/detect.js';
+import { NODE_IMAGE_REF, NODE_RUNTIME, nodePreparationCommand } from './runtime/node.js';
+import type { RuntimeAdapter, RuntimeId } from './runtime/types.js';
 
-export const SUTURA_DEFAULT_IMAGE_REF = 'node:22';
+export const SUTURA_DEFAULT_IMAGE_REF = NODE_IMAGE_REF;
 const DEFAULT_FAILURE_COMMAND = 'pnpm test';
 const DEPENDENCY_INSTALL_COMMAND = /(?:^|(?:&&|;|\|\|)\s*)(?:(?:corepack\s+)?pnpm\s+(?:install|i)\b|npm\s+(?:ci|install|i)\b|(?:corepack\s+)?yarn\s+(?:install\b|--immutable\b))/iu;
-const COREPACK_PACKAGE_MANAGER_COMMAND = /(?:^|[\s;&|()])(?:pnpm|yarn)(?=$|[\s;&|()<>])/u;
-const PACKAGE_BINARY_COMMAND = /^(?:ava|eslint|jest|mocha|tap|ts-node|tsc|tsx|vite|vitest)(?=$|[\s;&|])/u;
 
 export const SUTURA_SANDBOX_ENV = Object.freeze({
   CI: 'true',
@@ -97,9 +98,11 @@ export interface RepairFailureContext {
   policyEvidence?: PolicyEvidence;
   stageLedger?: StageLedger;
   traceRecorder?: TraceRecorder;
+  runtime?: RuntimeAdapter;
   readSourceContext(
     log: string,
     diagnosis: Diagnosis,
+    runtime?: RuntimeAdapter,
   ): Promise<RepairSourceContext>;
 }
 
@@ -110,6 +113,7 @@ export interface HealCaseContext extends Omit<
   caseDir: string;
   imageRef?: string;
   failureCommand?: string;
+  runtimeId?: RuntimeId;
 }
 
 export class HealCaseError extends Error {
@@ -332,8 +336,8 @@ export class AllowlistedExecutor implements Executor {
     return this.delegate.cancel(operationId);
   }
 
-  prepareDependencies(parent: ImageId): Promise<RunResult> {
-    return this.delegate.run(parent, sandboxPreparationCommand(), {
+  prepareDependencies(parent: ImageId, command = sandboxPreparationCommand()): Promise<RunResult> {
+    return this.delegate.run(parent, command, {
       ...sandboxOptions({ cwd: SNAPSHOT_CWD }),
       network: 'enabled',
     });
@@ -353,7 +357,7 @@ function noReproductionDiagnosis(mechanical: Diagnosis): Diagnosis {
 export function noReproductionCaseFile(
   ctx: Pick<
     HealCaseContext,
-    'runId' | 'repo' | 'cost' | 'policyEvidence' | 'stageLedger' | 'traceRecorder'
+    'runId' | 'repo' | 'cost' | 'policyEvidence' | 'stageLedger' | 'traceRecorder' | 'runtime'
   >,
   mechanical: Diagnosis,
 ): CaseFile {
@@ -369,7 +373,7 @@ export function noReproductionCaseFile(
 export function preparationFailureCaseFile(
   ctx: Pick<
     HealCaseContext,
-    'runId' | 'repo' | 'cost' | 'policyEvidence' | 'stageLedger' | 'traceRecorder'
+    'runId' | 'repo' | 'cost' | 'policyEvidence' | 'stageLedger' | 'traceRecorder' | 'runtime'
   >,
   command: string,
   result: RunResult,
@@ -394,14 +398,7 @@ export function preparationFailureCaseFile(
 }
 
 export function sandboxPreparationCommand(): string {
-  const prepare = [
-    'command -v git >/dev/null 2>&1 || { echo "required sandbox tool is unavailable: git" >&2; exit 69; }',
-    'if [ -f pnpm-lock.yaml ]; then corepack pnpm install --frozen-lockfile --ignore-scripts;',
-    'elif [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm ci --ignore-scripts;',
-    'elif [ -f yarn.lock ]; then sutura_yarn_version="$(corepack yarn --version)"; case "$sutura_yarn_version" in 0.*|1.*) corepack yarn install --frozen-lockfile --ignore-scripts ;; 2.*|3.*|4.*) corepack yarn install --immutable --mode=skip-build ;; *) echo "unsupported Yarn version: $sutura_yarn_version" >&2; exit 69 ;; esac;',
-    'else true; fi',
-  ].join('\n');
-  return `sh -lc ${shellQuote(prepare)}`;
+  return nodePreparationCommand();
 }
 
 const DEPENDENCY_SNAPSHOT = Object.freeze({
@@ -425,8 +422,9 @@ const DEFAULT_REPOSITORY_INITIALIZATION_PATHS = {
 
 function sandboxRepositoryInitializationCommand(
   paths: SandboxRepositoryInitializationPaths = DEFAULT_REPOSITORY_INITIALIZATION_PATHS,
+  runtime: RuntimeAdapter = NODE_RUNTIME,
 ): string {
-  return `sh -lc ${shellQuote([
+  const commands = [
     `mkdir -p ${shellQuote(paths.templatePath)}`,
     `git init --quiet --template=${shellQuote(paths.templatePath)}`,
     'git config core.hooksPath /dev/null',
@@ -434,8 +432,9 @@ function sandboxRepositoryInitializationCommand(
     'git config user.name Sutura',
     `git --literal-pathspecs add --pathspec-from-file=${shellQuote(paths.manifestPath)} --pathspec-file-nul`,
     'git -c core.hooksPath=/dev/null commit --quiet --no-verify -m "chore: initialize Sutura sandbox baseline"',
-    'if [ -f pnpm-lock.yaml ]; then corepack pnpm rebuild; elif [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm rebuild; elif [ -f yarn.lock ]; then sutura_yarn_version="$(corepack yarn --version)"; case "$sutura_yarn_version" in 0.*|1.*) npm rebuild ;; 2.*|3.*|4.*) corepack yarn rebuild ;; *) echo "unsupported Yarn version: $sutura_yarn_version" >&2; exit 69 ;; esac; else true; fi',
-  ].join(' && '))}`;
+    ...(runtime.id === 'node' ? ['if [ -f pnpm-lock.yaml ]; then corepack pnpm rebuild; elif [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm rebuild; elif [ -f yarn.lock ]; then sutura_yarn_version="$(corepack yarn --version)"; case "$sutura_yarn_version" in 0.*|1.*) npm rebuild ;; 2.*|3.*|4.*) corepack yarn rebuild ;; *) echo "unsupported Yarn version: $sutura_yarn_version" >&2; exit 69 ;; esac; else true; fi'] : []),
+  ];
+  return `sh -lc ${shellQuote(commands.join(' && '))}`;
 }
 
 const INITIALIZE_REPOSITORY_COMMAND = sandboxRepositoryInitializationCommand();
@@ -456,11 +455,31 @@ export async function prepareSandbox(
   baseImage: ImageId,
   observedCommand: string,
   stages?: StageLedger,
+  runtime: RuntimeAdapter = NODE_RUNTIME,
 ): Promise<SandboxSetupResult> {
+  let dependencyPreparation;
+  try {
+    dependencyPreparation = await runtime.dependencyInputs(dir);
+  } catch (error) {
+    return {
+      ok: false,
+      command: runtime.preparationCommand,
+      result: {
+        imageId: baseImage,
+        exitCode: 69,
+        stdout: '',
+        stderr: error instanceof Error ? error.message : String(error),
+        truncated: false,
+        metrics: {},
+      },
+    };
+  }
   const dependencyImage = await executor.snapshot(
     dir,
     baseImage,
-    DEPENDENCY_SNAPSHOT,
+    runtime.id === 'node'
+      ? DEPENDENCY_SNAPSHOT
+      : { ...DEPENDENCY_SNAPSHOT, includePaths: dependencyPreparation.paths },
   );
   stages?.record({
     stage: 'preparation',
@@ -470,15 +489,17 @@ export async function prepareSandbox(
     parentImageId: baseImage,
     note: 'Dependency inputs snapshot created',
   });
-  const preparationCommand = sandboxPreparationCommand();
-  const preparation = await executor.prepareDependencies(dependencyImage);
+  const preparationCommand = runtime.id === 'node'
+    ? dependencyPreparation.command
+    : `sh -lc ${shellQuote(dependencyPreparation.command)}`;
+  const preparation = await executor.prepareDependencies(dependencyImage, preparationCommand);
   stages?.record({
     stage: 'preparation',
     attempt: 2,
     network: 'enabled',
     result: preparation,
     parentImageId: dependencyImage,
-    note: 'Dependencies prepared with lifecycle scripts disabled',
+    note: `${runtime.id} dependencies prepared without repository hooks`,
   });
   if (preparation.exitCode !== 0) {
     return {
@@ -504,7 +525,9 @@ export async function prepareSandbox(
   });
   const initialized = await executor.run(
     sourceImage,
-    INITIALIZE_REPOSITORY_COMMAND,
+    runtime.id === 'node'
+      ? INITIALIZE_REPOSITORY_COMMAND
+      : sandboxRepositoryInitializationCommand(DEFAULT_REPOSITORY_INITIALIZATION_PATHS, runtime),
     { cwd: SNAPSHOT_CWD },
   );
   stages?.record({
@@ -521,27 +544,12 @@ export async function prepareSandbox(
   return { ok: true, imageId: initialized.imageId };
 }
 
-export function sandboxTargetCommand(command: string): string {
-  return `sh -lc ${shellQuote(sandboxExecutableCommand(command))}`;
+export function sandboxTargetCommand(command: string, runtime: RuntimeAdapter = NODE_RUNTIME): string {
+  return `sh -lc ${shellQuote(sandboxExecutableCommand(command, runtime))}`;
 }
 
-export function sandboxExecutableCommand(command: string): string {
-  const trimmed = command.trim();
-  if (COREPACK_PACKAGE_MANAGER_COMMAND.test(trimmed)) {
-    return [
-      'sutura_corepack_bin="$(mktemp -d /tmp/sutura-corepack.XXXXXX)"',
-      'corepack enable --install-directory "$sutura_corepack_bin"',
-      `PATH="$sutura_corepack_bin:$PATH" sh -c ${shellQuote(trimmed)}`,
-    ].join(' && ');
-  }
-  if (!PACKAGE_BINARY_COMMAND.test(trimmed)) return command;
-  const nestedCommand = shellQuote(trimmed);
-
-  return [
-    `if [ -f pnpm-lock.yaml ]; then corepack pnpm exec sh -c ${nestedCommand};`,
-    `elif [ -f yarn.lock ]; then corepack yarn exec sh -c ${nestedCommand};`,
-    `else PATH="./node_modules/.bin:$PATH" sh -c ${nestedCommand}; fi`,
-  ].join(' ');
+export function sandboxExecutableCommand(command: string, runtime: RuntimeAdapter = NODE_RUNTIME): string {
+  return runtime.normalizeCommand(command);
 }
 
 function withGrounding(
@@ -569,7 +577,13 @@ function vettedRaceResult(
 function makeCaseFile(
   ctx: Pick<
     RepairFailureContext,
-    'runId' | 'repo' | 'cost' | 'policyEvidence' | 'stageLedger' | 'traceRecorder'
+    | 'runId'
+    | 'repo'
+    | 'cost'
+    | 'policyEvidence'
+    | 'stageLedger'
+    | 'traceRecorder'
+    | 'runtime'
   >,
   diagnosis: Diagnosis,
   triageVerdict: CaseFile['triage'],
@@ -594,6 +608,7 @@ function makeCaseFile(
   return {
     runId: ctx.runId,
     repo: ctx.repo,
+    runtime: (ctx.runtime ?? NODE_RUNTIME).id,
     diagnosis,
     triage: triageVerdict,
     race: raceResults.map((result) => ({
@@ -631,7 +646,7 @@ async function enforceWinnerPolicy(
   const commandFailures: string[] = [];
   const resourceFailures: string[] = [];
   for (const [index, command] of policy.requiredCommands.entries()) {
-    const executable = sandboxTargetCommand(command);
+    const executable = sandboxTargetCommand(command, ctx.runtime ?? NODE_RUNTIME);
     const baseline = await ctx.executor.run(ctx.failingImage, executable, {
       cwd: SNAPSHOT_CWD,
     });
@@ -727,7 +742,8 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       ? `Grounding returned ${diagnosis.grounding.citations.length} citations`
       : 'Grounding skipped',
   });
-  const executableCommand = sandboxExecutableCommand(diagnosis.failingCmd);
+  const runtime = ctx.runtime ?? NODE_RUNTIME;
+  const executableCommand = sandboxExecutableCommand(diagnosis.failingCmd, runtime);
 
   const triageVerdict = await triage(
     ctx.executor,
@@ -761,7 +777,7 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
         diff: ctx.candidateDiff,
       };
   if (!suppliedCandidate) {
-    const sourceContext = await ctx.readSourceContext(ctx.failedLog, diagnosis);
+    const sourceContext = await ctx.readSourceContext(ctx.failedLog, diagnosis, runtime);
     const configuredBudgets = repairBudgetLimits(ctx.repairBudgets);
     const budget = new RepairBudget({
       ...configuredBudgets,
@@ -772,7 +788,7 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       ['diagnosed', executableCommand],
       ...policy.requiredCommands.map((command, index) => [
         `policy-${index + 1}`,
-        sandboxExecutableCommand(command),
+        sandboxExecutableCommand(command, runtime),
       ]),
     ]);
     const searchLimits = ctx.search ?? {
@@ -1103,8 +1119,17 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     network: 'disabled',
     note: 'Repository policy validated before provider execution',
   });
+  const configuredRuntime = ctx.runtimeId ?? ctx.policy?.runtime;
+  if (ctx.runtimeId !== undefined && ctx.policy?.runtime !== undefined && ctx.runtimeId !== ctx.policy.runtime) {
+    throw new HealCaseError('Configured runtime conflicts with repository policy runtime');
+  }
+  const runtime = await detectRuntimeAtPath(ctx.caseDir, command, configuredRuntime);
+  fullContext.runtime = runtime;
+  if (runtime.id === 'python' && ctx.imageRef !== undefined && ctx.imageRef !== runtime.imageRef) {
+    throw new HealCaseError('Python runtime image must use the verified exact digest');
+  }
   const executor = new AllowlistedExecutor(ctx.executor);
-  const baseImage = await executor.importImage(ctx.imageRef ?? SUTURA_DEFAULT_IMAGE_REF);
+  const baseImage = await executor.importImage(ctx.imageRef ?? runtime.imageRef);
   ledger.record({
     stage: 'preparation',
     attempt: 0,
@@ -1118,13 +1143,14 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     baseImage,
     command,
     ledger,
+    runtime,
   );
   if (!setup.ok) {
     return preparationFailureCaseFile(fullContext, setup.command, setup.result);
   }
   const reproduction = await executor.run(
     setup.imageId,
-    sandboxTargetCommand(command),
+    sandboxTargetCommand(command, runtime),
     { cwd: SNAPSHOT_CWD },
   );
   ledger.record({
@@ -1162,5 +1188,6 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     ...(ctx.search === undefined ? {} : { search: ctx.search }),
     stageLedger: ledger,
     traceRecorder: trace,
+    runtime,
   });
 }

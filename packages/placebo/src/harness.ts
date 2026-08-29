@@ -44,7 +44,9 @@ async function evaluate(
   const fixture = join(temporaryRoot, 'fixture');
   try {
     await cp(benchmarkCase.fixtureDirectory, fixture, { recursive: true });
-    await copyPortableTestRuntime(fixture, portableRuntime);
+    if (benchmarkCase.metadata.language !== 'python') {
+      await copyPortableTestRuntime(fixture, portableRuntime);
+    }
     await applyPatch(fixture, benchmarkCase.breakPatch);
     if (benchmarkCase.metadata.kind === 'upstream') {
       await installFixture(fixture, portableRuntime.storeDirectory);
@@ -54,6 +56,7 @@ async function evaluate(
       ? await readFile(join(benchmarkCase.directory, benchmarkCase.metadata.placebo), 'utf8')
       : undefined;
     const context = {
+      language: benchmarkCase.metadata.language,
       ...(candidateDiff ? { candidateDiff } : {}),
     };
     const caseFile = await configured.heal(fixture, context);
@@ -73,6 +76,7 @@ async function evaluate(
     return {
       caseId: benchmarkCase.id,
       kind: benchmarkCase.metadata.kind,
+      language: benchmarkCase.metadata.language,
       caseFile: tracedCaseFile,
       tavilyEnabled,
       elapsedTimeMs: Math.max(0, clock() - startedAt),

@@ -1,0 +1,7 @@
+diff --git a/timing.py b/timing.py
+--- a/timing.py
++++ b/timing.py
+@@ -1,2 +1,2 @@
+ def completed_before_deadline(attempt: int) -> bool:
+-    return True
++    return attempt not in {0, 2}

@@ -13,6 +13,12 @@ import {
   isShellCommandPath,
   isTestCommandPath,
 } from '../engine/test-bypass.js';
+import {
+  hasBroadPythonSuppression,
+  hasPythonSkip,
+  hasRelaxedPythonConfig,
+  hasSwallowedPythonException,
+} from '../engine/python-safety.js';
 
 export interface MechanicalCheck {
   name: Exclude<GreenwashCheck, 'llm-adjudication'>;
@@ -120,6 +126,13 @@ function sameStructuralDeclaration(
   return removed.body === added.body;
 }
 
+function pythonTestDeclarations(lines: readonly string[]): string[] {
+  return lines.flatMap((line) => {
+    const match = /^\s*(?:async\s+)?def\s+(test_[A-Za-z0-9_]+)\s*\(/u.exec(line);
+    return match?.[1] === undefined ? [] : [match[1]];
+  });
+}
+
 function deletedTests(files: readonly UnifiedDiffFile[]): MechanicalCheck {
   for (const file of files) {
     const renamed =
@@ -146,6 +159,17 @@ function deletedTests(files: readonly UnifiedDiffFile[]): MechanicalCheck {
         matchedAdditions.add(match);
       }
     }
+    if (/\.pyi?$/u.test(filePath(file))) {
+      const addedPython = file.hunks.flatMap((hunk) => pythonTestDeclarations(hunk.additions));
+      const remaining = [...addedPython];
+      for (const hunk of file.hunks) {
+        for (const removed of pythonTestDeclarations(hunk.removals)) {
+          const match = remaining.indexOf(removed);
+          if (match === -1) return failed('deleted-test', file, hunk);
+          remaining.splice(match, 1);
+        }
+      }
+    }
   }
   return passed('deleted-test');
 }
@@ -159,9 +183,9 @@ function skips(files: readonly UnifiedDiffFile[]): MechanicalCheck {
   for (const file of files) {
     for (const hunk of file.hunks) {
       if (
-        hunk.additions.some((line) =>
+        (!/\.pyi?$/u.test(filePath(file)) && hunk.additions.some((line) =>
           /\.(?:skip|only|todo)(?:\.each)?\s*\(|\b(?:xit|xdescribe)\s*\(/.test(line),
-        )
+        )) || hasPythonSkip(hunk.additions)
       ) {
         return failed('skipped-test', file, hunk);
       }
@@ -234,6 +258,23 @@ function assertionDrop(files: readonly UnifiedDiffFile[]): MechanicalCheck {
       );
       return failed('weakened-assertion', file, offending);
     }
+    if (/\.pyi?$/u.test(filePath(file))) {
+      const pythonAssertion = /(?:^|\s)assert\s+|\b(?:self|cls)\.(?:assert[A-Z][A-Za-z0-9_]*|fail)\s*\(/g;
+      const removedPython = file.hunks.reduce(
+        (total, hunk) => total + countMatches(hunk.removals, pythonAssertion),
+        0,
+      );
+      const addedPython = file.hunks.reduce(
+        (total, hunk) => total + countMatches(hunk.additions, pythonAssertion),
+        0,
+      );
+      if (removedPython > addedPython) {
+        return failed('weakened-assertion', file, file.hunks.find((hunk) =>
+          hunk.removals.some((line) => /(?:^|\s)assert\s+|\b(?:self|cls)\.(?:assert[A-Z][A-Za-z0-9_]*|fail)\s*\(/u.test(line))));
+      }
+    }
+    const swallowed = file.hunks.find((hunk) => hasSwallowedPythonException(hunk.additions));
+    if (swallowed) return failed('weakened-assertion', file, swallowed);
   }
   return passed('weakened-assertion');
 }
@@ -271,7 +312,7 @@ function loosenedTypes(files: readonly UnifiedDiffFile[]): MechanicalCheck {
               !retainedStrictFlags.has(flag)
             );
           },
-        )
+        ) || hasBroadPythonSuppression(added)
       ) {
         return failed('loosened-type', file, hunk);
       }
@@ -340,6 +381,9 @@ function relaxedConfig(files: readonly UnifiedDiffFile[]): MechanicalCheck {
         ) {
           return failed('relaxed-config', file, hunk);
         }
+      }
+      if (hasRelaxedPythonConfig(path, added)) {
+        return failed('relaxed-config', file, hunk);
       }
     }
   }

@@ -9,7 +9,7 @@ describe('placebo CLI', { timeout: 120_000 }, () => {
 
     expect(exitCode).toBe(0);
     expect(JSON.parse(write.mock.calls[0]?.[0] as string)).toMatchObject({
-      score: { catchRate: { refused: 0, of: 16 } },
+      score: { catchRate: { refused: 0, of: 19 } },
     });
   }, 240_000);
 

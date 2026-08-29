@@ -107,6 +107,9 @@ export { AuditEvidenceError, auditOnly, validateAuditEvidence } from './audit-on
 export { aggregateStageEvidence } from './report/format.js';
 export { isSensitiveRepositoryPath } from './security/repository-path.js';
 export { TraceRecorder } from './trace/recorder.js';
+export { RuntimeDetectionError, detectRuntime, detectRuntimeAtPath, runtimeEvidencePaths } from './runtime/detect.js';
+export { NODE_IMAGE_REF, NODE_RUNTIME, nodePreparationCommand, normalizeNodeCommand } from './runtime/node.js';
+export { PYTHON_IMAGE_REF, PYTHON_RUNTIME, PythonDependencyError, normalizePythonCommand, validatePythonDependencyInputs } from './runtime/python.js';
 export { sanitizeTraceEvent } from './trace/sanitize.js';
 export { TRACE_SCHEMA_VERSION } from './trace/types.js';
 export {
@@ -159,6 +162,7 @@ export type {
   ConfigEnvironment,
   SearchLimits,
 } from './config.js';
+export type { DependencyPreparation, RuntimeAdapter, RuntimeEvidence, RuntimeId } from './runtime/types.js';
 export type { AuditContext, AuditLlm } from './audit/audit.js';
 export type {
   AdjudicationContext,

@@ -170,7 +170,7 @@ export class ContreeExecutor implements Executor {
     options: SnapshotOptions,
   ): Promise<ImageId> {
     assertSnapshotOptions(options);
-    const archive = await createSnapshotArchive(dir, options.profile);
+    const archive = await createSnapshotArchive(dir, options);
     let fileId: string;
     let manifestFileId: string | undefined;
     try {
@@ -632,6 +632,18 @@ function assertSnapshotOptions(options: SnapshotOptions): void {
   if (!validPair) {
     throw new ContreeError('ConTree snapshot profile and mode are incompatible');
   }
+  if (options.includePaths !== undefined) {
+    if (
+      options.profile !== 'dependency-inputs' ||
+      !Array.isArray(options.includePaths) ||
+      options.includePaths.length === 0 ||
+      options.includePaths.length > 16 ||
+      new Set(options.includePaths).size !== options.includePaths.length
+    ) {
+      throw new ContreeError('ConTree snapshot approved path set is invalid');
+    }
+    for (const path of options.includePaths) validateSnapshotPath(path);
+  }
 }
 
 interface SnapshotCommandPaths {
@@ -703,6 +715,13 @@ function isDependencyInputPath(
     return false;
   }
   if (path === 'package.json') return true;
+  if (segments.length === 1 && [
+    'pyproject.toml',
+    'uv.lock',
+    'poetry.lock',
+    'requirements.txt',
+    'requirements-dev.txt',
+  ].includes(basename)) return true;
   if (basename === 'package.json') {
     const packageDir = path.slice(0, -'/package.json'.length);
     return workspacePatterns.some((pattern) => workspacePatternMatches(pattern, packageDir));
@@ -985,6 +1004,34 @@ async function listSnapshotFiles(
   }
 }
 
+async function listApprovedDependencyFiles(
+  dir: string,
+  approvedPaths: readonly string[],
+): Promise<string[]> {
+  const root = await realpath(dir);
+  const files = [...approvedPaths].sort();
+  for (const path of files) {
+    validateSnapshotPath(path);
+    if (!isDependencyInputPath(path, [])) {
+      throw new ContreeError(`ConTree dependency snapshot refuses unapproved input kind: ${path}`);
+    }
+    const absolute = join(root, path);
+    const metadata = await lstat(absolute);
+    if (metadata.isSymbolicLink()) {
+      throw new ContreeError(`ConTree dependency snapshot refuses symlink: ${path}`);
+    }
+    const canonical = await realpath(absolute);
+    if (canonical !== root && !canonical.startsWith(`${root}${sep}`)) {
+      throw new ContreeError(`ConTree dependency snapshot refuses escaping path: ${path}`);
+    }
+    if (!metadata.isFile()) {
+      throw new ContreeError(`ConTree dependency snapshot requires a regular file: ${path}`);
+    }
+  }
+  await validateSnapshotFiles(root, files, 'dependency-inputs');
+  return files;
+}
+
 async function validateSnapshotFiles(
   dir: string,
   files: readonly string[],
@@ -1041,10 +1088,12 @@ interface SnapshotArchive {
 
 async function createSnapshotArchive(
   dir: string,
-  profile: SnapshotProfile,
+  options: SnapshotOptions,
 ): Promise<SnapshotArchive> {
-  const files = await listSnapshotFiles(dir, profile);
-  if (profile === 'dependency-inputs') {
+  const files = options.includePaths === undefined
+    ? await listSnapshotFiles(dir, options.profile)
+    : await listApprovedDependencyFiles(dir, options.includePaths);
+  if (options.profile === 'dependency-inputs') {
     await rejectRegistryCredentials(dir, files);
   }
   const input = Buffer.from(files.map((path) => `${path}\0`).join(''));

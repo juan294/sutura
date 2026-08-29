@@ -1,6 +1,7 @@
 {
   "runId": "run-flaky-017",
   "repo": "acme/notifications",
+  "runtime": "node",
   "diagnosis": {
     "class": "flaky-timing",
     "confidence": 0.89,

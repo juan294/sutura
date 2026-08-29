@@ -360,6 +360,16 @@ describe('CLI runtime configuration and source boundaries', () => {
     });
   });
 
+  it.each(['node', 'python'] as const)('passes explicit %s selection without accepting an image reference', (selected) => {
+    const value = runtimeFromEnvironment({
+      ...request('repair-off-by-one', undefined, false), runtime: selected,
+    }, {
+      NEBIUS_API_KEY: 'nebius', CONTREE_TOKEN: 'token', CONTREE_PROJECT: 'project',
+    });
+    expect(value.runtimeId).toBe(selected);
+    expect(value.imageRef).toBeUndefined();
+  });
+
   it('reads bounded source files but excludes dependencies and secret-shaped paths', async () => {
     const fixture = join(CORPUS, 'repair-off-by-one', 'fixture');
     const context = await readLocalSourceContext(
@@ -369,6 +379,24 @@ describe('CLI runtime configuration and source boundaries', () => {
     );
     expect(context.sources.map(({ path }) => path)).toContain('page-count.js');
     expect(context.sources.every(({ path }) => !path.includes('node_modules') && !path.startsWith('.env'))).toBe(true);
+  });
+
+  it('uses Python manifest fallbacks after runtime selection', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-python-source-fallback-'));
+    try {
+      await writeFile(join(directory, 'pyproject.toml'), '[project]\nname = "fixture"\n');
+      await writeFile(join(directory, 'uv.lock'), 'version = 1\n');
+      const context = await readLocalSourceContext(
+        directory,
+        'Run python -m pytest\nImportError: dependency failed',
+        { class: 'dep-upstream-breaking', confidence: 1, signals: [], failingCmd: 'python -m pytest', errorExcerpt: 'failed' },
+        undefined,
+        'python',
+      );
+      expect(context.sources.map(({ path }) => path)).toEqual(['pyproject.toml', 'uv.lock']);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('centers a bounded source window on a far observed line', async () => {

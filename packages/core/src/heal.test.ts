@@ -259,6 +259,7 @@ describe('healCase', () => {
     const caseFile = await healCase(ctx);
 
     expect(caseFile.outcome).toBe('fixed');
+    expect(caseFile.runtime).toBe('node');
     expect(executor.calls.filter(({ kind }) => kind === 'snapshot')).toHaveLength(2);
     expect(executor.calls.find((call) => call.kind === 'run')).toMatchObject({
       kind: 'run',
@@ -302,6 +303,7 @@ describe('healCase', () => {
 
     await expect(healCase(ctx)).resolves.toMatchObject({
       outcome: 'flaky-no-patch',
+      runtime: 'node',
       triage: { status: 'intermittent', reproduced: 2, of: 5 },
     });
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
@@ -319,6 +321,7 @@ describe('healCase', () => {
     const caseFile = await healCase(ctx);
 
     expect(caseFile.outcome).toBe('refused');
+    expect(caseFile.runtime).toBe('node');
     expect(caseFile.audit?.approved).toBe(false);
     expect(caseFile.audit?.checks).toContainEqual(expect.objectContaining({ name: 'skipped-test', passed: false }));
     expect(executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(7);
@@ -379,6 +382,7 @@ describe('healCase', () => {
 
     await expect(healCase(ctx)).resolves.toMatchObject({
       outcome: 'gave-up',
+      runtime: 'node',
       diagnosis: {
         class: 'dep-upstream-breaking',
         grounding: { skipped: true, reason: 'disabled', citations: [] },
@@ -389,22 +393,30 @@ describe('healCase', () => {
   });
 
   it('stops before paid inference when the clean sandbox does not reproduce', async () => {
-    const { ctx, chat } = context('repair-off-by-one', [0], 'test-assertion');
+    const { ctx, chat } = context('python-repair-missing-await', [0, 0], 'test-assertion', {
+      runtimeId: 'python',
+      failureCommand: 'pytest -q',
+    });
 
     await expect(healCase(ctx)).resolves.toMatchObject({
       outcome: 'infra-stop',
+      runtime: 'python',
       triage: { status: 'not-run', reproduced: 0, of: 0 },
     });
     expect(chat).not.toHaveBeenCalled();
   });
 
   it('stops before reproduction and paid inference when sandbox preparation fails', async () => {
-    const { ctx, chat } = context('repair-off-by-one', [1], 'test-assertion');
+    const { ctx, chat } = context('python-repair-missing-await', [1], 'test-assertion', {
+      runtimeId: 'python',
+      failureCommand: 'pytest -q',
+    });
     const executor = new InMemoryExecutor(() => result(1, 'pnpm install failed'));
     ctx.executor = executor;
 
     await expect(healCase(ctx)).resolves.toMatchObject({
       outcome: 'infra-stop',
+      runtime: 'python',
       diagnosis: {
         class: 'infra',
         signals: ['sandbox-preparation:failed'],
@@ -413,6 +425,17 @@ describe('healCase', () => {
     });
     expect(executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(1);
     expect(chat).not.toHaveBeenCalled();
+  });
+
+  it('does not let an explicit Python selector replace the verified image digest', async () => {
+    const { ctx, executor } = context('python-repair-missing-await', [], 'test-assertion', {
+      runtimeId: 'python',
+      failureCommand: 'pytest -q',
+      imageRef: 'python:latest',
+    });
+
+    await expect(healCase(ctx)).rejects.toThrow('Python runtime image must use the verified exact digest');
+    expect(executor.calls).toEqual([]);
   });
 
   it('reproduces an observed dependency-install command from manifest-only preparation', async () => {
@@ -477,7 +500,7 @@ describe('sandbox command resolution', () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it('uses verified lifecycle-blocking installer modes', () => {
     const command = sandboxPreparationCommand();

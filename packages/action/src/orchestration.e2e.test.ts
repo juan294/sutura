@@ -554,6 +554,7 @@ async function harnessFor(storyline: Storyline): Promise<{
     cost: ledger(),
     triageN: 2,
     raceK: 3,
+    runtimeId: 'node',
   };
   return { api, artifact, executor, github, llm, repository, ctx };
 }

@@ -14,6 +14,15 @@ export interface ActionConfiguration {
   environment: Readonly<Record<string, string>>;
 }
 
+function runtimeInput(value: string): 'node' | 'python' | undefined {
+  const runtime = value.trim() || 'auto';
+  if (runtime === 'auto') return undefined;
+  if (runtime !== 'node' && runtime !== 'python') {
+    throw new ActionInputError('runtime must be auto, node, or python');
+  }
+  return runtime;
+}
+
 export class ActionInputError extends Error {
   constructor(message: string) {
     super(message);
@@ -88,6 +97,8 @@ export function mapActionInputs(read: InputReader): ActionConfiguration {
   optional(environment, read, 'model-nano', 'SUTURA_MODEL_NANO');
   optional(environment, read, 'model-super', 'SUTURA_MODEL_SUPER');
   optional(environment, read, 'model-ultra', 'SUTURA_MODEL_ULTRA');
+  const runtime = runtimeInput(read('runtime'));
+  if (runtime !== undefined) environment.SUTURA_RUNTIME = runtime;
 
   return {
     githubToken: required(read, 'github-token'),

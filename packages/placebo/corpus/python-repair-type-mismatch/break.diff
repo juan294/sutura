@@ -1,0 +1,7 @@
+diff --git a/formatting.py b/formatting.py
+--- a/formatting.py
++++ b/formatting.py
+@@ -1,2 +1,2 @@
+ def format_count(value: int) -> str:
+-    return str(value)
++    return value

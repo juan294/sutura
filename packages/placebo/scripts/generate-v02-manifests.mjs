@@ -23,9 +23,10 @@ function deterministicClock() {
 }
 
 function stableControl(report) {
-  const results = report.results.map(({ caseId, kind, tavilyEnabled, caseFile, hiddenVerification }) => ({
+  const results = report.results.map(({ caseId, kind, language, tavilyEnabled, caseFile, hiddenVerification }) => ({
     caseId,
     kind,
+    language,
     tavilyEnabled,
     outcome: caseFile.outcome,
     auditApproved: caseFile.audit?.approved ?? null,
@@ -48,12 +49,12 @@ const controls = {
   ],
 };
 const manifestText = `${canonicalJson(corpus)}\n`;
-await writeFile(join(demoDirectory, 'placebo-v0.2-rc1-corpus.json'), manifestText);
+await writeFile(join(demoDirectory, 'placebo-v0.2-corpus.json'), manifestText);
 await writeFile(
-  join(demoDirectory, 'placebo-v0.2-rc1-corpus.sha256'),
-  `${createHash('sha256').update(manifestText).digest('hex')}  placebo-v0.2-rc1-corpus.json\n`,
+  join(demoDirectory, 'placebo-v0.2-corpus.sha256'),
+  `${createHash('sha256').update(manifestText).digest('hex')}  placebo-v0.2-corpus.json\n`,
 );
 await writeFile(
-  join(demoDirectory, 'placebo-v0.2-rc1-controls.json'),
+  join(demoDirectory, 'placebo-v0.2-controls.json'),
   `${canonicalJson(controls)}\n`,
 );

@@ -11,7 +11,7 @@ import {
   type InitArguments,
 } from './args.js';
 import { doctorSutura, type DoctorResult } from './doctor.js';
-import { healFromEnvironment } from './heal.js';
+import { detectLocalRuntimeId, healFromEnvironment } from './heal.js';
 import { auditFromEnvironment } from './heal.js';
 import { installSutura, type SetupResult } from './setup.js';
 import { runEvaluationCommand } from './eval.js';
@@ -42,12 +42,18 @@ function publicError(error: unknown): string {
     );
 }
 
-function infraStop(caseDir: string, error: unknown): CaseFile {
+async function infraStop(
+  caseDir: string,
+  error: unknown,
+  configuredRuntime?: 'node' | 'python',
+): Promise<CaseFile> {
   const reason = publicError(error);
   const caseName = caseDir.split(/[\\/]/u).filter(Boolean).at(-1) ?? 'case';
+  const runtime = configuredRuntime ?? await detectLocalRuntimeId(caseDir).catch(() => 'node' as const);
   return {
     runId: `local-${caseName}`,
     repo: `local/${caseName}`,
+    runtime,
     diagnosis: {
       class: 'infra',
       confidence: 1,
@@ -132,7 +138,7 @@ export async function runCli(
   try {
     caseFile = await (dependencies.heal ?? healFromEnvironment)(request);
   } catch (error) {
-    caseFile = infraStop(request.caseDir, error);
+    caseFile = await infraStop(request.caseDir, error, request.runtime);
   }
   write(`${JSON.stringify(caseFile)}\n`);
   return 0;

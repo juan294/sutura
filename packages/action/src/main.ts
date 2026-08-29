@@ -74,6 +74,7 @@ export async function runAction(): Promise<void> {
       raceK: config.raceK,
       repairBudgets: config.repairBudgets,
       search: config.search,
+      ...(config.runtimeId === undefined ? {} : { runtimeId: config.runtimeId }),
       ...(tavily ? { tavily } : {}),
     }), (message) => core.warning(message));
     core.setOutput('outcome', result.outcome);
