@@ -117,3 +117,13 @@ Expected: a strict three-field proposal with a 1,000-code-point replacement boun
 Found: three replies failed the strict `{id,rationale,replacement}` contract, one reply applied an incorrect patch and failed the trusted test, one produced a patch that `git apply` rejected, and one reached the 16,384-token completion limit. Baseline requests contained about 4,922 input tokens, while Super used 12,884 to 16,384 completion tokens. `reasoning_effort: low` did not create a compact proposal.
 
 Why it matters: target ownership alone does not make a verbose reasoning model a reliable serializer. Candidate identity and rationale do not need model judgment. The production boundary must accept only `{replacement}`, derive a stable ID and rationale in the controller, disable reasoning for this constrained transformation, and use the model card sampling values `temperature: 1` and `top_p: 0.95`. The 1,000-code-point replacement still fits a bounded 8,192-token completion envelope even under maximal JSON escaping.
+
+## Live proof 16 addendum
+
+The one-field proposal candidate, `3e14fc835727b168c6a451c2022989dd46d21130`, passed exact-SHA CI at [run 33267438324](https://github.com/juan294/sutura/actions/runs/33267438324). Dogfood SHA `7488afea0c123f3ef84354301c6a1d90e4f9cfb0` then failed only the declared arithmetic assertion at [run 33268037618](https://github.com/juan294/sutura/actions/runs/33268037618). Sutura [run 33268103281](https://github.com/juan294/sutura/actions/runs/33268103281) completed in 1 minute 52 seconds with `gave-up`, four search nodes, no Super completion, and no repair pull request.
+
+Expected: `reasoning_effort: none` disables hidden reasoning for the one-field Super transformation.
+
+Found: every Super request failed before inference with HTTP 400. The live endpoint accepts only low, medium, or high reasoning effort and rejected `none`. The Token Factory chat-completion API exposes `extra_body` for model-specific parameters, while the NVIDIA Nemotron 3 Super model card disables thinking with `extra_body.chat_template_kwargs.enable_thinking: false`.
+
+Why it matters: a generic reasoning-effort vocabulary is not a substitute for the selected model's live protocol. The client must represent model chat-template thinking as a separate typed option, serialize it through `extra_body`, and reject requests that also set `reasoning_effort`. The production repair request must use the model-specific thinking-off control and omit `reasoning_effort` entirely.

@@ -36,6 +36,8 @@ The completion-budget live proof then exposed a remaining path/range contract ga
 
 Live proof 15 showed that the remaining three-field proposal still gave Super unnecessary work. Three replies did not match the strict schema, one patch was rejected, one patch failed the trusted test, and one reply consumed the 16,384-token completion limit. Production must accept only replacement text, derive proposal identity and rationale in the controller, and disable model reasoning for this bounded transformation.
 
+Live proof 16 showed that `reasoning_effort: none` is not accepted by the selected Super endpoint. The model-specific reasoning-off contract is `extra_body.chat_template_kwargs.enable_thinking: false`. Production must use that typed extension and omit `reasoning_effort` from the request.
+
 At the pre-redesign baseline, unit and end-to-end tests scripted ideal LLM tool calls, no live test called the complete orchestration path, and production admission reduced the four-branch search default to one branch by reserving all eight model turns for it. The implementation phases replace those conditions with strict proposals, recorded production-path orchestration, exact attempt reservation, and locally replayed live terminal evidence.
 
 ## Design options
@@ -100,7 +102,7 @@ failed GitHub run
 | 1 | Bounded repair source closure | None | Sequential |
 | 2 | Controller-owned repair attempt | Phase 1 | Sequential |
 | 3 | Search budgets, feedback, and exact winner identity | Phase 2 | Sequential |
-| 4 | Fifteen-run replay and production-path integration gates | Phase 3 | Sequential |
+| 4 | Sixteen-run replay and production-path integration gates | Phase 3 | Sequential |
 | 5 | Exact-SHA CI and final live dogfood proof | Phase 4 | Sequential |
 
 Detailed phase files:
@@ -140,7 +142,7 @@ Run the `codex-simplify` reuse, quality, and efficiency reviews after implementa
 - The realistic fixture retains the actual ANSI-colored Vitest reporter prefix and pnpm workspace task line.
 - The provider response schema and local parser accept only one replacement field with the same 1,000-code-point bound.
 - The controller derives a stable candidate ID from the canonical unified-diff hash and supplies a fixed controller-owned rationale.
-- The Super repair request disables reasoning, uses `temperature: 1` and `top_p: 0.95`, and reserves 8,192 completion tokens.
+- The Super repair request disables reasoning with `extra_body.chat_template_kwargs.enable_thinking: false`, omits `reasoning_effort`, uses `temperature: 1` and `top_p: 0.95`, and reserves 8,192 completion tokens.
 - The controller selects the path and complete inclusive source range, then derives the exact old bytes and unified diff without accepting target metadata from Super.
 - A scripted search-only, read-only, test-only, or submit-only model response cannot control the production attempt.
 - A valid proposal always runs patch, diagnosed test, and candidate creation in controller order.
@@ -158,7 +160,7 @@ Run the `codex-simplify` reuse, quality, and efficiency reviews after implementa
 - Character and byte limits never admit a partial source line, and the observed target line remains inside a non-empty bounded excerpt.
 - Audit and publication use one exact candidate ID and diff hash.
 - The recorded GitHub action E2E creates one repair branch and PR for the realistic direct-run dogfood fixture.
-- All nine historical model-control terminal classes and the six post-redesign live terminal classes have local regression coverage.
+- All nine historical model-control terminal classes and the seven post-redesign live terminal classes have local regression coverage.
 - The complete local verification gate and simplification reviews pass.
 
 ## Final live acceptance
@@ -187,5 +189,5 @@ This reliability cycle does not publish v0.2.0, create a tag or GitHub release, 
 - [x] Phase 1: Bounded repair source closure
 - [x] Phase 2: Controller-owned repair attempt
 - [x] Phase 3: Search budgets, feedback, and exact winner identity
-- [x] Phase 4: Fifteen-run replay and production-path integration gates
+- [ ] Phase 4: Sixteen-run replay and production-path integration gates
 - [ ] Phase 5: Exact-SHA CI and final live dogfood proof

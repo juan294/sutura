@@ -394,8 +394,18 @@ export class NebiusClient {
     ) {
       throw new RangeError('topP must be between 0 and 1');
     }
+    if (options.thinkingMode !== undefined && options.reasoningEffort !== undefined) {
+      throw new RangeError('thinkingMode and reasoningEffort are mutually exclusive');
+    }
 
     const decision = this.modelQuote(tier, messages, options);
+    const chatTemplateKwargs = options.thinkingMode === undefined
+      ? undefined
+      : options.thinkingMode === 'disabled'
+        ? { enable_thinking: false }
+        : options.thinkingMode === 'low-effort'
+          ? { enable_thinking: true, low_effort: true }
+          : { enable_thinking: true };
     const body = {
       model: decision.modelId,
       messages: wireMessages(messages),
@@ -405,6 +415,9 @@ export class NebiusClient {
       ...(options.reasoningEffort
         ? { reasoning_effort: options.reasoningEffort }
         : {}),
+      ...(chatTemplateKwargs === undefined
+        ? {}
+        : { extra_body: { chat_template_kwargs: chatTemplateKwargs } }),
       ...(options.responseFormat
         ? { response_format: wireResponseFormat(options.responseFormat) }
         : {}),

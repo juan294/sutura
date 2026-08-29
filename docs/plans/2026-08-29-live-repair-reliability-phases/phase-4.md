@@ -1,4 +1,4 @@
-# Phase 4: Fifteen-run replay and production-path integration gates
+# Phase 4: Sixteen-run replay and production-path integration gates
 
 ## Goal
 
@@ -28,6 +28,7 @@ Add sanitized dogfood log/source/provider fixtures. Extend core orchestration an
    - a provider-schema-valid line range outside the selected source excerpt.
    - provider acceptance of target fields that contradict the detailed response schema, plus accepted but incorrect anchored patches.
    - strict three-field replies that consume excessive reasoning tokens, fail schema validation, produce rejected patches, or reach the 16,384-token limit.
+   - a live Super endpoint that rejects `reasoning_effort: none` before inference and requires model-specific chat-template control.
 3. Prove each class is rejected at its boundary or structurally impossible in the production path.
 4. Add a recorded direct `workflow_dispatch` GitHub action E2E with realistic failed logs, exact checkout source closure, Nano diagnosis, Super repair proposal, ConTree patch/test, Ultra audit, fix branch, PR, check, comment, and artifact.
 5. Add a two-depth failed-first-proposal storyline.
@@ -37,7 +38,7 @@ Add sanitized dogfood log/source/provider fixtures. Extend core orchestration an
 
 ## Automated success criteria
 
-- All nine historical model-control terminals and the six post-redesign live terminals have named regression tests.
+- All nine historical model-control terminals and the seven post-redesign live terminals have named regression tests.
 - The realistic arithmetic E2E reaches `fixed` and publishes only the addition patch.
 - The repair test and `.sutura.json` remain unchanged.
 - The repair branch parent is the exact failed SHA and the PR base is the failed branch.
@@ -81,3 +82,5 @@ The one-field, reasoning-disabled proposal revision passed its complete local ga
 - Quality review: clean
 - Efficiency review: clean
 - `git diff --check`: passed
+
+Live proof 16 invalidated this exit gate because the selected endpoint rejected the generic reasoning-off value. Repeat the complete gate with the typed model chat-template control before Phase 5.

@@ -115,8 +115,7 @@ describe('NebiusClient', () => {
       await client.chat(tier, MESSAGES, {
         maxTokens: 2_048,
         temperature: 0.25,
-        topP: 0.95,
-        reasoningEffort: 'none',
+        reasoningEffort: 'low',
         responseFormat: { type: 'json_object' },
       });
 
@@ -132,8 +131,7 @@ describe('NebiusClient', () => {
         messages: MESSAGES,
         max_tokens: 2_048,
         temperature: 0.25,
-        top_p: 0.95,
-        reasoning_effort: 'none',
+        reasoning_effort: 'low',
         response_format: { type: 'json_object' },
       });
     },
@@ -184,6 +182,60 @@ describe('NebiusClient', () => {
       expect(fetch).not.toHaveBeenCalled();
     },
   );
+
+  it('replays live run 16: disables Super thinking through extra_body', async () => {
+    const fetch = vi.fn().mockResolvedValue(successResponse('{"replacement":"fixed"}'));
+    const client = new NebiusClient(CONFIG, { fetch });
+
+    await client.chat('super', MESSAGES, {
+      maxTokens: 8_192,
+      temperature: 1,
+      topP: 0.95,
+      thinkingMode: 'disabled',
+    });
+
+    const [, init] = fetch.mock.calls[0] as [string, HttpRequestInit];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      model: MODELS.super,
+      max_tokens: 8_192,
+      temperature: 1,
+      top_p: 0.95,
+      extra_body: { chat_template_kwargs: { enable_thinking: false } },
+    });
+    expect(body).not.toHaveProperty('reasoning_effort');
+  });
+
+  it('supports enabled and low-effort model chat-template modes', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(successResponse())
+      .mockResolvedValueOnce(successResponse());
+    const client = new NebiusClient(CONFIG, { fetch });
+
+    await client.chat('super', MESSAGES, { thinkingMode: 'enabled' });
+    await client.chat('super', MESSAGES, { thinkingMode: 'low-effort' });
+
+    const bodies = fetch.mock.calls.map(([, init]) =>
+      JSON.parse((init as HttpRequestInit).body as string),
+    );
+    expect(bodies[0]).toMatchObject({
+      extra_body: { chat_template_kwargs: { enable_thinking: true } },
+    });
+    expect(bodies[1]).toMatchObject({
+      extra_body: { chat_template_kwargs: { enable_thinking: true, low_effort: true } },
+    });
+  });
+
+  it('rejects conflicting reasoning controls before making a request', async () => {
+    const fetch = vi.fn();
+    const client = new NebiusClient(CONFIG, { fetch });
+
+    await expect(client.chat('super', MESSAGES, {
+      thinkingMode: 'disabled',
+      reasoningEffort: 'low',
+    })).rejects.toThrow('thinkingMode and reasoningEffort are mutually exclusive');
+    expect(fetch).not.toHaveBeenCalled();
+  });
 
   it('sends a strict JSON Schema request in Token Factory format', async () => {
     const fetch = vi.fn().mockResolvedValue(successResponse('{"fixed":true}'));

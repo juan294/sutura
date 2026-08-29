@@ -217,3 +217,13 @@ The new Phase 5 exact-SHA and live dogfood proof remains pending.
 - Quality review: clean
 - Efficiency review: clean
 - `git diff --check`: passed
+
+### Model-specific thinking-control revision
+
+- Develop candidate: `3e14fc835727b168c6a451c2022989dd46d21130`
+- Develop CI: [33267438324](https://github.com/juan294/sutura/actions/runs/33267438324), passed in 11 minutes 50 seconds
+- Dogfood SHA: `7488afea0c123f3ef84354301c6a1d90e4f9cfb0`
+- Intentional CI: [33268037618](https://github.com/juan294/sutura/actions/runs/33268037618), failed only the declared arithmetic assertion after 745 core tests passed and 8 live tests skipped
+- Sutura: [33268103281](https://github.com/juan294/sutura/actions/runs/33268103281), workflow passed but product outcome was `gave-up`
+- Terminal evidence: all four search branches stopped at HTTP 400 before Super inference because the endpoint rejected `reasoning_effort: none`
+- Response: add typed model chat-template thinking controls, serialize thinking-off as `extra_body.chat_template_kwargs.enable_thinking: false`, reject conflicting reasoning controls, and omit `reasoning_effort` from production repair requests

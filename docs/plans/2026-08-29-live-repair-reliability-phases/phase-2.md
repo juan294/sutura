@@ -12,7 +12,7 @@ Refactor the repair-agent and structured repair modules, repair tools, LLM schem
 
 1. Define one strict repair proposal schema with only complete replacement text for one controller-selected source excerpt. Do not expose candidate identity, rationale, path, source identifier, start line, or end line in provider output. Derive a stable candidate ID and fixed rationale in the controller.
 2. Send diagnosis, bounded source closure, trusted command identity, and optional parent feedback to one Super request.
-   Disable reasoning for this constrained transformation, use `temperature: 1` and `top_p: 0.95`, reserve an 8,192-token completion envelope, and include the one-field JSON shape in the prompt.
+   Disable reasoning for this constrained transformation with `extra_body.chat_template_kwargs.enable_thinking: false`, omit `reasoning_effort`, use `temperature: 1` and `top_p: 0.95`, reserve an 8,192-token completion envelope, and include the one-field JSON shape in the prompt.
 3. Do not expose production control tools to that request.
 4. Select one policy-admissible source target of at most 1,000 code points in the controller. Preserve complete target-centered source lines and omit a partial line that cannot fit. Derive the exact path, old bytes, inclusive line range, stable candidate ID, rationale, and unified diff in the controller. The model supplies only the complete new excerpt text. This bound keeps a maximally JSON-escaped strict reply inside the 8,192-token completion envelope.
 5. Start every attempt from the clean prepared baseline image.

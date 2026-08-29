@@ -105,8 +105,9 @@ describe('runControlledRepairAttempt', () => {
       maxTokens: CONTROLLED_REPAIR_MAX_TOKENS,
       temperature: 1,
       topP: 0.95,
-      reasoningEffort: 'none',
+      thinkingMode: 'disabled',
     });
+    expect(options).not.toHaveProperty('reasoningEffort');
     expect(JSON.stringify(options)).toContain('"replacement"');
     expect(JSON.stringify(options)).not.toContain('"startLine"');
     expect(JSON.stringify(options)).not.toContain('"path"');

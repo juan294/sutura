@@ -68,6 +68,7 @@ export interface ChatOptions {
   maxTokens?: number;
   temperature?: number;
   topP?: number;
+  thinkingMode?: 'enabled' | 'disabled' | 'low-effort';
   reasoningEffort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
   responseFormat?: ResponseFormat;
   tools?: readonly FunctionToolDefinition[];

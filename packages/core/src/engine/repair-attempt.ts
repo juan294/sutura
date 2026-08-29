@@ -275,7 +275,7 @@ function proposalOptions(ctx: ControlledRepairAttemptContext, schema: JsonSchema
     maxTokens: CONTROLLED_REPAIR_MAX_TOKENS,
     temperature: 1,
     topP: 0.95,
-    reasoningEffort: 'none',
+    thinkingMode: 'disabled',
     responseFormat: {
       type: 'json_schema',
       jsonSchema: { name: 'sutura_repair_proposal', strict: true, schema },
