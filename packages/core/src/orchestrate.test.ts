@@ -433,9 +433,7 @@ describe('orchestrate', () => {
     const deniedEvidence = /src\/private|private\.ts|supersecret|runner-secret|workspace-secret|git-secret|spaced-secret|root-secret/u;
     expect(JSON.stringify(chat.mock.calls)).not.toMatch(deniedEvidence);
     expect(JSON.stringify(search.mock.calls)).not.toMatch(deniedEvidence);
-    expect(chat.mock.calls.map(([tier]) => tier)).toEqual([
-      'nano', 'super', 'super', 'super', 'ultra',
-    ]);
+    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super', 'ultra']);
     expect(search).toHaveBeenCalledOnce();
   });
 
@@ -489,13 +487,7 @@ describe('orchestrate', () => {
     expect(github.comments[0]?.body).toContain(attemptMarker(RUN.runId));
     expect(github.comments[0]?.body).toContain('Open case-file artifact');
     expect(github.artifacts).toHaveLength(1);
-    expect(chat.mock.calls.map(([tier]) => tier)).toEqual([
-      'nano',
-      'super',
-      'super',
-      'super',
-      'ultra',
-    ]);
+    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super', 'ultra']);
     expect(runCalls(executor)).toHaveLength(8);
   });
 

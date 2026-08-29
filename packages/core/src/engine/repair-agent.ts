@@ -12,6 +12,8 @@ import {
   REPAIR_TOOL_DEFINITIONS,
   RepairToolRuntime,
   type RepairTestEvidence,
+  type RepairToolResult,
+  type RepairToolState,
 } from './repair-tools.js';
 import type { RepairSourceContext } from './repair.js';
 import type { TraceRecorder } from '../trace/recorder.js';
@@ -182,10 +184,86 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
   let repeatedInvalid = 0;
   let previousFailureState = '';
   let repeatedFailureState = 0;
+  const recordToolRequest = (toolCallId: string, toolName: string, args: unknown): void => {
+    ctx.trace?.record({
+      type: 'tool-request', stage: 'candidate', toolCallId, toolName,
+      argumentSummary: traceToolArguments(toolName, args),
+      ...(ctx.branchId === undefined ? {} : { childNodeId: ctx.branchId }),
+    });
+  };
+  const recordToolResult = (toolCallId: string, toolName: string, result: RepairToolResult): void => {
+    ctx.trace?.record({
+      type: 'tool-result', stage: 'candidate', toolCallId, toolName,
+      resultSummary: traceToolResult(toolName, result),
+      ...(ctx.branchId === undefined ? {} : { childNodeId: ctx.branchId }),
+    });
+  };
+  const executeRecordedTool = async (
+    toolCallId: string,
+    toolName: string,
+    args: unknown,
+  ): Promise<RepairToolResult> => {
+    recordToolRequest(toolCallId, toolName, args);
+    const result = await tools.execute(toolName, args);
+    recordToolResult(toolCallId, toolName, result);
+    return result;
+  };
+  const cancelledOutcome = (): RepairAgentOutcome => ({
+    status: 'gave-up', failureKind: 'sandbox', reason: 'Repair branch was cancelled',
+  });
+  const reserveToolCall = (): RepairAgentOutcome | undefined => {
+    try {
+      ctx.budget.reserveToolCall();
+      return undefined;
+    } catch (error) {
+      return {
+        status: 'gave-up',
+        failureKind: 'budget',
+        reason: publicReason(error instanceof Error ? error.message : String(error)),
+      };
+    }
+  };
+  const checkpointOutcome = (
+    state: Readonly<RepairToolState>,
+    rationale: string,
+  ): RepairAgentOutcome => state.latestTest === undefined
+    ? { status: 'gave-up', failureKind: 'invalid', reason: 'Checkpoint lacked test evidence' }
+    : {
+        status: 'checkpoint',
+        candidate: {
+          id: ctx.branchId ?? 'repair-checkpoint',
+          rationale,
+          diff: state.cumulativeDiff,
+        },
+        imageId: state.editableImageId,
+        ...(state.lastNodeId === undefined ? {} : { nodeId: state.lastNodeId }),
+        test: state.latestTest,
+      };
+  const submissionOutcome = (
+    result: RepairToolResult,
+    state: Readonly<RepairToolState>,
+    failureReason = 'Candidate submission failed',
+  ): RepairAgentOutcome => {
+    if (!result.submitted || !result.candidate || !result.imageId) {
+      return { status: 'gave-up', failureKind: result.kind ?? 'invalid', reason: failureReason };
+    }
+    if (!state.latestTest) {
+      return { status: 'gave-up', failureKind: 'invalid', reason: 'Submission lacked test evidence' };
+    }
+    ctx.trace?.record({
+      type: 'candidate-submitted', stage: 'candidate',
+      candidateId: result.candidate.id, summary: result.candidate.rationale,
+      ...(ctx.branchId === undefined ? {} : { childNodeId: ctx.branchId }),
+    });
+    return {
+      status: 'submitted', candidate: result.candidate, imageId: result.imageId,
+      ...(result.nodeId === undefined ? {} : { nodeId: result.nodeId }), test: state.latestTest,
+    };
+  };
 
   for (;;) {
     if (ctx.signal?.aborted) {
-      return { status: 'gave-up', failureKind: 'sandbox', reason: 'Repair branch was cancelled' };
+      return cancelledOutcome();
     }
     const routing = {
       failureClass: ctx.diagnosis.class,
@@ -273,46 +351,56 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
       } catch {
         args = null;
       }
-      try {
-        ctx.budget.reserveToolCall();
-      } catch (error) {
-        return { status: 'gave-up', failureKind: 'budget', reason: publicReason(error instanceof Error ? error.message : String(error)) };
+      const reservationFailure = reserveToolCall();
+      if (reservationFailure !== undefined) return reservationFailure;
+      let result: RepairToolResult;
+      if (args === null) {
+        result = { ok: false, kind: 'invalid', message: 'Tool arguments must be valid JSON' };
+        recordToolRequest(call.id, call.function.name, args);
+        recordToolResult(call.id, call.function.name, result);
+      } else {
+        result = await executeRecordedTool(call.id, call.function.name, args);
       }
-      ctx.trace?.record({
-        type: 'tool-request',
-        stage: 'candidate',
-        toolCallId: call.id,
-        toolName: call.function.name,
-        argumentSummary: traceToolArguments(call.function.name, args),
-        ...(ctx.branchId === undefined ? {} : { childNodeId: ctx.branchId }),
-      });
-      const result = args === null
-        ? { ok: false, kind: 'invalid' as const, message: 'Tool arguments must be valid JSON' }
-        : await tools.execute(call.function.name, args);
       const toolMessage = publicReason(JSON.stringify({ ok: result.ok, kind: result.kind, message: result.message, exitCode: result.exitCode }));
-      ctx.trace?.record({
-        type: 'tool-result',
-        stage: 'candidate',
-        toolCallId: call.id,
-        toolName: call.function.name,
-        resultSummary: traceToolResult(call.function.name, result),
-        ...(ctx.branchId === undefined ? {} : { childNodeId: ctx.branchId }),
-      });
       messages.push({ role: 'tool', toolCallId: call.id, content: toolMessage });
       if (result.submitted && result.candidate && result.imageId) {
-        const state = tools.state();
-        if (!state.latestTest) return { status: 'gave-up', failureKind: 'invalid', reason: 'Submission lacked test evidence' };
-        ctx.trace?.record({
-          type: 'candidate-submitted',
-          stage: 'candidate',
-          candidateId: result.candidate.id,
-          summary: result.candidate.rationale,
-          ...(ctx.branchId === undefined ? {} : { childNodeId: ctx.branchId }),
-        });
-        return {
-          status: 'submitted', candidate: result.candidate, imageId: result.imageId,
-          ...(result.nodeId === undefined ? {} : { nodeId: result.nodeId }), test: state.latestTest,
-        };
+        return submissionOutcome(result, tools.state());
+      }
+      if (call.function.name === 'apply_patch' && result.ok && result.exitCode === 0) {
+        if (ctx.signal?.aborted) return cancelledOutcome();
+        const testReservationFailure = reserveToolCall();
+        if (testReservationFailure !== undefined) return testReservationFailure;
+        const automaticTest = await executeRecordedTool(
+          `${call.id}-automatic-test`,
+          'run_test',
+          { commandId: 'diagnosed' },
+        );
+        if (ctx.signal?.aborted) return cancelledOutcome();
+        const testedState = tools.state();
+        if (!automaticTest.ok || automaticTest.exitCode === undefined || !testedState.latestTest) {
+          return {
+            status: 'gave-up',
+            failureKind: automaticTest.kind ?? 'sandbox',
+            reason: 'Automatic trusted test did not produce valid evidence',
+          };
+        }
+        if (automaticTest.exitCode !== 0) {
+          return checkpointOutcome(
+            testedState,
+            'Intermediate repair checkpoint after an automatic trusted failing test.',
+          );
+        }
+        const submissionReservationFailure = reserveToolCall();
+        if (submissionReservationFailure !== undefined) return submissionReservationFailure;
+        const automaticSubmission = await executeRecordedTool(
+          `${call.id}-automatic-submit`,
+          'submit_candidate',
+          {
+            id: ctx.branchId ?? 'repair-candidate',
+            rationale: 'Accepted repair patch passed the diagnosed trusted test.',
+          },
+        );
+        return submissionOutcome(automaticSubmission, testedState, 'Automatic candidate submission failed');
       }
       const invalidFingerprint = result.ok ? '' : `${fingerprint(call)}:${result.kind ?? 'invalid'}`;
       repeatedInvalid = invalidFingerprint && invalidFingerprint === previousInvalid ? repeatedInvalid + 1 : invalidFingerprint ? 1 : 0;
@@ -326,17 +414,7 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
         state.cumulativeDiff &&
         state.latestTest
       ) {
-        return {
-          status: 'checkpoint',
-          candidate: {
-            id: ctx.branchId ?? 'repair-checkpoint',
-            rationale: 'Intermediate repair checkpoint after a trusted failing test.',
-            diff: state.cumulativeDiff,
-          },
-          imageId: state.editableImageId,
-          ...(state.lastNodeId === undefined ? {} : { nodeId: state.lastNodeId }),
-          test: state.latestTest,
-        };
+        return checkpointOutcome(state, 'Intermediate repair checkpoint after a trusted failing test.');
       }
       const executionFailed = result.exitCode !== undefined && result.exitCode !== 0;
       const failureState = result.ok && !executionFailed

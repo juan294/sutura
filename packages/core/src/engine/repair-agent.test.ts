@@ -7,6 +7,7 @@ import { DEFAULT_MODEL_PRICES, type ModelPrice } from '../llm/cost.js';
 import { createDefaultRepositoryPolicy } from '../policy/load.js';
 import { DEFAULT_REPAIR_BUDGET_LIMITS, RepairBudget } from './repair-budget.js';
 import { runRepairAgent } from './repair-agent.js';
+import { TraceRecorder } from '../trace/recorder.js';
 
 const diagnosis: Diagnosis = {
   class: 'test-assertion', confidence: 1, signals: [], failingCmd: 'pnpm test', errorExcerpt: 'failed',
@@ -36,12 +37,8 @@ function quotedLlm(
 }
 
 describe('runRepairAgent', () => {
-  it('requires tool calls and submits only a tested cumulative candidate', async () => {
-    const replies = [
-      call('apply_patch', { diff }, 1),
-      call('run_test', { commandId: 'diagnosed' }, 2),
-      call('submit_candidate', { id: 'fix', rationale: 'minimal repair' }, 3),
-    ];
+  it('automatically tests and submits an accepted patch', async () => {
+    const patchCall = call('apply_patch', { diff }, 1);
     const chat = vi.fn(async (
       _tier: 'super',
       _messages: readonly ChatMessage[],
@@ -50,23 +47,145 @@ describe('runRepairAgent', () => {
       void _tier;
       void _messages;
       void _options;
-      return { text: '', toolCalls: [replies.shift()!], usd: 0.01 };
+      return { text: '', toolCalls: [patchCall], usd: 0.01 };
     });
     const runs = [result('patched', diff), result('test-child', 'passed')];
     const run = vi.fn(async () => runs.shift()!);
     const executor = { run, runMany: vi.fn(), importImage: vi.fn(), snapshot: vi.fn() } as unknown as Executor;
+    const budget = new RepairBudget(DEFAULT_REPAIR_BUDGET_LIMITS);
+    const trace = new TraceRecorder('repair-agent-success');
+    const outcome = await runRepairAgent({
+      llm: quotedLlm(chat), executor, initialImageId: 'baseline', diagnosis,
+      policy: createDefaultRepositoryPolicy(),
+      budget,
+      trustedCommands: { diagnosed: 'pnpm test' }, sourceContext: { sources: [] },
+      trace,
+    });
+
+    expect(outcome).toMatchObject({
+      status: 'submitted',
+      candidate: { id: 'repair-candidate', diff },
+      imageId: 'patched',
+      test: { commandId: 'diagnosed', exitCode: 0 },
+    });
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(chat).toHaveBeenCalledOnce();
+    expect(budget.snapshot()).toMatchObject({ toolCalls: 3, sandboxOperations: 2 });
+    expect(trace.events().flatMap((event) => {
+      if (event.type === 'candidate-submitted') return [[event.type, event.candidateId]];
+      if (event.type === 'tool-request' || event.type === 'tool-result') {
+        return [[event.type, event.toolCallId, event.toolName]];
+      }
+      return [];
+    })).toEqual([
+      ['tool-request', 'call-1', 'apply_patch'],
+      ['tool-result', 'call-1', 'apply_patch'],
+      ['tool-request', 'call-1-automatic-test', 'run_test'],
+      ['tool-result', 'call-1-automatic-test', 'run_test'],
+      ['tool-request', 'call-1-automatic-submit', 'submit_candidate'],
+      ['tool-result', 'call-1-automatic-submit', 'submit_candidate'],
+      ['candidate-submitted', 'repair-candidate'],
+    ]);
+    expect(chat.mock.calls.every(([, , options]) =>
+      options?.toolChoice === 'auto' && !('parallelToolCalls' in options),
+    )).toBe(true);
+  });
+
+  it('returns an automatic checkpoint when an accepted patch still fails', async () => {
+    const chat = vi.fn(async () => ({
+      text: '',
+      toolCalls: [call('apply_patch', { diff }, 1)],
+      usd: 0.01,
+    }));
+    const runs = [result('patched', diff), result('test-child', 'still failing', 1)];
+    const run = vi.fn(async () => runs.shift()!);
+    const executor = { run, runMany: vi.fn(), importImage: vi.fn(), snapshot: vi.fn() } as unknown as Executor;
+
     const outcome = await runRepairAgent({
       llm: quotedLlm(chat), executor, initialImageId: 'baseline', diagnosis,
       policy: createDefaultRepositoryPolicy(),
       budget: new RepairBudget(DEFAULT_REPAIR_BUDGET_LIMITS),
       trustedCommands: { diagnosed: 'pnpm test' }, sourceContext: { sources: [] },
+      branchId: 'search-001',
     });
 
-    expect(outcome).toMatchObject({ status: 'submitted', candidate: { id: 'fix', diff }, imageId: 'patched' });
+    expect(outcome).toMatchObject({
+      status: 'checkpoint',
+      candidate: { id: 'search-001', diff },
+      imageId: 'patched',
+      test: { commandId: 'diagnosed', exitCode: 1 },
+    });
     expect(run).toHaveBeenCalledTimes(2);
-    expect(chat.mock.calls.every(([, , options]) =>
-      options?.toolChoice === 'auto' && !('parallelToolCalls' in options),
-    )).toBe(true);
+    expect(chat).toHaveBeenCalledOnce();
+  });
+
+  it('fails closed when the automatic submission tool budget is exhausted', async () => {
+    const chat = vi.fn(async () => ({
+      text: '', toolCalls: [call('apply_patch', { diff }, 1)], usd: 0.01,
+    }));
+    const runs = [result('patched', diff), result('test-child', 'passed')];
+    const run = vi.fn(async () => runs.shift()!);
+    const executor = { run, runMany: vi.fn(), importImage: vi.fn(), snapshot: vi.fn() } as unknown as Executor;
+    const budget = new RepairBudget({ ...DEFAULT_REPAIR_BUDGET_LIMITS, toolCalls: 2 });
+
+    const outcome = await runRepairAgent({
+      llm: quotedLlm(chat), executor, initialImageId: 'baseline', diagnosis,
+      policy: createDefaultRepositoryPolicy(), budget,
+      trustedCommands: { diagnosed: 'pnpm test' }, sourceContext: { sources: [] },
+    });
+
+    expect(outcome).toMatchObject({ status: 'gave-up', failureKind: 'budget' });
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(chat).toHaveBeenCalledOnce();
+    expect(budget.snapshot()).toMatchObject({ toolCalls: 2, sandboxOperations: 2 });
+  });
+
+  it('does not start automatic verification after cancellation during patching', async () => {
+    const controller = new AbortController();
+    const chat = vi.fn(async () => ({
+      text: '', toolCalls: [call('apply_patch', { diff }, 1)], usd: 0.01,
+    }));
+    const run = vi.fn(async () => {
+      controller.abort();
+      return result('patched', diff);
+    });
+    const executor = { run, runMany: vi.fn(), importImage: vi.fn(), snapshot: vi.fn() } as unknown as Executor;
+
+    const outcome = await runRepairAgent({
+      llm: quotedLlm(chat), executor, initialImageId: 'baseline', diagnosis,
+      policy: createDefaultRepositoryPolicy(), budget: new RepairBudget(DEFAULT_REPAIR_BUDGET_LIMITS),
+      trustedCommands: { diagnosed: 'pnpm test' }, sourceContext: { sources: [] },
+      signal: controller.signal,
+    });
+
+    expect(outcome).toMatchObject({ status: 'gave-up', reason: 'Repair branch was cancelled' });
+    expect(run).toHaveBeenCalledOnce();
+  });
+
+  it('does not submit after cancellation during automatic verification', async () => {
+    const controller = new AbortController();
+    const chat = vi.fn(async () => ({
+      text: '', toolCalls: [call('apply_patch', { diff }, 1)], usd: 0.01,
+    }));
+    const runs = [result('patched', diff), result('test-child', 'passed')];
+    const run = vi.fn(async () => {
+      const next = runs.shift()!;
+      if (next.imageId === 'test-child') controller.abort();
+      return next;
+    });
+    const executor = { run, runMany: vi.fn(), importImage: vi.fn(), snapshot: vi.fn() } as unknown as Executor;
+    const budget = new RepairBudget(DEFAULT_REPAIR_BUDGET_LIMITS);
+
+    const outcome = await runRepairAgent({
+      llm: quotedLlm(chat), executor, initialImageId: 'baseline', diagnosis,
+      policy: createDefaultRepositoryPolicy(), budget,
+      trustedCommands: { diagnosed: 'pnpm test' }, sourceContext: { sources: [] },
+      signal: controller.signal,
+    });
+
+    expect(outcome).toMatchObject({ status: 'gave-up', reason: 'Repair branch was cancelled' });
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(budget.snapshot().toolCalls).toBe(2);
   });
 
   it('stops repeated identical malformed calls before consuming every turn', async () => {

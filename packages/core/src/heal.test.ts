@@ -157,7 +157,7 @@ describe('healCase', () => {
   it('uses raceK only as a direct-call compatibility width when search settings are absent', async () => {
     const legacy = context('repair-off-by-one', [1, 1, 1, 1, 1, 0, 0], 'test-assertion');
     const legacyCase = await healCase(legacy.ctx);
-    expect(legacy.chat.mock.calls.filter(([tier]) => tier === 'super')).toHaveLength(3);
+    expect(legacy.chat.mock.calls.filter(([tier]) => tier === 'super')).toHaveLength(1);
     expect(legacyCase.search?.[0]).toMatchObject({ nodeId: 'search-001', terminalReason: 'passed' });
 
     const adaptive = context('repair-off-by-one', [1, 1, 1, 1, 1, 0, 0, 1], 'test-assertion', {
@@ -279,9 +279,7 @@ describe('healCase', () => {
     expect(executor.calls.filter(({ kind }) => kind === 'run').every((call) =>
       call.kind !== 'run' || call.opts?.env === SUTURA_SANDBOX_ENV,
     )).toBe(true);
-    expect(chat.mock.calls.map(([tier]) => tier)).toEqual([
-      'nano', 'super', 'super', 'super', 'ultra',
-    ]);
+    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super', 'ultra']);
     expect(caseFile.trace?.map(({ type }) => type)).toEqual(expect.arrayContaining([
       'run-start',
       'model-request',
