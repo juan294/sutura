@@ -67,6 +67,7 @@ export type ResponseFormat =
 export interface ChatOptions {
   maxTokens?: number;
   temperature?: number;
+  topP?: number;
   reasoningEffort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
   responseFormat?: ResponseFormat;
   tools?: readonly FunctionToolDefinition[];

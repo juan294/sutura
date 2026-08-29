@@ -107,3 +107,13 @@ Found: six branches still ended with `repair edits must use line ranges inside s
 Why it matters: declared structured-output constraints are validation aids, not a sufficient ownership boundary. Sutura must select the path and the complete bounded excerpt before inference. Super should return only replacement text for that fixed target, while the controller derives the old bytes, line range, diff, test, and submission.
 
 The local redesign review also found that a 12,000-character complete replacement could compete with hidden reasoning inside the 16,384-token completion allowance, that a four-branch initial width could leave later source targets unreachable, and that arbitrary byte truncation could expose an incomplete source line. The corrected control path uses one shared 1,000-code-point source and replacement limit, preserves complete target-centered lines, schedules every admitted target when the full attempt fits, fails closed when aggregate budgets cannot cover them, and deduplicates identical baseline admission quotes.
+
+## Live proof 15 addendum
+
+The controller-selected replacement candidate, `9648815d76ef496dc4397294e7f55830a214365a`, passed exact-SHA CI at [run 33264700186](https://github.com/juan294/sutura/actions/runs/33264700186). Dogfood SHA `d4969c24b58c9df3b34eff205fdfed79091dddaa` then failed only the declared arithmetic assertion at [run 33265268595](https://github.com/juan294/sutura/actions/runs/33265268595). Sutura [run 33265333427](https://github.com/juan294/sutura/actions/runs/33265333427) diagnosed and reproduced the defect, reached Super six times, but completed with `gave-up` and no repair pull request.
+
+Expected: a strict three-field proposal with a 1,000-code-point replacement bound returns compact JSON and repairs the controller-selected three-line source excerpt.
+
+Found: three replies failed the strict `{id,rationale,replacement}` contract, one reply applied an incorrect patch and failed the trusted test, one produced a patch that `git apply` rejected, and one reached the 16,384-token completion limit. Baseline requests contained about 4,922 input tokens, while Super used 12,884 to 16,384 completion tokens. `reasoning_effort: low` did not create a compact proposal.
+
+Why it matters: target ownership alone does not make a verbose reasoning model a reliable serializer. Candidate identity and rationale do not need model judgment. The production boundary must accept only `{replacement}`, derive a stable ID and rationale in the controller, disable reasoning for this constrained transformation, and use the model card sampling values `temperature: 1` and `top_p: 0.95`. The 1,000-code-point replacement still fits a bounded 8,192-token completion envelope even under maximal JSON escaping.

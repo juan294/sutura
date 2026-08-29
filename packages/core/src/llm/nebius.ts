@@ -388,6 +388,12 @@ export class NebiusClient {
     if (!Number.isSafeInteger(maxTokens) || maxTokens < 2_000) {
       throw new RangeError('maxTokens must be an integer of at least 2000');
     }
+    if (
+      options.topP !== undefined &&
+      (!Number.isFinite(options.topP) || options.topP < 0 || options.topP > 1)
+    ) {
+      throw new RangeError('topP must be between 0 and 1');
+    }
 
     const decision = this.modelQuote(tier, messages, options);
     const body = {
@@ -395,6 +401,7 @@ export class NebiusClient {
       messages: wireMessages(messages),
       max_tokens: maxTokens,
       temperature: options.temperature ?? 0,
+      ...(options.topP === undefined ? {} : { top_p: options.topP }),
       ...(options.reasoningEffort
         ? { reasoning_effort: options.reasoningEffort }
         : {}),

@@ -9,8 +9,6 @@ export function repairProposalReply(
   if (!parsed.valid) throw new Error('Repair proposal fixture requires a valid diff');
   return {
     text: JSON.stringify({
-      id: candidate.id,
-      rationale: candidate.rationale,
       replacement,
     }),
     usd: 0.001,

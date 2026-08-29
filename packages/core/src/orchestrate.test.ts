@@ -585,7 +585,6 @@ describe('orchestrate', () => {
         expect(options).not.toHaveProperty('toolChoice');
         expect(options).not.toHaveProperty('parallelToolCalls');
         return { text: JSON.stringify({
-          id: 'dogfood-addition', rationale: 'Use addition in the add function.',
           replacement: 'export function add(left: number, right: number): number {\n  return left + right;\n}\n',
         }), usd: 0.001 };
       }
@@ -610,7 +609,7 @@ describe('orchestrate', () => {
       headSha: dogfoodRun.headSha,
     })]);
     expect(caseFile.selectedCandidate).toEqual({
-      id: 'dogfood-addition',
+      id: expect.stringMatching(/^repair-[a-f0-9]{12}$/u),
       diffHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
     });
   });

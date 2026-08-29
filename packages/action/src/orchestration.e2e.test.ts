@@ -425,8 +425,6 @@ class ScriptedLlm implements OrchestratorLlm {
     if (tier === 'super') {
       return {
         text: JSON.stringify({
-          id: 'source',
-          rationale: 'Correct the source value.',
           replacement: 'export const value: string = "1";',
         }),
         usd: 0.001,
@@ -635,7 +633,6 @@ describe('recorded GitHub API orchestration E2E', () => {
           expect(options).not.toHaveProperty('tools');
           expect(options).not.toHaveProperty('toolChoice');
           return { text: JSON.stringify({
-            id: 'dogfood-addition', rationale: 'Use addition in the add function.',
             replacement: 'export function add(left: number, right: number): number {\n  return left + right;\n}\n',
           }), usd: 0.001 };
         }

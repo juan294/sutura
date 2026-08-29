@@ -447,9 +447,12 @@ describe('healCase', () => {
       expect.objectContaining({ nodeId: 'search-001', depth: 1 }),
       expect.objectContaining({ nodeId: 'search-002', depth: 2, parentNodeId: 'search-001', terminalReason: 'passed' }),
     ]);
-    expect(caseFile.race[0]?.candidate).toMatchObject({ id: 'ceiling', diff: HONEST_DIFF });
+    expect(caseFile.race[0]?.candidate).toMatchObject({
+      id: expect.stringMatching(/^repair-[a-f0-9]{12}$/u), diff: HONEST_DIFF,
+    });
     expect(caseFile.selectedCandidate).toEqual({
-      id: 'ceiling', diffHash: createHash('sha256').update(HONEST_DIFF).digest('hex'),
+      id: caseFile.race[0]?.candidate.id,
+      diffHash: createHash('sha256').update(HONEST_DIFF).digest('hex'),
     });
     const applyParents = executor.calls.flatMap((call) =>
       call.kind === 'run' && call.cmd.includes('git apply - && git diff')

@@ -15,7 +15,6 @@ import {
   REPAIR_EDIT_FIELDS,
   REPAIR_PROPOSAL_FIELDS,
   REPAIR_PROPOSAL_LIMITS,
-  SUPER_REPAIR_MAX_TOKENS,
 } from './repair.js';
 
 const REPAIR_ATTEMPT_MINIMUM_INFERENCE_USD = 0.05;
@@ -40,8 +39,6 @@ export interface ControlledRepairAttemptContext extends RepairAgentContext {
 }
 
 interface RepairProposal {
-  id: string;
-  rationale: string;
   replacement: string;
 }
 
@@ -87,12 +84,10 @@ export class RepairProposalPreparationError extends Error {
   }
 }
 
-const PROPOSAL_FIELD_NAMES = new Set<string>(Object.values(REPAIR_PROPOSAL_FIELDS));
 const REPAIR_PROPOSAL_EXAMPLE = Object.freeze({
-  [REPAIR_PROPOSAL_FIELDS.id]: 'short-id',
-  [REPAIR_PROPOSAL_FIELDS.rationale]: 'short reason',
   [REPAIR_PROPOSAL_FIELDS.replacement]: 'complete replacement for the controller-selected excerpt',
 });
+export const CONTROLLED_REPAIR_MAX_TOKENS = 8_192;
 
 function digest(value: string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -132,8 +127,6 @@ function proposalSchema(): JsonSchema {
   return {
     type: 'object',
     properties: {
-      [REPAIR_PROPOSAL_FIELDS.id]: { type: 'string', minLength: 1, maxLength: REPAIR_PROPOSAL_LIMITS.idCodePoints, pattern: '\\S' },
-      [REPAIR_PROPOSAL_FIELDS.rationale]: { type: 'string', minLength: 1, maxLength: REPAIR_PROPOSAL_LIMITS.rationaleCodePoints, pattern: '\\S' },
       [REPAIR_PROPOSAL_FIELDS.replacement]: {
         type: 'string', maxLength: REPAIR_PROPOSAL_LIMITS.replacementCodePoints,
       },
@@ -255,33 +248,34 @@ function parseProposal(text: string): RepairProposal {
     throw new TypeError('Repair proposal must be an object');
   }
   const record = value as Record<string, unknown>;
-  const id = record[REPAIR_PROPOSAL_FIELDS.id];
-  const rationale = record[REPAIR_PROPOSAL_FIELDS.rationale];
+  const keys = Object.keys(record);
   const replacement = record[REPAIR_PROPOSAL_FIELDS.replacement];
   if (
-    Object.keys(record).some((key) => !PROPOSAL_FIELD_NAMES.has(key)) ||
-    typeof id !== 'string' || !/\S/u.test(id) ||
-    [...id].length > REPAIR_PROPOSAL_LIMITS.idCodePoints ||
-    typeof rationale !== 'string' || !/\S/u.test(rationale) ||
-    [...rationale].length > REPAIR_PROPOSAL_LIMITS.rationaleCodePoints ||
-    typeof replacement !== 'string' ||
-    [...replacement].length > REPAIR_PROPOSAL_LIMITS.replacementCodePoints
-  ) throw new TypeError('Repair proposal does not match the strict schema');
-  return { id, rationale, replacement };
+    keys.length !== 1 ||
+    keys[0] !== REPAIR_PROPOSAL_FIELDS.replacement
+  ) throw new TypeError('Repair proposal must contain only the replacement field');
+  if (typeof replacement !== 'string') {
+    throw new TypeError('Repair proposal replacement must be a string');
+  }
+  if ([...replacement].length > REPAIR_PROPOSAL_LIMITS.replacementCodePoints) {
+    throw new TypeError('Repair proposal replacement exceeds the completion-bound source limit');
+  }
+  return { replacement };
 }
 
 function worstCaseRequestUsd(
   requestBytes: number, inputPrice: number, outputPrice: number,
 ): number {
-  const priced = (requestBytes * inputPrice + SUPER_REPAIR_MAX_TOKENS * outputPrice) / 1_000_000;
+  const priced = (requestBytes * inputPrice + CONTROLLED_REPAIR_MAX_TOKENS * outputPrice) / 1_000_000;
   return Math.max(REPAIR_ATTEMPT_MINIMUM_INFERENCE_USD, Math.ceil(priced * 1_000_000) / 1_000_000);
 }
 
 function proposalOptions(ctx: ControlledRepairAttemptContext, schema: JsonSchema): ChatOptions {
   return {
-    maxTokens: SUPER_REPAIR_MAX_TOKENS,
+    maxTokens: CONTROLLED_REPAIR_MAX_TOKENS,
     temperature: 1,
-    reasoningEffort: 'low',
+    topP: 0.95,
+    reasoningEffort: 'none',
     responseFormat: {
       type: 'json_schema',
       jsonSchema: { name: 'sutura_repair_proposal', strict: true, schema },
@@ -357,6 +351,9 @@ export async function runControlledRepairAttempt(
   } catch (error) {
     return { status: 'gave-up', failureKind: 'invalid', reason: publicRepairReason(error instanceof Error ? error.message : String(error)) };
   }
+  const proposalDiffHash = digest(proposalDiff);
+  const proposalId = `repair-${proposalDiffHash.slice(0, 12)}`;
+  const proposalRationale = 'Replace the controller-selected source excerpt.';
   const tools = new RepairToolRuntime({
     executor: ctx.executor,
     initialImageId: ctx.initialImageId,
@@ -378,10 +375,10 @@ export async function runControlledRepairAttempt(
     ctx.trace?.record({
       type: 'tool-request', stage: 'candidate', toolCallId: id, toolName: name,
       argumentSummary: name === 'apply_patch'
-        ? { form: 'anchored-line-ranges', proposalId: proposal.id, proposalHash: digest(JSON.stringify(proposal)), diffHash: digest(proposalDiff) }
+        ? { form: 'anchored-line-ranges', proposalId, proposalHash: digest(JSON.stringify(proposal)), diffHash: proposalDiffHash }
         : name === 'run_test'
           ? { commandId: 'diagnosed' }
-          : { candidateId: proposal.id, diffHash: digest(tools.state().cumulativeDiff) },
+          : { candidateId: proposalId, diffHash: digest(tools.state().cumulativeDiff) },
       ...(ctx.branchId === undefined ? {} : { childNodeId: ctx.branchId }),
     });
     const result = await tools.execute(name, args);
@@ -404,7 +401,7 @@ export async function runControlledRepairAttempt(
   if (!tested.ok || tested.exitCode === undefined || state.latestTest === undefined) {
     return { status: 'gave-up', failureKind: tested.kind ?? 'sandbox', reason: 'Automatic trusted test did not produce valid evidence' };
   }
-  const candidate: Candidate = { id: proposal.id, rationale: proposal.rationale, diff: state.cumulativeDiff };
+  const candidate: Candidate = { id: proposalId, rationale: proposalRationale, diff: state.cumulativeDiff };
   if (tested.exitCode !== 0) {
     return {
       status: 'checkpoint', candidate, imageId: state.editableImageId,
@@ -412,7 +409,7 @@ export async function runControlledRepairAttempt(
     };
   }
   const submitted = await execute(`${ctx.branchId ?? 'repair'}-submit`, 'submit_candidate', {
-    id: proposal.id, rationale: proposal.rationale,
+    id: proposalId, rationale: proposalRationale,
   });
   if (!submitted.ok || !submitted.submitted || !submitted.candidate || !submitted.imageId) {
     return { status: 'gave-up', failureKind: submitted.kind ?? 'invalid', reason: 'Automatic candidate submission failed' };

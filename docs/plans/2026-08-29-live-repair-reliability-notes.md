@@ -190,3 +190,30 @@ Final Phase 5 exact-SHA CI and live dogfood evidence remain pending.
 - `git diff --check`: passed
 
 The new Phase 5 exact-SHA and live dogfood proof remains pending.
+
+### One-field proposal revision
+
+- Develop candidate: `9648815d76ef496dc4397294e7f55830a214365a`
+- Develop CI: [33264700186](https://github.com/juan294/sutura/actions/runs/33264700186), passed in 11 minutes 38 seconds
+- Dogfood SHA: `d4969c24b58c9df3b34eff205fdfed79091dddaa`
+- Intentional CI: [33265268595](https://github.com/juan294/sutura/actions/runs/33265268595), failed only the declared arithmetic assertion after 740 core tests passed and 8 live tests skipped
+- Sutura: [33265333427](https://github.com/juan294/sutura/actions/runs/33265333427), workflow passed but product outcome was `gave-up`
+- Terminal evidence: three strict-schema failures, one trusted-test failure after an accepted patch, one rejected patch, and one 16,384-token completion-limit terminal; baseline Super completions used 12,884 to 16,384 tokens from about 4,922 input tokens
+- Response: accept only `{replacement}`, derive proposal identity and rationale in the controller, disable reasoning, use `temperature: 1` and `top_p: 0.95`, and reserve an 8,192-token completion envelope
+- Local regression response: legacy model-owned metadata fails before sandbox work; provider and local replacement bounds match; maximally escaped output fits the declared envelope; patch, test, and submission remain controller-owned
+
+### One-field proposal local gate
+
+- Core: 745 passed, 8 skipped
+- Action: 70 passed
+- Evaluation: 5 passed
+- CLI: 81 passed
+- Placebo: 70 passed in 1,314 seconds
+- Repository total: 971 passed, 8 skipped
+- Typecheck: passed for all five buildable workspace packages
+- Lint: passed for all five buildable workspace packages
+- Build and Action bundle rebuild: passed
+- Reuse review: clean
+- Quality review: clean
+- Efficiency review: clean
+- `git diff --check`: passed

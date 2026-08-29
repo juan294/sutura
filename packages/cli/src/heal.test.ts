@@ -73,7 +73,7 @@ function proposalFor(candidate: Candidate): object {
   const replacement = candidate.diff === UPSTREAM_DIFF
     ? "exports.fetchName = () => import('node-fetch').then(({default: fetch}) => fetch('data:Juan'))\n  .then((response) => response.text());\n"
     : 'export function pageCount(items, size) { return Math.ceil(items / size); }\n';
-  return { id: candidate.id, rationale: candidate.rationale, replacement };
+  return { replacement };
 }
 
 function runtime(

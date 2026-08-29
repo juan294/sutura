@@ -32,14 +32,12 @@ export const SUPER_REPAIR_MAX_TOKENS = 16_384;
 export const REPAIR_FULL_REPLACEMENT_MAX_CODE_POINTS = 1_000;
 
 export const REPAIR_PROPOSAL_LIMITS = Object.freeze({
-  idCodePoints: 80,
-  rationaleCodePoints: 240,
   edits: 8,
   pathCodePoints: 240,
   replacementCodePoints: REPAIR_FULL_REPLACEMENT_MAX_CODE_POINTS,
 });
 export const REPAIR_PROPOSAL_FIELDS = Object.freeze({
-  id: 'id', rationale: 'rationale', replacement: 'replacement',
+  replacement: 'replacement',
 } as const);
 export const REPAIR_EDIT_FIELDS = Object.freeze({
   path: 'path', startLine: 'startLine', endLine: 'endLine', replacement: 'new',

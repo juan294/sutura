@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -9,14 +10,13 @@ import type { ChatMessage, ChatOptions, TierLlm } from '../llm/types.js';
 import { createDefaultRepositoryPolicy } from '../policy/load.js';
 import { RepairBudget } from './repair-budget.js';
 import {
+  CONTROLLED_REPAIR_MAX_TOKENS,
   prepareControlledRepairProposalTemplate,
   runControlledRepairAttempt,
 } from './repair-attempt.js';
 import {
   anchoredEditsDiff,
   REPAIR_FULL_REPLACEMENT_MAX_CODE_POINTS,
-  REPAIR_PROPOSAL_LIMITS,
-  SUPER_REPAIR_MAX_TOKENS,
   type RepairSourceContext,
 } from './repair.js';
 
@@ -81,10 +81,7 @@ describe('runControlledRepairAttempt', () => {
       runResult(0, '1 passed'),
     ];
     const executor = new InMemoryExecutor((_command, _parent, index) => results[index]!);
-    const { model, chat } = llm(JSON.stringify({
-      id: 'fix-add', rationale: 'Use addition for the add function.',
-      replacement: fixedSource,
-    }));
+    const { model, chat } = llm(JSON.stringify({ replacement: fixedSource }));
     const budget = new RepairBudget();
 
     const outcome = await runControlledRepairAttempt({
@@ -94,11 +91,22 @@ describe('runControlledRepairAttempt', () => {
       branchId: 'search-001',
     });
 
-    expect(outcome).toMatchObject({ status: 'submitted', candidate: { id: 'fix-add', diff } });
+    expect(outcome).toMatchObject({
+      status: 'submitted',
+      candidate: {
+        id: `repair-${createHash('sha256').update(diff).digest('hex').slice(0, 12)}`,
+        diff,
+      },
+    });
     expect(chat).toHaveBeenCalledOnce();
     const options = chat.mock.calls[0]?.[2] as ChatOptions | undefined;
     expect(options).toMatchObject({ responseFormat: { type: 'json_schema' } });
-    expect(options).toMatchObject({ maxTokens: 16_384, temperature: 1, reasoningEffort: 'low' });
+    expect(options).toMatchObject({
+      maxTokens: CONTROLLED_REPAIR_MAX_TOKENS,
+      temperature: 1,
+      topP: 0.95,
+      reasoningEffort: 'none',
+    });
     expect(JSON.stringify(options)).toContain('"replacement"');
     expect(JSON.stringify(options)).not.toContain('"startLine"');
     expect(JSON.stringify(options)).not.toContain('"path"');
@@ -117,10 +125,8 @@ describe('runControlledRepairAttempt', () => {
     ];
     const executor = new InMemoryExecutor((_command, _parent, index) => results[index]!);
     const outcome = await runControlledRepairAttempt({
-      llm: llm(JSON.stringify({
-        id: 'wrong', rationale: 'First bounded attempt.',
-        replacement: wrongSource,
-      })).model, executor, initialImageId: 'baseline', diagnosis,
+      llm: llm(JSON.stringify({ replacement: wrongSource })).model,
+      executor, initialImageId: 'baseline', diagnosis,
       policy: createDefaultRepositoryPolicy(),
       budget: new RepairBudget(), trustedCommands: { diagnosed: 'pnpm test' }, sourceContext,
     });
@@ -233,7 +239,7 @@ describe('runControlledRepairAttempt', () => {
     const schema = options.responseFormat.jsonSchema.schema;
     expect(schema).toMatchObject({
       properties: { replacement: { type: 'string', maxLength: 1_000 } },
-      required: ['id', 'rationale', 'replacement'],
+      required: ['replacement'],
       additionalProperties: false,
     });
     expect(JSON.stringify(schema)).not.toMatch(/(?:path|startLine|endLine|dogfood-add)/u);
@@ -251,10 +257,7 @@ describe('runControlledRepairAttempt', () => {
     const executor = new InMemoryExecutor((_command, _parent, index) => [
       runResult(0, crlfDiff), runResult(0, '1 passed'),
     ][index]!);
-    const value = llm(JSON.stringify({
-      id: 'crlf', rationale: 'Update the production value.',
-      replacement: 'const old = 2;\nexport { old };\n',
-    }));
+    const value = llm(JSON.stringify({ replacement: 'const old = 2;\nexport { old };\n' }));
 
     const outcome = await runControlledRepairAttempt({
       llm: value.model, executor, initialImageId: 'baseline', diagnosis,
@@ -319,17 +322,15 @@ describe('runControlledRepairAttempt', () => {
       runResult(0, alternateDiff), runResult(0, '1 passed'),
     ][index]!);
     const outcome = await runControlledRepairAttempt({
-      llm: llm(JSON.stringify({
-        id: 'alternate', rationale: 'Update only the assigned source.',
-        replacement: 'export const alternate = 2;\n',
-      })).model,
+      llm: llm(JSON.stringify({ replacement: 'export const alternate = 2;\n' })).model,
       executor, initialImageId: 'baseline', diagnosis,
       policy: createDefaultRepositoryPolicy(), budget: new RepairBudget(),
       trustedCommands: { diagnosed: 'pnpm test' }, sourceContext: multipleSources,
       proposalTemplate: template, proposalContract: template.contract(undefined, 1),
     });
     expect(outcome).toMatchObject({
-      status: 'submitted', candidate: { id: 'alternate', diff: alternateDiff },
+      status: 'submitted',
+      candidate: { id: expect.stringMatching(/^repair-[a-f0-9]{12}$/u), diff: alternateDiff },
     });
     expect(alternateDiff).not.toContain('dogfood-add.ts');
   });
@@ -408,24 +409,19 @@ describe('runControlledRepairAttempt', () => {
     expect(executor.calls).toHaveLength(0);
   });
 
-  it('keeps a maximally escaped strict reply below half the provider completion envelope', () => {
+  it('keeps a maximally escaped replacement within the reasoning-disabled completion envelope', () => {
     const text = JSON.stringify({
-      id: `x${'\u0000'.repeat(REPAIR_PROPOSAL_LIMITS.idCodePoints - 1)}`,
-      rationale: `x${'\u0000'.repeat(REPAIR_PROPOSAL_LIMITS.rationaleCodePoints - 1)}`,
       replacement: '\u0000'.repeat(REPAIR_FULL_REPLACEMENT_MAX_CODE_POINTS),
     });
 
-    expect(Buffer.byteLength(text, 'utf8')).toBeLessThan(SUPER_REPAIR_MAX_TOKENS / 2);
+    expect(Buffer.byteLength(text, 'utf8')).toBeLessThan(CONTROLLED_REPAIR_MAX_TOKENS);
   });
 
   it('replays live runs 1 and 2: unsupported parallel and tool-choice fields are absent', async () => {
     const executor = new InMemoryExecutor((_command, _parent, index) => [
       runResult(0, diff), runResult(0, '1 passed'),
     ][index]!);
-    const { model, chat } = llm(JSON.stringify({
-      id: 'compatible', rationale: 'Use one strict structured response.',
-      replacement: fixedSource,
-    }));
+    const { model, chat } = llm(JSON.stringify({ replacement: fixedSource }));
 
     await runControlledRepairAttempt({
       llm: model, executor, initialImageId: 'baseline', diagnosis,
@@ -439,11 +435,10 @@ describe('runControlledRepairAttempt', () => {
     expect(options).not.toHaveProperty('tools');
   });
 
-  it('replays live run 11: provider and local proposal bounds use one contract', async () => {
+  it('replays live run 11: provider and local replacement bounds use one contract', async () => {
     const executor = new InMemoryExecutor(() => runResult(1));
     const { model, chat } = llm(JSON.stringify({
-      id: 'x'.repeat(81), rationale: 'This exceeds the declared candidate ID bound.',
-      replacement: fixedSource,
+      replacement: 'x'.repeat(REPAIR_FULL_REPLACEMENT_MAX_CODE_POINTS + 1),
     }));
 
     const outcome = await runControlledRepairAttempt({
@@ -456,15 +451,7 @@ describe('runControlledRepairAttempt', () => {
     expect(executor.calls).toHaveLength(0);
     expect(chat.mock.calls[0]?.[2]).toMatchObject({ responseFormat: { jsonSchema: { schema: {
       properties: {
-        id: { minLength: 1, maxLength: 80 },
-        rationale: { minLength: 1, maxLength: 240 },
         replacement: { type: 'string', maxLength: 1_000 },
-      },
-    } } } });
-    expect(chat.mock.calls[0]?.[2]).toMatchObject({ responseFormat: { jsonSchema: { schema: {
-      properties: {
-        id: { pattern: '\\S' },
-        rationale: { pattern: '\\S' },
       },
     } } } });
   });
@@ -475,8 +462,7 @@ describe('runControlledRepairAttempt', () => {
     ][index]!);
     await expect(runControlledRepairAttempt({
       llm: llm(JSON.stringify({
-        id: '😀'.repeat(80), rationale: 'A Unicode ID at the declared limit.',
-        replacement: fixedSource,
+        replacement: '😀'.repeat(REPAIR_FULL_REPLACEMENT_MAX_CODE_POINTS),
       })).model,
       executor: acceptedExecutor, initialImageId: 'baseline', diagnosis,
       policy: createDefaultRepositoryPolicy(), budget: new RepairBudget(),
@@ -501,6 +487,26 @@ describe('runControlledRepairAttempt', () => {
     expect(rejectedExecutor.calls).toHaveLength(0);
   });
 
+  it('replays live run 15: legacy model-owned metadata is rejected before sandbox work', async () => {
+    const executor = new InMemoryExecutor(() => runResult(1));
+    const outcome = await runControlledRepairAttempt({
+      llm: llm(JSON.stringify({
+        id: 'legacy-id',
+        rationale: 'Legacy model-owned rationale.',
+        replacement: fixedSource,
+      })).model,
+      executor, initialImageId: 'baseline', diagnosis,
+      policy: createDefaultRepositoryPolicy(), budget: new RepairBudget(),
+      trustedCommands: { diagnosed: 'pnpm test' }, sourceContext,
+    });
+
+    expect(outcome).toMatchObject({
+      status: 'gave-up', failureKind: 'invalid',
+      reason: 'Repair proposal must contain only the replacement field',
+    });
+    expect(executor.calls).toHaveLength(0);
+  });
+
   it('returns typed provider, policy, sandbox, cancellation, and budget terminals', async () => {
     const provider = llm('unused');
     provider.chat.mockRejectedValueOnce(new Error('provider unavailable'));
@@ -513,10 +519,7 @@ describe('runControlledRepairAttempt', () => {
     const protectedPolicy = createDefaultRepositoryPolicy();
     protectedPolicy.protectedPaths.push('packages/core/src/dogfood-add.ts');
     await expect(runControlledRepairAttempt({
-      llm: llm(JSON.stringify({
-        id: 'policy', rationale: 'Attempt a protected edit.',
-        replacement: fixedSource,
-      })).model,
+      llm: llm(JSON.stringify({ replacement: fixedSource })).model,
       executor: new InMemoryExecutor(() => runResult(1)), initialImageId: 'baseline', diagnosis,
       policy: protectedPolicy, budget: new RepairBudget(),
       trustedCommands: { diagnosed: 'pnpm test' }, sourceContext,
@@ -529,10 +532,7 @@ describe('runControlledRepairAttempt', () => {
       throw new Error('trusted test evidence unavailable');
     });
     await expect(runControlledRepairAttempt({
-      llm: llm(JSON.stringify({
-        id: 'sandbox', rationale: 'Repair before unavailable test evidence.',
-        replacement: fixedSource,
-      })).model,
+      llm: llm(JSON.stringify({ replacement: fixedSource })).model,
       executor: missingTest, initialImageId: 'baseline', diagnosis,
       policy: createDefaultRepositoryPolicy(), budget: new RepairBudget(),
       trustedCommands: { diagnosed: 'pnpm test' }, sourceContext,
@@ -563,10 +563,7 @@ describe('runControlledRepairAttempt', () => {
     const executor = new InMemoryExecutor((_command, _parent, index) => [
       runResult(0, diff), runResult(-1, '', 'command timed out'),
     ][index]!);
-    const { model, chat } = llm(JSON.stringify({
-      id: 'timeout', rationale: 'Apply the source correction before verification.',
-      replacement: fixedSource,
-    }));
+    const { model, chat } = llm(JSON.stringify({ replacement: fixedSource }));
 
     const outcome = await runControlledRepairAttempt({
       llm: model, executor, initialImageId: 'baseline', diagnosis,
@@ -588,10 +585,7 @@ describe('runControlledRepairAttempt', () => {
       controller.abort();
       return runResult(0, '1 passed');
     });
-    const { model, chat } = llm(JSON.stringify({
-      id: 'cancelled', rationale: 'Repair before branch cancellation.',
-      replacement: fixedSource,
-    }));
+    const { model, chat } = llm(JSON.stringify({ replacement: fixedSource }));
     const budget = new RepairBudget();
 
     const outcome = await runControlledRepairAttempt({

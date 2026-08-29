@@ -115,6 +115,7 @@ describe('NebiusClient', () => {
       await client.chat(tier, MESSAGES, {
         maxTokens: 2_048,
         temperature: 0.25,
+        topP: 0.95,
         reasoningEffort: 'none',
         responseFormat: { type: 'json_object' },
       });
@@ -131,6 +132,7 @@ describe('NebiusClient', () => {
         messages: MESSAGES,
         max_tokens: 2_048,
         temperature: 0.25,
+        top_p: 0.95,
         reasoning_effort: 'none',
         response_format: { type: 'json_object' },
       });
@@ -169,6 +171,19 @@ describe('NebiusClient', () => {
       temperature: 0,
     });
   });
+
+  it.each([-0.01, 1.01, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects invalid topP %s before making a request',
+    async (topP) => {
+      const fetch = vi.fn();
+      const client = new NebiusClient(CONFIG, { fetch });
+
+      await expect(client.chat('nano', MESSAGES, { topP })).rejects.toThrow(
+        'topP must be between 0 and 1',
+      );
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
 
   it('sends a strict JSON Schema request in Token Factory format', async () => {
     const fetch = vi.fn().mockResolvedValue(successResponse('{"fixed":true}'));
