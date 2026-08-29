@@ -102,10 +102,12 @@ describe('RepairToolRuntime', () => {
     const directory = await mkdtemp(join(tmpdir(), 'sutura-read-file-'));
     try {
       await mkdir(join(directory, 'src'));
+      await mkdir(join(directory, 'packages', 'core', 'src'), { recursive: true });
       await writeFile(join(directory, 'src', 'value.ts'), Array.from({ length: 160 }, (_, index) => `line ${index + 1}`).join('\n'));
       await writeFile(join(directory, 'src', 'untracked.ts'), 'not tracked');
+      await writeFile(join(directory, 'packages', 'core', 'src', 'package-value.ts'), 'package source');
       await execFileAsync('git', ['init', '--quiet'], { cwd: directory });
-      await execFileAsync('git', ['add', 'src/value.ts'], { cwd: directory });
+      await execFileAsync('git', ['add', 'src/value.ts', 'packages/core/src/package-value.ts'], { cwd: directory });
       const run = vi.fn(async (_imageId: string, command: string) => {
         try {
           const result = await execFileAsync('/bin/sh', ['-c', command], { cwd: directory });
@@ -123,9 +125,110 @@ describe('RepairToolRuntime', () => {
       expect(resolved.message).toContain('line 160');
       await expect(tools.execute('read_file', { path: 'src/untracked.js' }))
         .resolves.toMatchObject({ ok: false, kind: 'sandbox' });
+      await expect(tools.execute('read_file', { path: 'src/package-value.js' }))
+        .resolves.toMatchObject({
+          ok: true,
+          message: 'Sutura resolved source: packages/core/src/package-value.ts\npackage source',
+        });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  }, 15_000);
+
+  it('resolves a unique tracked monorepo suffix without spending another model turn', async () => {
+    const { tools, run } = runtime([
+      runResult('missing-child', '', 1),
+      runResult('resolution-child', '0\tpackages/core/src/dogfood-add.test.ts\n'),
+      runResult('read-child', 'expect(add(2, 3)).toBe(5);'),
+    ]);
+
+    await expect(tools.execute('read_file', { path: 'src/dogfood-add.test.ts' }))
+      .resolves.toMatchObject({
+        ok: true,
+        message: expect.stringContaining('Sutura resolved source: packages/core/src/dogfood-add.test.ts'),
+      });
+    expect(run).toHaveBeenCalledTimes(3);
+    const resolutionCommand = (run.mock.calls[1] as unknown as [string, string])[1];
+    expect(resolutionCommand).toContain("':(glob)**/src/dogfood-add.test.ts'");
+  });
+
+  it('composes a monorepo suffix with TypeScript ESM resolution in precedence order', async () => {
+    const { tools, run } = runtime([
+      runResult('missing-child', '', 1),
+      runResult('resolution-child', '1\tpackages/core/src/value.ts\n'),
+      runResult('read-child', 'export const value = 1;'),
+    ]);
+
+    await expect(tools.execute('read_file', { path: 'src/value.js' }))
+      .resolves.toMatchObject({
+        ok: true,
+        message: 'Sutura resolved source: packages/core/src/value.ts\nexport const value = 1;',
+      });
+    expect(run).toHaveBeenCalledTimes(3);
+    expect((run.mock.calls[1] as unknown as [string, string])[1]).toContain("':(glob)**/src/value.js'");
+    expect((run.mock.calls[1] as unknown as [string, string])[1]).toContain("':(glob)**/src/value.ts'");
+  });
+
+  it('renders only the final source path when suffix and ESM resolution both apply', async () => {
+    const { tools } = runtime([
+      runResult('missing-child', '', 1),
+      runResult('resolution-child', '0\tpackages/core/src/value.js\n'),
+      runResult(
+        'read-child',
+        'export const value = 1;',
+        0,
+        'SUTURA_RESOLVED_SOURCE=packages/core/src/value.ts\n',
+      ),
+    ]);
+
+    const result = await tools.execute('read_file', { path: 'src/value.js' });
+    expect(result).toMatchObject({
+      ok: true,
+      message: 'Sutura resolved source: packages/core/src/value.ts\nexport const value = 1;',
+    });
+    expect(result.message).not.toContain('packages/core/src/value.js');
+  });
+
+  it('fails closed when a monorepo suffix is ambiguous', async () => {
+    const { tools, run } = runtime([
+      runResult('missing-child', '', 1),
+      runResult('resolution-child', '0\tpackages/a/src/value.ts\n0\tpackages/b/src/value.ts\n'),
+    ]);
+
+    await expect(tools.execute('read_file', { path: 'src/value.ts' }))
+      .resolves.toMatchObject({ ok: false, kind: 'sandbox' });
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not read a suffix candidate denied by repository policy', async () => {
+    const { tools, run } = runtime(
+      [
+        runResult('missing-child', '', 1),
+        runResult('resolution-child', '0\tpackages/core/src/private.ts\n'),
+      ],
+      { ...createDefaultRepositoryPolicy(), deniedReadPaths: ['packages/core/src/**'] },
+    );
+
+    await expect(tools.execute('read_file', { path: 'src/private.ts' }))
+      .resolves.toMatchObject({ ok: false, kind: 'sandbox' });
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it('authorizes a suffix candidate by its full package path instead of the missing root path', async () => {
+    const { tools } = runtime(
+      [
+        runResult('missing-child', '', 1),
+        runResult('resolution-child', '1\tpackages/core/src/value.ts\n'),
+        runResult('read-child', 'export const value = 1;'),
+      ],
+      { ...createDefaultRepositoryPolicy(), deniedReadPaths: ['src/*.ts'] },
+    );
+
+    await expect(tools.execute('read_file', { path: 'src/value.js' }))
+      .resolves.toMatchObject({
+        ok: true,
+        message: expect.stringContaining('packages/core/src/value.ts'),
+      });
   });
 
   it('does not offer TypeScript fallbacks denied by repository policy', async () => {

@@ -16,6 +16,7 @@ import { shellQuote } from './shell.js';
 const MAX_TOOL_OUTPUT_BYTES = 16_000;
 const MAX_READ_BYTES = 12_000;
 const MAX_READ_LINES = 160;
+const MAX_SUFFIX_RESOLUTION_BYTES = 3_000;
 const RESOLVED_SOURCE_PREFIX = 'SUTURA_RESOLVED_SOURCE=';
 const SAFE_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9_@./ -]+$/u;
 const SENSITIVE_SEARCH_GLOBS = [
@@ -27,7 +28,7 @@ const SENSITIVE_SEARCH_GLOBS = [
 ] as const;
 
 export const REPAIR_TOOL_DEFINITIONS: readonly FunctionToolDefinition[] = [
-  ['read_file', 'Read one bounded repository file. Missing ESM .js source references can resolve to a TypeScript sibling; the result names the resolved path.', { path: { type: 'string' }, startLine: { type: 'integer' }, endLine: { type: 'integer' } }, ['path']],
+  ['read_file', 'Read one bounded repository file. Unique tracked monorepo suffixes and missing ESM .js source references can resolve safely; the result names the resolved path.', { path: { type: 'string' }, startLine: { type: 'integer' }, endLine: { type: 'integer' } }, ['path']],
   ['search_repo', 'Search tracked repository files for a literal string.', { query: { type: 'string' }, paths: { type: 'array', items: { type: 'string' } } }, ['query']],
   ['run_test', 'Run one trusted test command by identifier.', { commandId: { type: 'string' } }, ['commandId']],
   ['apply_patch', 'Apply a complete unified diff or structured edits.', { diff: { type: 'string' }, edits: { type: 'array', items: { type: 'object' } } }, []],
@@ -76,6 +77,11 @@ export interface RepairToolResult {
   exitCode?: number;
 }
 
+interface ReadPathOutcome {
+  result: RepairToolResult;
+  resolvedPath?: string;
+}
+
 export interface RepairToolRuntimeOptions {
   executor: Executor;
   initialImageId: ImageId;
@@ -114,10 +120,20 @@ function allowsSourceRead(path: string, policy: RepositoryPolicy): boolean {
   return !isSensitiveRepositoryPath(path) && policyAllowsSourceRead(path, policy);
 }
 
-function typescriptSourceFallbacks(path: string, policy: RepositoryPolicy): string[] {
+function typescriptSourceVariants(path: string): string[] {
   if (!path.endsWith('.js')) return [];
   const stem = path.slice(0, -3);
-  return [`${stem}.ts`, `${stem}.tsx`].filter((candidate) => allowsSourceRead(candidate, policy));
+  return [`${stem}.ts`, `${stem}.tsx`];
+}
+
+function typescriptSourceFallbacks(path: string, policy: RepositoryPolicy): string[] {
+  return typescriptSourceVariants(path).filter((candidate) => allowsSourceRead(candidate, policy));
+}
+
+function noSymlinksFor(path: string): string {
+  return path.split('/').map((_, index, segments) =>
+    `test ! -L ${shellQuote(segments.slice(0, index + 1).join('/'))}`,
+  ).join(' && ');
 }
 
 export class RepairToolRuntime {
@@ -192,10 +208,27 @@ export class RepairToolRuntime {
     if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < start || end - start >= MAX_READ_LINES) {
       return failure('invalid', `read_file line window must contain at most ${MAX_READ_LINES} lines`);
     }
-    const prefixes = path.split('/').map((_, index, segments) =>
-      segments.slice(0, index + 1).join('/'),
-    );
-    const noSymlinks = prefixes.map((prefix) => `test ! -L ${shellQuote(prefix)}`).join(' && ');
+    const direct = await this.readPath(path, start, end);
+    if (direct.result.ok || !path.startsWith('src/')) return this.renderReadResult(path, direct);
+    const resolvedPath = await this.resolveMonorepoSuffix(path);
+    if (resolvedPath === undefined) return direct.result;
+    const resolved = await this.readPath(resolvedPath, start, end);
+    return this.renderReadResult(path, {
+      result: resolved.result,
+      resolvedPath: resolved.resolvedPath ?? resolvedPath,
+    });
+  }
+
+  private renderReadResult(requestedPath: string, outcome: ReadPathOutcome): RepairToolResult {
+    if (!outcome.result.ok) return outcome.result;
+    const finalPath = outcome.resolvedPath ?? requestedPath;
+    return finalPath === requestedPath
+      ? outcome.result
+      : { ...outcome.result, message: `Sutura resolved source: ${finalPath}\n${outcome.result.message}` };
+  }
+
+  private async readPath(path: string, start: number, end: number): Promise<ReadPathOutcome> {
+    const noSymlinks = noSymlinksFor(path);
     const fallbackPaths = typescriptSourceFallbacks(path, this.options.policy);
     const fallbacks = fallbackPaths.map((fallback) =>
       `if test "$path" = "$requested" && test ! -e "$requested" && test ! -L "$requested"; then fallback=${shellQuote(fallback)}; if test -f "$fallback" && test ! -L "$fallback" && git ls-files --error-unmatch -- "$fallback" >/dev/null 2>&1; then path="$fallback"; resolved="$fallback"; fi; fi`,
@@ -204,19 +237,59 @@ export class RepairToolRuntime {
     const result = await this.run(command);
     this.observe(result, this.current.editableImageId, `read_file ${path}`);
     if (result.truncated || Buffer.byteLength(result.stdout, 'utf8') > MAX_READ_BYTES) {
-      return failure('sandbox', 'File output exceeded the bounded tool limit');
+      return { result: failure('sandbox', 'File output exceeded the bounded tool limit') };
     }
-    if (result.exitCode !== 0) return failure('sandbox', 'File is missing, binary, oversized, or symlinked');
+    if (result.exitCode !== 0) return { result: failure('sandbox', 'File is missing, binary, oversized, or symlinked') };
     const resolution = result.stderr.trim();
     const resolvedPath = fallbackPaths.find((candidate) => resolution === `${RESOLVED_SOURCE_PREFIX}${candidate}`);
-    if (resolution && resolvedPath === undefined) return failure('sandbox', 'File resolution metadata was invalid');
+    if (resolution && resolvedPath === undefined) return { result: failure('sandbox', 'File resolution metadata was invalid') };
     const content = bounded(result.stdout);
     return {
-      ok: true,
-      message: resolvedPath === undefined ? content : `Sutura resolved source: ${resolvedPath}\n${content}`,
-      imageId: result.imageId,
-      exitCode: result.exitCode,
+      result: {
+        ok: true,
+        message: content,
+        imageId: result.imageId,
+        exitCode: result.exitCode,
+      },
+      ...(resolvedPath === undefined ? {} : { resolvedPath }),
     };
+  }
+
+  private async resolveMonorepoSuffix(path: string): Promise<string | undefined> {
+    const suffixes = [path, ...typescriptSourceVariants(path)];
+    const queries = suffixes.map((suffix, index) =>
+      `git ls-files -- ${shellQuote(`:(glob)**/${suffix}`)} | head -n 3 | awk -v group=${index} '{ print group "\\t" $0 }'`,
+    ).join('; ');
+    const command = `${noSymlinksFor(path)} && test ! -e ${shellQuote(path)} && test ! -L ${shellQuote(path)} && { ${queries}; }`;
+    const result = await this.run(command);
+    this.observe(result, this.current.editableImageId, `resolve_file_suffix ${path}`);
+    if (
+      result.exitCode !== 0 ||
+      result.truncated ||
+      Buffer.byteLength(result.stdout, 'utf8') > MAX_SUFFIX_RESOLUTION_BYTES
+    ) return undefined;
+    const groups = suffixes.map(() => [] as string[]);
+    for (const line of result.stdout.split(/\r?\n/u).filter(Boolean)) {
+      const separator = line.indexOf('\t');
+      const index = Number(line.slice(0, separator));
+      if (separator < 1 || !Number.isSafeInteger(index) || index < 0 || index >= groups.length) return undefined;
+      groups[index]?.push(line.slice(separator + 1));
+    }
+    for (const [index, candidates] of groups.entries()) {
+      if (candidates.length > 1) return undefined;
+      if (candidates.length === 0) continue;
+      const suffix = suffixes[index];
+      if (suffix === undefined) return undefined;
+      const candidate = safePath(candidates[0]);
+      if (
+        candidate === null ||
+        candidate === path ||
+        !candidate.endsWith(`/${suffix}`) ||
+        !allowsSourceRead(candidate, this.options.policy)
+      ) return undefined;
+      return candidate;
+    }
+    return undefined;
   }
 
   private async searchRepo(value: unknown): Promise<RepairToolResult> {
