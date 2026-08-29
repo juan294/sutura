@@ -14,6 +14,12 @@ Nebius Token Factory and ConTree credentials. Tavily is optional.
 
 Sutura handles pull request, push, scheduled, and manual CI failures. It records evidence on the pull request or failing commit and in one GitHub Check on the exact failing SHA.
 
+Node and Python projects use separate sandbox adapters. Detection is automatic
+for a single runtime. Set `runtime` to `node` or `python` in `.sutura.json` for a
+polyglot repository, or pass `--runtime node|python` to a local `sutura heal`
+run. Python preparation requires `uv.lock` or exact hash-locked binary
+requirements and never runs repository source with network access.
+
 For a local review that does not use ConTree, run:
 
 ```text

@@ -329,6 +329,7 @@ function context(
       cost: ledger(),
       triageN: 2,
       raceK: 3,
+      runtimeId: 'node',
     },
   };
 }
@@ -1069,6 +1070,25 @@ describe('repair source context', () => {
       'src/diagnose/tavily.ts',
       'tsconfig.json',
       'package.json',
+    ]);
+  });
+
+  it('uses only Python fallback manifests for Python dependency failures', async () => {
+    const repository = new FakeRepository();
+
+    await readRepairSourceContext(
+      repository,
+      '/tmp/exact-pr-head',
+      'Run pytest -q\nImportError: dependency failed',
+      { class: 'dep-upstream-breaking' },
+      undefined,
+      'python',
+    );
+
+    expect(repository.sourceReads[0]?.paths).toEqual([
+      'pyproject.toml',
+      'uv.lock',
+      'requirements.txt',
     ]);
   });
 

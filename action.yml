@@ -29,6 +29,10 @@ inputs:
     description: Price-verified model-selection profile. Incomplete profiles cannot change defaults.
     required: false
     default: production-baseline-v1
+  runtime:
+    description: Runtime selection for polyglot repositories. Auto fails closed when evidence is ambiguous.
+    required: false
+    default: auto
   repair-model-turns:
     description: Lower-only repair-agent model turn limit.
     required: false

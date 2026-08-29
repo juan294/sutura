@@ -81,6 +81,15 @@ describe('loadConfig', () => {
     });
   });
 
+  it.each(['node', 'python'] as const)('accepts explicit %s runtime selection', (runtime) => {
+    expect(loadConfig({ ...REQUIRED_ENV, SUTURA_RUNTIME: runtime }).runtimeId).toBe(runtime);
+  });
+
+  it('keeps automatic runtime selection unset and rejects unknown selectors', () => {
+    expect(loadConfig({ ...REQUIRED_ENV, SUTURA_RUNTIME: 'auto' })).not.toHaveProperty('runtimeId');
+    expect(() => loadConfig({ ...REQUIRED_ENV, SUTURA_RUNTIME: 'ruby' })).toThrow(/SUTURA_RUNTIME/iu);
+  });
+
   it('rejects a routing profile until complete price-verified evidence ships', () => {
     expect(() => loadConfig({
       ...REQUIRED_ENV, SUTURA_ROUTING_PROFILE: 'partial-ablation',

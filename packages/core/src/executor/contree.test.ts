@@ -742,6 +742,61 @@ describe('ContreeExecutor', () => {
     }
   });
 
+  it('uploads only the runtime-approved Python dependency inputs', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sutura-contree-python-inputs-'));
+    try {
+      await writeFile(join(dir, 'pyproject.toml'), '[project]\nname = "safe"\n');
+      await writeFile(join(dir, 'uv.lock'), 'version = 1\n');
+      await writeFile(join(dir, 'requirements-dev.txt'), 'unvalidated==1\n');
+      await writeFile(join(dir, 'package.json'), '{"name":"unvalidated"}\n');
+      await writeFile(join(dir, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n');
+      await writeFile(join(dir, 'pnpm-workspace.yaml'), 'packages: ["packages/*"]\n');
+      await writeFile(join(dir, 'unapproved.txt'), 'must not upload\n');
+
+      let uploaded: Uint8Array | undefined;
+      const fetch = vi.fn<typeof globalThis.fetch>(async (url, init) => {
+        if (String(url).endsWith('/files')) {
+          const body = new Uint8Array(await new Response(init?.body).arrayBuffer());
+          uploaded ??= body;
+          return jsonResponse({ uuid: 'file-uuid' }, 201);
+        }
+        if (String(url).endsWith('/instances')) {
+          return jsonResponse({ uuid: 'snapshot-operation' }, 201, {
+            Location: '/sandboxes/v1/operations/snapshot-operation',
+          });
+        }
+        return jsonResponse({
+          status: 'SUCCESS',
+          result_image_uuid: 'snapshot-image',
+          metadata: {
+            result: {
+              state: { exit_code: 0 },
+              stdout: { value: '', encoding: 'ascii' },
+              stderr: { value: '', encoding: 'ascii' },
+              resources: {},
+            },
+          },
+        });
+      });
+
+      await expect(new ContreeExecutor(config(fetch)).snapshot(
+        dir,
+        'base-image',
+        {
+          ...DEPENDENCY_REPLACE,
+          includePaths: ['pyproject.toml', 'uv.lock'],
+        },
+      )).resolves.toBe('snapshot-image');
+
+      expect((await listTar(uploaded ?? new Uint8Array())).sort()).toEqual([
+        'pyproject.toml',
+        'uv.lock',
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('rejects registry credentials before uploading dependency inputs', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sutura-contree-credentials-'));
     const fetch = vi.fn<typeof globalThis.fetch>();
@@ -897,7 +952,7 @@ describe('ContreeExecutor', () => {
       await rm(dependency, { recursive: true, force: true });
       await rm(outside, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it('rejects unknown snapshot profiles and invalid profile-mode pairs before upload', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>();

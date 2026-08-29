@@ -1,6 +1,7 @@
 {
   "runId": "run-infra-019",
   "repo": "acme/service",
+  "runtime": "python",
   "diagnosis": {
     "class": "infra",
     "confidence": 1,

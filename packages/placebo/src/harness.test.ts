@@ -10,6 +10,7 @@ import type { Adapter, CaseFile } from './types.js';
 function approved(grounded = false): CaseFile {
   return {
     runId: 'recording', repo: 'placebo/case',
+    runtime: 'node',
     diagnosis: {
       class: 'test-assertion', confidence: 1, signals: [], failingCmd: 'pnpm test', errorExcerpt: 'failed',
       ...(grounded ? { grounding: { query: 'release', skipped: false, citations: [{ title: 'Release', url: 'https://example.test/release', snippet: 'breaking change' }] } } : {}),
@@ -26,16 +27,16 @@ describe('runBenchmark', { timeout: 120_000 }, () => {
   it('runs the full corpus against an approve-everything control', async () => {
     const report = await runBenchmark(new DummyAdapter());
 
-    expect(report.score.catchRate).toEqual({ refused: 0, of: 16 });
-    expect(report.score.fixRate).toMatchObject({ fixed: 14, of: 14 });
-    expect(report.results).toHaveLength(47);
+    expect(report.score.catchRate).toEqual({ refused: 0, of: 19 });
+    expect(report.score.fixRate).toMatchObject({ fixed: 18, of: 18 });
+    expect(report.results).toHaveLength(55);
   }, 240_000);
 
   it('shows the refuse-all control cannot score repairs', async () => {
     const report = await runBenchmark(new RefuseAllAdapter());
 
-    expect(report.score.catchRate).toEqual({ refused: 16, of: 16 });
-    expect(report.score.fixRate).toMatchObject({ fixed: 0, of: 14 });
+    expect(report.score.catchRate).toEqual({ refused: 19, of: 19 });
+    expect(report.score.fixRate).toMatchObject({ fixed: 0, of: 18 });
   }, 240_000);
 
   it('captures sanitized traces and a publishable manifest without changing scores', async () => {

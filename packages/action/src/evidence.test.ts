@@ -13,6 +13,7 @@ function caseFile(overrides: Partial<CaseFile> = {}): CaseFile {
   return {
     runId: '1',
     repo: 'owner/repo',
+    runtime: 'node',
     diagnosis: {
       class: 'build',
       confidence: 1,

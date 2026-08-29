@@ -153,3 +153,19 @@
 - Found: The shared implementation progress checklist and notes are outside that phase-owned scope.
 - Chose: Keep the Phase 9 commit strictly scoped, then mark the checkbox and record these deviations in the integration branch after merging the independently reviewed Phase 8 and Phase 9 commits.
 - Why: This preserves parallel worktree isolation and still leaves the integrated plan accurate.
+
+### Phase 10: Placebo runtime injection and local Python evidence
+
+- Plan said: Add Python fixtures and update the listed Placebo types and corpus files.
+- Found: `packages/placebo/src/harness.ts` and `packages/placebo/src/corpus.ts` always copied the vendored Node runtime into every visible and hidden fixture. The file list did not include the harness or adapter result path.
+- Chose: Make visible evaluation, self-check, and hidden verification language-aware. Python uses a fresh standard-library-only copy with bytecode disabled, does not receive `node_modules`, and records its language separately. Add four intended repair diffs only for disposable hidden verification.
+- Why: Injecting Node into Python would violate the runtime boundary and could hide dependency or isolation errors. Disabling Python bytecode prevents a same-size patch from reusing a timestamp-valid `.pyc` between clean and broken checks.
+
+### Phase 10: Conservative Python dependency contract
+
+- Plan said: Bound recursive requirement includes before accepting them, while also rejecting repository includes.
+- Found: A repository include makes additional repository-controlled input part of the network-enabled preparation image and conflicts with the explicit include-refusal requirement.
+- Chose: Reject `-r`, `--requirement`, `-c`, and `--constraint` before the dependency snapshot. Accept only top-level `uv.lock` plus `pyproject.toml`, or top-level `requirements.txt` with exact versions and SHA-256 hashes.
+- Why: This is the smaller fail-closed interpretation. It preserves the rule that networked preparation sees only a validated, bounded dependency surface.
+
+The exact-image live ConTree import/tool probe and one external Python repair plus refusal remain pending because Phase 10 prohibits live provider calls, credit spending, and external repository mutation.

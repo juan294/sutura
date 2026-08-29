@@ -13,6 +13,7 @@ function caseFile(
     : [];
   return {
     runId: 'benchmark-run', repo: 'placebo/fixture',
+    runtime: 'node',
     diagnosis: {
       class: 'test-assertion', confidence: 1, signals: [], failingCmd: 'pnpm test', errorExcerpt: 'failed',
       ...(options.grounded === undefined ? {} : {
@@ -45,7 +46,7 @@ function result(
     'triageExitCodes' | 'releaseFact' | 'difficulty' | 'failureClass' | 'flakePattern' |
     'hiddenVerification' | 'elapsedTimeMs'>> = {},
 ): BenchmarkResult {
-  return { caseId, kind, caseFile: file, tavilyEnabled, elapsedTimeMs: 0, ...extra };
+  return { caseId, kind, language: 'javascript', caseFile: file, tavilyEnabled, elapsedTimeMs: 0, ...extra };
 }
 
 describe('score', () => {

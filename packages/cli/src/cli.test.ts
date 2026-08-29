@@ -1,3 +1,7 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import { completedTriageVerdict, notRunTriageVerdict, type AuditFile, type CaseFile } from '@sutura/core';
@@ -8,6 +12,7 @@ function fixed(): CaseFile {
   return {
     runId: 'case-1',
     repo: 'placebo/case',
+    runtime: 'node',
     diagnosis: {
       class: 'test-assertion', confidence: 1, signals: [],
       failingCmd: 'pnpm test', errorExcerpt: 'failed',
@@ -93,5 +98,28 @@ describe('runCli', () => {
     });
     expect(stdout.join('')).not.toContain('private');
     expect(stdout.join('')).not.toContain('abc123');
+  });
+
+  it('reports an auto-detected Python runtime when local healing fails', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-cli-python-failure-'));
+    const stdout: string[] = [];
+    try {
+      await writeFile(join(directory, 'pyproject.toml'), '[project]\nname = "fixture"\n');
+      await writeFile(join(directory, 'uv.lock'), 'version = 1\n');
+      const heal = vi.fn().mockRejectedValue(new Error('sandbox failed'));
+
+      await runCli(
+        ['heal', '--case-dir', directory, '--format', 'json'],
+        { write: (value) => stdout.push(value) },
+        { heal },
+      );
+
+      expect(JSON.parse(stdout.join(''))).toMatchObject({
+        outcome: 'infra-stop',
+        runtime: 'python',
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });

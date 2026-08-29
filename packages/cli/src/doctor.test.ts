@@ -21,6 +21,7 @@ describe('doctorSutura', () => {
           '          nebius-api-key: ${{ secrets.NEBIUS_API_KEY }}',
           '          contree-token: ${{ secrets.CONTREE_TOKEN }}',
           '          contree-project: ${{ vars.CONTREE_PROJECT }}',
+          '          runtime: auto',
         ].join('\n'),
       );
       const run = vi.fn(async (_command: string, args: readonly string[]) => {

@@ -5,6 +5,7 @@ import { CliAdapter, SuturaAdapter } from './adapters.js';
 
 const VALID_CASE_FILE = JSON.stringify({
   runId: 'run-1', repo: 'placebo/case',
+  runtime: 'node',
   diagnosis: {
     class: 'dep-upstream-breaking', confidence: 0.9, signals: [], failingCmd: 'pnpm test', errorExcerpt: 'ERR_MODULE_NOT_FOUND',
     grounding: { query: 'chalk 5 esm', skipped: false, citations: [{ title: 'Chalk 5', url: 'https://github.com/chalk/chalk/releases/tag/v5.0.0', snippet: 'ESM only' }] },
@@ -37,6 +38,20 @@ describe('CLI adapters', () => {
     ], expect.any(Object));
   });
 
+  it.each([
+    ['python', 'python'],
+    ['javascript', 'node'],
+    ['typescript', 'node'],
+  ] as const)('maps trusted %s fixture metadata to the %s runtime selector', async (language, runtime) => {
+    const execute = vi.fn().mockResolvedValue({ stdout: VALID_CASE_FILE, stderr: '', exitCode: 0 });
+
+    await new SuturaAdapter({ execute }).heal('/tmp/example', { language });
+
+    expect(execute).toHaveBeenCalledWith('sutura', [
+      'heal', '--case-dir', '/tmp/example', '--format', 'json', '--runtime', runtime,
+    ], expect.any(Object));
+  });
+
   it('passes a placebo candidate to a generic CLI adapter too', async () => {
     const execute = vi.fn().mockResolvedValue({ stdout: VALID_CASE_FILE, stderr: '', exitCode: 0 });
     const candidateDiff = 'diff --git a/test.js b/test.js\n';
@@ -56,6 +71,38 @@ describe('CLI adapters', () => {
 
     execute.mockResolvedValueOnce({ stdout: '{"outcome":"fixed","grounded":true}', stderr: '', exitCode: 0 });
     await expect(new CliAdapter({ command: 'agent', execute }).heal('/tmp/case')).resolves.toMatchObject({ outcome: 'gave-up', diagnosis: { class: 'infra' } });
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['mismatched', 'node'],
+  ])('rejects %s runtime evidence for a trusted Python fixture', async (_name, returnedRuntime) => {
+    const value = JSON.parse(VALID_CASE_FILE) as Record<string, unknown>;
+    if (returnedRuntime === undefined) delete value.runtime;
+    else value.runtime = returnedRuntime;
+    const execute = vi.fn().mockResolvedValue({
+      stdout: JSON.stringify(value), stderr: '', exitCode: 0,
+    });
+
+    await expect(new SuturaAdapter({ execute }).heal('/tmp/case', { language: 'python' }))
+      .resolves.toMatchObject({
+        outcome: 'gave-up',
+        runtime: 'python',
+        diagnosis: { errorExcerpt: expect.stringContaining('invalid adapter JSON') },
+      });
+  });
+
+  it('does not infer the runtime selector from fixture path or candidate content', async () => {
+    const execute = vi.fn().mockResolvedValue({ stdout: VALID_CASE_FILE, stderr: '', exitCode: 0 });
+    const adapter = new SuturaAdapter({ execute });
+
+    await adapter.heal('/tmp/python-fixture', {
+      language: 'typescript',
+      candidateDiff: 'diff --git a/runtime.py b/runtime.py\n',
+    });
+
+    expect(execute.mock.calls[0]?.[1]).toContain('node');
+    expect(execute.mock.calls[0]?.[1]).not.toContain('python');
   });
 
   it('accepts a fail-closed infra-stop with triage not run', async () => {

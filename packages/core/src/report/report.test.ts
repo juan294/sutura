@@ -194,6 +194,7 @@ function assertSerializedCaseFile(value: unknown): asserts value is SerializedCa
   if (
     typeof fixture.runId !== 'string' ||
     typeof fixture.repo !== 'string' ||
+    (fixture.runtime !== 'node' && fixture.runtime !== 'python') ||
     !isRecord(diagnosis) ||
     !FAILURE_CLASSES.has(diagnosis.class as CaseFile['diagnosis']['class']) ||
     typeof diagnosis.confidence !== 'number' ||

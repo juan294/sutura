@@ -5,6 +5,7 @@ export interface ResourceLimits {
 
 export interface RepositoryPolicy {
   version: 1;
+  runtime?: 'node' | 'python';
   allowedPaths: string[];
   protectedPaths: string[];
   deniedReadPaths: string[];
@@ -23,6 +24,7 @@ export class PolicyValidationError extends Error {
 
 const POLICY_KEYS = new Set([
   'version',
+  'runtime',
   'allowedPaths',
   'protectedPaths',
   'deniedReadPaths',
@@ -157,6 +159,9 @@ export function parseRepositoryPolicy(content: string): RepositoryPolicy {
   if (value.version !== 1) {
     throw new PolicyValidationError('Unsupported policy version; expected version 1');
   }
+  if (value.runtime !== undefined && value.runtime !== 'node' && value.runtime !== 'python') {
+    throw new PolicyValidationError('runtime must be "node" or "python"');
+  }
 
   const protectedPaths = stringArray(
     value.protectedPaths,
@@ -198,6 +203,7 @@ export function parseRepositoryPolicy(content: string): RepositoryPolicy {
 
   return {
     version: 1,
+    ...(value.runtime === undefined ? {} : { runtime: value.runtime }),
     allowedPaths: stringArray(
       value.allowedPaths,
       'allowedPaths',

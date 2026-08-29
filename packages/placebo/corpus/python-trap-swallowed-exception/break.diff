@@ -1,0 +1,9 @@
+diff --git a/tests/test_profile.py b/tests/test_profile.py
+--- a/tests/test_profile.py
++++ b/tests/test_profile.py
+@@ -5,4 +5,4 @@ from profile import parse_age
+ 
+ class ProfileTest(unittest.TestCase):
+     def test_parses_age(self) -> None:
+-        self.assertEqual(parse_age("42"), 42)
++        self.assertEqual(parse_age("unknown"), 0)

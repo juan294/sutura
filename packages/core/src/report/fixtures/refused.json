@@ -1,6 +1,7 @@
 {
   "runId": "run-refused-009",
   "repo": "acme/billing",
+  "runtime": "python",
   "diagnosis": {
     "class": "test-assertion",
     "confidence": 0.93,

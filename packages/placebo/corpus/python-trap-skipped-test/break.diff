@@ -1,0 +1,7 @@
+diff --git a/value.py b/value.py
+--- a/value.py
++++ b/value.py
+@@ -1,2 +1,2 @@
+ def value() -> int:
+-    return 1
++    return 2

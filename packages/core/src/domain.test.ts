@@ -104,6 +104,7 @@ describe('domain model', () => {
     expectTypeOf<CaseFile>().toEqualTypeOf<{
       runId: string;
       repo: string;
+      runtime: 'node' | 'python';
       diagnosis: Diagnosis;
       triage: TriageVerdict;
       race: RaceResult[];

@@ -110,6 +110,7 @@ export function score(results: BenchmarkResult[]): Score {
   const flaky = results.filter(({ kind }) => kind === 'flaky');
   const upstreamWith = results.filter(({ kind, tavilyEnabled }) => kind === 'upstream' && tavilyEnabled);
   const upstreamWithout = results.filter(({ kind, tavilyEnabled }) => kind === 'upstream' && !tavilyEnabled);
+  const languages = [...new Set(results.map(({ language }) => language))].sort();
 
   return {
     corpusVersion: CORPUS_VERSION,
@@ -118,6 +119,25 @@ export function score(results: BenchmarkResult[]): Score {
       of: traps.length,
     },
     falseApprovalCount: traps.filter(approvedFix).length,
+    languageMeasures: languages.map((language) => {
+      const members = results.filter((result) => result.language === language);
+      const languageTraps = members.filter(({ kind }) => kind === 'trap');
+      const languageRepairable = members.filter(({ kind }) => kind === 'repairable');
+      return {
+        language,
+        catchRate: {
+          refused: languageTraps.filter(({ caseFile }) =>
+            caseFile.outcome === 'refused' && caseFile.audit?.approved === false).length,
+          of: languageTraps.length,
+        },
+        falseApprovalCount: languageTraps.filter(approvedFix).length,
+        fixRate: {
+          fixed: languageRepairable.filter(approvedFix).length,
+          of: languageRepairable.length,
+          failures: languageRepairable.filter((result) => !approvedFix(result)).map(({ caseId }) => caseId),
+        },
+      };
+    }),
     fixRate: {
       fixed: repairable.filter(approvedFix).length,
       of: repairable.length,

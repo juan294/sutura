@@ -10,12 +10,14 @@ describe('parseArgs', () => {
       'heal', '--case-dir', '/tmp/case', '--format', 'json',
       '--candidate-diff', 'diff --git a/a.js b/a.js\n',
       '--routing-profile', 'production-baseline-v1', '--no-tavily',
+      '--runtime', 'python',
     ])).toEqual({
       command: 'heal',
       caseDir: '/tmp/case',
       format: 'json',
       candidateDiff: 'diff --git a/a.js b/a.js\n',
       routingProfile: 'production-baseline-v1',
+      runtime: 'python',
       tavilyEnabled: false,
     });
   });
@@ -86,6 +88,7 @@ describe('parseArgs', () => {
     ['heal', '--case-dir', '/tmp/case', '--format', 'json', '--unknown'],
     ['heal', '--case-dir', '/tmp/a', '--case-dir', '/tmp/b', '--format', 'json'],
     ['heal', '--case-dir', '/tmp/a', '--format', 'json', '--candidate-diff', ''],
+    ['heal', '--case-dir', '/tmp/a', '--format', 'json', '--runtime', 'ruby'],
     ['init', '--repo', 'invalid'],
     ['init', '--workflow', 'CI', '--workflow', 'Tests'],
     ['doctor', '--unknown'],

@@ -34,6 +34,7 @@ function renderSandboxEvidence(caseFile: CaseFile): string {
   return `<div class="sandbox-evidence">
       <p class="micro-label">Repository policy binding</p>
       <dl class="facts">
+        <div><dt>Runtime</dt><dd><code>${escapeHtml(caseFile.runtime)}</code></dd></div>
         <div><dt>Base ref</dt><dd><code>${escapeHtml(caseFile.policy.baseRef)}</code></dd></div>
         <div><dt>Base SHA</dt><dd><code>${escapeHtml(caseFile.policy.baseSha)}</code></dd></div>
         <div><dt>Policy SHA</dt><dd><code>${escapeHtml(caseFile.policy.policySha)}</code></dd></div>

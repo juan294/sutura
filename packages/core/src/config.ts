@@ -5,6 +5,7 @@ import {
 } from './engine/repair-budget.js';
 import { DEFAULT_SEARCH_LIMITS } from './engine/search.js';
 import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
+import type { RuntimeId } from './runtime/types.js';
 
 export const DEFAULT_MODELS = {
   nano: 'nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B',
@@ -28,6 +29,7 @@ export interface Config {
   maxOps: number;
   repairBudgets: RepairBudgetLimits;
   search: SearchLimits;
+  runtimeId?: RuntimeId;
 }
 
 export interface SearchLimits {
@@ -178,6 +180,12 @@ export function loadConfig(env: ConfigEnvironment): Config {
       maximumTotalBranches: boundedPositiveInteger(env, 'SUTURA_SEARCH_MAX_TOTAL_BRANCHES', DEFAULT_SEARCH_LIMITS.maximumTotalBranches, DEFAULT_SEARCH_LIMITS.maximumTotalBranches),
     },
   };
+
+  const runtime = optional(env, 'SUTURA_RUNTIME');
+  if (runtime !== undefined && runtime !== 'auto' && runtime !== 'node' && runtime !== 'python') {
+    throw new ConfigError('SUTURA_RUNTIME must be auto, node, or python');
+  }
+  if (runtime === 'node' || runtime === 'python') config.runtimeId = runtime;
 
   const tavilyApiKey = optional(env, 'TAVILY_API_KEY');
   if (tavilyApiKey !== undefined) {

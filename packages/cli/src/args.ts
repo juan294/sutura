@@ -6,7 +6,7 @@ export const USAGE = [
   'Usage:',
   '  sutura init [--workflow <name>] [--repo <owner/repo>] [--force] [--no-tavily]',
   '  sutura doctor [--repo <owner/repo>]',
-  '  sutura heal --case-dir <dir> --format json [--candidate-diff <diff>] [--routing-profile <id>] [--no-tavily]',
+  '  sutura heal --case-dir <dir> --format json [--candidate-diff <diff>] [--routing-profile <id>] [--runtime <auto|node|python>] [--no-tavily]',
   '  sutura audit --case-dir <dir> --candidate-diff <file> --before-log <file> --after-log <file> --format json',
   '  sutura eval validate --manifest <file>',
   '  sutura eval export --manifest <file> --format <atif|jsonl> --output <file> [--force]',
@@ -20,6 +20,7 @@ export interface HealArguments {
   format: 'json';
   candidateDiff?: string;
   routingProfile?: string;
+  runtime?: 'node' | 'python';
   tavilyEnabled: boolean;
 }
 
@@ -103,12 +104,13 @@ function parseHeal(args: readonly string[]): HealArguments {
   let format: string | undefined;
   let candidateDiff: string | undefined;
   let routingProfile: string | undefined;
+  let runtime: 'node' | 'python' | undefined;
   let tavilyEnabled = true;
   const seen = new Set<string>();
 
   for (let index = 1; index < args.length; index += 1) {
     const flag = args[index];
-    if (!flag || !['--case-dir', '--format', '--candidate-diff', '--routing-profile', '--no-tavily'].includes(flag)) {
+    if (!flag || !['--case-dir', '--format', '--candidate-diff', '--routing-profile', '--runtime', '--no-tavily'].includes(flag)) {
       throw new CliUsageError(`Unknown argument: ${flag ?? '(missing)'}`);
     }
     if (seen.has(flag)) throw new CliUsageError(`Duplicate argument: ${flag}`);
@@ -122,7 +124,10 @@ function parseHeal(args: readonly string[]): HealArguments {
     if (flag === '--case-dir') caseDir = value;
     else if (flag === '--format') format = value;
     else if (flag === '--candidate-diff') candidateDiff = value;
-    else routingProfile = value;
+    else if (flag === '--routing-profile') routingProfile = value;
+    else if (value === 'auto') runtime = undefined;
+    else if (value === 'node' || value === 'python') runtime = value;
+    else throw new CliUsageError('--runtime must be auto, node, or python');
   }
 
   if (!caseDir) throw new CliUsageError('--case-dir is required');
@@ -139,6 +144,7 @@ function parseHeal(args: readonly string[]): HealArguments {
     format: 'json',
     ...(candidateDiff === undefined ? {} : { candidateDiff }),
     ...(routingProfile === undefined ? {} : { routingProfile }),
+    ...(runtime === undefined ? {} : { runtime }),
     tavilyEnabled,
   };
 }

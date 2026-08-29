@@ -23,6 +23,33 @@ function diagnosis(failureClass: Diagnosis['class']): Diagnosis {
 }
 
 describe('vetPatch', () => {
+  it.each([
+    ['test_value.py', '@pytest.mark.skip'],
+    ['src/value.py', 'value = parse()  # type: ignore'],
+    ['src/value.py', 'value = parse()  # noqa'],
+    ['src/value.py', 'except Exception: pass'],
+    ['ruff.toml', 'exclude = ["tests"]'],
+  ])('rejects Python shortcut in %s before execution', (path, addition) => {
+    const diff = `diff --git a/${path} b/${path}
+--- a/${path}
++++ b/${path}
+@@ -1 +1 @@
+-safe = true
++${addition}
+`;
+    expect(vetPatch(diff, diagnosis('test-bug')).ok).toBe(false);
+  });
+
+  it('treats root Python test modules as conventional test paths', () => {
+    const diff = `diff --git a/test_value.py b/test_value.py
+deleted file mode 100644
+--- a/test_value.py
++++ /dev/null
+@@ -1 +0,0 @@
+-def test_value(): assert True
+`;
+    expect(vetPatch(diff, diagnosis('test-bug')).violations).toContain('deletes test file: test_value.py');
+  });
   it('rejects deletion of a test file even for a test bug', () => {
     const diff = `diff --git a/src/foo.test.ts b/src/foo.test.ts
 deleted file mode 100644

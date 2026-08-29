@@ -1,6 +1,7 @@
 {
   "runId": "run-gave-up-031",
   "repo": "acme/search",
+  "runtime": "node",
   "diagnosis": {
     "class": "typecheck",
     "confidence": 0.81,

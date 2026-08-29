@@ -304,6 +304,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
       <div class="sandbox-evidence">
       <p class="micro-label">Repository policy binding</p>
       <dl class="facts">
+        <div><dt>Runtime</dt><dd><code>node</code></dd></div>
         <div><dt>Base ref</dt><dd><code>develop</code></dd></div>
         <div><dt>Base SHA</dt><dd><code>89abcdef0123456789abcdef0123456789abcdef</code></dd></div>
         <div><dt>Policy SHA</dt><dd><code>2f77dc81836e659296ec1686ea21fd4192e66fb7d6989b9a80bf800618fa35e7</code></dd></div>
@@ -403,6 +404,8 @@ Failing command: <code>pnpm build</code>
 **Sandbox cost: $0.0004** · operations 2 · elapsed 2.500 s · CPU 1.000 s · peak RSS 2,048 KB
 
 **Policy:** base <code>develop</code> at <code>89abcdef0123456789abcdef0123456789abcdef</code> · policy <code>2f77dc81836e659296ec1686ea21fd4192e66fb7d6989b9a80bf800618fa35e7</code>
+
+**Runtime:** <code>node</code>
 
 ---
 
@@ -599,6 +602,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
       <div class="sandbox-evidence">
       <p class="micro-label">Repository policy binding</p>
       <dl class="facts">
+        <div><dt>Runtime</dt><dd><code>node</code></dd></div>
         <div><dt>Base ref</dt><dd><code>develop</code></dd></div>
         <div><dt>Base SHA</dt><dd><code>89abcdef0123456789abcdef0123456789abcdef</code></dd></div>
         <div><dt>Policy SHA</dt><dd><code>default</code></dd></div>
@@ -671,6 +675,8 @@ Failing command: <code>pnpm test -- notifications</code>
 **Sandbox cost: $0.0000** · operations 2 · elapsed 1.200 s · CPU 0.000 s · peak RSS 1,024 KB
 
 **Policy:** base <code>develop</code> at <code>89abcdef0123456789abcdef0123456789abcdef</code> · policy <code>default</code>
+
+**Runtime:** <code>node</code>
 
 ---
 
@@ -921,6 +927,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
       <div class="sandbox-evidence">
       <p class="micro-label">Repository policy binding</p>
       <dl class="facts">
+        <div><dt>Runtime</dt><dd><code>node</code></dd></div>
         <div><dt>Base ref</dt><dd><code>develop</code></dd></div>
         <div><dt>Base SHA</dt><dd><code>89abcdef0123456789abcdef0123456789abcdef</code></dd></div>
         <div><dt>Policy SHA</dt><dd><code>default</code></dd></div>
@@ -1004,6 +1011,8 @@ Failing command: <code>pnpm typecheck</code>
 **Sandbox cost: $0.0003** · operations 2 · elapsed 2.100 s · CPU 0.000 s · peak RSS 1,536 KB
 
 **Policy:** base <code>develop</code> at <code>89abcdef0123456789abcdef0123456789abcdef</code> · policy <code>default</code>
+
+**Runtime:** <code>node</code>
 
 ---
 
@@ -1194,6 +1203,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
       <div class="sandbox-evidence">
       <p class="micro-label">Repository policy binding</p>
       <dl class="facts">
+        <div><dt>Runtime</dt><dd><code>python</code></dd></div>
         <div><dt>Base ref</dt><dd><code>develop</code></dd></div>
         <div><dt>Base SHA</dt><dd><code>89abcdef0123456789abcdef0123456789abcdef</code></dd></div>
         <div><dt>Policy SHA</dt><dd><code>default</code></dd></div>
@@ -1265,6 +1275,8 @@ Failing command: <code>pnpm install --frozen-lockfile</code>
 **Sandbox cost: $0.0007** · operations 2 · elapsed 4.200 s · CPU 1.500 s · peak RSS 3,072 KB
 
 **Policy:** base <code>develop</code> at <code>89abcdef0123456789abcdef0123456789abcdef</code> · policy <code>default</code>
+
+**Runtime:** <code>python</code>
 
 ---
 
@@ -1525,6 +1537,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
       <div class="sandbox-evidence">
       <p class="micro-label">Repository policy binding</p>
       <dl class="facts">
+        <div><dt>Runtime</dt><dd><code>python</code></dd></div>
         <div><dt>Base ref</dt><dd><code>develop</code></dd></div>
         <div><dt>Base SHA</dt><dd><code>89abcdef0123456789abcdef0123456789abcdef</code></dd></div>
         <div><dt>Policy SHA</dt><dd><code>2f77dc81836e659296ec1686ea21fd4192e66fb7d6989b9a80bf800618fa35e7</code></dd></div>
@@ -1615,6 +1628,8 @@ Failing command: <code>pnpm test -- billing</code>
 **Sandbox cost: $0.0005** · operations 2 · elapsed 3.100 s · CPU 0.000 s · peak RSS 2,304 KB
 
 **Policy:** base <code>develop</code> at <code>89abcdef0123456789abcdef0123456789abcdef</code> · policy <code>2f77dc81836e659296ec1686ea21fd4192e66fb7d6989b9a80bf800618fa35e7</code>
+
+**Runtime:** <code>python</code>
 
 ---
 

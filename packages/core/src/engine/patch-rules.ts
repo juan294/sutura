@@ -8,6 +8,13 @@ import {
   isShellCommandPath,
   isTestCommandPath,
 } from './test-bypass.js';
+import {
+  hasBroadPythonSuppression,
+  hasPythonSkip,
+  hasRelaxedPythonConfig,
+  hasSwallowedPythonException,
+  isPythonControlPath,
+} from './python-safety.js';
 
 export interface PatchVerdict {
   ok: boolean;
@@ -20,7 +27,7 @@ interface FileChange {
 }
 
 const TOOL_CONFIG =
-  /(?:^|\/)(?:tsconfig(?:\.[^/]+)?\.json|eslint\.config\.[^/]+|\.eslintrc(?:\.[^/]+)?|\.eslintignore|vitest\.(?:config|workspace)\.[^/]+|vite\.config\.[^/]+)$/;
+  /(?:^|\/)(?:tsconfig(?:\.[^/]+)?\.json|eslint\.config\.[^/]+|\.eslintrc(?:\.[^/]+)?|\.eslintignore|vitest\.(?:config|workspace)\.[^/]+|vite\.config\.[^/]+|ruff\.toml|mypy\.ini|pytest\.ini|pyproject\.toml)$/;
 function parseChanges(diff: string): { changes: FileChange[]; valid: boolean } {
   const parsed = parseUnifiedDiff(diff);
   const changes = new Map<string, FileChange>();
@@ -97,6 +104,21 @@ export function vetPatch(diff: string, diagnosis: Diagnosis): PatchVerdict {
       violations.push(`touches tool config: ${change.path}`);
     }
   }
+  const unified = parseUnifiedDiff(diff);
+  for (const file of unified.files) {
+    const path = file.newPath ?? file.oldPath ?? '';
+    for (const hunk of file.hunks) {
+      const additions = hunk.additions;
+      if (/\.pyi?$/u.test(path) && (
+        hasPythonSkip(additions) ||
+        hasBroadPythonSuppression(additions) ||
+        hasSwallowedPythonException(additions)
+      )) violations.push(`adds unsafe Python shortcut: ${path}`);
+      if (isPythonControlPath(path) && hasRelaxedPythonConfig(path, additions)) {
+        violations.push(`relaxes Python tool config: ${path}`);
+      }
+    }
+  }
 
-  return { ok: violations.length === 0, violations };
+  return { ok: violations.length === 0, violations: [...new Set(violations)] };
 }

@@ -108,6 +108,8 @@ function renderDischarge(caseFile: CaseFile): string[] {
     `**Sandbox cost: ${formatUsd(totals.sandboxCostUsd)}** · operations ${totals.operationCount} · elapsed ${totals.elapsedTimeSec.toFixed(3)} s · CPU ${totals.cpuTimeSec.toFixed(3)} s · peak RSS ${totals.maxRssKb.toLocaleString('en-US')} KB`,
     '',
     `**Policy:** base <code>${escapeHtml(caseFile.policy.baseRef)}</code> at <code>${escapeHtml(caseFile.policy.baseSha)}</code> · policy <code>${escapeHtml(caseFile.policy.policySha)}</code>`,
+    '',
+    `**Runtime:** <code>${escapeHtml(caseFile.runtime)}</code>`,
   ];
 }
 

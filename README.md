@@ -4,6 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6)
 ![Node](https://img.shields.io/badge/Node-22%2B-339933)
+![Python](https://img.shields.io/badge/Python-3.13-3776AB)
 
 AI agents make CI pass. Sutura verifies the fix, filters flaky failures,
 rejects unsafe shortcuts, and opens an evidence-backed PR for human review.
@@ -46,6 +47,13 @@ keeps the best two, and stops at depth four or 12 total branches by default.
 A passing command is necessary, but
 it is not enough. Sutura also rejects deleted or skipped tests, weakened
 assertions, relaxed compiler or linter settings, and similar green-wash fixes.
+
+Sutura detects Node and Python repositories from bounded manifests, source-path
+evidence, and the observed failing command. A polyglot repository must set
+`"runtime": "node"` or `"runtime": "python"` in `.sutura.json`; equal automatic
+evidence fails closed. The Python runtime is pinned by exact image digest. It
+accepts only `uv.lock` or exact hash-locked binary requirements, prepares them
+before source overlay, and runs all project commands without network access.
 
 Every run ends as `fixed`, `flaky-no-patch`, `refused`, `gave-up`, or
 `infra-stop`. The PR comment uses a surgical report with Diagnosis, Triage,
@@ -100,6 +108,9 @@ The public dogfood record starts with [PR #18](https://github.com/juan294/sutura
   manifests. It runs with networking enabled and lifecycle scripts disabled.
   Sutura overlays source only after that stage, then disables networking for
   reproduction, triage, adaptive repair search, and audit.
+- Python dependency preparation rejects missing locks, editable or local paths,
+  VCS and requirement includes, workspaces, source builds, and repository build
+  hooks before it enables network access.
 - Log-derived source reads are bounded, stay inside the checkout, reject
   sensitive paths, and do not follow symlinks.
 - The repair agent can use only six bounded tools. Source reads and literal
@@ -231,6 +242,11 @@ Configure `NEBIUS_API_KEY`, `CONTREE_TOKEN`, and optional `TAVILY_API_KEY` as
 repository secrets. Configure `CONTREE_PROJECT` as a repository variable. The
 checked-in [workflow](.github/workflows/sutura.yml) shows the complete wiring.
 Pin external use to an immutable release tag or commit SHA.
+
+Runtime detection is automatic for single-runtime repositories. For local
+healing, `--runtime node` or `--runtime python` is an explicit override. The
+Action `runtime` input accepts `auto`, `node`, or `python`. Prefer the protected
+`.sutura.json` field for a persistent polyglot repository choice.
 
 ### Reduced-assurance audit-only mode
 

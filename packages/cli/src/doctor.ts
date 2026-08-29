@@ -111,12 +111,17 @@ function workflowContract(workflow: string, releaseRef: string): {
   return {
     checksWrite,
     actionReference: stepBlock.length > 0,
-    inputs: new Map([...requiredInputs].map(([name, value]) => [
-      name,
-      inputBlock.some(({ indent, text }) =>
-        indent === inputIndent && text === `${name}: ${value}`,
-      ),
-    ])),
+    inputs: new Map([
+      ...[...requiredInputs].map(([name, value]) => [
+        name,
+        inputBlock.some(({ indent, text }) =>
+          indent === inputIndent && text === `${name}: ${value}`,
+        ),
+      ] as const),
+      ['runtime', inputBlock.some(({ indent, text }) =>
+        indent === inputIndent && /^runtime: (?:auto|node|python)$/u.test(text),
+      )] as const,
+    ]),
   };
 }
 

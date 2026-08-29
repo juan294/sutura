@@ -18,7 +18,6 @@ import {
 } from './executor/types.js';
 import {
   AllowlistedExecutor,
-  SUTURA_DEFAULT_IMAGE_REF,
   StageLedger,
   noReproductionCaseFile,
   prepareSandbox,
@@ -36,16 +35,18 @@ export { SUTURA_SANDBOX_ENV } from './heal.js';
 import { renderCaseFile } from './report/casefile.js';
 import { renderComment } from './report/markdown.js';
 import { isSensitiveRepositoryPath } from './security/repository-path.js';
+import { detectRuntimeAtPath } from './runtime/detect.js';
+import type { RuntimeId } from './runtime/types.js';
 
 const FAILED_STEP_LINES = 200;
 const MAX_SOURCE_FILES = 8;
 const MAX_SOURCE_LINES = 120;
 const MAX_SOURCE_CHARACTERS = 12_000;
 const MAX_SOURCE_BYTES = 12_000;
-const SOURCE_PATH_PATTERN = /(?:^|[\s("'`])(?<path>(?:\.\/)?(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+\.(?:json|[cm]?[jt]sx?|ya?ml|toml))(?![A-Za-z0-9_.-])(?:(?:\(|:)(?<line>\d+))?/g;
-const WORKSPACE_SOURCE_PATTERN = /(?:^|[\t\n \]])(?<workspace>(?:apps|packages)\/(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+)\s+[A-Za-z0-9_:@./-]+:\s+(?<path>(?:\.\/)?(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+\.(?:json|[cm]?[jt]sx?|ya?ml|toml))(?![A-Za-z0-9_.-])(?:(?:\(|:)(?<line>\d+))?/g;
+const SOURCE_PATH_PATTERN = /(?:^|[\s("'`])(?<path>(?:\.\/)?(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+\.(?:json|[cm]?[jt]sx?|pyi?|ini|txt|ya?ml|toml))(?![A-Za-z0-9_.-])(?:(?:\(|:)(?<line>\d+))?/g;
+const WORKSPACE_SOURCE_PATTERN = /(?:^|[\t\n \]])(?<workspace>(?:apps|packages)\/(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+)\s+[A-Za-z0-9_:@./-]+:\s+(?<path>(?:\.\/)?(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+\.(?:json|[cm]?[jt]sx?|pyi?|ini|txt|ya?ml|toml))(?![A-Za-z0-9_.-])(?:(?:\(|:)(?<line>\d+))?/g;
 const GITHUB_WORKSPACE_PREFIX_PATTERN = /(^|[\s("'`])(?:(?:file:\/\/)?\/home\/runner\/work|(?:file:\/\/)?\/__w)\/([A-Za-z0-9_.-]+)\/\2\//gm;
-const FALLBACK_SOURCE_PATHS: Readonly<Partial<Record<FailureClass, readonly string[]>>> = {
+const NODE_FALLBACK_SOURCE_PATHS: Readonly<Partial<Record<FailureClass, readonly string[]>>> = {
   typecheck: ['tsconfig.json', 'package.json'],
   lint: ['eslint.config.js', 'package.json'],
   build: ['package.json', 'tsconfig.json', 'pnpm-lock.yaml'],
@@ -56,6 +57,13 @@ const FALLBACK_SOURCE_PATHS: Readonly<Partial<Record<FailureClass, readonly stri
     'yarn.lock',
   ],
   'env-config': ['package.json', 'tsconfig.json'],
+};
+const PYTHON_FALLBACK_SOURCE_PATHS: Readonly<Partial<Record<FailureClass, readonly string[]>>> = {
+  typecheck: ['pyproject.toml'],
+  lint: ['ruff.toml', 'pyproject.toml'],
+  build: ['pyproject.toml', 'uv.lock', 'requirements.txt'],
+  'dep-upstream-breaking': ['pyproject.toml', 'uv.lock', 'requirements.txt'],
+  'env-config': ['pyproject.toml', 'pytest.ini'],
 };
 const FIX_COMMIT_MESSAGE = [
   'fix: repair CI failure with Sutura',
@@ -184,6 +192,7 @@ export interface OrchestrationContext {
   search?: SearchLimits;
   tavily?: TavilySearch;
   imageRef?: string;
+  runtimeId?: RuntimeId;
   lockfileDiff?: string;
 }
 
@@ -327,11 +336,15 @@ export async function readRepairSourceContext(
   log: string,
   diagnosis?: Pick<Diagnosis, 'class'>,
   policy?: RepositoryPolicy,
+  runtimeId: RuntimeId = 'node',
 ): Promise<RepairSourceContext> {
   const references = extractSourceReferences(log).filter((reference) =>
     policy === undefined || policyAllowsSourceRead(reference.path, policy),
   );
-  for (const path of diagnosis ? FALLBACK_SOURCE_PATHS[diagnosis.class] ?? [] : []) {
+  const fallbackPaths = runtimeId === 'python'
+    ? PYTHON_FALLBACK_SOURCE_PATHS
+    : NODE_FALLBACK_SOURCE_PATHS;
+  for (const path of diagnosis ? fallbackPaths[diagnosis.class] ?? [] : []) {
     if (
       references.length < REPAIR_SOURCE_LIMITS.maxFiles &&
       (policy === undefined || policyAllowsSourceRead(path, policy)) &&
@@ -454,9 +467,25 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     run.headRef,
     run.prNumber,
   );
+  if (
+    ctx.runtimeId !== undefined &&
+    loadedPolicy.policy.runtime !== undefined &&
+    ctx.runtimeId !== loadedPolicy.policy.runtime
+  ) {
+    throw new OrchestrationError('Configured runtime conflicts with repository policy runtime');
+  }
+  const runtime = await detectRuntimeAtPath(
+    checkoutDir,
+    mechanical.failingCmd,
+    ctx.runtimeId ?? loadedPolicy.policy.runtime,
+    failedLog,
+  );
+  if (runtime.id === 'python' && ctx.imageRef !== undefined && ctx.imageRef !== runtime.imageRef) {
+    throw new OrchestrationError('Python runtime image must use the verified exact digest');
+  }
   const executor = new AllowlistedExecutor(ctx.executor);
   const baseImage = await executor.importImage(
-    ctx.imageRef ?? SUTURA_DEFAULT_IMAGE_REF,
+    ctx.imageRef ?? runtime.imageRef,
   );
   stageLedger.record({
     stage: 'preparation',
@@ -471,6 +500,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     baseImage,
     mechanical.failingCmd,
     stageLedger,
+    runtime,
   );
   if (!setup.ok) {
     const caseFile = preparationFailureCaseFile(
@@ -481,6 +511,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
         policyEvidence,
         stageLedger,
         traceRecorder,
+        runtime,
       },
       setup.command,
       setup.result,
@@ -490,7 +521,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
   }
   const reproduction = await executor.run(
     setup.imageId,
-    sandboxTargetCommand(mechanical.failingCmd),
+    sandboxTargetCommand(mechanical.failingCmd, runtime),
     { cwd: SNAPSHOT_CWD },
   );
   stageLedger.record({
@@ -511,6 +542,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
         policyEvidence,
         stageLedger,
         traceRecorder,
+        runtime,
       },
       mechanical,
     );
@@ -536,11 +568,13 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       failedLog,
       diagnosis,
       loadedPolicy.policy,
+      runtime.id,
     ),
     policy: loadedPolicy.policy,
     policyEvidence,
     stageLedger,
     traceRecorder,
+    runtime,
     ...(ctx.tavily ? { tavily: ctx.tavily } : {}),
     ...(ctx.lockfileDiff === undefined
       ? {}

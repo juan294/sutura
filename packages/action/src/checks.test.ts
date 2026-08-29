@@ -12,7 +12,7 @@ const execFileAsync = promisify(execFile);
 
 function caseFile(excerpt: string, outcome: CaseFile['outcome'] = 'fixed'): CaseFile {
   return {
-    runId: '123', repo: 'acme/widget', outcome,
+    runId: '123', repo: 'acme/widget', runtime: 'node', outcome,
     diagnosis: { class: 'typecheck', confidence: 1, signals: [], failingCmd: 'pnpm test', errorExcerpt: excerpt },
     triage: { status: 'real', reproduced: 1, of: 1, attemptsUsed: 1, maximumAttempts: 1, reproductionProbability: 1, confidenceLower: 1, confidenceUpper: 1, stopReason: 'failure-boundary', methodVersion: 'sprt-p20-p80-a05-b05-v1' },
     race: [], cost: { entries: [], totalUsd: () => 0 }, policy: { baseRef: 'develop', baseSha: 'a'.repeat(40), policySha: 'default' }, stages: [],

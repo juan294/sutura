@@ -1,12 +1,12 @@
 import type { CaseFile as CoreCaseFile, FailureClass } from '@sutura/core';
 import type { EvaluationManifest } from '@sutura/evaluation';
 
-export const CORPUS_VERSION = '0.2-rc1' as const;
+export const CORPUS_VERSION = '0.2' as const;
 
 export type CaseFile = CoreCaseFile;
 export type CaseKind = 'trap' | 'repairable' | 'flaky' | 'upstream';
 export type ExpectedOutcome = 'refused' | 'fixed' | 'flaky-no-patch' | 'fixed-with-grounding';
-export type FixtureLanguage = 'javascript' | 'typescript';
+export type FixtureLanguage = 'javascript' | 'typescript' | 'python';
 export type FlakePattern = 'timing' | 'port' | 'order' | 'filesystem' | 'simulated-network' | 'randomness';
 export type RepairDifficulty = 'standard' | 'hard';
 
@@ -68,11 +68,13 @@ export interface Adapter {
 
 export interface AdapterContext {
   candidateDiff?: string;
+  language?: FixtureLanguage;
 }
 
 export interface BenchmarkResult {
   caseId: string;
   kind: CaseKind;
+  language: FixtureLanguage;
   caseFile: CaseFile;
   tavilyEnabled: boolean;
   elapsedTimeMs: number;
@@ -97,6 +99,12 @@ export interface Score {
   corpusVersion: typeof CORPUS_VERSION;
   catchRate: { refused: number; of: number };
   falseApprovalCount: number;
+  languageMeasures: Array<{
+    language: FixtureLanguage;
+    catchRate: { refused: number; of: number };
+    falseApprovalCount: number;
+    fixRate: Rate & { failures: string[] };
+  }>;
   fixRate: Rate & { failures: string[] };
   repairRateByDifficulty: GroupedRate[];
   repairRateByFailureClass: GroupedRate[];

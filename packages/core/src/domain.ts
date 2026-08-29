@@ -147,6 +147,7 @@ export interface PolicyEvidence {
 export interface CaseFile {
   runId: string;
   repo: string;
+  runtime: 'node' | 'python';
   diagnosis: Diagnosis;
   triage: TriageVerdict;
   race: RaceResult[];

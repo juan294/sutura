@@ -26,7 +26,7 @@ interface ParsedPath {
 }
 
 const CONVENTIONAL_TEST_PATH =
-  /(?:^|\/)(?:(?:__)?tests?(?:__)?|specs?|e2e|cypress)(?:\/|$)|(?:^|\/)[^/]+\.(?:test|spec)\.[^/]+$/;
+  /(?:^|\/)(?:(?:__)?tests?(?:__)?|specs?|e2e|cypress)(?:\/|$)|(?:^|\/)[^/]+\.(?:test|spec)\.[^/]+$|(?:^|\/)(?:test_[^/]+|[^/]+_test)\.py$/;
 
 export function isConventionalTestPath(path: string): boolean {
   return CONVENTIONAL_TEST_PATH.test(path);
