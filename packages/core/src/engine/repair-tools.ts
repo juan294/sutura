@@ -20,6 +20,8 @@ import { shellQuote } from './shell.js';
 const MAX_TOOL_OUTPUT_BYTES = 16_000;
 const MAX_READ_BYTES = 12_000;
 const MAX_READ_LINES = 160;
+const MAX_TOOL_TIMEOUT_SEC = 30;
+const MAX_TEST_TIMEOUT_SEC = 120;
 const MAX_SUFFIX_RESOLUTION_BYTES = 3_000;
 const MAX_DYNAMIC_SOURCE_EXCERPTS = 24;
 const RESOLVED_SOURCE_PREFIX = 'SUTURA_RESOLVED_SOURCE=';
@@ -156,10 +158,14 @@ export class RepairToolRuntime {
 
   state(): Readonly<RepairToolState> { return { ...this.current }; }
 
-  private async run(command: string, parent = this.current.editableImageId): Promise<RunResult> {
+  private async run(
+    command: string,
+    parent = this.current.editableImageId,
+    maximumTimeoutSec = MAX_TOOL_TIMEOUT_SEC,
+  ): Promise<RunResult> {
     this.options.budget.reserveSandboxOperation();
     const timeoutSec = Math.min(
-      30,
+      maximumTimeoutSec,
       Math.max(0.001, this.options.budget.remainingElapsedTimeSec()),
     );
     this.operationIndex += 1;
@@ -365,7 +371,7 @@ export class RepairToolRuntime {
     if (!args || typeof args.commandId !== 'string') return failure('invalid', 'run_test requires commandId');
     const command = this.options.trustedCommands[args.commandId];
     if (command === undefined) return failure('policy', 'run_test commandId is not trusted');
-    const result = await this.run(command);
+    const result = await this.run(command, this.current.editableImageId, MAX_TEST_TIMEOUT_SEC);
     const output = bounded([result.stdout, result.stderr].filter(Boolean).join('\n'));
     if (
       result.truncated ||

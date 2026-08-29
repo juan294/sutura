@@ -379,6 +379,37 @@ describe('RepairToolRuntime', () => {
     expect(tools.state().latestTest?.imageId).toBe('test-child');
   });
 
+  it('allows a bounded checkpoint restore window for trusted tests', async () => {
+    const { tools, run } = runtime([runResult('test-child', 'passed')]);
+
+    await tools.execute('run_test', { commandId: 'diagnosed' });
+
+    expect(run).toHaveBeenCalledWith(
+      'baseline',
+      'pnpm test',
+      expect.objectContaining({ timeoutSec: 120 }),
+    );
+  });
+
+  it('keeps ordinary tools at 30 seconds and clamps trusted tests to remaining time', async () => {
+    let now = 0;
+    const budget = new RepairBudget(
+      { ...DEFAULT_REPAIR_BUDGET_LIMITS, elapsedTimeSec: 90 },
+      () => now,
+    );
+    const run = vi.fn(async () => runResult('child', 'passed'));
+    const tools = toolsFor(executorFor(run), createDefaultRepositoryPolicy(), budget);
+
+    await tools.execute('read_file', { path: 'src/a.ts' });
+    expect((run.mock.calls[0] as unknown as [string, string, { timeoutSec: number }])[2])
+      .toMatchObject({ timeoutSec: 30 });
+
+    now = 30_000;
+    await tools.execute('run_test', { commandId: 'diagnosed' });
+    expect((run.mock.calls[1] as unknown as [string, string, { timeoutSec: number }])[2])
+      .toMatchObject({ timeoutSec: 60 });
+  });
+
   it('passes repository searches as quoted literal patterns', async () => {
     const { tools, run } = runtime([runResult('search-child', 'one match')]);
     await expect(tools.execute('search_repo', { query: '$(touch /tmp/not-run)' }))
