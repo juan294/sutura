@@ -27,6 +27,11 @@ test('ordinary CI runs deterministic release contract and candidate install chec
   assert.match(workflow, /pnpm run test:package/u);
 });
 
+test('the polyglot Sutura repository selects its Node repair runtime explicitly', async () => {
+  const policy = JSON.parse(await text('.sutura.json'));
+  assert.deepEqual(policy, { version: 1, runtime: 'node' });
+});
+
 test('publication validates tag and bundle before publish, then verifies public artifacts', async () => {
   const workflow = await text('.github/workflows/publish.yml');
   assert.match(workflow, /GITHUB_REF_NAME/u);
