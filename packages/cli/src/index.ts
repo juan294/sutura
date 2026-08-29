@@ -4,6 +4,7 @@ export { atifOutputPaths, runEvaluationCommand } from './eval.js';
 export { doctorSutura } from './doctor.js';
 export { healFromEnvironment, healWithRuntime, readLocalSourceContext } from './heal.js';
 export { installSutura } from './setup.js';
+export { resolveActionCommit, ReleaseResolutionError } from './release.js';
 export type {
   CliArguments,
   DoctorArguments,

@@ -59,8 +59,8 @@ import type {
 } from '@sutura/core';
 
 describe('@sutura/core entry point', () => {
-  it('retains the scaffold version export', () => {
-    expect(VERSION).toBe('0.1.1');
+  it('exports the release version', () => {
+    expect(VERSION).toBe('0.2.0');
   });
 
   it('exports executor implementations and types from the package root', () => {

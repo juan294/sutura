@@ -12,6 +12,7 @@ jobs:
     if: ${{ startsWith(github.event.release.tag_name, 'v') }}
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: read
       id-token: write
     steps:
@@ -28,7 +29,27 @@ jobs:
           package-manager-cache: false
       - run: npm install --global npm@12.0.2
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run test:package
+      - name: Verify release identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node --print "require('./packages/cli/package.json').version")
+          test "$GITHUB_REF_NAME" = "v${version}"
+          git fetch origin main --depth=1
+          release_sha=$(git rev-parse HEAD)
+          test "$release_sha" = "$(git rev-parse origin/main)"
+          successful_runs=$(gh api -X GET \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$release_sha&status=completed&per_page=100" \
+            --jq "[.workflow_runs[] | select(.head_sha == \"$release_sha\" and .head_branch == \"main\" and .event == \"push\" and .conclusion == \"success\")] | length")
+          test "$successful_runs" -ge 1
+      - run: pnpm run test:release-contracts
+      - run: pnpm run typecheck
+      - run: pnpm run lint
+      - run: pnpm run test
+      - run: pnpm run build
+      - run: git diff --exit-code -- packages/action/dist/index.cjs
+      - name: Verify candidate artifacts
+        run: node scripts/test-candidate-install.mjs "$(git rev-parse HEAD)" > "$RUNNER_TEMP/candidate-install-evidence.json"
       - id: registry
         run: |
           version=$(node --print "require('./packages/cli/package.json').version")
@@ -42,3 +63,17 @@ jobs:
         run: |
           version=$(node --print "require('./packages/cli/package.json').version")
           echo "sutura@$version is already published."
+      - name: Verify public npm and Action artifacts
+        run: node scripts/test-public-install.mjs > "$RUNNER_TEMP/public-install-evidence.json"
+      - name: Compare candidate and public artifacts
+        run: |
+          test "$(jq -r .packageVersion "$RUNNER_TEMP/candidate-install-evidence.json")" = "$(jq -r .packageVersion "$RUNNER_TEMP/public-install-evidence.json")"
+          test "$(jq -r .actionCommit "$RUNNER_TEMP/candidate-install-evidence.json")" = "$(jq -r .actionCommit "$RUNNER_TEMP/public-install-evidence.json")"
+          test "$(jq -r .packageContentHash "$RUNNER_TEMP/candidate-install-evidence.json")" = "$(jq -r .packageContentHash "$RUNNER_TEMP/public-install-evidence.json")"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sutura-v0.2.0-install-evidence
+          path: |
+            ${{ runner.temp }}/candidate-install-evidence.json
+            ${{ runner.temp }}/public-install-evidence.json
+          if-no-files-found: error

@@ -24,20 +24,23 @@ describe('parseArgs', () => {
 
   it('parses external repository setup options', () => {
     expect(parseArgs([
-      'init', '--workflow', 'CI', '--repo', 'octo/example', '--force', '--no-tavily',
+      'init', '--workflow', 'CI', '--repo', 'octo/example', '--action-sha', 'a'.repeat(40),
+      '--force', '--no-tavily',
     ])).toEqual({
       command: 'init',
       workflow: 'CI',
       repository: 'octo/example',
+      actionSha: 'a'.repeat(40),
       force: true,
       tavilyEnabled: false,
     });
   });
 
   it('parses repository diagnosis options', () => {
-    expect(parseArgs(['doctor', '--repo', 'octo/example'])).toEqual({
+    expect(parseArgs(['doctor', '--repo', 'octo/example', '--action-sha', 'b'.repeat(40)])).toEqual({
       command: 'doctor',
       repository: 'octo/example',
+      actionSha: 'b'.repeat(40),
     });
   });
 
@@ -91,7 +94,9 @@ describe('parseArgs', () => {
     ['heal', '--case-dir', '/tmp/a', '--format', 'json', '--runtime', 'ruby'],
     ['init', '--repo', 'invalid'],
     ['init', '--workflow', 'CI', '--workflow', 'Tests'],
+    ['init', '--action-sha', 'main'],
     ['doctor', '--unknown'],
+    ['doctor', '--action-sha', 'abc'],
     ['audit'],
     ['audit', '--case-dir', '/tmp/case', '--candidate-diff', '/tmp/fix.diff', '--before-log', '/tmp/before.log', '--after-log', '/tmp/after.log', '--format', 'text'],
     ['audit', '--case-dir', '/tmp/case', '--candidate-diff', '/tmp/fix.diff', '--before-log', '/tmp/before.log', '--before-log', '/tmp/again.log', '--after-log', '/tmp/after.log', '--format', 'json'],

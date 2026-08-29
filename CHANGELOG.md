@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 - 2026-08-29
+
+- Add bounded adaptive ConTree search with independent final audit and complete operation evidence.
+- Add deterministic model routing, progressive flake triage, and versioned evaluation exports.
+- Expand Placebo v0.2 to 51 JavaScript and Python fixtures with hidden verification.
+- Resolve the Action release tag to an immutable commit during setup and verify it with `doctor`.
+- Add candidate and public package checks, an eight-case external matrix, and fail-closed release evidence contracts.
+- Keep live benchmark, publication, public demo, and Devpost work behind explicit authorization gates.
+
 ## 0.1.1 - 2026-08-28
 
 - Use a unique GitHub Marketplace name for the public Action.

@@ -1,0 +1,96 @@
+import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+
+import { assertCandidateCheckout } from './test-candidate-install.mjs';
+import { verifyInstall } from './install-test-lib.mjs';
+
+const ACTION_SHA = 'a'.repeat(40);
+
+test('candidate install uses the local tarball and exact candidate Action SHA without network', async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'sutura-candidate-unit-'));
+  const calls = [];
+  try {
+    await writeFile(join(temporary, 'LICENSE'), 'MIT fixture\n');
+    const result = await verifyInstall({
+      mode: 'candidate',
+      root: temporary,
+      actionCommit: ACTION_SHA,
+      now: (() => { let value = 100; return () => value += 25; })(),
+      dependencies: {
+        pack: async (source, destination) => {
+          calls.push(['pack', source]);
+          const tarball = join(destination, 'sutura-0.2.0.tgz');
+          await writeFile(tarball, 'candidate');
+          return tarball;
+        },
+        install: async (_tarball, consumer) => {
+          calls.push(['install']);
+          await mkdir(join(consumer, 'node_modules', 'sutura'), { recursive: true });
+          await writeFile(join(consumer, 'node_modules', 'sutura', 'package.json'), JSON.stringify({
+            name: 'sutura', version: '0.2.0', dependencies: {},
+          }));
+          await writeFile(join(consumer, 'node_modules', 'sutura', 'LICENSE'), 'MIT fixture\n');
+        },
+        invoke: async (_binary, args, consumer) => {
+          calls.push(args);
+          if (args[0] === 'init') {
+            await mkdir(join(consumer, '.github', 'workflows'), { recursive: true });
+            await writeFile(join(consumer, '.github', 'workflows', 'sutura.yml'),
+              `uses: juan294/sutura@${ACTION_SHA}\n`);
+            return '';
+          }
+          if (args[0] === 'doctor') return '[PASS] candidate\n';
+          if (args[0] === '--version') return '0.2.0\n';
+          throw new Error(`unexpected invocation ${args.join(' ')}`);
+        },
+      },
+    });
+
+    assert.equal(result.mode, 'candidate');
+    assert.equal(result.actionCommit, ACTION_SHA);
+    assert.equal(result.packageVersion, '0.2.0');
+    assert.equal(result.setupDurationMs, 25);
+    assert.match(result.packageIntegrity, /^[a-f0-9]{64}$/u);
+    assert.deepEqual(calls[0], ['pack', join(temporary, 'packages', 'cli')]);
+    assert.ok(calls.some((entry) => Array.isArray(entry) && entry.includes('--action-sha')));
+    assert.ok(!JSON.stringify(calls).includes('sutura@0.2.0'));
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
+
+test('candidate install rejects a mutable or malformed Action ref before packing', async () => {
+  let packed = false;
+  await assert.rejects(() => verifyInstall({
+    mode: 'candidate', root: '/tmp/unused', actionCommit: 'main',
+    dependencies: {
+      pack: async () => { packed = true; return ''; },
+      install: async () => undefined,
+      invoke: async () => '',
+    },
+  }), /exact 40-character/u);
+  assert.equal(packed, false);
+});
+
+test('candidate wrapper rejects a different HEAD or relevant dirty files', async () => {
+  const clean = async (_command, args) => {
+    if (args[0] === 'rev-parse') return `${ACTION_SHA}\n`;
+    if (args[0] === 'diff') return '';
+    if (args[0] === 'ls-files') return '';
+    throw new Error('unexpected command');
+  };
+  await assert.doesNotReject(() => assertCandidateCheckout('/repo', ACTION_SHA, clean));
+  await assert.rejects(() => assertCandidateCheckout('/repo', 'main', clean), /exact 40-character/u);
+  await assert.rejects(() => assertCandidateCheckout('/repo', 'b'.repeat(40), clean), /HEAD/u);
+  await assert.rejects(() => assertCandidateCheckout('/repo', ACTION_SHA, async (command, args, options) => {
+    if (args[0] === 'diff') throw new Error('dirty');
+    return clean(command, args, options);
+  }), /differs/u);
+  await assert.rejects(() => assertCandidateCheckout('/repo', ACTION_SHA, async (command, args, options) => {
+    if (args[0] === 'ls-files') return 'packages/cli/src/untracked.ts\n';
+    return clean(command, args, options);
+  }), /untracked/u);
+});

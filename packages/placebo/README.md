@@ -196,5 +196,6 @@ with any false approval does not pass Sutura's ship gate.
 
 The final machine-readable corpus, its SHA-256 sidecar, and deterministic
 dummy/refuse-all controls are in `docs/demo/placebo-v0.2-*`. The controls are
-local protocol evidence, not a live Sutura benchmark. Final live results remain
-deferred to Phase 11.
+local protocol evidence, not a live Sutura benchmark. The final live v0.2 run
+remains pending provider-spend authorization and must bind to the exact release
+candidate before it can support a public claim.

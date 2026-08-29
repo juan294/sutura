@@ -5,9 +5,14 @@ Sutura verifies AI-generated CI repairs before it opens a pull request.
 Install Sutura in a GitHub repository:
 
 ```bash
-npx sutura@latest init
-npx sutura@latest doctor
+npx sutura@0.2.0 init
+npx sutura@0.2.0 doctor
 ```
+
+`init` resolves the `v0.2.0` Action tag to one immutable commit and writes that
+SHA into the workflow. `doctor` verifies the pin against the tag. Release
+candidate checks can pass `--action-sha <40-character-commit>` to both commands;
+mutable refs are rejected.
 
 Sutura uses bring-your-own-key billing. Your repository supplies its own
 Nebius Token Factory and ConTree credentials. Tavily is optional.

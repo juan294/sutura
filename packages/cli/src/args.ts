@@ -1,11 +1,12 @@
 const MAX_CANDIDATE_DIFF_BYTES = 1024 * 1024;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
+const SHA_PATTERN = /^[a-f0-9]{40}$/iu;
 
-export const VERSION = '0.1.1';
+export const VERSION = '0.2.0';
 export const USAGE = [
   'Usage:',
-  '  sutura init [--workflow <name>] [--repo <owner/repo>] [--force] [--no-tavily]',
-  '  sutura doctor [--repo <owner/repo>]',
+  '  sutura init [--workflow <name>] [--repo <owner/repo>] [--action-sha <commit>] [--force] [--no-tavily]',
+  '  sutura doctor [--repo <owner/repo>] [--action-sha <commit>]',
   '  sutura heal --case-dir <dir> --format json [--candidate-diff <diff>] [--routing-profile <id>] [--runtime <auto|node|python>] [--no-tavily]',
   '  sutura audit --case-dir <dir> --candidate-diff <file> --before-log <file> --after-log <file> --format json',
   '  sutura eval validate --manifest <file>',
@@ -28,6 +29,7 @@ export interface InitArguments {
   command: 'init';
   workflow?: string;
   repository?: string;
+  actionSha?: string;
   force: boolean;
   tavilyEnabled: boolean;
 }
@@ -44,6 +46,7 @@ export interface AuditArguments {
 export interface DoctorArguments {
   command: 'doctor';
   repository?: string;
+  actionSha?: string;
 }
 
 export interface HelpArguments {
@@ -99,6 +102,13 @@ function validateRepository(repository: string): string {
   return repository;
 }
 
+function validateActionSha(value: string): string {
+  if (!SHA_PATTERN.test(value)) {
+    throw new CliUsageError('--action-sha must be an exact 40-character commit');
+  }
+  return value.toLowerCase();
+}
+
 function parseHeal(args: readonly string[]): HealArguments {
   let caseDir: string | undefined;
   let format: string | undefined;
@@ -152,12 +162,13 @@ function parseHeal(args: readonly string[]): HealArguments {
 function parseInit(args: readonly string[]): InitArguments {
   let workflow: string | undefined;
   let repository: string | undefined;
+  let actionSha: string | undefined;
   let force = false;
   let tavilyEnabled = true;
   const seen = new Set<string>();
   for (let index = 1; index < args.length; index += 1) {
     const flag = args[index];
-    if (!flag || !['--workflow', '--repo', '--force', '--no-tavily'].includes(flag)) {
+    if (!flag || !['--workflow', '--repo', '--action-sha', '--force', '--no-tavily'].includes(flag)) {
       throw new CliUsageError(`Unknown argument: ${flag ?? '(missing)'}`);
     }
     if (seen.has(flag)) throw new CliUsageError(`Duplicate argument: ${flag}`);
@@ -177,14 +188,17 @@ function parseInit(args: readonly string[]): InitArguments {
         throw new CliUsageError('--workflow must be one line with at most 100 characters');
       }
       workflow = value;
-    } else {
+    } else if (flag === '--repo') {
       repository = validateRepository(value);
+    } else {
+      actionSha = validateActionSha(value);
     }
   }
   return {
     command: 'init',
     ...(workflow ? { workflow } : {}),
     ...(repository ? { repository } : {}),
+    ...(actionSha ? { actionSha } : {}),
     force,
     tavilyEnabled,
   };
@@ -214,11 +228,25 @@ function parseAudit(args: readonly string[]): AuditArguments {
 }
 
 function parseDoctor(args: readonly string[]): DoctorArguments {
-  if (args.length === 1) return { command: 'doctor' };
-  if (args.length !== 3 || args[1] !== '--repo') {
-    throw new CliUsageError(`Unknown argument: ${args[1] ?? '(missing)'}`);
+  let repository: string | undefined;
+  let actionSha: string | undefined;
+  const seen = new Set<string>();
+  for (let index = 1; index < args.length; index += 2) {
+    const flag = args[index];
+    if (flag !== '--repo' && flag !== '--action-sha') {
+      throw new CliUsageError(`Unknown argument: ${flag ?? '(missing)'}`);
+    }
+    if (seen.has(flag)) throw new CliUsageError(`Duplicate argument: ${flag}`);
+    seen.add(flag);
+    const value = nonEmptyValue(args, index, flag);
+    if (flag === '--repo') repository = validateRepository(value);
+    else actionSha = validateActionSha(value);
   }
-  return { command: 'doctor', repository: validateRepository(nonEmptyValue(args, 1, '--repo')) };
+  return {
+    command: 'doctor',
+    ...(repository ? { repository } : {}),
+    ...(actionSha ? { actionSha } : {}),
+  };
 }
 
 function parseEval(args: readonly string[]): EvalValidateArguments | EvalExportArguments {

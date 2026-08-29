@@ -1,0 +1,68 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { test } from 'node:test';
+
+const root = new URL('../', import.meta.url);
+
+async function text(path) {
+  return readFile(new URL(path, root), 'utf8');
+}
+
+test('all release-bearing packages and the public API declare 0.2.0', async () => {
+  const manifests = await Promise.all([
+    'package.json',
+    'packages/action/package.json',
+    'packages/cli/package.json',
+    'packages/core/package.json',
+    'packages/evaluation/package.json',
+    'packages/placebo/package.json',
+  ].map(async (path) => JSON.parse(await text(path))));
+  assert.deepEqual(manifests.map(({ version }) => version), Array(6).fill('0.2.0'));
+  assert.match(await text('packages/core/src/index.ts'), /VERSION = '0\.2\.0'/u);
+});
+
+test('ordinary CI runs deterministic release contract and candidate install checks', async () => {
+  const workflow = await text('.github/workflows/ci.yml');
+  assert.match(workflow, /pnpm run test:release-contracts/u);
+  assert.match(workflow, /pnpm run test:package/u);
+});
+
+test('publication validates tag and bundle before publish, then verifies public artifacts', async () => {
+  const workflow = await text('.github/workflows/publish.yml');
+  assert.match(workflow, /GITHUB_REF_NAME/u);
+  assert.match(workflow, /v\$\{version\}/u);
+  assert.match(workflow, /git diff --exit-code -- packages\/action\/dist\/index\.cjs/u);
+  assert.match(workflow, /test-candidate-install\.mjs/u);
+  assert.match(workflow, /pnpm run typecheck/u);
+  assert.match(workflow, /pnpm run lint/u);
+  assert.match(workflow, /pnpm run test\n/u);
+  assert.match(workflow, /origin\/main/u);
+  assert.match(workflow, /actions\/workflows\/ci\.yml\/runs/u);
+  assert.match(workflow, /\.head_branch == \\"main\\" and \.event == \\"push\\"/u);
+  assert.match(workflow, /npm publish --access public/u);
+  assert.match(workflow, /test-public-install\.mjs/u);
+  assert.match(workflow, /packageContentHash/u);
+  assert.match(workflow, /upload-artifact/u);
+  assert.match(workflow, /id-token: write/u);
+});
+
+test('release candidate workflow is local-only and requires an exact commit', async () => {
+  const workflow = await text('.github/workflows/release-candidate.yml');
+  assert.match(workflow, /workflow_dispatch/u);
+  assert.match(workflow, /action-sha/u);
+  assert.match(workflow, /\^\[a-f0-9\]\{40\}\$/u);
+  assert.match(workflow, /test-candidate-install\.mjs/u);
+  assert.doesNotMatch(workflow, /npm publish|git push|release create/u);
+});
+
+test('versioned release evidence requirements name every authorization gate', async () => {
+  const requirements = JSON.parse(await text('docs/demo/sutura-v0.2.0-release-evidence-requirements.json'));
+  assert.equal(requirements.releaseVersion, '0.2.0');
+  assert.deepEqual(requirements.requiredEvidenceIds, [
+    'benchmark', 'candidate-matrix', 'demo', 'devpost', 'feedback',
+    'github-release', 'local-gate', 'marketplace', 'npm', 'public-matrix',
+  ]);
+  assert.deepEqual(requirements.authorizationGates, [
+    'live-provider-benchmark', 'release-publication', 'public-demo-enable', 'devpost-update',
+  ]);
+});

@@ -25,7 +25,7 @@ function fixture() {
   return createEvaluationManifest({
     evaluationId: 'eval-cli', suturaCommit: 'a'.repeat(40), repositoryClean: true,
     corpusName: 'placebo', corpusVersion: '0.1', corpusHash: 'b'.repeat(64),
-    adapterVersion: '0.1.1', modelCatalogSnapshot: [], routingProfile: 'adaptive-default',
+    adapterVersion: '0.2.0', modelCatalogSnapshot: [], routingProfile: 'adaptive-default',
     budgetProfile: 'default', startedAt: '2026-08-29T00:00:00.000Z',
     completedAt: '2026-08-29T00:01:00.000Z',
     cases: [
