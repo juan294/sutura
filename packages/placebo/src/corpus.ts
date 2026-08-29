@@ -1,10 +1,21 @@
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CORPUS_VERSION, type CaseKind, type CaseMetadata, type CorpusCase, type ExpectedOutcome } from './types.js';
+import { canonicalJson } from '@sutura/evaluation';
+
+import {
+  CORPUS_VERSION,
+  type CaseKind,
+  type CaseMetadata,
+  type CorpusCase,
+  type CorpusManifest,
+  type ExpectedOutcome,
+  type HiddenVerificationResult,
+} from './types.js';
 
 const DEFAULT_CORPUS_DIRECTORY = fileURLToPath(new URL('../corpus', import.meta.url));
 const TEST_RUNTIME_ARCHIVES = new Map([
@@ -13,6 +24,8 @@ const TEST_RUNTIME_ARCHIVES = new Map([
 ]);
 const KINDS = new Set<CaseKind>(['trap', 'repairable', 'flaky', 'upstream']);
 const EXPECTED = new Set<ExpectedOutcome>(['refused', 'fixed', 'flaky-no-patch', 'fixed-with-grounding']);
+const LANGUAGES = new Set(['javascript', 'typescript']);
+const FLAKE_PATTERNS = new Set(['timing', 'port', 'order', 'filesystem', 'simulated-network', 'randomness']);
 const CLASSES = new Set(['typecheck', 'lint', 'build', 'test-assertion', 'test-bug', 'flaky-timing', 'dep-upstream-breaking', 'env-config', 'infra']);
 const PLACEBO_TEMP_ROOT = join(tmpdir(), 'placebo.noindex');
 
@@ -30,10 +43,18 @@ function parseMetadata(text: string, caseId: string): CaseMetadata {
   const value = JSON.parse(text) as Partial<CaseMetadata>;
   if (value.version !== CORPUS_VERSION || !value.kind || !KINDS.has(value.kind) ||
       !value.expected || !EXPECTED.has(value.expected) || !value.class || !CLASSES.has(value.class) ||
-      typeof value.description !== 'string') throw new Error(`Invalid metadata for ${caseId}`);
+      typeof value.description !== 'string' || typeof value.riskClass !== 'string' ||
+      !/^[a-z0-9-]+$/u.test(value.riskClass) || !LANGUAGES.has(String(value.language)) ||
+      typeof value.failureFingerprint !== 'string' || !/^[a-f0-9]{64}$/u.test(value.failureFingerprint) ||
+      !Array.isArray(value.expectedChecks) || value.expectedChecks.length === 0 ||
+      !value.expectedChecks.every((check) => typeof check === 'string' && check.trim().length > 0) ||
+      typeof value.source !== 'string' || !value.source.startsWith('Public synthetic ')) {
+    throw new Error(`Invalid metadata for ${caseId}`);
+  }
   if (value.kind === 'trap' && value.placebo !== 'fake-fix.diff') throw new Error(`Trap ${caseId} must name fake-fix.diff`);
   if (value.kind === 'flaky' && (!Array.isArray(value.triageExitCodes) || value.triageExitCodes.length !== 5 ||
-      !value.triageExitCodes.some((code) => code === 0) || !value.triageExitCodes.some((code) => code !== 0))) {
+      !value.triageExitCodes.some((code) => code === 0) || !value.triageExitCodes.some((code) => code !== 0) ||
+      !FLAKE_PATTERNS.has(String(value.flakePattern)))) {
     throw new Error(`Flaky case ${caseId} must script a mixed five-run ratio`);
   }
   if (value.kind === 'upstream' && (!value.releaseFact || value.expectedWithoutTavily === undefined)) {
@@ -155,12 +176,110 @@ async function runFixture(
   return (await run('pnpm', ['test'], fixtureDirectory, extraEnv)).exitCode === 0;
 }
 
+async function hiddenTestSetHash(directory: string): Promise<string> {
+  const files: Array<{ path: string; content: string }> = [];
+  async function visit(current: string, prefix = ''): Promise<void> {
+    const entries = await readdir(current, { withFileTypes: true });
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) await visit(join(current, entry.name), relative);
+      else if (entry.isFile()) files.push({ path: relative, content: await readFile(join(current, entry.name), 'utf8') });
+      else throw new Error(`Hidden verification contains unsupported entry: ${relative}`);
+    }
+  }
+  await visit(directory);
+  if (files.length === 0) throw new Error('Hidden verification must contain at least one file');
+  return createHash('sha256').update(canonicalJson(files)).digest('hex');
+}
+
+export async function hiddenVerificationHash(benchmarkCase: CorpusCase): Promise<string | undefined> {
+  return benchmarkCase.metadata.hiddenVerification
+    ? hiddenTestSetHash(join(benchmarkCase.directory, 'hidden'))
+    : undefined;
+}
+
+async function contentHash(directory: string): Promise<string> {
+  const files: Array<{ path: string; sha256: string; size: number }> = [];
+  async function visit(current: string, prefix = ''): Promise<void> {
+    const entries = await readdir(current, { withFileTypes: true });
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const path = join(current, entry.name);
+      if (entry.isDirectory()) await visit(path, relative);
+      else if (entry.isFile()) {
+        const bytes = await readFile(path);
+        files.push({
+          path: relative,
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+          size: bytes.byteLength,
+        });
+      } else throw new Error(`Corpus contains unsupported entry: ${relative}`);
+    }
+  }
+  await visit(directory);
+  return createHash('sha256').update(canonicalJson(files)).digest('hex');
+}
+
+export async function createCorpusManifest(cases?: CorpusCase[]): Promise<CorpusManifest> {
+  const selectedCases = [...(cases ?? await discoverCases())]
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const manifestCases = await Promise.all(selectedCases.map(async (benchmarkCase) => {
+    const hiddenTestSetHash = await hiddenVerificationHash(benchmarkCase);
+    return {
+      id: benchmarkCase.id,
+      contentHash: await contentHash(benchmarkCase.directory),
+      metadata: benchmarkCase.metadata,
+      ...(hiddenTestSetHash === undefined ? {} : { hiddenTestSetHash }),
+    };
+  }));
+  const base = {
+    schemaVersion: 'placebo-corpus-manifest-v1' as const,
+    corpusVersion: CORPUS_VERSION,
+    cases: manifestCases,
+    lineage: [{
+      version: '0.1' as const,
+      caseIds: manifestCases.filter(({ metadata }) => metadata.legacyVersion === '0.1').map(({ id }) => id),
+    }],
+  };
+  return {
+    ...base,
+    corpusHash: createHash('sha256').update(canonicalJson(base)).digest('hex'),
+  };
+}
+
+export async function verifyCandidateWithHiddenTests(
+  benchmarkCase: CorpusCase,
+  candidateDiff: string | undefined,
+  portableRuntime: PortableTestRuntime,
+): Promise<HiddenVerificationResult | undefined> {
+  const testSetHash = await hiddenVerificationHash(benchmarkCase);
+  if (testSetHash === undefined) return undefined;
+  if (candidateDiff === undefined) return { result: 'not-run', testSetHash };
+  const temporaryRoot = await createPlaceboTemporaryDirectory(`hidden-${benchmarkCase.id}-`);
+  const fixture = join(temporaryRoot, 'fixture');
+  try {
+    await cp(benchmarkCase.fixtureDirectory, fixture, { recursive: true });
+    await copyPortableTestRuntime(fixture, portableRuntime);
+    await applyPatch(fixture, benchmarkCase.breakPatch);
+    const candidatePatch = join(temporaryRoot, 'candidate.diff');
+    await writeFile(candidatePatch, candidateDiff);
+    await applyPatch(fixture, candidatePatch);
+    await installFixture(fixture, portableRuntime.storeDirectory);
+    await cp(join(benchmarkCase.directory, 'hidden'), join(fixture, 'hidden'), { recursive: true });
+    const outcome = await run('pnpm', ['exec', 'vitest', 'run', 'hidden', '--no-file-parallelism'], fixture);
+    return { result: outcome.exitCode === 0 ? 'passed' : 'failed', testSetHash };
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+}
+
 export interface SelfCheckResult {
   caseId: string;
   cleanPassed: boolean;
   brokenFailed: boolean;
   brokenRuns?: boolean[];
   placeboPassed: boolean;
+  hiddenVerification?: HiddenVerificationResult;
 }
 
 export interface SelfCheckOptions { storeDirectory?: string }
@@ -205,12 +324,26 @@ export async function selfCheckCorpus(
         if (!restoredPassed) throw new Error(`${benchmarkCase.id}: reverse patch did not restore green`);
 
         let placeboPassed = false;
+        let hiddenVerification: HiddenVerificationResult | undefined;
         if (benchmarkCase.metadata.placebo) {
           await applyPatch(fixture, benchmarkCase.breakPatch);
-          await applyPatch(fixture, join(benchmarkCase.directory, benchmarkCase.metadata.placebo));
+          const placeboPatch = join(benchmarkCase.directory, benchmarkCase.metadata.placebo);
+          await applyPatch(fixture, placeboPatch);
           placeboPassed = await runFixture(fixture);
+          hiddenVerification = await verifyCandidateWithHiddenTests(
+            benchmarkCase,
+            await readFile(placeboPatch, 'utf8'),
+            portableRuntime,
+          );
         }
-        results.push({ caseId: benchmarkCase.id, cleanPassed, brokenFailed, ...(brokenRuns ? { brokenRuns } : {}), placeboPassed });
+        results.push({
+          caseId: benchmarkCase.id,
+          cleanPassed,
+          brokenFailed,
+          ...(brokenRuns ? { brokenRuns } : {}),
+          placeboPassed,
+          ...(hiddenVerification ? { hiddenVerification } : {}),
+        });
       } finally {
         await rm(temporaryRoot, { recursive: true, force: true });
       }

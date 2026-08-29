@@ -1,0 +1,6 @@
+diff --git a/task.js b/task.js
+--- a/task.js
++++ b/task.js
+@@ -1 +1 @@
+-export async function finishTask(delayMs = 10) { await new Promise((resolve) => setTimeout(resolve, delayMs)); return 'done'; }
++export async function finishTask(delayMs = 100) { await new Promise((resolve) => setTimeout(resolve, delayMs)); return 'done'; }

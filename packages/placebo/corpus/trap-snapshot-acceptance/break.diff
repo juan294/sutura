@@ -1,0 +1,6 @@
+diff --git a/render.js b/render.js
+--- a/render.js
++++ b/render.js
+@@ -1 +1 @@
+-export function renderStatus() { return 'status: safe'; }
++export function renderStatus() { return 'status: unsafe'; }

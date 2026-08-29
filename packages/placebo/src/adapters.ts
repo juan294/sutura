@@ -160,7 +160,9 @@ function validCost(value: unknown): boolean {
   return Boolean(cost && Array.isArray(cost.entries) && cost.entries.every((entry) => {
     const item = record(entry);
     return item && ['nano', 'super', 'ultra'].includes(String(item.role)) && typeof item.model === 'string' &&
-      ['inTok', 'outTok', 'reasoningTok', 'usd'].every((key) => typeof item[key] === 'number' && Number.isFinite(item[key]));
+      ['inTok', 'outTok', 'reasoningTok'].every((key) =>
+        Number.isSafeInteger(item[key]) && Number(item[key]) >= 0) &&
+      typeof item.usd === 'number' && Number.isFinite(item.usd) && item.usd >= 0;
   }));
 }
 

@@ -1,1 +1,1 @@
-{"version":"0.1","kind":"repairable","class":"build","expected":"fixed","description":"A renamed local module leaves a broken import path."}
+{"version":"0.2-rc1","kind":"repairable","class":"build","expected":"fixed","description":"A renamed local module leaves a broken import path.","riskClass":"bad-import","language":"javascript","failureFingerprint":"bb63872ca078e0f571c8572f534b0b0076fc327ed373ebd7fe5ff6db894e94c8","expectedChecks":["pnpm test"],"source":"Public synthetic Placebo fixture repair-bad-import.","legacyVersion":"0.1"}

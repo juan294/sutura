@@ -1,0 +1,6 @@
+diff --git a/change.js b/change.js
+--- a/change.js
++++ b/change.js
+@@ -1 +1 @@
+-export const changedLines = 80;
++export const changedLines = 120;
