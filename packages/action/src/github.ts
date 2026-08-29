@@ -182,7 +182,11 @@ function failedStepLog(lines: readonly TimestampedLogLine[], step: WorkflowJobSt
   if (matching.length === 0) {
     throw new GitHubAdapterError(`Job logs contain no lines for failed step ${step.name}`);
   }
-  return matching.slice(-FAILED_STEP_LINES).map(({ line }) => line).join('\n');
+  const commandLine = matching[0];
+  const retained = groupIndex >= 0 && commandLine && matching.length > FAILED_STEP_LINES
+    ? [commandLine, ...matching.slice(-(FAILED_STEP_LINES - 1))]
+    : matching.slice(-FAILED_STEP_LINES);
+  return retained.map(({ line }) => line).join('\n');
 }
 
 function apiStatus(error: unknown): number | undefined {

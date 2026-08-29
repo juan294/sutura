@@ -76,6 +76,35 @@ describe('GitHubAdapter', () => {
     expect(run.failedSteps[0]?.log).toContain('test-204');
   });
 
+  it('retains the failed-step command group when the log exceeds the line limit', async () => {
+    const adapter = new GitHubAdapter(api({
+      listJobsForWorkflowRun: async () => [{
+        id: 5,
+        name: 'checks',
+        conclusion: 'failure',
+        steps: [{
+          name: 'Run pnpm run test',
+          conclusion: 'failure',
+          startedAt: '2026-01-01T00:00:11Z',
+          completedAt: '2026-01-01T00:00:20Z',
+        }],
+      }],
+      downloadJobLogs: async () => [
+        '2026-01-01T00:00:11.100Z ##[group]Run pnpm run test',
+        ...Array.from(
+          { length: 205 },
+          (_, index) => `2026-01-01T00:00:12Z test-${index}`,
+        ),
+      ].join('\n'),
+    }), { owner: 'owner', repo: 'repo', runId: '77' });
+
+    const run = await adapter.getFailingRun('77');
+
+    expect(run.failedSteps[0]?.log.split('\n')).toHaveLength(200);
+    expect(run.failedSteps[0]?.log).toContain('##[group]Run pnpm run test');
+    expect(run.failedSteps[0]?.log).toContain('test-204');
+  });
+
   it('keeps the full completion second and trims a shared-second prior step', async () => {
     const adapter = new GitHubAdapter(api({
       listJobsForWorkflowRun: async () => [{
