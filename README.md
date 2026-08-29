@@ -12,9 +12,9 @@ rejects unsafe shortcuts, and opens an evidence-backed PR for human review.
 Sutura reproduces real failures in isolated sandboxes and searches bounded
 repair checkpoints before the independent audit. It never auto-merges.
 
-Sutura is built for the Nebius x NVIDIA Global AI Hackathon. Try the public
-[judge demo](https://github.com/juan294/sutura-demo): run the break-me workflow
-and watch the repair pull request and surgical report arrive.
+Sutura is built for the Nebius x NVIDIA Global AI Hackathon. The public judge
+demo remains disabled until the release, provider-spend, and non-collaborator
+acceptance gates are authorized and pass against one exact release commit.
 
 ## How it works
 
@@ -159,12 +159,17 @@ Set `NEBIUS_API_KEY`, `CONTREE_TOKEN`, `CONTREE_PROJECT`, and optional
 `TAVILY_API_KEY` in your environment. Then run these commands:
 
 ```bash
-npx sutura@latest init
-npx sutura@latest doctor
+npx sutura@0.2.0 init
+npx sutura@0.2.0 doctor
 ```
 
 The installer detects a single CI workflow. Use `--workflow <name>` when the
 repository has multiple workflows. Add `--no-tavily` when Tavily is unavailable.
+
+The installer resolves the `v0.2.0` Action tag and writes its immutable commit
+SHA into the generated workflow. `doctor` resolves the tag again and verifies
+the pin. Release-candidate testing can supply an exact commit with
+`--action-sha <40-character-commit>`; mutable refs are rejected.
 
 The generated workflow uses the repository's automatic GitHub token. It stores
 provider keys as GitHub secrets. It stores `CONTREE_PROJECT` as a repository
@@ -197,9 +202,16 @@ Run the complete local gate before you open a pull request:
 | Lint | `pnpm run lint` |
 | Tests | `pnpm run test` |
 | Build | `pnpm run build` |
+| Release contracts | `pnpm run test:release-contracts` |
+| Candidate package | `pnpm run test:package` |
 
 Live tests are opt-in with `SUTURA_LIVE=1` and require the corresponding
 credentials. Normal tests use recorded fixtures and do not spend API credit.
+
+The versioned [release evidence requirements](docs/demo/sutura-v0.2.0-release-evidence-requirements.json)
+define the ten required records, including separate candidate and public
+matrices. Live benchmark, publication, public demo,
+and Devpost evidence remain pending their separate authorization gates.
 
 ### Evaluation Lab
 

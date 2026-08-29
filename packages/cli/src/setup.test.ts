@@ -6,6 +6,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { installSutura, SetupError } from './setup.js';
 
+const ACTION_SHA = 'a'.repeat(40);
+
 describe('installSutura', () => {
   it('writes the BYOK workflow and sends secrets through stdin', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'sutura-init-'));
@@ -20,7 +22,7 @@ describe('installSutura', () => {
       });
 
       const result = await installSutura(
-        { command: 'init', workflow: 'CI', repository: 'octo/example', force: false, tavilyEnabled: true },
+        { command: 'init', workflow: 'CI', repository: 'octo/example', actionSha: ACTION_SHA, force: false, tavilyEnabled: true },
         {
           cwd: directory,
           environment: {
@@ -36,7 +38,7 @@ describe('installSutura', () => {
       const workflow = await readFile(join(directory, '.github', 'workflows', 'sutura.yml'), 'utf8');
       expect(workflow).toContain('workflows: ["CI"]');
       expect(workflow).toContain("workflow_run.conclusion == 'timed_out'");
-      expect(workflow).toContain('uses: juan294/sutura@v0.1.1');
+      expect(workflow).toContain(`uses: juan294/sutura@${ACTION_SHA}`);
       expect(workflow).toContain('checks: write');
       expect(workflow).toContain('nebius-api-key: ${{ secrets.NEBIUS_API_KEY }}');
       expect(workflow).toContain('contree-project: ${{ vars.CONTREE_PROJECT }}');
@@ -59,7 +61,7 @@ describe('installSutura', () => {
       await mkdir(join(directory, '.github', 'workflows'), { recursive: true });
       await writeFile(join(directory, '.github', 'workflows', 'checks.yaml'), 'name: Checks\non: [push]\n');
       const result = await installSutura(
-        { command: 'init', force: false, tavilyEnabled: true },
+        { command: 'init', actionSha: ACTION_SHA, force: false, tavilyEnabled: true },
         { cwd: directory, environment: {}, run: vi.fn(async () => 'octo/example\n') },
       );
 
@@ -78,7 +80,7 @@ describe('installSutura', () => {
       await writeFile(join(directory, '.github', 'workflows', 'sutura.yml'), 'existing\n');
 
       await expect(installSutura(
-        { command: 'init', workflow: 'CI', force: false, tavilyEnabled: true },
+        { command: 'init', workflow: 'CI', actionSha: ACTION_SHA, force: false, tavilyEnabled: true },
         { cwd: directory, environment: {}, run: vi.fn(async () => 'octo/example\n') },
       )).rejects.toThrow(SetupError);
     } finally {
@@ -95,12 +97,52 @@ describe('installSutura', () => {
       await symlink(outside, join(directory, '.github', 'workflows'));
 
       await expect(installSutura(
-        { command: 'init', workflow: 'CI', force: false, tavilyEnabled: true },
+        { command: 'init', workflow: 'CI', actionSha: ACTION_SHA, force: false, tavilyEnabled: true },
         { cwd: directory, environment: {} },
       )).rejects.toThrow(SetupError);
     } finally {
       await rm(directory, { recursive: true, force: true });
       await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves the release tag before writing or configuring GitHub', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-init-release-'));
+    const run = vi.fn(async (command: string) => {
+      if (command === 'git') return `${ACTION_SHA}\trefs/tags/v0.2.0\n`;
+      throw new Error('GitHub mutation must not run');
+    });
+    try {
+      await mkdir(join(directory, '.github', 'workflows'), { recursive: true });
+      await writeFile(join(directory, '.github', 'workflows', 'ci.yml'), 'name: CI\non: [push]\n');
+
+      await installSutura(
+        { command: 'init', workflow: 'CI', force: false, tavilyEnabled: false },
+        { cwd: directory, environment: {}, run },
+      );
+
+      expect(await readFile(join(directory, '.github', 'workflows', 'sutura.yml'), 'utf8'))
+        .toContain(`uses: juan294/sutura@${ACTION_SHA}`);
+      expect(run).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('writes nothing when release tag resolution fails', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-init-release-fail-'));
+    try {
+      await mkdir(join(directory, '.github', 'workflows'), { recursive: true });
+      await writeFile(join(directory, '.github', 'workflows', 'ci.yml'), 'name: CI\non: [push]\n');
+
+      await expect(installSutura(
+        { command: 'init', workflow: 'CI', force: false, tavilyEnabled: false },
+        { cwd: directory, environment: {}, run: vi.fn().mockResolvedValue('') },
+      )).rejects.toThrow(/release tag/u);
+      await expect(readFile(join(directory, '.github', 'workflows', 'sutura.yml'), 'utf8'))
+        .rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
     }
   });
 });

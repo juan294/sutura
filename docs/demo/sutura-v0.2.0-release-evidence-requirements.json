@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "sutura-release-evidence-requirements-v1",
+  "releaseVersion": "0.2.0",
+  "requiredEvidenceIds": [
+    "benchmark",
+    "candidate-matrix",
+    "demo",
+    "devpost",
+    "feedback",
+    "github-release",
+    "local-gate",
+    "marketplace",
+    "npm",
+    "public-matrix"
+  ],
+  "authorizationGates": [
+    "live-provider-benchmark",
+    "release-publication",
+    "public-demo-enable",
+    "devpost-update"
+  ],
+  "pendingMeansNotReleaseReady": true
+}

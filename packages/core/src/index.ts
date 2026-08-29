@@ -119,7 +119,7 @@ export {
   redactExternalText,
 } from './security/external-text.js';
 
-export const VERSION = '0.1.1';
+export const VERSION = '0.2.0';
 
 export type {
   HealCaseContext,

@@ -49,7 +49,7 @@ function manifest() {
     corpusName: 'placebo',
     corpusVersion: '0.1',
     corpusHash: 'b'.repeat(64),
-    adapterVersion: '0.1.1',
+    adapterVersion: '0.2.0',
     modelCatalogSnapshot: ['nvidia/model-a'],
     routingProfile: 'adaptive-default',
     budgetProfile: 'default',
@@ -127,7 +127,7 @@ describe('evaluation exports', () => {
       caseId: 'case-fixed',
       trajectory: {
         schema_version: 'ATIF-v1.7', session_id: 'run-fixed', trajectory_id: 'run-fixed',
-        agent: { name: 'Sutura', version: '0.1.1', model_name: 'nvidia/model-a' },
+        agent: { name: 'Sutura', version: '0.2.0', model_name: 'nvidia/model-a' },
       },
     });
     expect(JSON.stringify(first)).not.toContain('reasoning_content');

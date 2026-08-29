@@ -20,6 +20,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm run test:release-contracts
       - run: pnpm run test:readme
       - run: pnpm run verify:readme-setup
       - run: pnpm --filter placebo run smoke:offline

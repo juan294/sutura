@@ -169,3 +169,17 @@
 - Why: This is the smaller fail-closed interpretation. It preserves the rule that networked preparation sees only a validated, bounded dependency surface.
 
 The exact-image live ConTree import/tool probe and one external Python repair plus refusal remain pending because Phase 10 prohibits live provider calls, credit spending, and external repository mutation.
+
+### Phase 11: Local release readiness and authorization gates
+
+- Plan said: Update the public demo repository, run live and public artifact matrices, publish release surfaces, enable the demo, and update Devpost evidence.
+- Found: Phase 11 implementation authority is limited to the Sutura repository and explicitly prohibits reading or changing the demo repository, provider spending, GitHub mutation, npm publication, tags, releases, demo enablement, and Devpost updates.
+- Chose: Implement immutable Action resolution, candidate and public install verifiers, the deterministic eight-case matrix analyzer, release evidence validation, release workflows, versioned evidence requirements, feedback, and the complete local release contract. Keep the live benchmark, external outcomes, publication, public demo, and Devpost evidence pending their named authorization gates.
+- Why: Local code can prove the contracts and fail closed on missing evidence, but it cannot truthfully create public or provider-backed evidence without the prohibited operations.
+
+### Phase 11: Candidate Action pin before tag publication
+
+- Plan said: Resolve `v0.2.0` to a commit during public installation and verify it with `doctor`.
+- Found: The tag does not exist before publication, while the candidate tarball still needs an immutable Action reference for the prepublication gate.
+- Chose: Add lower-level `--action-sha <40-character-commit>` support for candidate `init` and `doctor` checks. Production installation still resolves `v0.2.0`; mutable or malformed refs fail before any setup write.
+- Why: Candidate and public checks exercise the same immutable workflow contract without inventing a tag or weakening public verification.

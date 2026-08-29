@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { DoctorArguments } from './args.js';
 import { VERSION } from './args.js';
 import { type CommandRunner, resolveRepository, runCommand } from './command.js';
+import { resolveActionCommit } from './release.js';
 
 export interface DoctorOptions {
   cwd?: string;
@@ -142,7 +143,21 @@ export async function doctorSutura(
   } catch {
     lines.push(line(false, 'Sutura workflow is missing or unsafe.'));
   }
-  const releaseRef = `juan294/sutura@v${VERSION}`;
+  let actionSha: string | undefined;
+  try {
+    actionSha = await resolveActionCommit({
+      version: VERSION,
+      cwd,
+      run,
+      ...(request.actionSha ? { explicitCommit: request.actionSha } : {}),
+    });
+  } catch (error) {
+    lines.push(line(
+      false,
+      `Action release commit could not be resolved: ${error instanceof Error ? error.message : String(error)}`,
+    ));
+  }
+  const releaseRef = `juan294/sutura@${actionSha ?? '[unresolved]'}`;
   const contract = workflowContract(workflow, releaseRef);
   lines.push(line(contract.actionReference, `Workflow uses ${releaseRef}.`));
   lines.push(line(contract.checksWrite, 'Workflow grants checks: write.'));

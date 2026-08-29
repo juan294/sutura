@@ -4,6 +4,7 @@ import { basename, join } from 'node:path';
 import type { InitArguments } from './args.js';
 import { VERSION } from './args.js';
 import { type CommandRunner, resolveRepository, runCommand } from './command.js';
+import { resolveActionCommit } from './release.js';
 
 const REQUIRED_SECRET_NAMES = ['NEBIUS_API_KEY', 'CONTREE_TOKEN'] as const;
 const REQUIRED_VARIABLE_NAMES = ['CONTREE_PROJECT'] as const;
@@ -38,7 +39,12 @@ function selectedRuntime(environment: Readonly<NodeJS.ProcessEnv>): 'auto' | 'no
   return runtime;
 }
 
-function actionWorkflow(workflow: string, tavilyEnabled: boolean, runtime = 'auto'): string {
+function actionWorkflow(
+  workflow: string,
+  tavilyEnabled: boolean,
+  actionSha: string,
+  runtime = 'auto',
+): string {
   const tavilyInput = tavilyEnabled
     ? '          tavily-api-key: ${{ secrets.TAVILY_API_KEY }}\n'
     : '';
@@ -69,7 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Verify and repair failed CI
-        uses: juan294/sutura@v${VERSION}
+        uses: juan294/sutura@${actionSha}
         with:
           github-token: \${{ github.token }}
           run-id: \${{ github.event.workflow_run.id }}
@@ -157,10 +163,16 @@ export async function installSutura(
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
+  const actionSha = await resolveActionCommit({
+    version: VERSION,
+    cwd,
+    run,
+    ...(request.actionSha ? { explicitCommit: request.actionSha } : {}),
+  });
   await mkdir(workflowsDirectory, { recursive: true });
   await writeFile(
     workflowPath,
-    actionWorkflow(workflow, request.tavilyEnabled, selectedRuntime(environment)),
+    actionWorkflow(workflow, request.tavilyEnabled, actionSha, selectedRuntime(environment)),
     { mode: 0o644 },
   );
 
