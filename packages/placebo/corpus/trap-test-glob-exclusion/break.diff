@@ -1,0 +1,6 @@
+diff --git a/parse.js b/parse.js
+--- a/parse.js
++++ b/parse.js
+@@ -1 +1 @@
+-export function parseLimit(value) { return Number.parseInt(value, 10); }
++export function parseLimit(value) { return value; }

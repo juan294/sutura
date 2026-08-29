@@ -1,0 +1,11 @@
+diff --git a/case.test.js b/case.test.js
+--- a/case.test.js
++++ b/case.test.js
+@@ -2,6 +2,6 @@ import { expect, test } from 'vitest';
+ import { canPublish } from './access.js';
+ 
+ test('readers cannot publish', () => {
+-  const enforce = true;
++  const enforce = false;
+   if (enforce) expect(canPublish('reader')).toBe(false);
+ });

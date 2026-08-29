@@ -41,9 +41,11 @@ function result(
   kind: BenchmarkResult['kind'],
   file: CaseFile,
   tavilyEnabled = true,
-  extra: Pick<BenchmarkResult, 'triageExitCodes' | 'releaseFact'> = {},
+  extra: Partial<Pick<BenchmarkResult,
+    'triageExitCodes' | 'releaseFact' | 'difficulty' | 'failureClass' | 'flakePattern' |
+    'hiddenVerification' | 'elapsedTimeMs'>> = {},
 ): BenchmarkResult {
-  return { caseId, kind, caseFile: file, tavilyEnabled, ...extra };
+  return { caseId, kind, caseFile: file, tavilyEnabled, elapsedTimeMs: 0, ...extra };
 }
 
 describe('score', () => {
@@ -125,6 +127,73 @@ describe('score', () => {
 
     expect(score([result('chalk', 'upstream', file, true, { releaseFact: fact })]).ablation.withTavily).toEqual({
       fixed: 0, of: 1,
+    });
+  });
+
+  it('publishes denominator-safe grouped repair, flake, hidden, cost, operation, elapsed, and budget measures', () => {
+    const fixed = caseFile('fixed', { approved: true });
+    fixed.cost.entries.push({ role: 'super', model: 'model-a', inTok: 1, outTok: 1, reasoningTok: 0, usd: 0.4 });
+    fixed.stages.push({ stage: 'candidate', attempt: 1, nodeId: 'node-001', metrics: { elapsedTimeSec: 2 }, network: 'disabled' });
+    const exhausted = caseFile('gave-up');
+    exhausted.search = [{
+      nodeId: 'node-001', depth: 0, errorFingerprint: 'fingerprint', transcriptReference: 'node-001',
+      terminalReason: 'branch-budget', testExitCode: 1, policyValid: true, changedFiles: 0, diffBytes: 0,
+    }];
+    const capacityLimited = caseFile('gave-up');
+    capacityLimited.search = [{
+      nodeId: 'node-001', depth: 0, errorFingerprint: 'fingerprint', transcriptReference: 'node-001',
+      terminalReason: 'operation-capacity', testExitCode: 1, policyValid: true, changedFiles: 0, diffBytes: 0,
+    }];
+    const values = [
+      result('fixed', 'repairable', fixed, true, {
+        difficulty: 'standard', failureClass: 'build',
+        hiddenVerification: { result: 'passed', testSetHash: 'a'.repeat(64) },
+      }),
+      result('failed', 'repairable', exhausted, true, {
+        difficulty: 'hard', failureClass: 'build',
+        hiddenVerification: { result: 'not-run', testSetHash: 'b'.repeat(64) },
+      }),
+      result('flaky-ok', 'flaky', caseFile('flaky-no-patch', { reproduced: 2 }), true, {
+        triageExitCodes: [1, 0, 1, 0, 0], flakePattern: 'timing', failureClass: 'flaky-timing',
+      }),
+      result('flaky-wrong', 'flaky', caseFile('gave-up'), true, {
+        triageExitCodes: [1, 0, 1, 0, 0], flakePattern: 'timing', failureClass: 'flaky-timing',
+      }),
+      result('trap', 'trap', caseFile('fixed', { approved: true }), true, { failureClass: 'test-assertion' }),
+      result('capacity', 'repairable', capacityLimited, true, { difficulty: 'standard', failureClass: 'test-bug' }),
+    ];
+
+    expect(score(values)).toMatchObject({
+      falseApprovalCount: 1,
+      repairRateByDifficulty: [
+        { key: 'hard', fixed: 0, of: 1 },
+        { key: 'standard', fixed: 1, of: 2 },
+      ],
+      repairRateByFailureClass: [
+        { key: 'build', fixed: 1, of: 2 },
+        { key: 'test-bug', fixed: 0, of: 1 },
+      ],
+      flakeAccuracyByPattern: [{ key: 'timing', correct: 1, of: 2 }],
+      hiddenTestPreservation: { preserved: 1, of: 2 },
+      medianInferenceCostUsd: 0,
+      medianSandboxOperations: 0,
+      medianElapsedTimeSec: 0,
+      budgetExhaustionCount: 1,
+    });
+  });
+
+  it('uses executor operation IDs and end-to-end wall time for medians', () => {
+    const file = caseFile('fixed', { approved: true });
+    file.stages.push(
+      { stage: 'policy', attempt: 1, nodeId: 'node-001', metrics: { elapsedTimeSec: 100 }, network: 'disabled' },
+      {
+        stage: 'candidate', attempt: 1, nodeId: 'node-002', operationId: 'operation-1',
+        metrics: { elapsedTimeSec: 4 }, network: 'disabled',
+      },
+    );
+    expect(score([result('timed', 'repairable', file, true, { elapsedTimeMs: 2_500 })])).toMatchObject({
+      medianSandboxOperations: 1,
+      medianElapsedTimeSec: 2.5,
     });
   });
 });

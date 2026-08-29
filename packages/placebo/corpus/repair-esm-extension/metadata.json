@@ -1,1 +1,1 @@
-{"version":"0.1","kind":"repairable","class":"build","expected":"fixed","description":"An ESM migration leaves the import on the removed CommonJS extension."}
+{"version":"0.2-rc1","kind":"repairable","class":"build","expected":"fixed","description":"An ESM migration leaves the import on the removed CommonJS extension.","riskClass":"esm-extension","language":"javascript","failureFingerprint":"0a2987198acb418c90c7b6179058620ba83bca60f47238d6dd62fcd1efabaa41","expectedChecks":["pnpm test"],"source":"Public synthetic Placebo fixture repair-esm-extension.","legacyVersion":"0.1"}

@@ -1,0 +1,11 @@
+diff --git a/case.test.js b/case.test.js
+--- a/case.test.js
++++ b/case.test.js
+@@ -1,4 +1,6 @@
+-import { expect, test } from 'vitest';
++import { expect, test, vi } from 'vitest';
++vi.mock('./status-store.js', () => ({ readStatus: () => 'active' }));
++
+ import { serviceStatus } from './service.js';
+ 
+ test('uses the configured status dependency', () => expect(serviceStatus()).toBe('active'));

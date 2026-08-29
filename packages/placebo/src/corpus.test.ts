@@ -1,15 +1,35 @@
 import { describe, expect, it } from 'vitest';
 import { execFile } from 'node:child_process';
-import { access, cp, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { access, cp, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { runMechanicalChecks } from '@sutura/core';
 
-import { discoverCases, prepareFixture, selfCheckCorpus } from './corpus.js';
+import { applyPatch, createCorpusManifest, discoverCases, prepareFixture, selfCheckCorpus } from './corpus.js';
 import type { CaseKind, CorpusCase } from './types.js';
 
-describe('Placebo v0.1 corpus', () => {
+const NEW_CASE_IDS = [
+  'flaky-filesystem-visibility',
+  'flaky-order-cache',
+  'flaky-port-worker',
+  'flaky-simulated-network',
+  'flaky-timing-deadline',
+  'repair-cache-invalidation-target',
+  'repair-esm-extension-nested',
+  'repair-missing-await-setup',
+  'repair-tsconfig-drift-indexed-access',
+  'trap-conditional-assertion-deletion',
+  'trap-error-propagation-removal',
+  'trap-mocked-dependency-replacement',
+  'trap-policy-file-modification',
+  'trap-snapshot-acceptance',
+  'trap-test-glob-exclusion',
+  'trap-timeout-inflation',
+  'trap-workflow-check-removal',
+] as const;
+
+describe('Placebo v0.2-rc1 corpus', () => {
   it('prepares a standalone fixture against a new empty store', async () => {
     const benchmarkCase = (await discoverCases()).find(({ id }) => id === 'repair-off-by-one');
     const temporaryRoot = await mkdtemp(join(tmpdir(), 'placebo-prepare-test-'));
@@ -27,15 +47,15 @@ describe('Placebo v0.1 corpus', () => {
     }
   }, 30_000);
 
-  it('contains the published 26-case inventory', async () => {
+  it('requires public-safe v0.2 metadata while preserving every v0.1 identity', async () => {
     const cases = await discoverCases();
     const counts = new Map<CaseKind, CorpusCase[]>();
     for (const kind of ['trap', 'repairable', 'flaky', 'upstream'] as const) counts.set(kind, []);
     for (const benchmarkCase of cases) counts.get(benchmarkCase.metadata.kind)?.push(benchmarkCase);
 
-    expect(counts.get('trap')).toHaveLength(8);
-    expect(counts.get('repairable')).toHaveLength(10);
-    expect(counts.get('flaky')).toHaveLength(4);
+    expect(counts.get('trap')).toHaveLength(16);
+    expect(counts.get('repairable')).toHaveLength(14);
+    expect(counts.get('flaky')).toHaveLength(9);
     expect(counts.get('upstream')).toHaveLength(4);
     expect(cases.filter(({ metadata }) => metadata.difficulty === 'hard')).toHaveLength(2);
     expect(counts.get('trap')?.every(({ metadata }) => metadata.placebo === 'fake-fix.diff')).toBe(true);
@@ -43,12 +63,52 @@ describe('Placebo v0.1 corpus', () => {
       metadata.expectedWithoutTavily === 'gave-up' && metadata.releaseFact?.url.startsWith('https://github.com/'),
     )).toBe(true);
     for (const benchmarkCase of cases) {
+      expect(benchmarkCase.metadata.version).toBe('0.2-rc1');
+      expect(benchmarkCase.metadata.riskClass).toMatch(/^[a-z0-9-]+$/);
+      expect(['javascript', 'typescript']).toContain(benchmarkCase.metadata.language);
+      expect(benchmarkCase.metadata.failureFingerprint).toMatch(/^[a-f0-9]{64}$/);
+      expect(benchmarkCase.metadata.expectedChecks.length).toBeGreaterThan(0);
+      expect(benchmarkCase.metadata.source).toMatch(/^Public synthetic /);
       await expect(access(`${benchmarkCase.fixtureDirectory}/pnpm-lock.yaml`)).resolves.toBeUndefined();
       const packageJson = JSON.parse(await readFile(`${benchmarkCase.fixtureDirectory}/package.json`, 'utf8')) as {
         devDependencies?: Record<string, string>;
       };
       expect(packageJson.devDependencies?.vitest).toBe('4.1.11');
     }
+    const v01Ids = JSON.parse(await readFile(new URL('../../../docs/demo/placebo-v0.1-2026-08-28.json', import.meta.url), 'utf8')) as {
+      results: Array<{ caseId: string }>;
+    };
+    expect([...new Set(v01Ids.results.map(({ caseId }) => caseId))].every((id) =>
+      cases.some((benchmarkCase) => benchmarkCase.id === id))).toBe(true);
+  });
+
+  it('creates a stable content-addressed manifest with complete v0.1 lineage', async () => {
+    const cases = await discoverCases();
+    const first = await createCorpusManifest();
+    const second = await createCorpusManifest(cases.toReversed());
+    expect(second).toEqual(first);
+    expect(first.cases).toHaveLength(43);
+    expect(first.lineage).toEqual([{ version: '0.1', caseIds: expect.any(Array) }]);
+    expect(first.lineage[0]?.caseIds).toHaveLength(26);
+    expect(first.corpusHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(first.cases.every(({ contentHash }) => /^[a-f0-9]{64}$/u.test(contentHash))).toBe(true);
+    expect(first.cases.filter(({ hiddenTestSetHash }) => hiddenTestSetHash !== undefined)).toHaveLength(8);
+  });
+
+  it('keeps every corpus file public-safe and the network simulator outbound-free', async () => {
+    const forbidden = /(?:\/Users\/|[A-Z]:\\Users\\|github_pat_|ghp_|sk-[A-Za-z0-9]{20}|NEBIUS_API_KEY\s*=|TAVILY_API_KEY\s*=)/u;
+    for (const benchmarkCase of await discoverCases()) {
+      for (const relative of await readdir(benchmarkCase.directory, { recursive: true })) {
+        const text = await readFile(join(benchmarkCase.directory, relative), 'utf8').catch(() => undefined);
+        if (text !== undefined) expect(text, `${benchmarkCase.id}/${relative}`).not.toMatch(forbidden);
+      }
+    }
+    const simulator = (await discoverCases()).find(({ id }) => id === 'flaky-simulated-network')!;
+    const simulatorText = await Promise.all([
+      readFile(join(simulator.fixtureDirectory, 'case.test.js'), 'utf8'),
+      readFile(simulator.breakPatch, 'utf8'),
+    ]).then((parts) => parts.join('\n'));
+    expect(simulatorText).not.toMatch(/(?:fetch\s*\(|https?:\/\/|createConnection|connect\s*\()/u);
   });
 
   it('uses the Phase 5 branch attempt contract instead of mutable clone state', async () => {
@@ -58,6 +118,11 @@ describe('Placebo v0.1 corpus', () => {
       'flaky-random-threshold': ['mulberry32', 'admitted(mulberry32'],
       'flaky-test-order': ['contaminatingOrder', "['add', 'empty']"],
       'flaky-timer-race': ['delay(losesRace', 'await delay(10)'],
+      'flaky-timing-deadline': ['completedAt', 'SUTURA_TRIAGE_ATTEMPT'],
+      'flaky-port-worker': ['configuredPort', 'first.address().port'],
+      'flaky-order-cache': ["['store', 'empty']", 'SUTURA_TRIAGE_ATTEMPT'],
+      'flaky-filesystem-visibility': ['writeName', 'staging.txt'],
+      'flaky-simulated-network': ['localResponse', '503'],
     } as const;
     for (const benchmarkCase of flaky) {
       const patch = await readFile(benchmarkCase.breakPatch, 'utf8');
@@ -110,24 +175,70 @@ describe('Placebo v0.1 corpus', () => {
     }
   });
 
+  it('applies every fake fix cleanly after its break patch', async () => {
+    const traps = (await discoverCases()).filter(({ metadata }) => metadata.kind === 'trap');
+    const temporaryRoot = await mkdtemp(join(tmpdir(), 'placebo-fake-fix-check-'));
+    try {
+      for (const benchmarkCase of traps) {
+        const fixture = join(temporaryRoot, benchmarkCase.id);
+        await cp(benchmarkCase.fixtureDirectory, fixture, { recursive: true });
+        await applyPatch(fixture, benchmarkCase.breakPatch);
+        await expect(applyPatch(fixture, join(benchmarkCase.directory, 'fake-fix.diff'))).resolves.toBeUndefined();
+      }
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('self-checks every new v0.2-rc1 fixture and hidden trap', async () => {
+    const corpus = await mkdtemp(join(tmpdir(), 'placebo-v02-corpus-'));
+    const emptyStore = await mkdtemp(join(tmpdir(), 'placebo-v02-store-'));
+    try {
+      const source = new URL('../corpus/', import.meta.url);
+      for (const caseId of NEW_CASE_IDS) {
+        await cp(new URL(`${caseId}/`, source), join(corpus, caseId), { recursive: true });
+      }
+      const report = await selfCheckCorpus(corpus, { storeDirectory: emptyStore });
+      expect(report.map(({ caseId }) => caseId)).toEqual(NEW_CASE_IDS);
+      expect(report.filter(({ cleanPassed, brokenFailed }) => !cleanPassed || !brokenFailed)).toEqual([]);
+      expect(report.filter(({ placeboPassed }) => placeboPassed)).toHaveLength(8);
+      expect(report.filter(({ hiddenVerification }) => hiddenVerification?.result === 'failed')).toHaveLength(8);
+    } finally {
+      await rm(corpus, { recursive: true, force: true });
+      await rm(emptyStore, { recursive: true, force: true });
+    }
+  }, 900_000);
+
   it('proves every break patch is red and every clean fixture is green', async () => {
     const emptyStore = await mkdtemp(join(tmpdir(), 'placebo-empty-store-'));
     const report = await selfCheckCorpus(undefined, { storeDirectory: emptyStore }).finally(() =>
       rm(emptyStore, { recursive: true, force: true }),
     );
 
-    expect(report).toHaveLength(26);
+    expect(report).toHaveLength(43);
     expect(report.every(({ brokenFailed, cleanPassed }) => brokenFailed && cleanPassed)).toBe(true);
-    expect(report.filter(({ brokenRuns }) => brokenRuns && brokenRuns.some(Boolean) && brokenRuns.some((failed) => !failed))).toHaveLength(4);
+    expect(report.filter(({ brokenRuns }) => brokenRuns && brokenRuns.some(Boolean) && brokenRuns.some((failed) => !failed))).toHaveLength(9);
     expect(report.filter(({ placeboPassed }) => placeboPassed).map(({ caseId }) => caseId)).toEqual([
       'trap-as-any',
       'trap-assertion-tautology',
+      'trap-conditional-assertion-deletion',
       'trap-deleted-test',
+      'trap-error-propagation-removal',
       'trap-eslint-off',
+      'trap-mocked-dependency-replacement',
       'trap-pass-with-no-tests',
+      'trap-policy-file-modification',
       'trap-skipped-test',
+      'trap-snapshot-acceptance',
       'trap-swallowed-error',
+      'trap-test-glob-exclusion',
+      'trap-timeout-inflation',
       'trap-weakened-expect',
+      'trap-workflow-check-removal',
     ]);
+    expect(report.filter(({ hiddenVerification }) => hiddenVerification !== undefined))
+      .toHaveLength(8);
+    expect(report.filter(({ hiddenVerification }) => hiddenVerification?.result === 'failed'))
+      .toHaveLength(8);
   }, 1_500_000);
 });

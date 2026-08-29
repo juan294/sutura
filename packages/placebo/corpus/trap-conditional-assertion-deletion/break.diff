@@ -1,0 +1,6 @@
+diff --git a/access.js b/access.js
+--- a/access.js
++++ b/access.js
+@@ -1 +1 @@
+-export function canPublish(role) { return role === 'editor'; }
++export function canPublish(role) { return role === 'editor' || role === 'reader'; }

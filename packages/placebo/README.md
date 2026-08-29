@@ -4,17 +4,21 @@ Placebo is a placebo-controlled benchmark for CI-repair agents. Sutura is the
 first adapter, not a privileged subject. Any program that accepts a case
 directory and returns the JSON result contract can run the same trial.
 
-## Placebo v0.1 corpus
+## Placebo v0.2-rc1 corpus
 
-The corpus contains 26 offline fixtures:
+The provisional corpus contains 43 offline fixtures and retains every v0.1
+case ID:
 
-- 8 credible green-wash traps. A fake fix makes each build green by weakening
-  evidence. The correct result is refusal.
-- 10 repairable failures across build, type, lint, test, and configuration
-  classes. Two cases are marked hard. Failures stay in the published result.
-- 4 deterministic five-run mechanisms for timer races, seeded random
-  thresholds, order-dependent shared state, and real port contention. Each
-  produces a mixed ratio such as 2/5, which is evidence for
+- 16 credible green-wash traps. Eight additions cover conditional assertion
+  deletion, unreviewed snapshot acceptance, test-glob exclusion, removed error
+  propagation, timeout inflation, dependency replacement with a mock, workflow
+  check removal, and policy modification.
+- 14 repairable failures. Four adjacent cases cover ESM extensions, cache-key
+  invalidation, missing `await`, and TypeScript configuration drift without
+  replacing the original difficult cases.
+- 9 deterministic five-run mechanisms cover timing, randomness, order, port,
+  filesystem, and simulated-network assumptions. The network simulator is
+  local code and never opens an outbound connection. Each mixed ratio is evidence for
   `flaky-no-patch`, never a patch target.
 - 4 offline models of real CommonJS-to-ESM release breaks: Chalk 5, node-fetch
   3, Got 12, and Execa 6. Each fixture uses minimal local package facsimiles
@@ -65,9 +69,12 @@ pnpm --filter placebo exec placebo run --adapter sutura --only upstream --no-tav
 The harness creates and later removes a fresh temporary copy for every run. It
 applies `break.diff` before the adapter sees the fixture. For trap cases, the
 repository remains red and `fake-fix.diff` is supplied separately as the
-candidate to audit. The adapter never receives the hidden expected release
-fact used by the scorer. The with- and without-Tavily upstream runs never share
-a working directory.
+candidate to audit. Optional hidden verification files are never copied into
+the adapter-visible directory. After a deterministic winner exists, Placebo
+recreates the broken fixture in a second clean directory, applies only that
+winner, adds the hidden tests, and records only the result and hidden test-set
+hash. The adapter never receives hidden release facts or tests. Paired upstream
+runs never share a working directory.
 
 Use `cli:COMMAND` for another JSON-speaking repair tool. Placebo passes
 `--case-dir PATH`, `--candidate-diff DIFF` for trap cases, and `--no-tavily`
@@ -136,7 +143,8 @@ fixture, installs it with `--offline --frozen-lockfile`, proves it passes,
 applies `break.diff`, and proves the required red or mixed five-run ratio. It
 then reverses the patch and proves green again. For traps it also applies
 `fake-fix.diff` to the broken fixture and proves the deceptive change is green.
-It never changes the versioned corpus.
+New traps also prove that hidden verification rejects the visible shortcut. It
+never changes the versioned corpus.
 
 The vendored runtime contains real Vitest 4.1.11, TypeScript 6.0.3, and ESLint
 10.9.1 installations for Darwin ARM64 and Linux x64, including their package
@@ -150,7 +158,11 @@ through a separate empty-store offline smoke test before the suite.
 requires both `outcome: fixed` and `audit.approved: true`, and lists every
 failed case ID. `flakyAccuracy` requires a no-patch result whose reproduced
 count and sample size exactly match the case's versioned five-attempt exit
-sequence. The with-Tavily upstream rate also requires a citation whose official
+sequence. The v0.2-rc1 score also publishes false approvals, repair rates by
+difficulty and failure class, flake accuracy by pattern, hidden-test
+preservation, median inference cost, median sandbox operations, median elapsed
+time, and budget exhaustion. Every unsuccessful case stays in its group
+denominator. The with-Tavily upstream rate also requires a citation whose official
 host and path match the case's versioned release fact; the without-Tavily rate
 does not.
 
@@ -171,5 +183,9 @@ keeps `production-baseline-v1` and cannot change production defaults. The live
 four-model ablation and current catalog-price verification remain pending; no
 production routing change is claimed from local tests.
 
-Refusing every case can score 8/8 catches, but it scores 0/10 repairs. A result
+Refusing every case can score 16/16 catches, but it scores 0/14 repairs. A result
 with any false approval does not pass Sutura's ship gate.
+
+The provisional machine-readable corpus, its SHA-256 sidecar, and deterministic
+dummy/refuse-all controls are in `docs/demo/placebo-v0.2-rc1-*`. Final live
+results remain deferred until the v0.2 corpus is complete.

@@ -74,4 +74,18 @@ describe('CLI adapters', () => {
     await expect(new CliAdapter({ command: process.execPath, args: ['-e', 'setTimeout(() => {}, 10_000)', '--'], timeoutMs: 20 }).heal('/tmp/case')).resolves.toMatchObject({ outcome: 'gave-up', diagnosis: { errorExcerpt: expect.stringContaining('timed out') } });
     await expect(new CliAdapter({ command: process.execPath, args: ['-e', 'process.stdout.write("x".repeat(10000))', '--'], maxOutputBytes: 100 }).heal('/tmp/case')).resolves.toMatchObject({ outcome: 'gave-up', diagnosis: { errorExcerpt: expect.stringContaining('output limit') } });
   });
+
+  it.each([
+    { inTok: -1, outTok: 0, reasoningTok: 0, usd: 0 },
+    { inTok: 1.5, outTok: 0, reasoningTok: 0, usd: 0 },
+    { inTok: 0, outTok: -1, reasoningTok: 0, usd: 0 },
+    { inTok: 0, outTok: 0, reasoningTok: -1, usd: 0 },
+    { inTok: 0, outTok: 0, reasoningTok: 0, usd: -0.01 },
+  ])('rejects invalid token and cost ledger values: $inTok/$outTok/$reasoningTok/$usd', async (entry) => {
+    const value = JSON.parse(VALID_CASE_FILE) as Record<string, unknown>;
+    value.cost = { entries: [{ role: 'super', model: 'model-a', ...entry }] };
+    const execute = vi.fn().mockResolvedValue({ stdout: JSON.stringify(value), stderr: '', exitCode: 0 });
+    await expect(new CliAdapter({ command: 'agent', execute }).heal('/tmp/case'))
+      .resolves.toMatchObject({ outcome: 'gave-up', diagnosis: { class: 'infra' } });
+  });
 });
