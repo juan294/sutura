@@ -163,8 +163,8 @@ This reliability cycle does not publish v0.2.0, create a tag or GitHub release, 
 
 ## Completion state
 
-- [ ] Phase 1: Bounded repair source closure
-- [ ] Phase 2: Controller-owned repair attempt
-- [ ] Phase 3: Search budgets, feedback, and exact winner identity
-- [ ] Phase 4: Nine-run replay and production-path integration gates
+- [x] Phase 1: Bounded repair source closure
+- [x] Phase 2: Controller-owned repair attempt
+- [x] Phase 3: Search budgets, feedback, and exact winner identity
+- [x] Phase 4: Nine-run replay and production-path integration gates
 - [ ] Phase 5: Exact-SHA CI and final live dogfood proof
