@@ -73,12 +73,14 @@ function proposalFor(candidate: Candidate): object {
   const edits = candidate.diff === UPSTREAM_DIFF
     ? [{
         path: 'app.cjs',
-        old: "const fetch = require('node-fetch');\nexports.fetchName = () => fetch('data:Juan').then((response) => response.text());",
+        startLine: 1,
+        endLine: 2,
         new: "exports.fetchName = () => import('node-fetch').then(({default: fetch}) => fetch('data:Juan'))\n  .then((response) => response.text());",
       }]
     : [{
         path: 'page-count.js',
-        old: 'export function pageCount(items, size) { return Math.floor(items / size) + 1; }',
+        startLine: 1,
+        endLine: 1,
         new: 'export function pageCount(items, size) { return Math.ceil(items / size); }',
       }];
   return { id: candidate.id, rationale: candidate.rationale, edits };

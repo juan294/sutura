@@ -67,4 +67,31 @@ The complete local gate passed against the implementation tree. Candidate packag
 - Repository total: 937 passed, 8 skipped
 - Typecheck, lint, Action bundle rebuild, and all three simplification reviews: passed
 
+### Anchored-proposal revision
+
+- Develop candidate: `fca0535a343e670c9683faed066175309d6bfe6a`
+- Develop CI: [33253462024](https://github.com/juan294/sutura/actions/runs/33253462024), passed
+- Dogfood SHA: `742390f8a9cc7e7657b89a551282338eecd76e5c`
+- Intentional CI: [33254012677](https://github.com/juan294/sutura/actions/runs/33254012677), failed only the declared arithmetic assertion
+- Sutura: [33254087287](https://github.com/juan294/sutura/actions/runs/33254087287), `gave-up`
+- Terminal evidence: four provider-schema-valid replies failed stricter local proposal bounds; two more proposals failed the redundant exact `old` source-copy contract
+- Response: aligned provider and local schema bounds from one shared contract, replaced exact old-text copying with inclusive source line anchors, and made the controller derive exact old bytes and the unified diff
+- Edge coverage: Unicode length parity, whitespace-only values, unsafe line integers, repeated lines, overlap, pure deletion, LF, CRLF, and unterminated final lines fail closed or render exact git-applicable patches as declared
+
+### Anchored-proposal local gate
+
+- Core: 720 passed, 8 skipped
+- Action: 70 passed
+- Evaluation: 5 passed
+- CLI: 81 passed
+- Placebo: 70 passed in 952 seconds
+- Repository total: 946 passed, 8 skipped
+- Typecheck: passed for all five buildable workspace packages
+- Lint: passed for all five buildable workspace packages
+- Build and Action bundle rebuild: passed
+- Reuse review: clean
+- Quality review: clean
+- Efficiency review: clean
+- `git diff --check`: passed
+
 Final Phase 5 exact-SHA CI and live dogfood evidence remain pending.

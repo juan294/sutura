@@ -28,7 +28,9 @@ Nine live dogfood runs exercised one simple arithmetic defect. The first two sto
 
 The first post-redesign live proof exposed a separate fixture-fidelity gap before Super: ANSI-colored Vitest output and its `❯` reporter marker prevented pnpm workspace path reconstruction. This terminal class is also documented in the research addendum and must remain in the replay gate.
 
-Current unit and end-to-end tests script ideal LLM tool calls. No live test calls `orchestrate`, `repairFailure`, `runRepairAgent`, or `adaptiveSearch`. Current production admission also reduces the four-branch search default to one branch by reserving all eight model turns for it.
+The next live proof reached Super and exposed a proposal-fidelity gap. The provider schema omitted local string bounds, and the patch protocol required Super to copy controller-owned source text exactly. The provider schema and local parser must have identical bounds, and production proposals must use inclusive line anchors so Sutura derives the exact old bytes and diff.
+
+At the pre-redesign baseline, unit and end-to-end tests scripted ideal LLM tool calls, no live test called the complete orchestration path, and production admission reduced the four-branch search default to one branch by reserving all eight model turns for it. The implementation phases replace those conditions with strict proposals, recorded production-path orchestration, exact attempt reservation, and locally replayed live terminal evidence.
 
 ## Design options
 
@@ -46,7 +48,7 @@ The live model endpoint rejected one documented `tool_choice` form and accepted 
 
 ### Option C: strict structured patch proposals with controller-owned execution
 
-Super returns one bounded, schema-validated repair proposal. Sutura converts exact structured edits to a diff, applies it through the existing policy-aware repair runtime, runs the diagnosed trusted test, and creates a candidate only after the test passes. A failed proposal becomes feedback for a new baseline-based replacement proposal.
+Super returns one bounded, schema-validated repair proposal with inclusive source line anchors and complete replacement text. Sutura derives the exact old bytes and diff from its supplied source excerpt, applies the diff through the existing policy-aware repair runtime, runs the diagnosed trusted test, and creates a candidate only after the test passes. A failed proposal becomes feedback for a new baseline-based replacement proposal.
 
 This reuses the already tested structured candidate contract, removes model-selected control transitions, gives every branch an exact operation schedule, and keeps ConTree verification and Ultra audit unchanged. Selected.
 
@@ -62,7 +64,7 @@ failed GitHub run
   -> bounded source dependency closure on exact checkout
   -> adaptive search
        -> one strict Super proposal from clean baseline plus parent feedback
-       -> controller validates and applies exact edits
+       -> controller validates anchors, derives exact old bytes, and applies the diff
        -> controller runs diagnosed trusted test
        -> pass: held candidate
        -> fail: checkpoint evidence for the next depth
@@ -92,7 +94,7 @@ failed GitHub run
 | 1 | Bounded repair source closure | None | Sequential |
 | 2 | Controller-owned repair attempt | Phase 1 | Sequential |
 | 3 | Search budgets, feedback, and exact winner identity | Phase 2 | Sequential |
-| 4 | Nine-run replay and production-path integration gates | Phase 3 | Sequential |
+| 4 | Eleven-run replay and production-path integration gates | Phase 3 | Sequential |
 | 5 | Exact-SHA CI and final live dogfood proof | Phase 4 | Sequential |
 
 Detailed phase files:
@@ -130,6 +132,8 @@ Run the `codex-simplify` reuse, quality, and efficiency reviews after implementa
 
 - The realistic arithmetic dogfood fixture reaches Super with both the test and imported implementation source.
 - The realistic fixture retains the actual ANSI-colored Vitest reporter prefix and pnpm workspace task line.
+- The provider response schema and local parser enforce the same ID, rationale, path, line, edit-count, and replacement bounds.
+- A proposal selects inclusive lines from supplied source; the controller, not Super, derives the exact old bytes and unified diff.
 - A scripted search-only, read-only, test-only, or submit-only model response cannot control the production attempt.
 - A valid proposal always runs patch, diagnosed test, and candidate creation in controller order.
 - A failing proposal supplies its complete diff and bounded test failure to the next search depth.
@@ -140,7 +144,7 @@ Run the `codex-simplify` reuse, quality, and efficiency reviews after implementa
 - Source traversal, symlink, sensitive path, policy denial, ambiguity, oversized content, and credential redaction fail closed.
 - Audit and publication use one exact candidate ID and diff hash.
 - The recorded GitHub action E2E creates one repair branch and PR for the realistic direct-run dogfood fixture.
-- All nine historical model-control terminal classes and the post-redesign raw-log source terminal have local regression coverage.
+- All nine historical model-control terminal classes, the post-redesign raw-log source terminal, and the anchored-proposal terminal have local regression coverage.
 - The complete local verification gate and simplification reviews pass.
 
 ## Final live acceptance
@@ -169,5 +173,5 @@ This reliability cycle does not publish v0.2.0, create a tag or GitHub release, 
 - [x] Phase 1: Bounded repair source closure
 - [x] Phase 2: Controller-owned repair attempt
 - [x] Phase 3: Search budgets, feedback, and exact winner identity
-- [x] Phase 4: Nine-run replay and production-path integration gates
+- [x] Phase 4: Eleven-run replay and production-path integration gates
 - [ ] Phase 5: Exact-SHA CI and final live dogfood proof

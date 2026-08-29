@@ -16,6 +16,7 @@ import { completedTriageVerdict, notRunTriageVerdict } from './engine/triage.js'
 import type { TierLlm } from './llm/types.js';
 import { DEFAULT_MODEL_PRICES } from './llm/cost.js';
 import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
+import { repairProposalReply } from './testing/repair-proposal.test-helper.js';
 import { parseRepositoryPolicy } from './policy/schema.js';
 import {
   AlreadyAttemptedError,
@@ -240,14 +241,6 @@ function diagnosisReply(): Diagnosis {
     failingCmd: 'pnpm test',
     errorExcerpt: 'TS2322: Type number is not assignable to type string',
   };
-}
-
-function repairProposalReply(candidate: Candidate) {
-  const lines = candidate.diff.split('\n');
-  const path = lines.find((line) => line.startsWith('+++ b/'))?.slice(6) ?? '';
-  const old = lines.filter((line) => line.startsWith('-') && !line.startsWith('---')).map((line) => line.slice(1)).join('\n');
-  const replacement = lines.filter((line) => line.startsWith('+') && !line.startsWith('+++')).map((line) => line.slice(1)).join('\n');
-  return { text: JSON.stringify({ id: candidate.id, rationale: candidate.rationale, edits: [{ path, old, new: replacement }] }), usd: 0.001 };
 }
 
 function scriptedLlm(auditVerdict: AuditVerdict['approved'] = true): {
@@ -582,8 +575,9 @@ describe('orchestrate', () => {
           id: 'dogfood-addition', rationale: 'Use addition in the add function.',
           edits: [{
             path: 'packages/core/src/dogfood-add.ts',
-            old: 'left - right',
-            new: 'left + right',
+            startLine: 2,
+            endLine: 2,
+            new: '  return left + right;',
           }],
         }), usd: 0.001 };
       }

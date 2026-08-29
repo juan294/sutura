@@ -60,7 +60,7 @@ describe('runControlledRepairAttempt', () => {
     const executor = new InMemoryExecutor((_command, _parent, index) => results[index]!);
     const { model, chat } = llm(JSON.stringify({
       id: 'fix-add', rationale: 'Use addition for the add function.',
-      edits: [{ path: 'packages/core/src/dogfood-add.ts', old: 'left - right', new: 'left + right' }],
+      edits: [{ path: 'packages/core/src/dogfood-add.ts', startLine: 2, endLine: 2, new: '  return left + right;' }],
     }));
     const budget = new RepairBudget();
 
@@ -75,6 +75,8 @@ describe('runControlledRepairAttempt', () => {
     expect(chat).toHaveBeenCalledOnce();
     const options = chat.mock.calls[0]?.[2] as ChatOptions | undefined;
     expect(options).toMatchObject({ responseFormat: { type: 'json_schema' } });
+    expect(JSON.stringify(options)).toContain('"startLine"');
+    expect(JSON.stringify(options)).not.toContain('"old"');
     expect(options).not.toHaveProperty('tools');
     expect(executor.calls.map((call) => call.kind === 'run' ? call.cmd : '')).toEqual([
       expect.stringContaining('git apply'), 'pnpm test',
@@ -91,7 +93,7 @@ describe('runControlledRepairAttempt', () => {
     const outcome = await runControlledRepairAttempt({
       llm: llm(JSON.stringify({
         id: 'wrong', rationale: 'First bounded attempt.',
-        edits: [{ path: 'packages/core/src/dogfood-add.ts', old: 'left - right', new: 'left * right' }],
+        edits: [{ path: 'packages/core/src/dogfood-add.ts', startLine: 2, endLine: 2, new: '  return left * right;' }],
       })).model, executor, initialImageId: 'baseline', diagnosis,
       policy: createDefaultRepositoryPolicy(),
       budget: new RepairBudget(), trustedCommands: { diagnosed: 'pnpm test' }, sourceContext,
@@ -134,7 +136,7 @@ describe('runControlledRepairAttempt', () => {
     ][index]!);
     const { model, chat } = llm(JSON.stringify({
       id: 'compatible', rationale: 'Use one strict structured response.',
-      edits: [{ path: 'packages/core/src/dogfood-add.ts', old: 'left - right', new: 'left + right' }],
+      edits: [{ path: 'packages/core/src/dogfood-add.ts', startLine: 2, endLine: 2, new: '  return left + right;' }],
     }));
 
     await runControlledRepairAttempt({
@@ -147,6 +149,73 @@ describe('runControlledRepairAttempt', () => {
     expect(options).not.toHaveProperty('parallelToolCalls');
     expect(options).not.toHaveProperty('toolChoice');
     expect(options).not.toHaveProperty('tools');
+  });
+
+  it('replays live run 11: provider and local proposal bounds use one contract', async () => {
+    const executor = new InMemoryExecutor(() => runResult(1));
+    const { model, chat } = llm(JSON.stringify({
+      id: 'x'.repeat(81), rationale: 'This exceeds the declared candidate ID bound.',
+      edits: [{ path: 'packages/core/src/dogfood-add.ts', startLine: 2, endLine: 2, new: '  return left + right;' }],
+    }));
+
+    const outcome = await runControlledRepairAttempt({
+      llm: model, executor, initialImageId: 'baseline', diagnosis,
+      policy: createDefaultRepositoryPolicy(), budget: new RepairBudget(),
+      trustedCommands: { diagnosed: 'pnpm test' }, sourceContext,
+    });
+
+    expect(outcome).toMatchObject({ status: 'gave-up', failureKind: 'invalid' });
+    expect(executor.calls).toHaveLength(0);
+    expect(chat.mock.calls[0]?.[2]).toMatchObject({ responseFormat: { jsonSchema: { schema: {
+      properties: {
+        id: { minLength: 1, maxLength: 80 },
+        rationale: { minLength: 1, maxLength: 240 },
+        edits: { minItems: 1, maxItems: 8, items: { properties: {
+          path: { minLength: 1, maxLength: 240, pattern: '\\S' },
+          startLine: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+          endLine: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+          new: { maxLength: 12_000 },
+        } } },
+      },
+    } } } });
+    expect(chat.mock.calls[0]?.[2]).toMatchObject({ responseFormat: { jsonSchema: { schema: {
+      properties: {
+        id: { pattern: '\\S' },
+        rationale: { pattern: '\\S' },
+      },
+    } } } });
+  });
+
+  it('uses JSON Schema code-point lengths and rejects unsafe line anchors locally', async () => {
+    const acceptedExecutor = new InMemoryExecutor((_command, _parent, index) => [
+      runResult(0, diff), runResult(0, '1 passed'),
+    ][index]!);
+    await expect(runControlledRepairAttempt({
+      llm: llm(JSON.stringify({
+        id: '😀'.repeat(80), rationale: 'A Unicode ID at the declared limit.',
+        edits: [{ path: 'packages/core/src/dogfood-add.ts', startLine: 2, endLine: 2, new: '  return left + right;' }],
+      })).model,
+      executor: acceptedExecutor, initialImageId: 'baseline', diagnosis,
+      policy: createDefaultRepositoryPolicy(), budget: new RepairBudget(),
+      trustedCommands: { diagnosed: 'pnpm test' }, sourceContext,
+    })).resolves.toMatchObject({ status: 'submitted' });
+
+    const rejectedExecutor = new InMemoryExecutor(() => runResult(1));
+    await expect(runControlledRepairAttempt({
+      llm: llm(JSON.stringify({
+        id: 'unsafe-line', rationale: 'Reject an unsafe JSON integer.',
+        edits: [{
+          path: 'packages/core/src/dogfood-add.ts',
+          startLine: Number.MAX_SAFE_INTEGER + 1,
+          endLine: Number.MAX_SAFE_INTEGER + 1,
+          new: '',
+        }],
+      })).model,
+      executor: rejectedExecutor, initialImageId: 'baseline', diagnosis,
+      policy: createDefaultRepositoryPolicy(), budget: new RepairBudget(),
+      trustedCommands: { diagnosed: 'pnpm test' }, sourceContext,
+    })).resolves.toMatchObject({ status: 'gave-up', failureKind: 'invalid' });
+    expect(rejectedExecutor.calls).toHaveLength(0);
   });
 
   it('returns typed provider, policy, sandbox, cancellation, and budget terminals', async () => {
@@ -163,7 +232,7 @@ describe('runControlledRepairAttempt', () => {
     await expect(runControlledRepairAttempt({
       llm: llm(JSON.stringify({
         id: 'policy', rationale: 'Attempt a protected edit.',
-        edits: [{ path: 'packages/core/src/dogfood-add.ts', old: 'left - right', new: 'left + right' }],
+        edits: [{ path: 'packages/core/src/dogfood-add.ts', startLine: 2, endLine: 2, new: '  return left + right;' }],
       })).model,
       executor: new InMemoryExecutor(() => runResult(1)), initialImageId: 'baseline', diagnosis,
       policy: protectedPolicy, budget: new RepairBudget(),
@@ -179,7 +248,7 @@ describe('runControlledRepairAttempt', () => {
     await expect(runControlledRepairAttempt({
       llm: llm(JSON.stringify({
         id: 'sandbox', rationale: 'Repair before unavailable test evidence.',
-        edits: [{ path: 'packages/core/src/dogfood-add.ts', old: 'left - right', new: 'left + right' }],
+        edits: [{ path: 'packages/core/src/dogfood-add.ts', startLine: 2, endLine: 2, new: '  return left + right;' }],
       })).model,
       executor: missingTest, initialImageId: 'baseline', diagnosis,
       policy: createDefaultRepositoryPolicy(), budget: new RepairBudget(),
@@ -213,7 +282,7 @@ describe('runControlledRepairAttempt', () => {
     ][index]!);
     const { model, chat } = llm(JSON.stringify({
       id: 'timeout', rationale: 'Apply the source correction before verification.',
-      edits: [{ path: 'packages/core/src/dogfood-add.ts', old: 'left - right', new: 'left + right' }],
+      edits: [{ path: 'packages/core/src/dogfood-add.ts', startLine: 2, endLine: 2, new: '  return left + right;' }],
     }));
 
     const outcome = await runControlledRepairAttempt({
@@ -238,7 +307,7 @@ describe('runControlledRepairAttempt', () => {
     });
     const { model, chat } = llm(JSON.stringify({
       id: 'cancelled', rationale: 'Repair before branch cancellation.',
-      edits: [{ path: 'packages/core/src/dogfood-add.ts', old: 'left - right', new: 'left + right' }],
+      edits: [{ path: 'packages/core/src/dogfood-add.ts', startLine: 2, endLine: 2, new: '  return left + right;' }],
     }));
     const budget = new RepairBudget();
 

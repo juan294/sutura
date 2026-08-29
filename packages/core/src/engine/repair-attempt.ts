@@ -7,6 +7,7 @@ import { assertExternalEditableText, redactExternalJsonValue } from '../security
 import type { RepairAgentContext, RepairAgentOutcome } from './repair-agent.js';
 import { publicRepairReason, requestRepairModel } from './repair-model-call.js';
 import { RepairToolRuntime, type RepairToolResult } from './repair-tools.js';
+import { anchoredEditsDiff, REPAIR_PROPOSAL_LIMITS } from './repair.js';
 
 const MAX_PROPOSAL_TOKENS = 8_192;
 const REPAIR_ATTEMPT_MINIMUM_INFERENCE_USD = 0.05;
@@ -21,20 +22,21 @@ export const REPAIR_ATTEMPT_COSTS = Object.freeze({
 const REPAIR_PROPOSAL_SCHEMA: JsonSchema = {
   type: 'object',
   properties: {
-    id: { type: 'string' },
-    rationale: { type: 'string' },
+    id: { type: 'string', minLength: 1, maxLength: REPAIR_PROPOSAL_LIMITS.idCodePoints, pattern: '\\S' },
+    rationale: { type: 'string', minLength: 1, maxLength: REPAIR_PROPOSAL_LIMITS.rationaleCodePoints, pattern: '\\S' },
     edits: {
       type: 'array',
       minItems: 1,
-      maxItems: 8,
+      maxItems: REPAIR_PROPOSAL_LIMITS.edits,
       items: {
         type: 'object',
         properties: {
-          path: { type: 'string' },
-          old: { type: 'string' },
-          new: { type: 'string' },
+          path: { type: 'string', minLength: 1, maxLength: REPAIR_PROPOSAL_LIMITS.pathCodePoints, pattern: '\\S' },
+          startLine: { type: 'integer', minimum: 1, maximum: REPAIR_PROPOSAL_LIMITS.line },
+          endLine: { type: 'integer', minimum: 1, maximum: REPAIR_PROPOSAL_LIMITS.line },
+          new: { type: 'string', maxLength: REPAIR_PROPOSAL_LIMITS.replacementCodePoints },
         },
-        required: ['path', 'old', 'new'],
+        required: ['path', 'startLine', 'endLine', 'new'],
         additionalProperties: false,
       },
     },
@@ -76,7 +78,9 @@ function proposalMessages(ctx: ControlledRepairAttemptContext): ChatMessage[] {
       role: 'system',
       content: [
         'Return one complete replacement repair proposal as strict JSON.',
-        'Use only exact supplied source paths and copy each old value verbatim from supplied source.',
+        'Use only exact supplied source paths and inclusive line ranges inside supplied excerpts.',
+        'For each edit, new must be the complete replacement text for startLine through endLine, not a partial expression.',
+        'Use an empty new value only to delete the selected lines.',
         'Repair the diagnosed cause with the smallest direct edit.',
         'Do not change tests or policy. Do not include analysis or markdown.',
         'A previousAttempt is feedback only; this proposal will be applied to the clean baseline.',
@@ -99,9 +103,12 @@ function parseProposal(text: string): RepairProposal {
   const record = value as Record<string, unknown>;
   if (
     Object.keys(record).some((key) => !['id', 'rationale', 'edits'].includes(key)) ||
-    typeof record.id !== 'string' || !record.id.trim() || record.id.length > 80 ||
-    typeof record.rationale !== 'string' || !record.rationale.trim() || record.rationale.length > 240 ||
-    !Array.isArray(record.edits) || record.edits.length === 0 || record.edits.length > 8
+    typeof record.id !== 'string' || !/\S/u.test(record.id) ||
+    [...record.id].length > REPAIR_PROPOSAL_LIMITS.idCodePoints ||
+    typeof record.rationale !== 'string' || !/\S/u.test(record.rationale) ||
+    [...record.rationale].length > REPAIR_PROPOSAL_LIMITS.rationaleCodePoints ||
+    !Array.isArray(record.edits) || record.edits.length === 0 ||
+    record.edits.length > REPAIR_PROPOSAL_LIMITS.edits
   ) throw new TypeError('Repair proposal does not match the strict schema');
   return { id: record.id, rationale: record.rationale, edits: record.edits };
 }
@@ -169,8 +176,10 @@ export async function runControlledRepairAttempt(
   if (!response.ok) return response.outcome;
   const { reply } = response;
   let proposal: RepairProposal;
+  let proposalDiff: string;
   try {
     proposal = parseProposal(reply.text);
+    proposalDiff = anchoredEditsDiff(proposal.edits, ctx.sourceContext);
   } catch (error) {
     return { status: 'gave-up', failureKind: 'invalid', reason: publicRepairReason(error instanceof Error ? error.message : String(error)) };
   }
@@ -195,7 +204,7 @@ export async function runControlledRepairAttempt(
     ctx.trace?.record({
       type: 'tool-request', stage: 'candidate', toolCallId: id, toolName: name,
       argumentSummary: name === 'apply_patch'
-        ? { form: 'structured-edits', proposalId: proposal.id, proposalHash: digest(JSON.stringify(args)) }
+        ? { form: 'anchored-line-ranges', proposalId: proposal.id, proposalHash: digest(JSON.stringify(proposal)), diffHash: digest(proposalDiff) }
         : name === 'run_test'
           ? { commandId: 'diagnosed' }
           : { candidateId: proposal.id, diffHash: digest(tools.state().cumulativeDiff) },
@@ -210,7 +219,7 @@ export async function runControlledRepairAttempt(
     return result;
   };
   if (ctx.signal?.aborted) return { status: 'gave-up', failureKind: 'sandbox', reason: 'Repair branch was cancelled' };
-  const applied = await execute(`${ctx.branchId ?? 'repair'}-apply`, 'apply_patch', { edits: proposal.edits });
+  const applied = await execute(`${ctx.branchId ?? 'repair'}-apply`, 'apply_patch', { diff: proposalDiff });
   if (!applied.ok || applied.exitCode !== 0) {
     return { status: 'gave-up', failureKind: applied.kind ?? 'invalid', reason: 'Repair proposal patch was not accepted' };
   }

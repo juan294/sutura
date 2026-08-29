@@ -65,3 +65,13 @@ Expected: the pnpm workspace prefix `packages/core test:` maps `src/dogfood-add.
 Found: the real Vitest line contains ANSI control sequences and the reporter marker `❯` between the workspace task prefix and source path. The recorded production-path fixtures omitted both. The workspace regex therefore did not match. Generic extraction retained only root-relative `src/dogfood-add.test.ts`, which does not exist at repository root.
 
 Why it matters: controller ownership removed the nine model-control failures, but the source-evidence gate still depended on a simplified log fixture. Production log normalization must remove bounded terminal formatting and map source references anywhere in the bounded pnpm task message before dependency closure starts.
+
+## Live proof 11 addendum
+
+The raw-log revision, `fca0535a343e670c9683faed066175309d6bfe6a`, passed exact-SHA CI at [run 33253462024](https://github.com/juan294/sutura/actions/runs/33253462024). Dogfood SHA `742390f8a9cc7e7657b89a551282338eecd76e5c` then failed only the declared arithmetic assertion at [run 33254012677](https://github.com/juan294/sutura/actions/runs/33254012677). Sutura [run 33254087287](https://github.com/juan294/sutura/actions/runs/33254087287) reached Super six times but completed with `gave-up` and no repair pull request.
+
+Expected: Token Factory strict JSON output passes the same local validation contract, and Sutura converts the selected source edit to a patch without asking the model to reproduce controller-owned bytes.
+
+Found: four branches returned provider-schema-valid proposals that local length checks rejected. Two more branches reached patch conversion but failed because the proposal protocol required Super to copy the exact `old` source text. The provider schema did not declare the local ID and rationale bounds, and exact source copying was not needed because Sutura already held the bounded source excerpt.
+
+Why it matters: strict provider output is not enough when the provider schema and local parser differ. Requiring the model to echo exact source also creates a second, avoidable fidelity test. The production protocol must declare identical bounds at both validation layers and let Super identify inclusive source line ranges while the controller derives the exact old bytes and unified diff.

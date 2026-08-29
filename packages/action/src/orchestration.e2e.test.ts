@@ -429,7 +429,8 @@ class ScriptedLlm implements OrchestratorLlm {
           rationale: 'Correct the source value.',
           edits: [{
             path: 'src/value.ts',
-            old: 'export const value: string = 1;',
+            startLine: 1,
+            endLine: 1,
             new: 'export const value: string = "1";',
           }],
         }),
@@ -629,7 +630,8 @@ describe('recorded GitHub API orchestration E2E', () => {
           return { text: JSON.stringify({
             id: 'dogfood-addition', rationale: 'Use addition in the add function.',
             edits: [{
-              path: 'packages/core/src/dogfood-add.ts', old: 'left - right', new: 'left + right',
+              path: 'packages/core/src/dogfood-add.ts', startLine: 2, endLine: 2,
+              new: '  return left + right;',
             }],
           }), usd: 0.001 };
         }

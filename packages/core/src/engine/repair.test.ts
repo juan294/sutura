@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -10,6 +10,7 @@ import type { Candidate, Diagnosis } from '../domain.js';
 import { InMemoryExecutor } from '../executor/memory.js';
 import { completedTriageVerdict } from './triage.js';
 import {
+  anchoredEditsDiff,
   generateCandidates,
   prepareRepair,
   race,
@@ -17,6 +18,64 @@ import {
   type RepairLlm,
   type RepairSourceContext,
 } from './repair.js';
+
+describe('anchoredEditsDiff', () => {
+  const repeatedSource: RepairSourceContext = { sources: [{
+    path: 'src/repeated.ts', startLine: 20, truncated: false,
+    content: 'first\nrepeat\nrepeat\nlast\n',
+  }] };
+
+  it('derives exact old bytes from an inclusive line range even when text repeats', () => {
+    expect(anchoredEditsDiff([{
+      path: 'src/repeated.ts', startLine: 22, endLine: 22, new: 'changed',
+    }], repeatedSource)).toContain(' first\n repeat\n-repeat\n+changed\n last');
+  });
+
+  it('rejects out-of-window and overlapping line anchors before sandbox work', () => {
+    expect(() => anchoredEditsDiff([{
+      path: 'src/repeated.ts', startLine: 19, endLine: 19, new: 'outside',
+    }], repeatedSource)).toThrow('inside supplied source');
+    expect(() => anchoredEditsDiff([
+      { path: 'src/repeated.ts', startLine: 21, endLine: 22, new: 'first edit' },
+      { path: 'src/repeated.ts', startLine: 22, endLine: 23, new: 'second edit' },
+    ], repeatedSource)).toThrow('must not overlap');
+    expect(() => anchoredEditsDiff([{
+      path: '   ', startLine: 21, endLine: 21, new: 'invalid path',
+    }], repeatedSource)).toThrow('anchored line schema');
+    expect(() => anchoredEditsDiff([{
+      path: 'src/repeated.ts', startLine: Number.MAX_SAFE_INTEGER + 1,
+      endLine: Number.MAX_SAFE_INTEGER + 1, new: 'unsafe line',
+    }], repeatedSource)).toThrow('anchored line schema');
+  });
+
+  it.each([
+    ['without a final newline', 'old', 1, 1, 'new', 'new'],
+    ['with CRLF', 'old\r\nnext\r\n', 1, 1, 'new', 'new\r\nnext\r\n'],
+    [
+      'for an unterminated final line in a CRLF file',
+      'first\r\nold', 2, 2, 'new1\nnew2', 'first\r\nnew1\r\nnew2',
+    ],
+    ['when deleting a middle line', 'first\nobsolete\nlast\n', 2, 2, '', 'first\nlast\n'],
+    ['when deleting an unterminated final line', 'first\nobsolete', 2, 2, '', 'first\n'],
+  ])('builds a git-applicable anchored diff %s', async (
+    _label, original, startLine, endLine, replacement, revised,
+  ) => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-anchored-diff-'));
+    try {
+      await writeFile(join(directory, 'value.txt'), original);
+      const generated = anchoredEditsDiff([{
+        path: 'value.txt', startLine, endLine, new: replacement,
+      }], { sources: [{ path: 'value.txt', startLine: 1, content: original, truncated: false }] });
+      const apply = spawnSync('git', ['apply', '-'], {
+        cwd: directory, input: generated, encoding: 'utf8',
+      });
+      expect(apply.status, apply.stderr).toBe(0);
+      expect(await readFile(join(directory, 'value.txt'), 'utf8')).toBe(revised);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
 
 const buildDiagnosis: Diagnosis = {
   class: 'build',

@@ -10,10 +10,10 @@ Refactor the repair-agent and structured repair modules, repair tools, LLM schem
 
 ## Implementation
 
-1. Define one strict repair proposal schema with candidate ID, concise rationale, and non-empty exact structured edits.
+1. Define one strict repair proposal schema with candidate ID, concise rationale, and non-empty inclusive source line anchors plus complete replacement text. Declare the same bounds in the provider schema and local parser.
 2. Send diagnosis, bounded source closure, trusted command identity, and optional parent feedback to one Super request.
 3. Do not expose production control tools to that request.
-4. Validate and convert edits with the existing exact-source diff builder.
+4. Validate each anchor against the supplied source excerpt. Derive the exact old bytes and unified diff in the controller so the model never has to copy source text verbatim.
 5. Start every attempt from the clean prepared baseline image.
 6. Controller sequence:
 
@@ -35,7 +35,10 @@ if fail: return checkpoint with complete diff and bounded test evidence
 ## Automated success criteria
 
 - The production Super request has a strict response schema and no control tools.
+- Provider-schema bounds and local-parser bounds are identical.
 - Model text cannot cause a search, arbitrary command, direct submission, or policy change.
+- Repeated identical source lines can be changed unambiguously by absolute line anchor, while out-of-window and overlapping ranges fail closed.
+- An empty replacement deletes only the anchored lines; multiline replacements preserve LF, CRLF, and final-newline state from controller-owned source.
 - One valid dogfood proposal produces the correct patch, automatically runs the trusted test, and creates a held candidate.
 - A patch failure, test failure, provider failure, invalid schema, policy refusal, timeout, cancellation, and budget exhaustion return typed terminal evidence.
 - No candidate exists without passing trusted-test evidence from its patched image.

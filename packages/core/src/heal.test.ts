@@ -23,6 +23,7 @@ import type { TierLlm } from './llm/types.js';
 import { DEFAULT_MODEL_PRICES } from './llm/cost.js';
 import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
 import { parseRepositoryPolicy } from './policy/schema.js';
+import { repairProposalReply } from './testing/repair-proposal.test-helper.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'placebo', 'corpus');
 const HONEST_DIFF = [
@@ -68,14 +69,6 @@ function diagnosis(failureClass: Diagnosis['class']): Diagnosis {
   };
 }
 
-function repairProposal(candidate: Candidate): { text: string; usd: number } {
-  const lines = candidate.diff.split('\n');
-  const path = lines.find((line) => line.startsWith('+++ b/'))?.slice(6) ?? '';
-  const old = lines.filter((line) => line.startsWith('-') && !line.startsWith('---')).map((line) => line.slice(1)).join('\n');
-  const replacement = lines.filter((line) => line.startsWith('+') && !line.startsWith('+++')).map((line) => line.slice(1)).join('\n');
-  return { text: JSON.stringify({ id: candidate.id, rationale: candidate.rationale, edits: [{ path, old, new: replacement }] }), usd: 0.001 };
-}
-
 function scriptedLlm(
   failureClass: Diagnosis['class'],
   candidates: Candidate[] = [{ id: 'repair', rationale: 'fix the source', diff: HONEST_DIFF }],
@@ -83,7 +76,7 @@ function scriptedLlm(
 ): { llm: TierLlm<'nano' | 'super' | 'ultra'>; chat: ReturnType<typeof vi.fn> } {
   const chat = vi.fn(async (tier: 'nano' | 'super' | 'ultra') => {
     if (tier === 'nano') return { text: JSON.stringify(diagnosis(failureClass)) };
-    if (tier === 'super') return repairProposal(candidates[0]!);
+    if (tier === 'super') return repairProposalReply(candidates[0]!);
     const verdict: Pick<AuditVerdict, 'approved' | 'reasoning'> = {
       approved: auditApproved,
       reasoning: auditApproved ? 'The source repair holds.' : 'REFUSED: wrong cause.',
@@ -287,7 +280,7 @@ describe('healCase', () => {
             errorFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u),
           });
         }
-        return repairProposal(superCall === 1
+        return repairProposalReply(superCall === 1
           ? { id: 'rounded', rationale: 'Round the division result.', diff: WRONG_REPLACEMENT_DIFF }
           : { id: 'ceiling', rationale: 'Use ceiling division.', diff: HONEST_DIFF });
       }
@@ -681,7 +674,7 @@ describe('sandbox command resolution', () => {
         };
       }
       if (tier === 'super') {
-        return repairProposal({ id: 'repair', rationale: 'fix the source', diff: HONEST_DIFF });
+        return repairProposalReply({ id: 'repair', rationale: 'fix the source', diff: HONEST_DIFF });
       }
       return {
         text: JSON.stringify({ approved: true, reasoning: 'The source repair holds.' }),

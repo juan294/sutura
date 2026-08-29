@@ -29,6 +29,15 @@ import { shellQuote } from './shell.js';
 
 const DEFAULT_RACE_CANDIDATES = 3;
 
+export const REPAIR_PROPOSAL_LIMITS = Object.freeze({
+  idCodePoints: 80,
+  rationaleCodePoints: 240,
+  edits: 8,
+  pathCodePoints: 240,
+  replacementCodePoints: 12_000,
+  line: Number.MAX_SAFE_INTEGER,
+});
+
 export type RepairLlm = TierLlm<'super'>;
 
 interface CandidateReply {
@@ -224,6 +233,29 @@ function changedRegionDiff(path: string, startLine: number, oldText: string, new
   ].join('\n');
 }
 
+interface PositionedRepairEdit {
+  start: number;
+  end: number;
+  replacement: string;
+}
+
+function positionedEditsDiff(
+  path: string,
+  excerpt: RepairSourceExcerpt,
+  edits: readonly PositionedRepairEdit[],
+  overlapMessage: string,
+): string {
+  const positioned = [...edits].sort((left, right) => left.start - right.start);
+  if (positioned.some((edit, index) => index > 0 && edit.start < positioned[index - 1]!.end)) {
+    throw new Error(overlapMessage);
+  }
+  let revised = excerpt.content;
+  for (const edit of positioned.toReversed()) {
+    revised = `${revised.slice(0, edit.start)}${edit.replacement}${revised.slice(edit.end)}`;
+  }
+  return changedRegionDiff(path, excerpt.startLine, excerpt.content, revised);
+}
+
 function editsDiff(
   editsValue: unknown,
   candidateIndex: number,
@@ -249,19 +281,11 @@ function editsDiff(
       );
     }
     const original = excerpt.content;
-    const positioned = pathEdits.map((edit) => ({
+    return positionedEditsDiff(path, excerpt, pathEdits.map((edit) => ({
       ...edit,
       start: original.indexOf(edit.old),
       end: original.indexOf(edit.old) + edit.old.length,
-    })).sort((left, right) => left.start - right.start);
-    if (positioned.some((edit, index) => index > 0 && edit.start < positioned[index - 1]!.end)) {
-      throw new Error(`candidate ${candidateIndex + 1} edits for ${path} must not overlap`);
-    }
-    let revised = original;
-    for (const edit of positioned.toReversed()) {
-      revised = `${revised.slice(0, edit.start)}${edit.replacement}${revised.slice(edit.end)}`;
-    }
-    return changedRegionDiff(path, excerpt.startLine, original, revised);
+    })), `candidate ${candidateIndex + 1} edits for ${path} must not overlap`);
   }).join('\n')}\n`;
 }
 
@@ -270,6 +294,106 @@ export function structuredEditsDiff(
   sourceContext: RepairSourceContext,
 ): string {
   return editsDiff(edits, 0, sourceContext);
+}
+
+interface AnchoredRepairEdit {
+  path: string;
+  startLine: number;
+  endLine: number;
+  replacement: string;
+}
+
+function anchoredEditValue(value: unknown, editIndex: number): AnchoredRepairEdit {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`repair edit ${editIndex + 1} must be an object`);
+  }
+  const edit = value as Record<string, unknown>;
+  if (
+    Object.keys(edit).some((key) => !['path', 'startLine', 'endLine', 'new'].includes(key)) ||
+    typeof edit.path !== 'string' || !/\S/u.test(edit.path) ||
+    [...edit.path].length > REPAIR_PROPOSAL_LIMITS.pathCodePoints ||
+    !Number.isSafeInteger(edit.startLine) || Number(edit.startLine) < 1 ||
+    !Number.isSafeInteger(edit.endLine) || Number(edit.endLine) < Number(edit.startLine) ||
+    typeof edit.new !== 'string' ||
+    [...edit.new].length > REPAIR_PROPOSAL_LIMITS.replacementCodePoints
+  ) throw new Error(`repair edit ${editIndex + 1} does not match the anchored line schema`);
+  return {
+    path: edit.path,
+    startLine: Number(edit.startLine),
+    endLine: Number(edit.endLine),
+    replacement: edit.new,
+  };
+}
+
+function lineSpans(content: string): Array<{ start: number; end: number }> {
+  const spans: Array<{ start: number; end: number }> = [];
+  let start = 0;
+  for (let index = 0; index < content.length; index += 1) {
+    if (content[index] !== '\n') continue;
+    spans.push({ start, end: index + 1 });
+    start = index + 1;
+  }
+  if (start < content.length) spans.push({ start, end: content.length });
+  return spans;
+}
+
+function replacementWithSourceEnding(
+  source: string,
+  oldText: string,
+  replacement: string,
+): string {
+  if (!replacement) return '';
+  const sourceEnding = source.includes('\r\n') ? '\r\n' : '\n';
+  const rangeEnding = oldText.endsWith('\r\n') ? '\r\n' : oldText.endsWith('\n') ? '\n' : '';
+  const normalized = replacement.replace(/\r\n|\r|\n/gu, sourceEnding);
+  if (rangeEnding && !normalized.endsWith(sourceEnding)) return `${normalized}${sourceEnding}`;
+  if (!rangeEnding && /(?:\r\n|\r|\n)$/u.test(normalized)) {
+    return normalized.replace(/(?:\r\n|\r|\n)$/u, '');
+  }
+  return normalized;
+}
+
+export function anchoredEditsDiff(
+  editsValue: unknown,
+  sourceContext: RepairSourceContext,
+): string {
+  if (
+    !Array.isArray(editsValue) ||
+    editsValue.length === 0 ||
+    editsValue.length > REPAIR_PROPOSAL_LIMITS.edits
+  ) {
+    throw new Error(`repair proposal must have from 1 to ${REPAIR_PROPOSAL_LIMITS.edits} anchored edits`);
+  }
+  const edits = editsValue.map(anchoredEditValue);
+  const paths = [...new Set(edits.map(({ path }) => path))];
+  return `${paths.map((path) => {
+    const pathEdits = edits.filter((edit) => edit.path === path);
+    let selected: { excerpt: RepairSourceExcerpt; spans: Array<{ start: number; end: number }> } | undefined;
+    for (const excerpt of sourceContext.sources) {
+      if (excerpt.path !== path) continue;
+      const spans = lineSpans(excerpt.content);
+      const finalLine = excerpt.startLine + spans.length - 1;
+      if (pathEdits.every(({ startLine, endLine }) =>
+        startLine >= excerpt.startLine && endLine <= finalLine,
+      )) {
+        selected = { excerpt, spans };
+        break;
+      }
+    }
+    if (!selected) throw new Error(`repair edits must use line ranges inside supplied source ${path}`);
+    const { excerpt, spans } = selected;
+    return positionedEditsDiff(path, excerpt, pathEdits.map((edit) => {
+      const start = spans[edit.startLine - excerpt.startLine]?.start;
+      const end = spans[edit.endLine - excerpt.startLine]?.end;
+      if (start === undefined || end === undefined) {
+        throw new Error(`repair edit range is outside supplied source ${path}`);
+      }
+      const oldText = excerpt.content.slice(start, end);
+      const replacement = replacementWithSourceEnding(excerpt.content, oldText, edit.replacement);
+      if (replacement === oldText) throw new Error(`repair edit for ${path} must change its line range`);
+      return { start, end, replacement };
+    }), `repair edits for ${path} must not overlap`);
+  }).join('\n')}\n`;
 }
 
 function candidateReply(
