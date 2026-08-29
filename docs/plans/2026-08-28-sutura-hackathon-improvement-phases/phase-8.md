@@ -165,3 +165,9 @@ Never open a branch or pull request.
 Record one public check URL and one sanitized audit-only result under `docs/demo/`.
 
 Document the assurance difference in the CLI README and main README.
+
+## Implementation evidence
+
+- Local automated implementation is complete. The sanitized reduced-assurance example is `docs/demo/sutura-audit-only-local-v1.json`.
+- The public check URL, live token-permission inspection, and live honest/Placebo audit runs are pending. Phase 8 did not call GitHub, Token Factory, ConTree, or other provider services.
+- Audit evidence uses one trusted allowlisted `Run <command>` or `$ <command>` identifier and one GitHub `Process completed with exit code N` marker in each log. Both command identifiers must match exactly.

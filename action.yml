@@ -4,7 +4,7 @@ author: Sutura
 
 inputs:
   github-token:
-    description: GitHub token used to read the failed run and publish the result.
+    description: GitHub token used to read the failed run and publish the comment, check, artifact, and repair pull request.
     required: true
   run-id:
     description: Numeric ID of the failed GitHub Actions workflow run.

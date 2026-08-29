@@ -48,6 +48,12 @@ try {
   if (!workflow.includes('uses: juan294/sutura@v0.1.1')) {
     throw new Error('installed CLI generated the wrong Action release reference');
   }
+  if (!workflow.includes('checks: write')) {
+    throw new Error('installed CLI omitted checks: write');
+  }
+  for (const input of ['github-token', 'run-id', 'nebius-api-key', 'contree-token', 'contree-project']) {
+    if (!workflow.includes(`${input}:`)) throw new Error(`installed CLI omitted ${input}`);
+  }
   if (run(binary, ['--version'], { cwd: consumer }).trim() !== '0.1.1') {
     throw new Error('installed CLI returned the wrong version');
   }

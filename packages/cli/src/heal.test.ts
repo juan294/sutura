@@ -17,8 +17,10 @@ import {
 } from '@sutura/core';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { HealArguments } from './args.js';
+import type { AuditArguments, HealArguments } from './args.js';
 import {
+  auditRuntimeFromEnvironment,
+  auditWithRuntime,
   CliConfigError,
   healWithRuntime,
   readDependencyHints,
@@ -45,6 +47,13 @@ const UPSTREAM_DIFF = [
   "+exports.fetchName = () => import('node-fetch').then(({default: fetch}) => fetch('data:Juan'))",
   "+  .then((response) => response.text());",
 ].join('\n');
+
+function auditRequest(directory: string): AuditArguments {
+  return {
+    command: 'audit', caseDir: directory, candidateDiff: join(directory, 'candidate.diff'),
+    beforeLog: join(directory, 'before.log'), afterLog: join(directory, 'after.log'), format: 'json',
+  };
+}
 
 function request(caseId: string, candidateDiff?: string, tavilyEnabled = true): HealArguments {
   return {
@@ -202,6 +211,54 @@ describe('healWithRuntime Placebo integration', () => {
 });
 
 describe('CLI runtime configuration and source boundaries', () => {
+  it('constructs audit-only runtime with only NEBIUS_API_KEY', () => {
+    expect(auditRuntimeFromEnvironment({ NEBIUS_API_KEY: 'test-key' })).toMatchObject({
+      llm: expect.any(Object), cost: expect.any(Object),
+    });
+  });
+
+  it('audits bounded local evidence without an executor', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-audit-'));
+    const chat = vi.fn(async (tier: ModelTier) => ({ text: tier === 'ultra'
+      ? '{"approved":true,"reasoning":"source repair is consistent"}'
+      : '{"class":"test-assertion","confidence":0.9,"signals":["assertion"],"failingCmd":"pnpm test","errorExcerpt":"assertion"}' }));
+    try {
+      await writeFile(join(directory, 'candidate.diff'), REPAIR_DIFF);
+      await writeFile(join(directory, 'before.log'), 'Run pnpm test\nAssertionError\nProcess completed with exit code 1.');
+      await writeFile(join(directory, 'after.log'), 'Run pnpm test\npassed\nProcess completed with exit code 0.');
+      const result = await auditWithRuntime(auditRequest(directory), {
+        llm: { chat }, cost: { entries: [], totalUsd: () => 0 },
+      });
+      expect(result).toMatchObject({ assurance: 'reduced', outcome: 'audit-approved' });
+      expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'nano', 'ultra']);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['symlink', 'oversized', 'binary'] as const)(
+    'rejects %s audit evidence before model calls',
+    async (scenario) => {
+      const directory = await mkdtemp(join(tmpdir(), 'sutura-audit-boundary-'));
+      const outside = join(directory, 'outside.log');
+      const chat = vi.fn();
+      try {
+        await writeFile(join(directory, 'candidate.diff'), REPAIR_DIFF);
+        await writeFile(outside, 'Run pnpm test\nProcess completed with exit code 1.');
+        if (scenario === 'symlink') await symlink(outside, join(directory, 'before.log'));
+        else if (scenario === 'oversized') await writeFile(join(directory, 'before.log'), 'x'.repeat(20_001));
+        else await writeFile(join(directory, 'before.log'), Buffer.from([82, 117, 110, 0, 120]));
+        await writeFile(join(directory, 'after.log'), 'Run pnpm test\nProcess completed with exit code 0.');
+        await expect(auditWithRuntime(auditRequest(directory), {
+          llm: { chat }, cost: { entries: [], totalUsd: () => 0 },
+        })).rejects.toThrow(/audit evidence/iu);
+        expect(chat).not.toHaveBeenCalled();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   it.each(['invalid', 'symlink'] as const)(
     'stops a %s repository policy before provider or sandbox calls',
     async (scenario) => {

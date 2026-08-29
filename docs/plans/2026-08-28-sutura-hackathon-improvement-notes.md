@@ -123,3 +123,19 @@
 - Found: Placebo and orchestration fixtures encoded the old fixed five-run operation count, while public consumers still need the existing `status`, `reproduced`, and `of` fields.
 - Chose: Run strict SPRT checks after batches of two, run an odd final attempt only when needed, preserve the three compatibility fields, and add versioned probability, Wilson interval, stop-reason, and attempt evidence. Publish Placebo operations saved against the fixed-five baseline.
 - Why: The new method reduces work without letting a mixed sequence stop early or authorizing an additional unsafe repair attempt.
+
+### Phase 8: Trusted audit evidence protocol
+
+- Plan said: Require both supplied logs to come from the same allowlisted command and refuse when the before log does not fail or the after log does not pass, but it did not define how paths map to a command or status.
+- Found: The audit command has no trusted command argument, and model-classified prose is not a safe source of command identity or exit status.
+- Chose: Require exactly one distinct `Run <command>` or `$ <command>` line in each log, allow only built-in package checks or repository-policy `requiredCommands`, and require exact command equality. Require exactly one standard GitHub `Process completed with exit code N` marker per log, with nonzero before and zero after. Validate all evidence before any model call.
+- Why: A strict local protocol resolves the missing argument without executing attacker-controlled text or letting the model decide whether supplied evidence passed.
+
+### Phase 8: Check recovery and exit evidence
+
+- Plan said: Store the check-run ID with the atomic attempt claim and recover the check independently on redelivery.
+- Found: The temporary Git ref cannot store a check ID and disappears after a successful claim. Comments and checks can also fail independently.
+- Chose: Create or recover the exact-SHA check while holding the temporary-ref lock, store the returned ID in the in-memory `AttemptTarget` and bot comment, and recover durably through the stable repository-and-run `external_id`. Release the lock after both durable surfaces are attempted. A bounded main-action failure path completes an orphaned in-progress check as `action_required` without changing an already completed check.
+- Why: This preserves concurrency safety, prevents a second model or sandbox run, and lets provider, sandbox, artifact, or serialization failures terminate the same created check.
+
+- Manual check URL, token-permission validation, and live honest/Placebo audit runs remain pending because this phase prohibits GitHub/provider calls and credit spending. The committed audit example is generated from fully local scripted evidence and does not claim remote validation.

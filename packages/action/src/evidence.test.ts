@@ -6,7 +6,7 @@ import {
   type CaseFile,
 } from '@sutura/core';
 
-import { runtimeEvidence } from './evidence.js';
+import { checkOutput, runtimeEvidence } from './evidence.js';
 
 function caseFile(overrides: Partial<CaseFile> = {}): CaseFile {
   const entries = [{ role: 'nano' as const, model: 'nvidia/nemotron-nano', inTok: 10, outTok: 5, reasoningTok: 0, usd: 0.001 }];
@@ -32,6 +32,12 @@ function caseFile(overrides: Partial<CaseFile> = {}): CaseFile {
 }
 
 describe('runtimeEvidence', () => {
+  it('creates bounded public check output', () => {
+    expect(checkOutput(caseFile())).toEqual({
+      title: 'Sutura outcome: gave-up',
+      summary: expect.stringContaining('Policy SHA: default'),
+    });
+  });
   it('reports actual Nemotron calls, cost, and ConTree results', () => {
     expect(runtimeEvidence(caseFile())).toEqual([
       'Nemotron runtime: nano=nvidia/nemotron-nano calls=1; inference cost USD=0.001000',

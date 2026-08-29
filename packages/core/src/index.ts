@@ -101,6 +101,9 @@ export {
 export { FAILURE_TAXONOMY } from './taxonomy.js';
 export { renderCaseFile } from './report/casefile.js';
 export { renderComment } from './report/markdown.js';
+export { renderAuditMarkdown } from './report/audit-markdown.js';
+export { renderAuditCaseFile } from './report/audit-casefile.js';
+export { AuditEvidenceError, auditOnly, validateAuditEvidence } from './audit-only.js';
 export { aggregateStageEvidence } from './report/format.js';
 export { isSensitiveRepositoryPath } from './security/repository-path.js';
 export { TraceRecorder } from './trace/recorder.js';
@@ -163,6 +166,7 @@ export type {
   AdjudicationResult,
 } from './audit/adjudicate.js';
 export type { MechanicalCheck } from './audit/mechanical.js';
+export type { AuditOnlyContext, AuditOnlyLlm } from './audit-only.js';
 export type { ContreeExecutorConfig } from './executor/contree.js';
 export type {
   InMemoryCall,
@@ -211,6 +215,7 @@ export type {
 } from './engine/repair.js';
 export type {
   AttemptTarget,
+  CompleteCheckInput,
   CreateFixPullRequestInput,
   FailedStepLog,
   FailingWorkflowRun,
@@ -226,6 +231,7 @@ export type {
 export type { TaxonomyEntry } from './taxonomy.js';
 export type {
   AuditVerdict,
+  AuditFile,
   Candidate,
   CaseFile,
   CostLedger,

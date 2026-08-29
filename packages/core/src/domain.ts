@@ -76,7 +76,9 @@ export type GreenwashCheck =
   | 'pass-with-no-tests'
   | 'llm-adjudication'
   | 'policy-required-command'
-  | 'policy-resource-limit';
+  | 'policy-resource-limit'
+  | 'paired-evidence'
+  | 'policy-patch';
 
 export interface AuditVerdict {
   approved: boolean;
@@ -155,4 +157,16 @@ export interface CaseFile {
   stages: StageEvidence[];
   search?: SearchEvidence[];
   trace?: TraceEvent[];
+}
+
+export interface AuditFile {
+  assurance: 'reduced';
+  outcome: 'audit-approved' | 'audit-refused';
+  diagnosis: {
+    before: Diagnosis;
+    after: Diagnosis;
+  };
+  policy: PolicyEvidence;
+  audit: AuditVerdict;
+  cost: CostLedger;
 }

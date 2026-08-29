@@ -4,10 +4,13 @@ import { join } from 'node:path';
 
 import type {
   AttemptTarget,
+  CompleteCheckInput,
   CreateFixPullRequestInput,
   FailingWorkflowRun,
   GitHubOrchestrationPort,
 } from '@sutura/core';
+import { checkAnnotations, checkConclusion, checkExternalId, SUTURA_CHECK_NAME } from './checks.js';
+import { checkOutput } from './evidence.js';
 
 const FAILED_CONCLUSIONS = new Set(['failure', 'timed_out']);
 const FAILED_STEP_LINES = 200;
@@ -79,6 +82,38 @@ export interface GitHubApi {
     base: string;
     body: string;
   }): Promise<{ number: number; url: string }>;
+  listCheckRunsForRef(ref: string): Promise<Array<{
+    id: number;
+    headSha: string;
+    externalId: string | null;
+    name: string;
+    status: string;
+    conclusion: string | null;
+  }>>;
+  createCheckRun(input: {
+    name: string;
+    headSha: string;
+    externalId: string;
+    status: 'in_progress';
+    title: string;
+    summary: string;
+  }): Promise<{ id: number }>;
+  updateCheckRun(input: {
+    checkRunId: number;
+    status: 'completed';
+    conclusion: 'neutral' | 'action_required';
+    detailsUrl?: string;
+    title: string;
+    summary: string;
+    annotations: Array<{
+      path: string;
+      startLine: number;
+      endLine: number;
+      annotationLevel: 'notice' | 'warning' | 'failure';
+      title: string;
+      message: string;
+    }>;
+  }): Promise<void>;
 }
 
 export interface ArtifactApi {
@@ -171,6 +206,7 @@ function validBranch(value: string): boolean {
 
 export class GitHubAdapter implements GitHubOrchestrationPort {
   private readonly repository: string;
+  private activeCheck: { id: number; headSha: string } | undefined;
 
   constructor(
     private readonly api: GitHubApi,
@@ -291,6 +327,23 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
     };
   }
 
+  private async findCheck(headSha: string): Promise<{
+    id: number;
+    headSha: string;
+    status: string;
+  } | undefined> {
+    const externalId = checkExternalId(this.repository, this.options.runId);
+    const matches = (await this.api.listCheckRunsForRef(headSha)).filter((check) =>
+      check.name === SUTURA_CHECK_NAME &&
+      check.externalId === externalId &&
+      check.headSha.toLowerCase() === headSha.toLowerCase(),
+    );
+    if (matches.length > 1) {
+      throw new GitHubAdapterError('Multiple Sutura checks match this workflow run');
+    }
+    return matches[0];
+  }
+
   async claimAttempt(
     prNumber: number | undefined,
     marker: string,
@@ -305,33 +358,58 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
     ) {
       throw new GitHubAdapterError('Workflow run metadata changed before claim');
     }
-    const comments = prNumber === undefined
-      ? await this.api.listCommitComments(run.headSha)
-      : await this.api.listIssueComments(prNumber);
-    if (
-      comments.some(
-        ({ body, authorLogin }) =>
-          authorLogin === 'github-actions[bot]' && body?.includes(marker),
-      )
-    ) return null;
+    const externalId = checkExternalId(this.repository, this.options.runId);
     try {
       await this.api.createRef(
         `refs/tags/sutura-attempt-${this.options.runId}`,
         run.headSha,
       );
     } catch (error) {
-      if (apiStatus(error) === 422) return null;
+      if (apiStatus(error) === 422) {
+        this.activeCheck = await this.findCheck(run.headSha);
+        return null;
+      }
       throw new GitHubAdapterError('Could not claim the workflow run atomically', { cause: error });
     }
-    const body = `${marker}\nSutura claimed this failed run and is starting analysis.`;
-    const comment = prNumber === undefined
-      ? await this.api.createCommitComment(run.headSha, body)
-      : await this.api.createIssueComment(prNumber, body);
-    await this.api.deleteRef(`tags/sutura-attempt-${this.options.runId}`);
-    return {
-      kind: prNumber === undefined ? 'commit' : 'pull-request',
-      commentId: comment.id,
-    };
+    try {
+      this.activeCheck = await this.findCheck(run.headSha);
+      const recoveredExistingCheck = this.activeCheck !== undefined;
+      const comments = prNumber === undefined
+        ? await this.api.listCommitComments(run.headSha)
+        : await this.api.listIssueComments(prNumber);
+      const existingComment = comments.find(
+        ({ body, authorLogin }) =>
+          authorLogin === 'github-actions[bot]' && body?.includes(marker),
+      );
+      if (!this.activeCheck) {
+        const created = await this.api.createCheckRun({
+          name: SUTURA_CHECK_NAME,
+          headSha: run.headSha,
+          externalId,
+          status: 'in_progress',
+          title: 'Sutura repair audit in progress',
+          summary: `Analyzing failed workflow run ${this.options.runId}.`,
+        });
+        if (!Number.isSafeInteger(created.id) || created.id <= 0) {
+          throw new GitHubAdapterError('GitHub returned an invalid check-run id');
+        }
+        this.activeCheck = { id: created.id, headSha: run.headSha };
+      }
+      if (existingComment) return null;
+      const body = `${marker}\n<!-- sutura-check-run:${this.activeCheck.id} -->\nSutura claimed this failed run and is starting analysis.`;
+      const comment = prNumber === undefined
+        ? await this.api.createCommitComment(run.headSha, body)
+        : await this.api.createIssueComment(prNumber, body);
+      if (recoveredExistingCheck) return null;
+      return {
+        kind: prNumber === undefined ? 'commit' : 'pull-request',
+        commentId: comment.id,
+        checkRunId: this.activeCheck.id,
+        headSha: run.headSha,
+      };
+    } finally {
+      await this.api.deleteRef(`tags/sutura-attempt-${this.options.runId}`);
+    }
   }
 
   async updateAttempt(target: AttemptTarget, body: string): Promise<void> {
@@ -340,6 +418,37 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
       return;
     }
     await this.api.updateIssueComment(target.commentId, body);
+  }
+
+  async completeCheck(target: AttemptTarget, input: CompleteCheckInput): Promise<void> {
+    if (target.checkRunId !== this.activeCheck?.id || target.headSha !== this.activeCheck.headSha) {
+      throw new GitHubAdapterError('Check target differs from the atomic attempt claim');
+    }
+    const output = checkOutput(input.caseFile);
+    await this.api.updateCheckRun({
+      checkRunId: target.checkRunId,
+      status: 'completed',
+      conclusion: checkConclusion(input.caseFile.outcome),
+      detailsUrl: input.artifactUrl,
+      ...output,
+      annotations: await checkAnnotations(input.checkoutDir, target.headSha, input.caseFile),
+    });
+  }
+
+  async completeUnexpectedFailure(reason: string): Promise<void> {
+    void reason;
+    const run = await this.api.getWorkflowRun(integerId(this.options.runId, 'Workflow run id'));
+    const check = await this.findCheck(run.headSha);
+    if (!check || check.status === 'completed') return;
+    await this.api.updateCheckRun({
+      checkRunId: check.id,
+      status: 'completed',
+      conclusion: 'action_required',
+      title: 'Sutura stopped unexpectedly',
+      summary: 'Sutura stopped after an unexpected provider, sandbox, artifact, or serialization error. Review the action log and rerun after the cause is resolved.',
+      annotations: [],
+    });
+    this.activeCheck = { id: check.id, headSha: check.headSha };
   }
 
   async createFixPullRequest(

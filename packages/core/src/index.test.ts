@@ -13,6 +13,7 @@ import {
   VERSION,
   adjudicate,
   audit,
+  auditOnly,
   checkAssertionDrop,
   checkDeletedTests,
   checkLoosenedTypes,
@@ -26,6 +27,8 @@ import {
   orchestrate,
   prepareRepair,
   renderCaseFile,
+  renderAuditCaseFile,
+  renderAuditMarkdown,
   renderComment,
   redactExternalText,
   runMechanicalChecks,
@@ -103,11 +106,14 @@ describe('@sutura/core entry point', () => {
   it('exports both surgical report renderers from the package root', () => {
     expect(renderComment).toBeTypeOf('function');
     expect(renderCaseFile).toBeTypeOf('function');
+    expect(renderAuditMarkdown).toBeTypeOf('function');
+    expect(renderAuditCaseFile).toBeTypeOf('function');
   });
 
   it('exports the adversarial audit API from the package root', () => {
     expect(ADVERSARIAL_AUDIT_PROMPT).toContain('Default to refusal');
     expect(audit).toBeTypeOf('function');
+    expect(auditOnly).toBeTypeOf('function');
     expect(adjudicate).toBeTypeOf('function');
     expect(runMechanicalChecks).toBeTypeOf('function');
     expect(checkDeletedTests).toBeTypeOf('function');

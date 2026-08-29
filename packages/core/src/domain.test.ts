@@ -78,6 +78,8 @@ describe('domain model', () => {
       | 'llm-adjudication'
       | 'policy-required-command'
       | 'policy-resource-limit'
+      | 'paired-evidence'
+      | 'policy-patch'
     >();
     expectTypeOf<AuditVerdict>().toEqualTypeOf<{
       approved: boolean;

@@ -13,6 +13,7 @@ import {
 
 import { GitHubAdapter } from './github.js';
 import { runtimeEvidence } from './evidence.js';
+import { withFailureSafeCheck } from './failure-safe.js';
 import { mapActionInputs } from './input.js';
 import { createGitHubApi } from './octokit.js';
 import { GitRepository } from './repository.js';
@@ -39,7 +40,7 @@ export async function runAction(): Promise<void> {
       prices: DEFAULT_MODEL_PRICES,
       routingProfileId: config.routingProfileId,
     });
-    const githubPort = new GitHubAdapter(
+    const adapter = new GitHubAdapter(
       createGitHubApi(octokit, owner, repo),
       {
         owner,
@@ -62,9 +63,9 @@ export async function runAction(): Promise<void> {
       ? new TavilyClient(config.tavilyApiKey)
       : undefined;
 
-    const result = await orchestrate({
+    const result = await withFailureSafeCheck(adapter, () => orchestrate({
       runId: action.runId,
-      github: githubPort,
+      github: adapter,
       repository,
       executor,
       llm: nebius,
@@ -74,7 +75,7 @@ export async function runAction(): Promise<void> {
       repairBudgets: config.repairBudgets,
       search: config.search,
       ...(tavily ? { tavily } : {}),
-    });
+    }), (message) => core.warning(message));
     core.setOutput('outcome', result.outcome);
     for (const evidence of runtimeEvidence(result)) core.info(evidence);
     core.info(`Sutura outcome: ${result.outcome}`);

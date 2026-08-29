@@ -43,6 +43,7 @@ on:
 
 permissions:
   actions: read
+  checks: write
   contents: write
   pull-requests: write
 

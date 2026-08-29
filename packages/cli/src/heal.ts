@@ -4,6 +4,7 @@ import { basename, resolve, sep } from 'node:path';
 
 import {
   ContreeExecutor,
+  auditOnly,
   DEFAULT_MODEL_PRICES,
   NebiusClient,
   TavilyClient,
@@ -14,11 +15,13 @@ import {
   MAX_POLICY_BYTES,
   readRepairSourceContext,
   type CaseFile,
+  type AuditFile,
   type ConfigEnvironment,
   type CostLedger,
   type Diagnosis,
   type Executor,
   type HealLlm,
+  type AuditOnlyLlm,
   type RepairSourceContext,
   type RepairBudgetLimits,
   type SearchLimits,
@@ -29,11 +32,13 @@ import {
   type TavilySearch,
 } from '@sutura/core';
 
-import type { HealArguments } from './args.js';
+import type { AuditArguments, HealArguments } from './args.js';
 
 const NEBIUS_BASE_URL = 'https://api.tokenfactory.nebius.com/v1/';
 const MAX_SOURCE_SCAN_BYTES = 1024 * 1024;
 const MAX_MANIFEST_BYTES = 128 * 1024;
+export const MAX_AUDIT_LOG_BYTES = 20_000;
+export const MAX_AUDIT_DIFF_BYTES = 1024 * 1024;
 const PACKAGE_NAME = /^@?[a-z0-9][\w./-]*$/iu;
 const PACKAGE_VERSION = /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/u;
 
@@ -47,6 +52,11 @@ export interface HealRuntime {
   search?: SearchLimits;
   tavily?: TavilySearch;
   imageRef?: string;
+}
+
+export interface AuditRuntime {
+  llm: AuditOnlyLlm;
+  cost: CostLedger;
 }
 
 export class CliConfigError extends Error {
@@ -247,6 +257,33 @@ async function canonicalCaseDirectory(caseDir: string): Promise<string> {
   return canonical;
 }
 
+async function readAuditEvidence(path: string, maximumBytes: number): Promise<string> {
+  const metadata = await lstat(path).catch(() => null);
+  if (!metadata?.isFile() || metadata.isSymbolicLink()) {
+    throw new CliConfigError('Audit evidence must be a regular non-symlink file');
+  }
+  if (metadata.size > maximumBytes) {
+    throw new CliConfigError(`Audit evidence exceeds ${maximumBytes} bytes`);
+  }
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const current = await handle.stat();
+    if (!current.isFile() || current.size !== metadata.size || current.size > maximumBytes) {
+      throw new CliConfigError('Audit evidence changed during bounded read');
+    }
+    const bytes = Buffer.alloc(current.size + 1);
+    const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
+    if (bytesRead !== current.size || bytesRead > maximumBytes) {
+      throw new CliConfigError('Audit evidence changed during bounded read');
+    }
+    const content = bytes.subarray(0, bytesRead);
+    if (content.includes(0)) throw new CliConfigError('Audit evidence must be UTF-8 text');
+    return content.toString('utf8');
+  } finally {
+    await handle.close();
+  }
+}
+
 async function readJsonObject(path: string): Promise<Record<string, unknown> | null> {
   let handle;
   try {
@@ -384,4 +421,44 @@ export function runtimeFromEnvironment(
 
 export async function healFromEnvironment(request: HealArguments): Promise<CaseFile> {
   return healWithRuntime(request, runtimeFromEnvironment(request));
+}
+
+export async function auditWithRuntime(
+  request: AuditArguments,
+  runtime: AuditRuntime,
+): Promise<AuditFile> {
+  const caseDir = await canonicalCaseDirectory(request.caseDir);
+  const loadedPolicy = loadRepositoryPolicy(await readLocalPolicy(caseDir));
+  const [candidateDiff, beforeLog, afterLog] = await Promise.all([
+    readAuditEvidence(request.candidateDiff, Math.min(MAX_AUDIT_DIFF_BYTES, loadedPolicy.policy.maxDiffBytes)),
+    readAuditEvidence(request.beforeLog, MAX_AUDIT_LOG_BYTES),
+    readAuditEvidence(request.afterLog, MAX_AUDIT_LOG_BYTES),
+  ]);
+  return auditOnly({
+    llm: runtime.llm,
+    cost: runtime.cost,
+    candidateDiff,
+    beforeLog,
+    afterLog,
+    policy: loadedPolicy.policy,
+    policyEvidence: { baseRef: 'local', baseSha: 'local', policySha: loadedPolicy.sha },
+  });
+}
+
+export function auditRuntimeFromEnvironment(
+  environment: ConfigEnvironment = process.env,
+): AuditRuntime {
+  const config = loadConfig(environment);
+  const llm = new NebiusClient({
+    apiKey: config.nebiusApiKey,
+    baseUrl: NEBIUS_BASE_URL,
+    models: config.models,
+    prices: DEFAULT_MODEL_PRICES,
+    routingProfileId: config.routingProfileId,
+  });
+  return { llm, cost: llm.ledger };
+}
+
+export async function auditFromEnvironment(request: AuditArguments): Promise<AuditFile> {
+  return auditWithRuntime(request, auditRuntimeFromEnvironment());
 }

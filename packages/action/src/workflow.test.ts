@@ -14,6 +14,7 @@ describe('trusted Sutura workflow', () => {
     expect(workflow).toContain("workflow_run.conclusion == 'timed_out'");
     expect(workflow).toContain('ref: ${{ github.event.repository.default_branch }}');
     expect(workflow).toContain('actions: read');
+    expect(workflow).toContain('checks: write');
     expect(workflow).toContain('contents: write');
     expect(workflow).toContain('pull-requests: write');
     expect(workflow).toContain('github-token: ${{ github.token }}');

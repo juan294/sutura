@@ -1,4 +1,4 @@
-import { notRunTriageVerdict, type CaseFile, type CostLedger } from '@sutura/core';
+import { notRunTriageVerdict, type AuditFile, type CaseFile, type CostLedger } from '@sutura/core';
 
 import {
   CliUsageError,
@@ -6,11 +6,13 @@ import {
   USAGE,
   VERSION,
   type DoctorArguments,
+  type AuditArguments,
   type HealArguments,
   type InitArguments,
 } from './args.js';
 import { doctorSutura, type DoctorResult } from './doctor.js';
 import { healFromEnvironment } from './heal.js';
+import { auditFromEnvironment } from './heal.js';
 import { installSutura, type SetupResult } from './setup.js';
 import { runEvaluationCommand } from './eval.js';
 
@@ -23,6 +25,7 @@ export interface CliDependencies {
   heal?: (request: HealArguments) => Promise<CaseFile>;
   init?: (request: InitArguments) => Promise<SetupResult>;
   doctor?: (request: DoctorArguments) => Promise<DoctorResult>;
+  audit?: (request: AuditArguments) => Promise<AuditFile>;
 }
 
 function emptyLedger(): CostLedger {
@@ -108,6 +111,16 @@ export async function runCli(
     try {
       const lines = await runEvaluationCommand(request);
       write(`${lines.join('\n')}\n`);
+      return 0;
+    } catch (error) {
+      writeError(`${publicError(error)}\n`);
+      return 1;
+    }
+  }
+  if (request.command === 'audit') {
+    try {
+      const auditFile = await (dependencies.audit ?? auditFromEnvironment)(request);
+      write(`${JSON.stringify(auditFile)}\n`);
       return 0;
     } catch (error) {
       writeError(`${publicError(error)}\n`);

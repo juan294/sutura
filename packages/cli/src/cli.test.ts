@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { completedTriageVerdict, notRunTriageVerdict, type CaseFile } from '@sutura/core';
+import { completedTriageVerdict, notRunTriageVerdict, type AuditFile, type CaseFile } from '@sutura/core';
 
 import { runCli } from './cli.js';
 
@@ -23,6 +23,25 @@ function fixed(): CaseFile {
 }
 
 describe('runCli', () => {
+  it('prints only reduced-assurance AuditFile JSON', async () => {
+    const stdout: string[] = [];
+    const auditFile = {
+      assurance: 'reduced', outcome: 'audit-refused',
+      diagnosis: { before: fixed().diagnosis, after: fixed().diagnosis },
+      policy: fixed().policy,
+      audit: { approved: false, checks: [], reasoning: 'refused' },
+      cost: { entries: [], totalUsd: () => 0 },
+    } satisfies AuditFile;
+    const audit = vi.fn().mockResolvedValue(auditFile);
+    const exitCode = await runCli([
+      'audit', '--case-dir', '/tmp/case', '--candidate-diff', '/tmp/fix.diff',
+      '--before-log', '/tmp/before.log', '--after-log', '/tmp/after.log', '--format', 'json',
+    ], { write: (value) => stdout.push(value) }, { audit });
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout.join(''))).toMatchObject({ assurance: 'reduced', outcome: 'audit-refused' });
+    expect(stdout.join('')).not.toMatch(/fixed|verified|flaky-no-patch/u);
+  });
+
   it('prints only valid CaseFile JSON on stdout', async () => {
     const stdout: string[] = [];
     const stderr: string[] = [];

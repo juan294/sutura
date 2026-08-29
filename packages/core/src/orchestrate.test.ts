@@ -76,6 +76,7 @@ class FakeGitHub implements GitHubOrchestrationPort {
     title: string;
   }> = [];
   readonly artifacts: Array<{ name: string; html: string }> = [];
+  readonly checks: Array<{ target: AttemptTarget; input: import('./orchestrate.js').CompleteCheckInput }> = [];
 
   constructor(readonly run = RUN) {}
 
@@ -96,6 +97,8 @@ class FakeGitHub implements GitHubOrchestrationPort {
     return {
       kind: prNumber === undefined ? 'commit' : 'pull-request',
       commentId: id,
+      checkRunId: 700 + id,
+      headSha: this.run.headSha,
     };
   }
 
@@ -119,6 +122,10 @@ class FakeGitHub implements GitHubOrchestrationPort {
   async uploadCaseFile(name: string, html: string): Promise<{ url: string }> {
     this.artifacts.push({ name, html });
     return { url: `https://github.test/artifacts/${name}` };
+  }
+
+  async completeCheck(target: AttemptTarget, input: import('./orchestrate.js').CompleteCheckInput): Promise<void> {
+    this.checks.push({ target, input });
   }
 }
 

@@ -7,6 +7,7 @@ export const USAGE = [
   '  sutura init [--workflow <name>] [--repo <owner/repo>] [--force] [--no-tavily]',
   '  sutura doctor [--repo <owner/repo>]',
   '  sutura heal --case-dir <dir> --format json [--candidate-diff <diff>] [--routing-profile <id>] [--no-tavily]',
+  '  sutura audit --case-dir <dir> --candidate-diff <file> --before-log <file> --after-log <file> --format json',
   '  sutura eval validate --manifest <file>',
   '  sutura eval export --manifest <file> --format <atif|jsonl> --output <file> [--force]',
   '  sutura --help',
@@ -28,6 +29,15 @@ export interface InitArguments {
   repository?: string;
   force: boolean;
   tavilyEnabled: boolean;
+}
+
+export interface AuditArguments {
+  command: 'audit';
+  caseDir: string;
+  candidateDiff: string;
+  beforeLog: string;
+  afterLog: string;
+  format: 'json';
 }
 
 export interface DoctorArguments {
@@ -58,6 +68,7 @@ export interface EvalExportArguments {
 
 export type CliArguments =
   | HealArguments
+  | AuditArguments
   | InitArguments
   | DoctorArguments
   | EvalValidateArguments
@@ -173,6 +184,29 @@ function parseInit(args: readonly string[]): InitArguments {
   };
 }
 
+function parseAudit(args: readonly string[]): AuditArguments {
+  const values = new Map<string, string>();
+  const allowed = new Set(['--case-dir', '--candidate-diff', '--before-log', '--after-log', '--format']);
+  for (let index = 1; index < args.length; index += 2) {
+    const flag = args[index];
+    if (!flag || !allowed.has(flag)) throw new CliUsageError(`Unknown argument: ${flag ?? '(missing)'}`);
+    if (values.has(flag)) throw new CliUsageError(`Duplicate argument: ${flag}`);
+    values.set(flag, nonEmptyValue(args, index, flag));
+  }
+  for (const flag of allowed) {
+    if (!values.has(flag)) throw new CliUsageError(`${flag} is required`);
+  }
+  if (values.get('--format') !== 'json') throw new CliUsageError('--format must be json');
+  return {
+    command: 'audit',
+    caseDir: values.get('--case-dir') as string,
+    candidateDiff: values.get('--candidate-diff') as string,
+    beforeLog: values.get('--before-log') as string,
+    afterLog: values.get('--after-log') as string,
+    format: 'json',
+  };
+}
+
 function parseDoctor(args: readonly string[]): DoctorArguments {
   if (args.length === 1) return { command: 'doctor' };
   if (args.length !== 3 || args[1] !== '--repo') {
@@ -222,6 +256,7 @@ export function parseArgs(args: readonly string[]): CliArguments {
   if (args.length === 1 && (args[0] === '--help' || args[0] === 'help')) return { command: 'help' };
   if (args.length === 1 && (args[0] === '--version' || args[0] === 'version')) return { command: 'version' };
   if (args[0] === 'heal') return parseHeal(args);
+  if (args[0] === 'audit') return parseAudit(args);
   if (args[0] === 'init') return parseInit(args);
   if (args[0] === 'doctor') return parseDoctor(args);
   if (args[0] === 'eval') return parseEval(args);

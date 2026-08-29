@@ -83,6 +83,14 @@ export interface FailingWorkflowRun {
 export interface AttemptTarget {
   kind: 'pull-request' | 'commit';
   commentId: number;
+  checkRunId: number;
+  headSha: string;
+}
+
+export interface CompleteCheckInput {
+  caseFile: CaseFile;
+  artifactUrl: string;
+  checkoutDir: string;
 }
 
 export interface CreateFixPullRequestInput {
@@ -102,6 +110,7 @@ export interface GitHubOrchestrationPort {
     input: CreateFixPullRequestInput,
   ): Promise<{ number: number; url: string }>;
   uploadCaseFile(name: string, html: string): Promise<{ url: string }>;
+  completeCheck(target: AttemptTarget, input: CompleteCheckInput): Promise<void>;
 }
 
 export interface PublishFixInput {
@@ -397,9 +406,11 @@ async function publishReport(
   caseFile: CaseFile,
   marker: string,
   target: AttemptTarget,
+  checkoutDir: string,
 ): Promise<void> {
   const report = await prepareReport(github, run, caseFile, marker);
   await github.updateAttempt(target, report.body);
+  await github.completeCheck(target, { caseFile, artifactUrl: report.artifactUrl, checkoutDir });
 }
 
 export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> {
@@ -474,7 +485,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       setup.command,
       setup.result,
     );
-    await publishReport(ctx.github, run, caseFile, marker, target);
+    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir);
     return caseFile;
   }
   const reproduction = await executor.run(
@@ -503,7 +514,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       },
       mechanical,
     );
-    await publishReport(ctx.github, run, caseFile, marker, target);
+    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir);
     return caseFile;
   }
 
@@ -536,7 +547,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       : { lockfileDiff: ctx.lockfileDiff }),
   });
   if (caseFile.outcome !== 'fixed') {
-    await publishReport(ctx.github, run, caseFile, marker, target);
+    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir);
     return caseFile;
   }
 
@@ -561,5 +572,10 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     title: 'fix: repair CI failure with Sutura',
   });
   await ctx.github.updateAttempt(target, report.body);
+  await ctx.github.completeCheck(target, {
+    caseFile,
+    artifactUrl: report.artifactUrl,
+    checkoutDir,
+  });
   return caseFile;
 }

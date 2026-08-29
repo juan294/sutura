@@ -161,7 +161,7 @@ variable. Sutura does not proxy requests through maintainer infrastructure.
 
 Sutura handles failed and timed-out runs from pull requests, pushes, scheduled workflows, and manual dispatches.
 
-Pull request runs receive an evidence comment. Direct runs receive the same evidence as a commit comment.
+Pull request runs receive an evidence comment. Direct runs receive the same evidence as a commit comment. Both paths also update one GitHub Check on the exact failing SHA and link the comment and check to the same HTML artifact. Maintainers can require the Sutura check. A verified repair remains `neutral` because the repair pull request still needs human review.
 
 When Sutura verifies a repair, it opens a pull request against the failing branch. It never merges the repair.
 
@@ -226,11 +226,26 @@ does not change the account Zero Data Retention setting.
 
 ## GitHub Action configuration
 
-The action needs `actions: read`, `contents: write`, and `pull-requests: write`.
+The action needs `actions: read`, `checks: write`, `contents: write`, and `pull-requests: write`.
 Configure `NEBIUS_API_KEY`, `CONTREE_TOKEN`, and optional `TAVILY_API_KEY` as
 repository secrets. Configure `CONTREE_PROJECT` as a repository variable. The
 checked-in [workflow](.github/workflows/sutura.yml) shows the complete wiring.
 Pin external use to an immutable release tag or commit SHA.
+
+### Reduced-assurance audit-only mode
+
+Audit a supplied diff and paired CI logs without ConTree:
+
+```text
+sutura audit \
+  --case-dir /tmp/sutura-audit/case \
+  --candidate-diff /tmp/sutura-audit/candidate.diff \
+  --before-log /tmp/sutura-audit/before.log \
+  --after-log /tmp/sutura-audit/after.log \
+  --format json
+```
+
+This command requires only `NEBIUS_API_KEY`. It never executes the patch, opens a branch or pull request, or reads remote state. Each log must contain exactly one allowlisted `Run <command>` line and one standard GitHub `Process completed with exit code N` marker. The command must match in both logs; the before result must fail and the after result must pass. The result is an `AuditFile` with `assurance: "reduced"`. It cannot claim that a patch is fixed or verified. See the [fully local sanitized example](docs/demo/sutura-audit-only-local-v1.json).
 
 The triage default is a maximum of five reproductions. Sutura runs them in
 batches of two and can stop after a strict sequential probability ratio test

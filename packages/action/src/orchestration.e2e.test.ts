@@ -133,6 +133,7 @@ class RecordedGitHubApi implements GitHubApi {
   private readonly commitParents = new Map<string, string[]>();
   private readonly claimRefs = new Set<string>();
   private nextCommentId = 7001;
+  readonly checks: Array<{ id: number; headSha: string; externalId: string; name: string; status: string; conclusion: string | null; detailsUrl?: string }> = [];
 
   constructor(private readonly fixtures: RecordedFixtures) {}
 
@@ -253,6 +254,24 @@ class RecordedGitHubApi implements GitHubApi {
   ): Promise<{ number: number; url: string }> {
     this.createdPullRequests.push(input);
     return { number: 43, url: 'https://github.test/acme/widget/pull/43' };
+  }
+
+  async listCheckRunsForRef(ref: string) {
+    return this.checks.filter(({ headSha }) => headSha === ref).map((check) => ({ ...check }));
+  }
+
+  async createCheckRun(input: { name: string; headSha: string; externalId: string; status: 'in_progress'; title: string; summary: string }): Promise<{ id: number }> {
+    const id = 8001;
+    this.checks.push({ id, headSha: input.headSha, externalId: input.externalId, name: input.name, status: input.status, conclusion: null });
+    return { id };
+  }
+
+  async updateCheckRun(input: { checkRunId: number; status: 'completed'; conclusion: 'neutral' | 'action_required'; detailsUrl?: string }): Promise<void> {
+    const check = this.checks.find(({ id }) => id === input.checkRunId);
+    if (!check) throw new Error(`Unknown check ${input.checkRunId}`);
+    check.status = input.status;
+    check.conclusion = input.conclusion;
+    if (input.detailsUrl !== undefined) check.detailsUrl = input.detailsUrl;
   }
 
   publishBranch(branch: string, parentSha: string): void {
@@ -420,7 +439,7 @@ function ledger(): CostLedger {
   return { entries: [], totalUsd: () => 0 };
 }
 
-function executorFor(exits: readonly number[]): InMemoryExecutor {
+function executorFor(exits: readonly number[], preparationFails = false): InMemoryExecutor {
   let scenarioIndex = 0;
   let agentPatched = false;
   return new InMemoryExecutor((command) => {
@@ -442,8 +461,9 @@ function executorFor(exits: readonly number[]): InMemoryExecutor {
         metrics: {},
       };
     }
-    const exitCode = command.includes('install --frozen-lockfile') ||
-      command.includes('git init --quiet')
+    const exitCode = command.includes('install --frozen-lockfile')
+      ? preparationFails ? 1 : 0
+      : command.includes('git init --quiet')
       ? 0
       : exits[scenarioIndex++] ?? 1;
     return {
@@ -460,8 +480,9 @@ interface Storyline {
   name: string;
   exits: number[];
   auditApproved: boolean;
-  outcome: 'fixed' | 'flaky-no-patch' | 'refused' | 'gave-up';
+  outcome: 'fixed' | 'flaky-no-patch' | 'refused' | 'gave-up' | 'infra-stop';
   commentSignal: string;
+  preparationFails?: boolean;
 }
 
 const STORYLINES: Storyline[] = [
@@ -493,6 +514,14 @@ const STORYLINES: Storyline[] = [
     outcome: 'gave-up',
     commentSignal: 'NO PATCH HELD',
   },
+  {
+    name: 'infra-stop',
+    exits: [],
+    auditApproved: true,
+    outcome: 'infra-stop',
+    commentSignal: 'INFRA — STOPPED',
+    preparationFails: true,
+  },
 ];
 
 async function harnessFor(storyline: Storyline): Promise<{
@@ -514,7 +543,7 @@ async function harnessFor(storyline: Storyline): Promise<{
     artifact,
   });
   const repository = new RecordedRepository(api);
-  const executor = executorFor(storyline.exits);
+  const executor = executorFor(storyline.exits, storyline.preparationFails);
   const llm = new ScriptedLlm(storyline.auditApproved);
   const ctx: OrchestrationContext = {
     runId: RUN_ID,
@@ -580,6 +609,18 @@ describe('recorded GitHub API orchestration E2E', () => {
         expect(harness.api.comments[0]?.body).toContain(attemptMarker(RUN_ID));
         expect(harness.api.comments[0]?.body).toContain(storyline.commentSignal);
         expect(harness.api.comments[0]?.body).toContain(ARTIFACT_URL);
+        expect(harness.api.checks).toEqual([
+          expect.objectContaining({
+            id: 8001,
+            headSha: HEAD_SHA,
+            externalId: `sutura:acme/widget:workflow-run:${RUN_ID}`,
+            status: 'completed',
+            conclusion: storyline.outcome === 'fixed' || storyline.outcome === 'flaky-no-patch'
+              ? 'neutral'
+              : 'action_required',
+            detailsUrl: ARTIFACT_URL,
+          }),
+        ]);
 
         if (storyline.outcome === 'fixed') {
           expect(harness.repository.fixes).toEqual([
@@ -616,6 +657,7 @@ describe('recorded GitHub API orchestration E2E', () => {
           fixes: harness.repository.fixes.length,
           llm: harness.llm.calls.length,
           pulls: harness.api.createdPullRequests.length,
+          checks: JSON.stringify(harness.api.checks),
         };
         await expect(orchestrate(harness.ctx)).rejects.toBeInstanceOf(
           AlreadyAttemptedError,
@@ -627,6 +669,7 @@ describe('recorded GitHub API orchestration E2E', () => {
           fixes: harness.repository.fixes.length,
           llm: harness.llm.calls.length,
           pulls: harness.api.createdPullRequests.length,
+          checks: JSON.stringify(harness.api.checks),
         }).toEqual(mutationCounts);
       } finally {
         if (previousSecret === undefined) {

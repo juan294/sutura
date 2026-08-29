@@ -39,6 +39,16 @@ describe('parseArgs', () => {
     });
   });
 
+  it('parses reduced-assurance audit inputs as file paths', () => {
+    expect(parseArgs([
+      'audit', '--case-dir', '/tmp/case', '--candidate-diff', '/tmp/fix.diff',
+      '--before-log', '/tmp/before.log', '--after-log', '/tmp/after.log', '--format', 'json',
+    ])).toEqual({
+      command: 'audit', caseDir: '/tmp/case', candidateDiff: '/tmp/fix.diff',
+      beforeLog: '/tmp/before.log', afterLog: '/tmp/after.log', format: 'json',
+    });
+  });
+
   it('parses evaluation validation and export commands', () => {
     expect(parseArgs(['eval', 'validate', '--manifest', '/tmp/manifest.json'])).toEqual({
       command: 'eval-validate', manifest: '/tmp/manifest.json',
@@ -79,6 +89,9 @@ describe('parseArgs', () => {
     ['init', '--repo', 'invalid'],
     ['init', '--workflow', 'CI', '--workflow', 'Tests'],
     ['doctor', '--unknown'],
+    ['audit'],
+    ['audit', '--case-dir', '/tmp/case', '--candidate-diff', '/tmp/fix.diff', '--before-log', '/tmp/before.log', '--after-log', '/tmp/after.log', '--format', 'text'],
+    ['audit', '--case-dir', '/tmp/case', '--candidate-diff', '/tmp/fix.diff', '--before-log', '/tmp/before.log', '--before-log', '/tmp/again.log', '--after-log', '/tmp/after.log', '--format', 'json'],
     ['eval'],
     ['eval', 'validate'],
     ['eval', 'validate', '--manifest', '/tmp/a', '--force'],

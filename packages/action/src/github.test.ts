@@ -48,6 +48,9 @@ function api(overrides: Partial<GitHubApi> = {}): GitHubApi {
     getCommitParents: async () => [SHA],
     getCommitSha: async () => SHA,
     createPullRequest: async () => ({ number: 10, url: 'https://example.test/pr/10' }),
+    listCheckRunsForRef: async () => [],
+    createCheckRun: async () => ({ id: 55 }),
+    updateCheckRun: async () => undefined,
     ...overrides,
   };
 }
@@ -151,6 +154,8 @@ describe('GitHubAdapter', () => {
     await expect(adapter.claimAttempt(12, '<!-- marker -->')).resolves.toEqual({
       kind: 'pull-request',
       commentId: 44,
+      checkRunId: 55,
+      headSha: SHA,
     });
   });
 
@@ -193,15 +198,17 @@ describe('GitHubAdapter', () => {
     await expect(adapter.claimAttempt(undefined, '<!-- marker -->')).resolves.toEqual({
       kind: 'commit',
       commentId: 44,
+      checkRunId: 55,
+      headSha: SHA,
     });
     await expect(adapter.updateAttempt(
-      { kind: 'commit', commentId: 44 },
+      { kind: 'commit', commentId: 44, checkRunId: 55, headSha: SHA },
       'report',
     )).resolves.toBeUndefined();
     expect(calls).toEqual([
-      'commit-comments',
       'ref:refs/tags/sutura-attempt-77',
-      'commit-comment:<!-- marker -->\nSutura claimed this failed run and is starting analysis.',
+      'commit-comments',
+      'commit-comment:<!-- marker -->\n<!-- sutura-check-run:55 -->\nSutura claimed this failed run and is starting analysis.',
       'delete:tags/sutura-attempt-77',
       'update:44:report',
     ]);
@@ -261,15 +268,17 @@ describe('GitHubAdapter', () => {
     await expect(adapter.claimAttempt(9, '<!-- marker -->')).resolves.toEqual({
       kind: 'pull-request',
       commentId: 44,
+      checkRunId: 55,
+      headSha: SHA,
     });
     expect(calls).toEqual([
       'ref:refs/tags/sutura-attempt-77',
-      'comment:<!-- marker -->\nSutura claimed this failed run and is starting analysis.',
+      'comment:<!-- marker -->\n<!-- sutura-check-run:55 -->\nSutura claimed this failed run and is starting analysis.',
       'delete:tags/sutura-attempt-77',
     ]);
   });
 
-  it('retains the atomic ref if marker comment creation fails', async () => {
+  it('releases the atomic ref if marker comment creation fails after check creation', async () => {
     let deleted = false;
     const adapter = new GitHubAdapter(api({
       createIssueComment: async () => { throw new Error('comment failed'); },
@@ -277,7 +286,7 @@ describe('GitHubAdapter', () => {
     }), { owner: 'owner', repo: 'repo', runId: '77' });
 
     await expect(adapter.claimAttempt(9, '<!-- marker -->')).rejects.toThrow(/comment failed/);
-    expect(deleted).toBe(false);
+    expect(deleted).toBe(true);
   });
 
   it('returns null when the atomic claim already exists', async () => {
@@ -297,8 +306,51 @@ describe('GitHubAdapter', () => {
     await expect(adapter.claimAttempt(9, '<!-- marker -->')).resolves.toEqual({
       kind: 'pull-request',
       commentId: 44,
+      checkRunId: 55,
+      headSha: SHA,
     });
     expect(claimed).toBe(true);
+  });
+
+  it('recovers an in-progress check independently when the marker comment exists', async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const adapter = new GitHubAdapter(api({
+      listIssueComments: async () => [{ id: 44, body: '<!-- marker -->', authorLogin: 'github-actions[bot]' }],
+      listCheckRunsForRef: async () => [{ id: 91, headSha: SHA, externalId: 'sutura:owner/repo:workflow-run:77', name: 'Sutura repair audit', status: 'in_progress', conclusion: null }],
+      updateCheckRun: async (input) => { updates.push(input); },
+    }), { owner: 'owner', repo: 'repo', runId: '77' });
+
+    await expect(adapter.claimAttempt(9, '<!-- marker -->')).resolves.toBeNull();
+    await adapter.completeUnexpectedFailure('redelivery recovered an incomplete attempt');
+    expect(updates).toEqual([expect.objectContaining({
+      checkRunId: 91, status: 'completed', conclusion: 'action_required',
+    })]);
+  });
+
+  it('does not rerun work when an existing check has no marker comment', async () => {
+    let createdComments = 0;
+    const adapter = new GitHubAdapter(api({
+      listCheckRunsForRef: async () => [{ id: 91, headSha: SHA, externalId: 'sutura:owner/repo:workflow-run:77', name: 'Sutura repair audit', status: 'in_progress', conclusion: null }],
+      createIssueComment: async () => { createdComments += 1; return { id: 44 }; },
+    }), { owner: 'owner', repo: 'repo', runId: '77' });
+
+    await expect(adapter.claimAttempt(9, '<!-- marker -->')).resolves.toBeNull();
+    expect(createdComments).toBe(1);
+  });
+
+  it('refreshes checks after acquiring the atomic claim', async () => {
+    let createChecks = 0;
+    let lockAcquired = false;
+    const adapter = new GitHubAdapter(api({
+      createRef: async () => { lockAcquired = true; },
+      listCheckRunsForRef: async () => lockAcquired
+        ? [{ id: 91, headSha: SHA, externalId: 'sutura:owner/repo:workflow-run:77', name: 'Sutura repair audit', status: 'in_progress', conclusion: null }]
+        : [],
+      createCheckRun: async () => { createChecks += 1; return { id: 92 }; },
+    }), { owner: 'owner', repo: 'repo', runId: '77' });
+
+    await expect(adapter.claimAttempt(9, '<!-- marker -->')).resolves.toBeNull();
+    expect(createChecks).toBe(0);
   });
 
   it('fails closed on an ambiguous associated-PR fallback', async () => {
