@@ -401,7 +401,7 @@ export function validateFailedCiJobs(jobs) {
       .filter((step) => step?.conclusion === 'failure')
       .map((step) => ({ job: job?.name, step: step?.name })),
   );
-  if (failed.length !== 1 || failed[0]?.step !== 'pnpm run test') {
+  if (failed.length !== 1 || failed[0]?.step !== 'Run pnpm run test') {
     throw new Error(`Dogfood CI must fail only at pnpm run test; found ${JSON.stringify(failed)}`);
   }
   return failed[0];

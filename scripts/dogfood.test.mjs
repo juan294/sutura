@@ -298,8 +298,11 @@ test('canonical fixture, ledger, and ignored scratch paths stay exact', async ()
 test('dogfood validates the one intentional CI failure and SHA-bound Sutura check', () => {
   assert.deepEqual(validateFailedCiJobs([{ name: 'checks', steps: [
     { name: 'pnpm install --frozen-lockfile', conclusion: 'success' },
+    { name: 'Run pnpm run test', conclusion: 'failure' },
+  ] }]), { job: 'checks', step: 'Run pnpm run test' });
+  assert.throws(() => validateFailedCiJobs([{ name: 'checks', steps: [
     { name: 'pnpm run test', conclusion: 'failure' },
-  ] }]), { job: 'checks', step: 'pnpm run test' });
+  ] }]), /fail only/u);
   assert.throws(() => validateFailedCiJobs([{ name: 'checks', steps: [
     { name: 'pnpm run build', conclusion: 'failure' },
     { name: 'pnpm run test', conclusion: 'failure' },
@@ -396,7 +399,7 @@ test('dogfood real path validates dispatch, correlation, artifacts, repair, and 
       databaseId: 3001, headSha: DOGFOOD_SHA, status: 'completed', conclusion: 'failure', event: 'workflow_dispatch',
     }]);
     if (joined.includes('run view 3001 --json jobs')) return JSON.stringify({ jobs: [{
-      name: 'checks', steps: [{ name: 'pnpm run test', conclusion: 'failure' }],
+      name: 'checks', steps: [{ name: 'Run pnpm run test', conclusion: 'failure' }],
     }] });
     if (joined.includes('run list --workflow sutura.yml')) return JSON.stringify([{
       databaseId: 4001, status: 'completed', conclusion: 'success',

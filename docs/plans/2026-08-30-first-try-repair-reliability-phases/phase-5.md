@@ -127,3 +127,9 @@ name created for each.
   `break.diff` therefore did not apply to the otherwise matching source. The
   dogfood runner now requests untrimmed Git text when it materializes the two
   fixture files, and the real-path regression test requires that option.
+- Dogfood CI run `33321106629` on candidate
+  `e197173762ae98639afdc46a47801ef72544c5a6` failed only at the intended test
+  command, before Sutura and before provider spend. GitHub's job API names an
+  unnamed run step `Run pnpm run test`, while the validator and its mock used
+  `pnpm run test`. The validator now requires the exact live API name, and the
+  former mock-only name is rejected.
