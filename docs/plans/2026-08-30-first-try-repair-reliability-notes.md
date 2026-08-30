@@ -3,12 +3,12 @@
 ## Phase 1 exit evidence
 
 - Implementation lineage: `a084bce` (`feat(replay): capture deterministic repair bundles`), plus the Phase 1 review corrections in this commit.
-- Core tests: 793 passed, 8 skipped.
+- Core tests: 797 passed, 8 skipped.
 - Action tests: 81 passed.
 - Core and Action typecheck: passed.
 - Core and Action lint: passed.
 - Full repository build: passed twice.
-- Rebuilt `packages/action/dist/index.cjs` SHA-256 after both builds: `bdd9d1f5d9ee1fd9d2a581457b999646a7a87f376400ffe5230310c54eede3c3`.
+- Rebuilt `packages/action/dist/index.cjs` SHA-256 after both builds: `6ccd5e72e5ebdd9bdf23bd3df245094bf11e36f71f224b71c39d823ff92b4a7c`.
 - E2E artifact contract: the `fixed` and `gave-up` storylines assert exactly `sutura-case-file-77001.html` plus `sutura-replay-77001.json`. The replay assertion checks the final outcome, populated GitHub, Repository, logical Executor, and HTTP streams, and `completeness.complete === true`. A run without replay capture still uploads exactly one artifact.
 - `git diff --check`: passed.
 

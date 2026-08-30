@@ -66,7 +66,7 @@ describe('ReplayRecorder', () => {
     expect(bundle.completeness).toMatchObject({
       complete: false,
       overflowedBoundaries: ['http'],
-      pendingBoundaries: [],
+      pendingBoundaries: ['contree', 'executor', 'github', 'repository', 'tavily'],
     });
   });
 
@@ -102,7 +102,7 @@ describe('ReplayRecorder', () => {
     expect(bundle.completeness).toEqual({
       complete: false,
       overflowedBoundaries: ['github', 'http', 'repository'],
-      pendingBoundaries: [],
+      pendingBoundaries: ['contree', 'executor', 'nebius'],
     });
   });
 
@@ -150,12 +150,33 @@ describe('ReplayRecorder', () => {
   it('marks a reserved but unfinished call as incomplete', () => {
     const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
 
-    recorder.reserveHttpSequence();
+    recorder.reserveHttpSequence('nebius');
 
     expect(recorder.finish('infra-stop').completeness).toEqual({
       complete: false,
       overflowedBoundaries: [],
-      pendingBoundaries: ['http'],
+      pendingBoundaries: ['contree', 'executor', 'github', 'nebius', 'repository', 'tavily'],
+    });
+  });
+
+  it('is complete only after all six named boundaries complete a record', () => {
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+    recorder.recordGitHub({ method: 'getWorkflowRun', args: [], result: {} });
+    recorder.recordRepository({ method: 'readPolicyAtSha', args: [], result: null });
+    recorder.recordExecutor({ method: 'operationCapacity', args: [], result: { limit: 1 } });
+    for (const boundary of ['nebius', 'tavily', 'contree'] as const) {
+      recorder.recordHttp({
+        boundary,
+        request: { method: 'GET', url: `https://example.test/${boundary}`, headers: {}, body: null },
+        response: { status: 200, headers: {}, body: '' },
+        latencyMs: 0,
+      });
+    }
+
+    expect(recorder.finish('fixed').completeness).toEqual({
+      complete: true,
+      overflowedBoundaries: [],
+      pendingBoundaries: [],
     });
   });
 });

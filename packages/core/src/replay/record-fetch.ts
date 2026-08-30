@@ -72,14 +72,6 @@ function selectedHeaders(headers: HttpHeaders): Record<string, string> {
   }
 }
 
-function serializedJson(value: unknown): RecordedBody {
-  try {
-    return boundedText(JSON.stringify(value) ?? 'null');
-  } catch (error) {
-    return boundedText(JSON.stringify({ serializationError: errorMessage(error) }));
-  }
-}
-
 function recordResponseOnce(
   recorder: ReplayRecorder,
   exchange: Omit<RecordedHttpExchange, 'sequence' | 'response' | 'latencyMs'>,
@@ -106,64 +98,79 @@ interface RawReadableResponse {
   text?(): Promise<string>;
 }
 
-type BodyCapture = { body: RecordedBody } | { error: unknown };
+type ByteCapture = { bytes: Uint8Array } | { error: unknown };
 
-function captureResult(promise: Promise<RecordedBody>): Promise<BodyCapture> {
+function captureResult(promise: Promise<Uint8Array>): Promise<ByteCapture> {
   return promise.then(
-    (body) => ({ body }),
+    (bytes) => ({ bytes }),
     (error: unknown) => ({ error }),
   );
 }
 
-function clonedRawBody(response: unknown): Promise<BodyCapture> | null {
+function clonedResponseBytes(response: unknown): Promise<ByteCapture> {
   const readable = response as RawReadableResponse;
-  if (typeof readable.clone !== 'function') return null;
+  if (typeof readable.clone !== 'function') {
+    return Promise.resolve({ error: new Error('Response clone is unavailable') });
+  }
   try {
     const clone = readable.clone();
     if (typeof clone.arrayBuffer === 'function') {
-      return captureResult(clone.arrayBuffer().then((value) =>
-        rawBody(new Uint8Array(value)),
-      ));
+      return captureResult(clone.arrayBuffer().then((value) => new Uint8Array(value)));
     }
     if (typeof clone.text === 'function') {
-      return captureResult(clone.text().then((value) =>
-        rawBody(new TextEncoder().encode(value)),
-      ));
+      return captureResult(clone.text().then((value) => new TextEncoder().encode(value)));
     }
   } catch (error) {
     return Promise.resolve({ error });
   }
-  return null;
+  return Promise.resolve({ error: new Error('Cloned response body is unavailable') });
 }
 
-function consumedRawBody(response: unknown): Promise<BodyCapture> {
-  const readable = response as RawReadableResponse;
-  if (typeof readable.arrayBuffer === 'function') {
-    return captureResult(readable.arrayBuffer().then((value) =>
-      rawBody(new Uint8Array(value)),
-    ));
-  }
-  if (typeof readable.text === 'function') {
-    return captureResult(readable.text().then((value) =>
-      rawBody(new TextEncoder().encode(value)),
-    ));
-  }
-  return Promise.resolve({ error: new Error('Raw response body is unavailable') });
-}
-
-async function recordCapturedBody(
+function recordedBodyReader(
   recorder: ReplayRecorder,
   record: (body: RecordedBody) => void,
-  capture: Promise<BodyCapture> | null,
-  response: unknown,
-): Promise<void> {
-  const result = await (capture ?? consumedRawBody(response));
-  if ('body' in result) {
-    record(result.body);
-  } else {
+  capture: Promise<ByteCapture>,
+  response: { json(): Promise<unknown>; text?: () => Promise<string> },
+): {
+  json(): Promise<unknown>;
+  text(): Promise<string>;
+  record(): Promise<void>;
+} {
+  let consumed = false;
+  const captured = async (): Promise<Uint8Array | null> => {
+    const result = await capture;
+    if ('bytes' in result) return result.bytes;
     recorder.markOverflow('http');
     record(null);
-  }
+    return null;
+  };
+  const consume = async <T>(
+    parse: (bytes: Uint8Array) => T,
+    fallback: () => Promise<T>,
+  ): Promise<T> => {
+    if (consumed) throw new TypeError('Body is unusable');
+    consumed = true;
+    const bytes = await captured();
+    if (bytes === null) return fallback();
+    record(rawBody(bytes));
+    return parse(bytes);
+  };
+  return {
+    json: () => consume(
+      (bytes) => JSON.parse(new TextDecoder().decode(bytes)) as unknown,
+      () => response.json(),
+    ),
+    text: () => consume(
+      (bytes) => new TextDecoder().decode(bytes),
+      () => response.text
+        ? response.text()
+        : Promise.reject(new TypeError('Response text is unavailable')),
+    ),
+    async record(): Promise<void> {
+      const bytes = await captured();
+      if (bytes !== null) record(rawBody(bytes));
+    },
+  };
 }
 
 export function recordingNebiusFetch(
@@ -171,7 +178,7 @@ export function recordingNebiusFetch(
   fetch: NebiusFetch,
 ): NebiusFetch {
   return async (input: string, init: HttpRequestInit): Promise<HttpResponse> => {
-    const sequence = recorder.reserveHttpSequence();
+    const sequence = recorder.reserveHttpSequence('nebius');
     const startedAt = Date.now();
     const request = {
       boundary: 'nebius' as const,
@@ -201,31 +208,18 @@ export function recordingNebiusFetch(
       selectedHeaders(response.headers),
       sequence,
     );
-    const rawCapture = clonedRawBody(response);
+    const body = recordedBodyReader(
+      recorder,
+      record,
+      clonedResponseBytes(response),
+      response,
+    );
     return {
       ok: response.ok,
       status: response.status,
       headers: response.headers,
-      async json(): Promise<unknown> {
-        try {
-          const value = await response.json();
-          record(serializedJson(value));
-          return value;
-        } catch (error) {
-          await recordCapturedBody(recorder, record, rawCapture, response);
-          throw error;
-        }
-      },
-      async text(): Promise<string> {
-        try {
-          const value = await response.text();
-          record(boundedText(value));
-          return value;
-        } catch (error) {
-          record(boundedText(JSON.stringify({ bodyError: errorMessage(error) })));
-          throw error;
-        }
-      },
+      json: body.json,
+      text: body.text,
     };
   };
 }
@@ -238,7 +232,7 @@ export function recordingTavilyFetch(
     input: string,
     init: TavilyHttpRequestInit,
   ): Promise<TavilyHttpResponse> => {
-    const sequence = recorder.reserveHttpSequence();
+    const sequence = recorder.reserveHttpSequence('tavily');
     const startedAt = Date.now();
     const request = {
       boundary: 'tavily' as const,
@@ -261,23 +255,19 @@ export function recordingTavilyFetch(
       throw error;
     }
     const record = recordResponseOnce(recorder, request, startedAt, response, {}, sequence);
-    const rawCapture = clonedRawBody(response);
+    const body = recordedBodyReader(
+      recorder,
+      record,
+      clonedResponseBytes(response),
+      response,
+    );
     if (!response.ok) {
-      await recordCapturedBody(recorder, record, rawCapture, response);
+      await body.record();
     }
     return {
       ok: response.ok,
       status: response.status,
-      async json(): Promise<unknown> {
-        try {
-          const value = await response.json();
-          record(serializedJson(value));
-          return value;
-        } catch (error) {
-          await recordCapturedBody(recorder, record, rawCapture, response);
-          throw error;
-        }
-      },
+      json: body.json,
     };
   };
 }
@@ -359,7 +349,7 @@ export function recordingContreeFetch(
   fetch: typeof globalThis.fetch,
 ): typeof globalThis.fetch {
   return async (input, init = {}): Promise<Response> => {
-    const sequence = recorder.reserveHttpSequence();
+    const sequence = recorder.reserveHttpSequence('contree');
     const startedAt = Date.now();
     let captured: ReturnType<typeof captureContreeRequest>;
     try {

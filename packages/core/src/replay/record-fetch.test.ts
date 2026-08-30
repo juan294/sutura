@@ -20,21 +20,64 @@ const headers = {
 };
 
 describe('recording transport adapters', () => {
+  it.each(['nebius', 'tavily'] as const)(
+    'records byte-exact successful %s JSON without reserialization',
+    async (boundary) => {
+      const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+      const source = '{\n  "answer": 42\n}\n';
+      const innerResponse = new Response(source, {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+      const clone = vi.spyOn(innerResponse, 'clone');
+      const response = boundary === 'nebius'
+        ? await recordingNebiusFetch(recorder, vi.fn(async () => innerResponse))(
+            'https://example.test/nebius', { method: 'POST', headers: {}, body: '{}' },
+          )
+        : await recordingTavilyFetch(recorder, vi.fn(async () => innerResponse))(
+            'https://example.test/tavily', { method: 'POST', headers: {}, body: '{}' },
+          );
+
+      await expect(response.json()).resolves.toEqual({ answer: 42 });
+      expect(clone).toHaveBeenCalledOnce();
+      expect(recorder.finish('fixed').http[0]?.response).toMatchObject({
+        body: {
+          raw: true,
+          encoding: 'base64',
+          data: Buffer.from(source).toString('base64'),
+        },
+      });
+    },
+  );
+
+  it('returns decoded text while recording its exact non-UTF-8 bytes', async () => {
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+    const bytes = new Uint8Array([0x66, 0x6f, 0x80]);
+    const innerResponse = new Response(bytes, {
+      status: 200,
+      headers: { 'content-type': 'text/plain' },
+    });
+    const clone = vi.spyOn(innerResponse, 'clone');
+    const response = await recordingNebiusFetch(recorder, vi.fn(async () => innerResponse))(
+      'https://example.test/nebius', { method: 'POST', headers: {}, body: '{}' },
+    );
+
+    await expect(response.text()).resolves.toBe('fo�');
+    await expect(response.json()).rejects.toBeInstanceOf(TypeError);
+    expect(clone).toHaveBeenCalledOnce();
+    expect(recorder.finish('fixed').http[0]?.response).toMatchObject({
+      body: { raw: true, encoding: 'base64', data: Buffer.from(bytes).toString('base64') },
+    });
+  });
+
   it('preserves response consumption and sequences exchanges across boundaries', async () => {
     const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
-    const nebiusJson = vi.fn(async () => ({ answer: 42 }));
-    const nebius = recordingNebiusFetch(recorder, vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      headers,
-      json: nebiusJson,
-      text: async () => 'unused',
-    })));
-    const tavily = recordingTavilyFetch(recorder, vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ results: [] }),
-    })));
+    const nebius = recordingNebiusFetch(recorder, vi.fn(async () => new Response(
+      '{"answer":42}', { status: 200, headers: { 'content-type': 'application/json' } },
+    )));
+    const tavily = recordingTavilyFetch(recorder, vi.fn(async () => new Response(
+      '{"results":[]}', { status: 200, headers: { 'content-type': 'application/json' } },
+    )));
     const contree = recordingContreeFetch(recorder, vi.fn(async () => new Response(
       JSON.stringify({ status: 'SUCCESS' }),
       { status: 200, headers: { 'content-type': 'application/json' } },
@@ -44,7 +87,6 @@ describe('recording transport adapters', () => {
       method: 'POST', headers: {}, body: '{}',
     });
     expect(await nebiusResponse.json()).toEqual({ answer: 42 });
-    expect(nebiusJson).toHaveBeenCalledOnce();
 
     const tavilyResponse = await tavily('https://example.test/tavily', {
       method: 'POST', headers: {}, body: '{}',
@@ -237,9 +279,8 @@ describe('recording transport adapters', () => {
       .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
     const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
     const wrapped = recordingNebiusFetch(recorder, inner);
-    const response = (id: number) => ({
-      ok: true, status: 200, headers,
-      json: async () => ({ id }), text: async () => String(id),
+    const response = (id: number) => new Response(JSON.stringify({ id }), {
+      status: 200, headers: { 'content-type': 'application/json' },
     });
 
     const first = wrapped('https://example.test/1', { method: 'POST', headers: {}, body: '{}' });

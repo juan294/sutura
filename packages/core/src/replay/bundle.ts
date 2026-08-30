@@ -57,8 +57,15 @@ export type RecordedBody =
   | StreamBody
   | RawBody;
 
+export type RecordedHttpBoundary = 'nebius' | 'tavily' | 'contree';
+export type ReplayBoundary =
+  | 'github'
+  | 'repository'
+  | 'executor'
+  | RecordedHttpBoundary;
+
 export interface RecordedHttpExchange {
-  boundary: 'nebius' | 'tavily' | 'contree';
+  boundary: RecordedHttpBoundary;
   sequence: number;
   request: {
     method: string;
@@ -298,6 +305,7 @@ export class ReplayRecorder {
     ports: new Set<number>(),
     executor: new Set<number>(),
   };
+  private readonly pendingHttpBoundaries = new Map<number, RecordedHttpBoundary>();
   private readonly pendingPortBoundaries = new Map<number, 'github' | 'repository'>();
   private httpSequence = 0;
   private portSequence = 0;
@@ -316,8 +324,10 @@ export class ReplayRecorder {
     ) as ReplayOrchestrationConfig;
   }
 
-  reserveHttpSequence(): number | null {
-    return this.reserveSequence('http', MAX_HTTP_EXCHANGES);
+  reserveHttpSequence(boundary: RecordedHttpBoundary): number | null {
+    const sequence = this.reserveSequence('http', MAX_HTTP_EXCHANGES);
+    if (sequence !== null) this.pendingHttpBoundaries.set(sequence, boundary);
+    return sequence;
   }
 
   reservePortSequence(boundary: 'github' | 'repository' = 'github'): number | null {
@@ -371,7 +381,7 @@ export class ReplayRecorder {
     reservedSequence?: number | null,
   ): void {
     const sequence = reservedSequence === undefined
-      ? this.reserveHttpSequence()
+      ? this.reserveHttpSequence(exchange.boundary)
       : reservedSequence;
     if (sequence === null) return;
     try {
@@ -402,6 +412,7 @@ export class ReplayRecorder {
       this.markOverflow('http');
     } finally {
       this.pending.http.delete(sequence);
+      this.pendingHttpBoundaries.delete(sequence);
     }
   }
 
@@ -484,11 +495,23 @@ export class ReplayRecorder {
   }
 
   finish(outcome: CaseFile['outcome']): ReplayBundle {
-    const pendingBoundaries = [
-      ...(this.pending.http.size === 0 ? [] : ['http']),
-      ...new Set(this.pendingPortBoundaries.values()),
-      ...(this.pending.executor.size === 0 ? [] : ['executor']),
-    ].sort();
+    const requiredBoundaries: readonly ReplayBoundary[] = [
+      'github', 'repository', 'executor', 'nebius', 'tavily', 'contree',
+    ];
+    const completedBoundaries = new Set<ReplayBoundary>([
+      ...(this.github.length > 0 ? ['github' as const] : []),
+      ...(this.repository.length > 0 ? ['repository' as const] : []),
+      ...(this.executor.length > 0 ? ['executor' as const] : []),
+      ...this.http.map(({ boundary }) => boundary),
+    ]);
+    const unfinishedBoundaries = new Set<ReplayBoundary>([
+      ...this.pendingHttpBoundaries.values(),
+      ...this.pendingPortBoundaries.values(),
+      ...(this.pending.executor.size > 0 ? ['executor' as const] : []),
+    ]);
+    const pendingBoundaries = requiredBoundaries.filter((boundary) =>
+      !completedBoundaries.has(boundary) || unfinishedBoundaries.has(boundary),
+    ).sort();
     const overflowedBoundaries = [...this.overflowedBoundaries].sort();
     const complete = overflowedBoundaries.length === 0 && pendingBoundaries.length === 0;
     const bundle: ReplayBundle = {

@@ -10,7 +10,9 @@ import {
   SUTURA_SANDBOX_ENV,
   attemptMarker,
   orchestrate,
+  recordingContreeFetch,
   recordingExecutor,
+  recordingNebiusFetch,
   recordingTavilyFetch,
   type CostLedger,
   type OrchestrationContext,
@@ -570,11 +572,25 @@ async function harnessFor(storyline: Storyline): Promise<{
   const repository = new RecordedRepository(api);
   const executor = executorFor(storyline.exits, storyline.preparationFails);
   if (recorder) {
-    const recordedHttp = recordingTavilyFetch(recorder, async () => new Response(
+    const nebius = recordingNebiusFetch(recorder, async () => new Response(
+      '{"choices":[]}',
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ));
+    await (await nebius('https://example.test/nebius', {
+      method: 'POST', headers: {}, body: '{}',
+    })).json();
+    const tavily = recordingTavilyFetch(recorder, async () => new Response(
       '{"results":[]}',
       { status: 200, headers: { 'content-type': 'application/json' } },
     ));
-    await (await recordedHttp('https://example.test/tavily', {
+    await (await tavily('https://example.test/tavily', {
+      method: 'POST', headers: {}, body: '{}',
+    })).json();
+    const contree = recordingContreeFetch(recorder, async () => new Response(
+      '{"status":"SUCCESS"}',
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ));
+    await (await contree('https://example.test/contree', {
       method: 'POST', headers: {}, body: '{}',
     })).json();
   }
@@ -775,9 +791,9 @@ describe('recorded GitHub API orchestration E2E', () => {
             'updateIssueComment', 'updateCheckRun',
           ]));
           expect(replay.executor.length).toBeGreaterThan(0);
-          expect(replay.http).toEqual(expect.arrayContaining([
-            expect.objectContaining({ boundary: 'tavily' }),
-          ]));
+          expect(replay.http.map(({ boundary }) => boundary).sort()).toEqual([
+            'contree', 'nebius', 'tavily',
+          ]);
           expect(replay.completeness.complete).toBe(true);
           if (storyline.outcome === 'fixed') {
             expect(replay.github.map(({ method }) => method)).toContain('createPullRequest');
