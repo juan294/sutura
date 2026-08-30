@@ -33,4 +33,15 @@ sutura audit --case-dir /tmp/case --candidate-diff /tmp/fix.diff --before-log /t
 
 Audit-only mode requires only `NEBIUS_API_KEY`. It uses supplied evidence and never executes or verifies the patch. Its separate `AuditFile` output always says `assurance: "reduced"` and never reports a verified repair outcome.
 
+Replay a complete captured run without network access:
+
+```text
+sutura replay --bundle /tmp/captured/bundle.json --format json
+```
+
+Replay uses the recorded runtime unless `--runtime node|python` overrides it.
+`--runtime auto` keeps the recorded setting. Historical GitHub-only captures
+are partial fixtures for boundary tests. The public command rejects them before
+provider, repository, or sandbox work starts.
+
 Read the complete [setup and security guide](https://github.com/juan294/sutura#install-sutura).

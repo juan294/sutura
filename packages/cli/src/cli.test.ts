@@ -28,6 +28,45 @@ function fixed(): CaseFile {
 }
 
 describe('runCli', () => {
+  it('prints replayed CaseFile JSON and forwards an explicit runtime', async () => {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const replay = vi.fn().mockResolvedValue(fixed());
+
+    const exitCode = await runCli([
+      'replay', '--bundle', '/tmp/replay.json', '--format', 'json', '--runtime', 'node',
+    ], {
+      write: (value) => stdout.push(value),
+      writeError: (value) => stderr.push(value),
+    }, { replay });
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toEqual([]);
+    expect(JSON.parse(stdout.join(''))).toMatchObject({ outcome: 'fixed' });
+    expect(replay).toHaveBeenCalledWith({
+      command: 'replay', bundle: '/tmp/replay.json', format: 'json', runtime: 'node',
+    });
+  });
+
+  it('returns replay failures on stderr without CaseFile output', async () => {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const replay = vi.fn().mockRejectedValue(new Error(
+      'Replay outcome mismatch: recorded gave-up, replayed fixed',
+    ));
+
+    const exitCode = await runCli([
+      'replay', '--bundle', '/tmp/replay.json', '--format', 'json',
+    ], {
+      write: (value) => stdout.push(value),
+      writeError: (value) => stderr.push(value),
+    }, { replay });
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toEqual([]);
+    expect(stderr.join('')).toContain('recorded gave-up, replayed fixed');
+  });
+
   it('prints only reduced-assurance AuditFile JSON', async () => {
     const stdout: string[] = [];
     const auditFile = {

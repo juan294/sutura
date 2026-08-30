@@ -9,6 +9,7 @@ export const USAGE = [
   '  sutura doctor [--repo <owner/repo>] [--action-sha <commit>]',
   '  sutura heal --case-dir <dir> --format json [--candidate-diff <diff>] [--routing-profile <id>] [--runtime <auto|node|python>] [--no-tavily]',
   '  sutura audit --case-dir <dir> --candidate-diff <file> --before-log <file> --after-log <file> --format json',
+  '  sutura replay --bundle <file> --format json [--runtime <auto|node|python>]',
   '  sutura eval validate --manifest <file>',
   '  sutura eval export --manifest <file> --format <atif|jsonl> --output <file> [--force]',
   '  sutura --help',
@@ -43,6 +44,13 @@ export interface AuditArguments {
   format: 'json';
 }
 
+export interface ReplayArguments {
+  command: 'replay';
+  bundle: string;
+  format: 'json';
+  runtime?: 'node' | 'python';
+}
+
 export interface DoctorArguments {
   command: 'doctor';
   repository?: string;
@@ -73,6 +81,7 @@ export interface EvalExportArguments {
 export type CliArguments =
   | HealArguments
   | AuditArguments
+  | ReplayArguments
   | InitArguments
   | DoctorArguments
   | EvalValidateArguments
@@ -227,6 +236,36 @@ function parseAudit(args: readonly string[]): AuditArguments {
   };
 }
 
+function parseReplay(args: readonly string[]): ReplayArguments {
+  let bundle: string | undefined;
+  let format: string | undefined;
+  let runtime: 'node' | 'python' | undefined;
+  const allowed = new Set(['--bundle', '--format', '--runtime']);
+  const seen = new Set<string>();
+  for (let index = 1; index < args.length; index += 2) {
+    const flag = args[index];
+    if (!flag || !allowed.has(flag)) {
+      throw new CliUsageError(`Unknown argument: ${flag ?? '(missing)'}`);
+    }
+    if (seen.has(flag)) throw new CliUsageError(`Duplicate argument: ${flag}`);
+    seen.add(flag);
+    const value = nonEmptyValue(args, index, flag);
+    if (flag === '--bundle') bundle = value;
+    else if (flag === '--format') format = value;
+    else if (value === 'auto') runtime = undefined;
+    else if (value === 'node' || value === 'python') runtime = value;
+    else throw new CliUsageError('--runtime must be auto, node, or python');
+  }
+  if (!bundle) throw new CliUsageError('--bundle is required');
+  if (format !== 'json') throw new CliUsageError('--format must be json');
+  return {
+    command: 'replay',
+    bundle,
+    format: 'json',
+    ...(runtime === undefined ? {} : { runtime }),
+  };
+}
+
 function parseDoctor(args: readonly string[]): DoctorArguments {
   let repository: string | undefined;
   let actionSha: string | undefined;
@@ -291,6 +330,7 @@ export function parseArgs(args: readonly string[]): CliArguments {
   if (args.length === 1 && (args[0] === '--version' || args[0] === 'version')) return { command: 'version' };
   if (args[0] === 'heal') return parseHeal(args);
   if (args[0] === 'audit') return parseAudit(args);
+  if (args[0] === 'replay') return parseReplay(args);
   if (args[0] === 'init') return parseInit(args);
   if (args[0] === 'doctor') return parseDoctor(args);
   if (args[0] === 'eval') return parseEval(args);

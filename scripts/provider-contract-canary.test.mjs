@@ -31,18 +31,41 @@ test('provider contract canary workflow is manual, read-only, and runs the canon
 });
 
 test('serialized production replay names every observed live run from 1 through 16', async () => {
+  const manifest = JSON.parse(await readFile(resolve(
+    root,
+    'packages/action/src/__fixtures__/captured/manifest.json',
+  ), 'utf8'));
   const sources = await Promise.all([
     'packages/core/src/engine/repair-provider-replay.test.ts',
     'packages/core/src/orchestrate.test.ts',
   ].map((path) => readFile(resolve(root, path), 'utf8')));
   const namedRuns = new Set(
     sources.flatMap((source) =>
-      [...source.matchAll(/replays live runs? (?<runs>[^:]+):/gu)]
-        .flatMap((match) => [...(match.groups?.runs ?? '').matchAll(/\d+/gu)])
+      [...source.matchAll(/it\(\s*'(?<title>replays live runs? [^']+)'/gu)]
+        .flatMap((match) => [...(match.groups?.title ?? '').matchAll(/\d+/gu)])
         .map((match) => Number(match[0])),
     ),
   );
 
   assert.deepEqual([...namedRuns].sort((left, right) => left - right),
     Array.from({ length: 16 }, (_value, index) => index + 1));
+
+  const capturedTargetRunIds = new Set(manifest.entries.map(({ targetRunId }) => targetRunId));
+  const bindings = sources.flatMap((source) =>
+    [...source.matchAll(/capturedLiveRun\(\s*(?<run>\d+)\s*,\s*'(?<targetRunId>\d+)'\s*\)/gu)]
+      .map((match) => ({
+        run: Number(match.groups?.run),
+        targetRunId: match.groups?.targetRunId,
+      })),
+  );
+  const boundRuns = new Set(bindings.map(({ run }) => run));
+
+  assert.deepEqual([...boundRuns].sort((left, right) => left - right),
+    Array.from({ length: 16 }, (_value, index) => index + 1));
+  for (const { run, targetRunId } of bindings) {
+    assert.ok(
+      capturedTargetRunIds.has(targetRunId),
+      `live run ${run} references missing captured target ${targetRunId}`,
+    );
+  }
 });

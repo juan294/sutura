@@ -23,9 +23,14 @@ import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
 import { createTokenFactoryClient } from './llm/token-factory.js';
 import { ReplayRecorder } from './replay/bundle.js';
 import { repairProposalReply } from './testing/repair-proposal.test-helper.js';
+import {
+  capturedFailingRun,
+  capturedLiveRun,
+} from './__fixtures__/captured/captured-live-run.test-helper.js';
 import { parseRepositoryPolicy } from './policy/schema.js';
 import {
   AlreadyAttemptedError,
+  OrchestrationError,
   SUTURA_SANDBOX_ENV,
   attemptMarker,
   collectFailedLogs,
@@ -69,6 +74,15 @@ const DOGFOOD_DIFF = [
   ' }',
   '',
 ].join('\n');
+
+function capturedDogfoodLog(rawLog: string): string {
+  const lines = rawLog.split(/\r?\n/u).filter((line) =>
+    /##\[group\]Run pnpm run test$/u.test(line)
+    || /dogfood-add|expected -1 to be 5/u.test(line),
+  );
+  if (lines.length < 3) throw new Error('Captured dogfood log lacks its command or failure');
+  return lines.join('\n');
+}
 
 const RUN: FailingWorkflowRun = {
   runId: '98765',
@@ -373,6 +387,31 @@ function runCalls(executor: InMemoryExecutor): Extract<InMemoryCall, { kind: 'ru
 }
 
 describe('orchestrate', () => {
+  it('replays captured A3 pre-fix log slicing and stops before diagnosis', async () => {
+    const captured = await capturedFailingRun('A3', '33239848825');
+    const preFixLog = captured.run.failedSteps[0]!.log
+      .split(/\r?\n/u)
+      .slice(1)
+      .join('\n');
+    const run: FailingWorkflowRun = {
+      runId: captured.bundle.runId,
+      repo: captured.bundle.repo,
+      headSha: captured.bundle.actionSha,
+      baseSha: captured.bundle.actionSha,
+      headRef: 'develop',
+      baseRef: 'develop',
+      failedSteps: [{ jobName: 'checks', stepName: 'Test CLI', log: preFixLog }],
+    };
+    const { ctx, chat, executor, github } = context([], true, run);
+
+    await expect(orchestrate(ctx)).rejects.toEqual(new OrchestrationError(
+      'Failed-step logs do not contain an observed failing command',
+    ));
+    expect(chat).not.toHaveBeenCalled();
+    expect(executor.calls).toEqual([]);
+    expect(github.comments).toEqual([]);
+  });
+
   it('rejects an invalid base policy before provider or sandbox calls', async () => {
     const { ctx, executor, github, repository, chat } = context([]);
     repository.policyContent = '{"version":2}';
@@ -575,22 +614,22 @@ describe('orchestrate', () => {
   });
 
   it('replays live runs 3, 4, 5, and 10 through the serialized production path', async () => {
+    capturedLiveRun(3, '33241358531');
+    capturedLiveRun(4, '33242204485');
+    capturedLiveRun(5, '33243759945');
+    capturedLiveRun(10, '33252323239');
+    const captured = await capturedFailingRun('Live run 10', '33252323239');
     const dogfoodRun: FailingWorkflowRun = {
-      runId: RUN.runId,
-      repo: RUN.repo,
-      headSha: RUN.headSha,
-      headRef: 'dogfood/sutura-v02-live-replay',
-      baseSha: RUN.headSha,
-      baseRef: 'dogfood/sutura-v02-live-replay',
+      ...captured.run,
       failedSteps: [{
-        jobName: 'checks',
-        stepName: 'Test core',
-        log: [
-          'Run pnpm --filter @sutura/core test',
-          'packages/core test: \u001b[31m❯\u001b[39m src/dogfood-add.test.ts:7: expected -1 to be 5',
-        ].join('\n'),
+        ...captured.run.failedSteps[0]!,
+        log: capturedDogfoodLog(captured.jobLogText),
       }],
     };
+    expect(extractSourceReferences(collectFailedLogs(dogfoodRun.failedSteps))).toContainEqual({
+      path: 'packages/core/src/dogfood-add.test.ts',
+      line: 7,
+    });
     const { ctx, github, repository } = context(
       [1, 1, 1, 0, 1, 1, 0], true, dogfoodRun,
     );
@@ -665,7 +704,7 @@ describe('orchestrate', () => {
 
     expect(caseFile.outcome).toBe('fixed');
     expect(repository.fixes).toEqual([expect.objectContaining({
-      branch: `sutura/fix-${RUN.runId}`,
+      branch: `sutura/fix-${dogfoodRun.runId}`,
       headSha: dogfoodRun.headSha,
       diff: DOGFOOD_DIFF,
     })]);
@@ -1102,16 +1141,7 @@ describe('orchestrate', () => {
   });
 
   it('replays live run 6: absent editable source stops before a Super turn', async () => {
-    const noPathRun: FailingWorkflowRun = {
-      ...RUN,
-      failedSteps: [
-        {
-          jobName: 'typecheck',
-          stepName: 'Typecheck',
-          log: 'Run pnpm test\nerror TS2322: Type string is not assignable to type number',
-        },
-      ],
-    };
+    const noPathRun = (await capturedFailingRun('Live run 6', '33244884596')).run;
     const { ctx, chat, repository } = context([1, 1, 1], true, noPathRun);
     repository.sources.clear();
 
@@ -1175,6 +1205,8 @@ describe('failed log collection', () => {
 
 describe('repair source context', () => {
   it('replays live runs 4 and 5: monorepo ESM evidence reaches the TypeScript implementation', async () => {
+    capturedLiveRun(4, '33242204485');
+    const captured = await capturedFailingRun('Live run 5', '33243759945');
     const repository = new FakeRepository();
     repository.sources.clear();
     repository.sources.set(
@@ -1189,7 +1221,7 @@ describe('repair source context', () => {
     const context = await readRepairSourceContext(
       repository,
       '/tmp/exact-pr-head',
-      'packages/core test: src/dogfood-add.test.ts:3: expected -1 to be 5',
+      capturedDogfoodLog(captured.jobLogText),
       { class: 'test-assertion' },
     );
 
