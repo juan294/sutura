@@ -256,7 +256,7 @@
 - Release-contract tests: 65 passed. The final dogfood and capture correction suite passed 32/32. Repository typecheck, lint, build, and `git diff --check`: passed.
 - Final review corrections: enforce the hard USD 10 cap and minimum USD 1.50 initial reserve; restart attempt numbering at 1 for a new candidate; refuse reuse after a non-fixed outcome; parse exact `gh run view --log` prefixes from captured run `33269188958`; and promote the exact complete `gave-up` replay bytes with all streams and the recorded outcome intact.
 - Simplification corrections: reject attempt 11 before the gate or any remote action, and inspect each completed Sutura run's artifacts only once during correlation polling.
-- Current `develop` gate output is recorded after the verified Phase 1-4 candidate is merged and pushed, because the gate intentionally requires local `HEAD === origin/develop`.
+- Merged `develop` gate on `5292df70bf09bcff90fbfebb611b493c960548db`, after exact-SHA push CI run `33311333754` passed: `clean-tree`, `origin-develop`, `develop-ci`, `ledger`, and `packages-tree` all reported `PASS`; `provider-canary` alone reported `FAIL: missing successful provider canary run`, as required before the separately authorized Phase 5 canary.
 
 ## Phase 1-4 integration evidence
 
