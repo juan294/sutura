@@ -1,9 +1,38 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { resolve } from 'node:path';
 import test from 'node:test';
 
 const root = resolve(import.meta.dirname, '..');
+const SHA = 'a'.repeat(40);
+
+test('provider contract canary writes SHA-bound evidence and refuses a dirty tree', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sutura-canary-'));
+  const { runProviderContractCanary } = await import('./provider-contract-canary.mjs');
+  try {
+    const output = await runProviderContractCanary({
+      apiKey: 'test-key',
+      outputDirectory: directory,
+      now: () => Date.parse('2026-08-30T08:00:00.000Z'),
+      git: (args) => args[0] === 'status' ? '' : SHA,
+      run: async () => ({ passed: true, model: 'test-model' }),
+    });
+    const artifact = JSON.parse(await readFile(output.outputPath, 'utf8'));
+    assert.equal(artifact.headSha, SHA);
+    assert.equal(artifact.capturedAt, '2026-08-30T08:00:00.000Z');
+    assert.equal(typeof artifact.contractVersion, 'string');
+    assert.deepEqual(artifact.result, { passed: true, model: 'test-model' });
+    await assert.rejects(() => runProviderContractCanary({
+      apiKey: 'test-key', outputDirectory: directory,
+      git: (args) => args[0] === 'status' ? ' M dirty.ts' : SHA,
+      run: async () => ({ passed: true }),
+    }), /clean tree/u);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test('provider contract canary builds core and runs without repository or GitHub mutation', async () => {
   const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
@@ -18,6 +47,8 @@ test('provider contract canary builds core and runs without repository or GitHub
   assert.match(source, /JSON\.stringify\(result/u);
   assert.doesNotMatch(source, /(?:git|gh)\s+(?:push|branch|pr)|createFixPullRequest|publishFix/u);
   assert.doesNotMatch(source, /console\.log\([^)]*apiKey/u);
+  assert.match(source, /provider-contract-canary-\$\{headSha\}\.json/u);
+  assert.match(source, /requires a clean tree/u);
 });
 
 test('provider contract canary workflow is manual, read-only, and runs the canonical command', async () => {
@@ -27,6 +58,9 @@ test('provider contract canary workflow is manual, read-only, and runs the canon
   assert.match(workflow, /^permissions:\n  contents: read$/mu);
   assert.match(workflow, /pnpm run canary:provider-contract/u);
   assert.match(workflow, /NEBIUS_API_KEY: \$\{\{ secrets\.NEBIUS_API_KEY \}\}/u);
+  assert.match(workflow, /uses: actions\/upload-artifact@v7/u);
+  assert.match(workflow, /name: provider-contract-canary/u);
+  assert.match(workflow, /if-no-files-found: error/u);
   assert.doesNotMatch(workflow, /(?:pull_request|push):|contents: write|pull-requests: write/u);
 });
 

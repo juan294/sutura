@@ -234,3 +234,26 @@
   `--scope phase-3c`. After integration, the unscoped CI command re-derives
   and verifies the combined total. No count is hard-coded in the scanner or
   CI workflow.
+### Canonical dogfood fixture ordering
+
+- Plan said: Store `return left - right;` in the fixture while also requiring `break.diff` to turn the fixture red and `repair.diff` to turn it green.
+- Found: The Placebo corpus contract starts every fixture green, then applies `break.diff` and verifies that `repair.diff` restores the green state.
+- Chose: Store `return left + right;` in the fixture, copy it into the dogfood worktree, and apply `break.diff` before committing the intentional failure.
+- Why: The live dogfood commit still contains the required subtraction, while the canonical corpus remains self-checking and reproducible.
+
+### Clean-checkout dogfood command
+
+- Plan said: Run `node scripts/dogfood.mjs` directly from the package script.
+- Found: The gate imports the Core provider-contract version, while `packages/core/dist/` is ignored and absent from a clean checkout.
+- Chose: Build `@sutura/core` before starting the dogfood script.
+- Why: The documented gate must work from a clean exact-SHA checkout without relying on stale local build output.
+
+## Phase 4 exit evidence
+
+- Canonical case: `repair-dogfood-arithmetic`; content hash `7a96845fc1a9d0bed0b6d7266dd1f46c37b0ad50b2b079b48eb66d05e619c59a`; 52-case corpus hash `14a7540f082966e1884aeb884603dae50e2b3246592581868efd5d63e85e898b`.
+- Fixture proof: the full Placebo corpus self-check passed 20/20 harness tests, installs the nested workspace offline, accepts the clean addition, rejects the broken subtraction, and accepts the canonical repair.
+- Ledger schema: `sutura-dogfood-ledger-v1`; initial entries `[]`; result hash `4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945`.
+- Release-contract tests: 65 passed. The final dogfood and capture correction suite passed 32/32. Repository typecheck, lint, build, and `git diff --check`: passed.
+- Final review corrections: enforce the hard USD 10 cap and minimum USD 1.50 initial reserve; restart attempt numbering at 1 for a new candidate; refuse reuse after a non-fixed outcome; parse exact `gh run view --log` prefixes from captured run `33269188958`; and promote the exact complete `gave-up` replay bytes with all streams and the recorded outcome intact.
+- Simplification corrections: reject attempt 11 before the gate or any remote action, and inspect each completed Sutura run's artifacts only once during correlation polling.
+- Current `develop` gate output is recorded after the verified Phase 1-4 candidate is merged and pushed, because the gate intentionally requires local `HEAD === origin/develop`.

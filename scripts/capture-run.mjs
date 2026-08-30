@@ -283,6 +283,29 @@ async function installCapture(outDir, workflowRunId, bundleBytes, manifestBytes)
   }
 }
 
+async function withCaptureLock(outDir, operation) {
+  await mkdir(outDir, { recursive: true });
+  const lockPath = join(outDir, '.capture-run.lock');
+  let lock;
+  try {
+    lock = await open(lockPath, 'wx', 0o600);
+  } catch (error) {
+    if (error?.code === 'EEXIST') {
+      throw new Error(`capture lock is already held for ${outDir}`);
+    }
+    throw error;
+  }
+  try {
+    return await operation();
+  } finally {
+    try {
+      await lock.close();
+    } finally {
+      await rm(lockPath, { force: true });
+    }
+  }
+}
+
 async function captureRunLocked({
   workflowRunId,
   targetRunId = workflowRunId,
@@ -449,26 +472,57 @@ export async function captureRun(options) {
   if (typeof options.outDir !== 'string' || options.outDir.length === 0) {
     throw new Error('Capture output directory is required');
   }
-  await mkdir(options.outDir, { recursive: true });
-  const lockPath = join(options.outDir, '.capture-run.lock');
-  let lock;
-  try {
-    lock = await open(lockPath, 'wx', 0o600);
-  } catch (error) {
-    if (error?.code === 'EEXIST') {
-      throw new Error(`capture lock is already held for ${options.outDir}`);
-    }
-    throw error;
+  return withCaptureLock(options.outDir, () =>
+    captureRunLocked({ ...options, workflowRunId, targetRunId }));
+}
+
+export async function installCompleteCapturedFixture(options) {
+  const workflowRunId = runId(options.workflowRunId, 'Workflow run id');
+  const suturaRunId = runId(options.suturaRunId, 'Sutura run id');
+  if (typeof options.outDir !== 'string' || options.outDir.length === 0) {
+    throw new Error('Capture output directory is required');
   }
-  try {
-    return await captureRunLocked({ ...options, workflowRunId, targetRunId });
-  } finally {
-    try {
-      await lock.close();
-    } finally {
-      await rm(lockPath, { force: true });
-    }
+  if (!(options.bundleBytes instanceof Uint8Array)) {
+    throw new Error('Complete replay artifact bytes are required');
   }
+  if (!/^[a-f0-9]{40}$/u.test(options.headSha ?? '')) {
+    throw new Error('Workflow run head_sha is not an exact lowercase commit');
+  }
+  const bundle = parseCompleteReplayArtifact(options.bundleBytes);
+  if (bundle.runId !== workflowRunId) {
+    throw new Error('Complete replay artifact run id differs from the workflow run');
+  }
+  if (bundle.outcome !== 'gave-up') {
+    throw new Error('Only a gave-up replay artifact can be promoted by the dogfood path');
+  }
+  const boundaries = [...completedReplayBoundaries(bundle)].sort();
+  if (boundaries.length === 0) throw new Error('Complete replay artifact has no captured boundaries');
+  const bundleBytes = Buffer.from(options.bundleBytes);
+  const entry = {
+    workflowRunId,
+    targetRunId: workflowRunId,
+    suturaRunId,
+    kind: 'dogfood-gave-up',
+    headSha: options.headSha,
+    capturedAt: bundle.capturedAt,
+    source: `https://github.com/${REPOSITORY}/actions/runs/${workflowRunId}`,
+    capturedBy: 'workflow',
+    bundleSha256: sha256(bundleBytes),
+    boundaries,
+    notes: options.notes ?? `Live dogfood run ${suturaRunId} gave up`,
+  };
+  return withCaptureLock(options.outDir, async () => {
+    const manifestPath = join(options.outDir, 'manifest.json');
+    const manifest = await readManifest(manifestPath);
+    manifest.entries = manifest.entries
+      .filter(({ workflowRunId: existing }) => existing !== workflowRunId)
+      .concat(entry)
+      .sort((left, right) => Number(left.workflowRunId) - Number(right.workflowRunId));
+    const nextManifest = parseCapturedFixturesManifest(manifest);
+    const manifestBytes = Buffer.from(`${JSON.stringify(nextManifest, null, 2)}\n`);
+    await installCapture(options.outDir, workflowRunId, bundleBytes, manifestBytes);
+    return { bundle, entry };
+  });
 }
 
 async function main() {

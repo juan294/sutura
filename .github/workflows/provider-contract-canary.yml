@@ -27,3 +27,8 @@ jobs:
       - run: pnpm run canary:provider-contract
         env:
           NEBIUS_API_KEY: ${{ secrets.NEBIUS_API_KEY }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: provider-contract-canary
+          path: provider-contract-canary-*.json
+          if-no-files-found: error

@@ -5,7 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { captureRun, parseCaptureArguments } from './capture-run.mjs';
+import {
+  captureRun,
+  installCompleteCapturedFixture,
+  parseCaptureArguments,
+} from './capture-run.mjs';
 import {
   MAX_REPLAY_BYTES,
   parseCapturedFixturesManifest,
@@ -77,6 +81,42 @@ function pushApi(runId, onWorkflowRun = async () => undefined) {
     assert.fail(`unexpected endpoint ${endpoint}`);
   };
 }
+
+test('complete dogfood promotion preserves every replay stream and outcome', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'sutura-complete-capture-'));
+  const artifact = completeArtifact();
+  artifact.outcome = 'gave-up';
+  const bytes = Buffer.from(JSON.stringify(artifact));
+  try {
+    const result = await installCompleteCapturedFixture({
+      workflowRunId: artifact.runId,
+      suturaRunId: '33269188958',
+      headSha: SHA,
+      bundleBytes: bytes,
+      outDir: output,
+      notes: 'Live dogfood gave up',
+    });
+    const promotedBytes = await readFile(join(output, artifact.runId, 'bundle.json'));
+    const promoted = JSON.parse(promotedBytes);
+    const manifest = parseCapturedFixturesManifest(
+      JSON.parse(await readFile(join(output, 'manifest.json'), 'utf8')),
+    );
+    assert.equal(promoted.completeness.complete, true);
+    assert.deepEqual(promotedBytes, bytes);
+    assert.deepEqual(promoted.repository, artifact.repository);
+    assert.deepEqual(promoted.executor, artifact.executor);
+    assert.deepEqual(promoted.http, artifact.http);
+    assert.equal(promoted.outcome, 'gave-up');
+    assert.equal(manifest.entries[0].kind, 'dogfood-gave-up');
+    assert.equal(
+      manifest.entries[0].bundleSha256,
+      createHash('sha256').update(promotedBytes).digest('hex'),
+    );
+    assert.equal(result.entry.bundleSha256, manifest.entries[0].bundleSha256);
+  } finally {
+    await rm(output, { recursive: true, force: true });
+  }
+});
 
 test('capture-run records adapter call order, raw logs, branch drift, and manifest hash', async () => {
   const output = await mkdtemp(join(tmpdir(), 'sutura-capture-run-'));

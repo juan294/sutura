@@ -3,6 +3,10 @@ node_modules/
 .venv/
 dist/
 coverage/
+.sutura/dogfood-ledger-scratch.json
+.sutura/dogfood-artifacts/
+.sutura/dogfood-ledger.lock
+.sutura/dogfood-streak.lock
 
 # Environment: never commit secrets
 .env

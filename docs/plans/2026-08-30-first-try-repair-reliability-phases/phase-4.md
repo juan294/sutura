@@ -13,10 +13,10 @@ Add:
 
 - `packages/placebo/corpus/repair-dogfood-arithmetic/` —
   `metadata.json`, `break.diff`, `fixture/` (a minimal pnpm workspace with
-  `packages/core/src/dogfood-add.ts` and `dogfood-add.test.ts` exactly as
-  recovered from `7488afea0c123f3ef84354301c6a1d90e4f9cfb0`:
-  `return left - right;` / `expect(add(2, 3)).toBe(5)`), `repair.diff`
-  (`-` → `+`). `kind: 'repairable'`, `language: 'typescript'`,
+  `packages/core/src/dogfood-add.ts` and `dogfood-add.test.ts`, the canonical
+  green counterpart of the failure recovered from `7488afea0c123f3ef84354301c6a1d90e4f9cfb0`:
+  `return left + right;` / `expect(add(2, 3)).toBe(5)`), `break.diff`
+  (`+` → `-`), and `repair.diff` (`-` → `+`). `kind: 'repairable'`, `language: 'typescript'`,
   `class: 'test-assertion'`, `expectedChecks: ['pnpm --filter @sutura/core test']`.
 - `scripts/dogfood.mjs`, `scripts/dogfood.test.mjs`.
 - `docs/demo/dogfood-ledger.json` — initial content includes schema version,
@@ -44,7 +44,7 @@ Modify:
   `git rev-parse <releaseCommit>:packages`.
 - `.github/workflows/ci.yml` — no change (dogfood dispatch stays
   `workflow_dispatch`).
-- `package.json` — `dogfood` script → `node scripts/dogfood.mjs`; add
+- `package.json` — `dogfood` script builds Core and runs `node scripts/dogfood.mjs`; add
   `scripts/dogfood.test.mjs` to `test:release-contracts`.
 - `README.md` — replace the manual pre-dogfood instructions (`README.md:211-224`)
   with the `pnpm run dogfood gate|run|streak` procedure.
@@ -79,8 +79,8 @@ Modify:
    // a. gate(sha) must pass
    // b. branch = `dogfood/streak-${sha.slice(0,7)}-${n}`;
    //    git worktree add -b <branch> <tmp> <sha>
-   // c. apply corpus fixture: copy packages/placebo/corpus/repair-dogfood-arithmetic/fixture/packages/core/src/dogfood-add*.ts
-   //    into packages/core/src/; commit "test: dogfood streak attempt <n> on <sha7>"
+   // c. copy packages/placebo/corpus/repair-dogfood-arithmetic/fixture/packages/core/src/dogfood-add*.ts
+   //    into packages/core/src/, apply break.diff, and commit "test: dogfood streak attempt <n> on <sha7>"
    // d. git push origin <branch>; gh workflow run ci.yml --ref <branch>
    // e. poll gh run list --branch <branch> --workflow ci.yml until completed; require conclusion failure
    //    and that exactly one job step failed with 'pnpm run test'
