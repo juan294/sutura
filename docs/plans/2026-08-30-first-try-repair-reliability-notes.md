@@ -28,7 +28,7 @@
 ## Phase 3b exit evidence
 
 - Interim inventory: `packages/core/src/guards-3b.test.ts` derives 120 canonical `throw new` guards across the ten Phase 3b source files. It does not claim reachability. The merged Phase 3c scanner and `@vitest/coverage-v8` replace this inventory with statement-to-line `guards:verify` evidence.
-- Focused guard suites: 205 passed across Nebius, JSON extraction, token factory, routing, cost, provider canary, Tavily, ConTree, memory executor, live diagnostics, and the interim checklist.
+- Focused guard suites: 207 passed across Nebius, JSON extraction, token factory, routing, cost, provider canary, Tavily, ConTree, memory executor, live diagnostics, and the interim checklist.
 - Core suite: passed.
 - Captured fixture contracts: 25 passed.
 - `ci:fast`: passed after the generated Action bundle was committed with the Core control-flow change.
@@ -37,7 +37,7 @@
 - Synthetic Tavily evidence pending Phase 5: search and extract success shapes, transport rejection, non-success status, JSON parse failure, null/non-object bodies, missing/non-array results, invalid citations, snippet bounds, and invalid input/configuration. The committed fixtures are `tavily/search.synthetic.json` and `tavily/extract.synthetic.json`.
 - Synthetic ConTree evidence pending Phase 5: import/run/snapshot operation responses, transport and timeout paths, operation status and cancellation, Location validation, file-upload IDs, output encoding and metrics, snapshot option/path/workspace validation, non-git and git symlink handling, `.npmrc` and embedded credential rejection, file/source/archive caps, and overlay shell safety. Existing `executor/__fixtures__/*.json` plus temporary local repositories provide these shapes.
 - Pending captured boundaries are explicit in `packages/core/src/__fixtures__/captured/pending-boundaries.phase-3b.json`: `provider`, `tavily`, and `contree`, all pending the separately authorized Phase 5 session. No live provider, Tavily, or ConTree call was made in Phase 3b.
-- Deleted unreachable guards: the final Nebius `request failed unexpectedly` throw was unreachable because each final retry path throws inside the loop; the loop is now structurally unbounded with terminal guards. The provider-canary non-canonical replacement guard was shadowed because a different replacement cannot first pass the exact candidate-diff guard; its red regression proved the earlier fail-closed outcome.
+- Deleted unreachable guard: the final Nebius `request failed unexpectedly` throw was unreachable because each final retry path throws inside the loop; the loop is now structurally unbounded with terminal guards. The provider-canary non-canonical replacement guard remains required because diff construction normalizes line endings and a missing final newline; CRLF and missing-final-newline regressions now reach it.
 
 ## Deviations
 
