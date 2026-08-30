@@ -179,4 +179,109 @@ describe('ReplayRecorder', () => {
       pendingBoundaries: [],
     });
   });
+
+  it('sanitizes object keys and marks structural JSON loss incomplete', () => {
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+    const circular: { self?: unknown } = {};
+    circular.self = circular;
+    const deep: Record<string, unknown> = {};
+    let cursor = deep;
+    for (let depth = 0; depth < 34; depth += 1) {
+      cursor.next = {};
+      cursor = cursor.next as Record<string, unknown>;
+    }
+    const many = Object.fromEntries(
+      Array.from({ length: 10_001 }, (_, index) => [`key-${index}`, index]),
+    );
+    const collidingKeys = {
+      'Authorization: Bearer first-secret': 1,
+      'Authorization: Bearer second-secret': 2,
+    };
+
+    recorder.recordGitHub({ method: 'getWorkflowRun', args: [deep], result: {} });
+    recorder.recordRepository({ method: 'readPolicyAtSha', args: [], result: many });
+    recorder.recordExecutor({
+      method: 'run',
+      args: [
+        collidingKeys,
+        circular,
+        'x'.repeat(1_048_577),
+        Symbol('Authorization: Bearer symbol-secret'),
+      ],
+      result: {},
+    });
+
+    const bundle = recorder.finish('infra-stop');
+    const serialized = JSON.stringify(bundle);
+    const recordedKeys = Object.keys(bundle.executor[0]?.args[0] as object);
+    expect(recordedKeys).toHaveLength(2);
+    expect(new Set(recordedKeys).size).toBe(2);
+    expect(recordedKeys).toEqual([
+      'Authorization: [redacted credential]',
+      'Authorization: [redacted credential] [collision 2]',
+    ]);
+    expect(Object.values(bundle.executor[0]?.args[0] as object)).toEqual([1, 2]);
+    expect(serialized).not.toContain('first-secret');
+    expect(serialized).not.toContain('second-secret');
+    expect(serialized).not.toContain('symbol-secret');
+    expect(bundle.completeness.overflowedBoundaries).toEqual([
+      'executor', 'github', 'repository',
+    ]);
+    expect(bundle.completeness.complete).toBe(false);
+  });
+
+  it('sanitizes recorder metadata and configuration at capture time', () => {
+    const recorder = new ReplayRecorder(
+      'Authorization: Bearer run-secret',
+      'acme/config-secret',
+      'injected-secret',
+      {
+        ...CONFIG,
+        routingProfileId: 'Authorization: Bearer route-secret',
+      },
+      ['config-secret', 'injected-secret'],
+    );
+
+    const bundle = recorder.finish('fixed');
+    expect(JSON.stringify(bundle)).not.toMatch(/(?:run|config|injected|route)-secret/u);
+    expect(bundle).toMatchObject({
+      runId: 'Authorization: [redacted credential]',
+      repo: 'acme/[redacted secret]',
+      actionSha: '[redacted secret]',
+      configuration: { routingProfileId: 'Authorization: [redacted credential]' },
+    });
+  });
+
+  it.each([786_433, 1_048_576])(
+    'does not deep-redact or corrupt a %i-byte RawBody at finish',
+    (size) => {
+      const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+      const bytes = new Uint8Array(size).fill(0x78);
+      recorder.recordHttp({
+        boundary: 'nebius',
+        request: { method: 'POST', url: 'https://example.test', headers: {}, body: null },
+        response: {
+          status: 200,
+          headers: {},
+          body: {
+            raw: true,
+            encoding: 'base64',
+            data: Buffer.from(bytes).toString('base64'),
+            bytes: bytes.byteLength,
+            sha256: '0'.repeat(64),
+          },
+        },
+        latencyMs: 0,
+      });
+
+      expect(recorder.finish('fixed').http[0]?.response).toMatchObject({
+        body: {
+          raw: true,
+          encoding: 'base64',
+          data: Buffer.from(bytes).toString('base64'),
+          bytes: size,
+        },
+      });
+    },
+  );
 });

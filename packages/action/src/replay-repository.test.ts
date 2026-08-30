@@ -86,4 +86,20 @@ describe('recordingRepositoryPort', () => {
     await rm(checkoutDir, { recursive: true, force: true });
     await rm(outside, { force: true });
   });
+
+  it('does not treat a source excerpt truncated flag as capture loss', async () => {
+    const port = {
+      readSourceExcerpts: vi.fn(async () => [{
+        path: 'src/value.ts', startLine: 1, content: 'value', truncated: true,
+      }]),
+    } as unknown as RepositoryPort;
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+
+    await recordingRepositoryPort(port, recorder).readSourceExcerpts('/tmp/repo', [], {
+      maxFiles: 1, maxLinesPerFile: 1, maxCharactersPerFile: 10, maxBytesPerFile: 10,
+    });
+
+    expect(recorder.finish('fixed').completeness.overflowedBoundaries)
+      .not.toContain('repository');
+  });
 });

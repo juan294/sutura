@@ -94,8 +94,6 @@ function recordResponseOnce(
 
 interface RawReadableResponse {
   arrayBuffer?(): Promise<ArrayBuffer>;
-  clone?(): RawReadableResponse;
-  text?(): Promise<string>;
 }
 
 type ByteCapture = { bytes: Uint8Array } | { error: unknown };
@@ -107,23 +105,16 @@ function captureResult(promise: Promise<Uint8Array>): Promise<ByteCapture> {
   );
 }
 
-function clonedResponseBytes(response: unknown): Promise<ByteCapture> {
+function responseBytes(response: unknown): Promise<ByteCapture> {
   const readable = response as RawReadableResponse;
-  if (typeof readable.clone !== 'function') {
-    return Promise.resolve({ error: new Error('Response clone is unavailable') });
-  }
   try {
-    const clone = readable.clone();
-    if (typeof clone.arrayBuffer === 'function') {
-      return captureResult(clone.arrayBuffer().then((value) => new Uint8Array(value)));
-    }
-    if (typeof clone.text === 'function') {
-      return captureResult(clone.text().then((value) => new TextEncoder().encode(value)));
+    if (typeof readable.arrayBuffer === 'function') {
+      return captureResult(readable.arrayBuffer().then((value) => new Uint8Array(value)));
     }
   } catch (error) {
     return Promise.resolve({ error });
   }
-  return Promise.resolve({ error: new Error('Cloned response body is unavailable') });
+  return Promise.resolve({ error: new Error('Response body is unavailable') });
 }
 
 function recordedBodyReader(
@@ -211,7 +202,7 @@ export function recordingNebiusFetch(
     const body = recordedBodyReader(
       recorder,
       record,
-      clonedResponseBytes(response),
+      responseBytes(response),
       response,
     );
     return {
@@ -258,7 +249,7 @@ export function recordingTavilyFetch(
     const body = recordedBodyReader(
       recorder,
       record,
-      clonedResponseBytes(response),
+      responseBytes(response),
       response,
     );
     if (!response.ok) {
@@ -273,10 +264,9 @@ export function recordingTavilyFetch(
 }
 
 async function streamBody(
-  stream: ReadableStream<Uint8Array>,
+  reader: ReadableStreamDefaultReader<Uint8Array>,
 ): Promise<RecordedBody> {
   const hash = createHash('sha256');
-  const reader = stream.getReader();
   let bytes = 0;
   try {
     for (;;) {
@@ -297,41 +287,64 @@ function isReadableStream(value: unknown): value is ReadableStream<Uint8Array> {
   return typeof ReadableStream !== 'undefined' && value instanceof ReadableStream;
 }
 
+function cancelReplayStream(
+  target: { cancel(reason?: unknown): Promise<void> },
+  reason: string,
+): void {
+  try {
+    void target.cancel(reason).catch(() => undefined);
+  } catch {
+    // Replay capture cancellation is best-effort.
+  }
+}
+
 function captureContreeRequest(init: RequestInit): {
   init: RequestInit;
   body: Promise<RecordedBody>;
+  immediateBody?: RecordedBody;
+  cancel(): void;
 } {
   const body = init.body;
-  if (body === null || body === undefined) return { init, body: Promise.resolve(null) };
-  if (typeof body === 'string') return { init, body: Promise.resolve(boundedText(body)) };
+  const captured = (value: RecordedBody) => ({
+    init,
+    body: Promise.resolve(value),
+    immediateBody: value,
+    cancel() {},
+  });
+  if (body === null || body === undefined) return captured(null);
+  if (typeof body === 'string') return captured(boundedText(body));
   if (body instanceof URLSearchParams) {
-    return { init, body: Promise.resolve(boundedText(body.toString())) };
+    return captured(boundedText(body.toString()));
   }
   if (body instanceof Blob) {
     return {
       init,
       body: body.arrayBuffer().then((value) => binaryBody(new Uint8Array(value))),
+      cancel() {},
     };
   }
   if (body instanceof ArrayBuffer) {
-    return { init, body: Promise.resolve(binaryBody(new Uint8Array(body))) };
+    return captured(binaryBody(new Uint8Array(body)));
   }
   if (ArrayBuffer.isView(body)) {
-    return {
-      init,
-      body: Promise.resolve(binaryBody(
-        new Uint8Array(body.buffer, body.byteOffset, body.byteLength),
-      )),
-    };
+    return captured(binaryBody(
+      new Uint8Array(body.buffer, body.byteOffset, body.byteLength),
+    ));
   }
   if (isReadableStream(body)) {
     const [fetchBody, recordedBody] = body.tee();
+    const reader = recordedBody.getReader();
     return {
       init: { ...init, body: fetchBody },
-      body: streamBody(recordedBody),
+      body: streamBody(reader),
+      cancel() {
+        const reason = 'ConTree transport completed before replay capture';
+        cancelReplayStream(reader, reason);
+        cancelReplayStream(fetchBody, reason);
+      },
     };
   }
-  return { init, body: Promise.resolve(boundedText(String(body))) };
+  return captured(boundedText(String(body)));
 }
 
 function responseBody(response: Response): Promise<RecordedBody> {
@@ -356,7 +369,7 @@ export function recordingContreeFetch(
       captured = captureContreeRequest(init);
     } catch {
       recorder.markOverflow('http');
-      captured = { init, body: Promise.resolve(null) };
+      captured = { init, body: Promise.resolve(null), immediateBody: null, cancel() {} };
     }
     const capturedBody = captured.body.catch(() => {
       recorder.markOverflow('http');
@@ -367,7 +380,9 @@ export function recordingContreeFetch(
     try {
       response = await fetch(input, captured.init);
     } catch (error) {
-      const requestBody = await capturedBody;
+      captured.cancel();
+      const requestBody = captured.immediateBody ?? null;
+      if (captured.immediateBody === undefined) recorder.markOverflow('http');
       recorder.recordHttp({
         boundary: 'contree',
         request: {

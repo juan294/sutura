@@ -53,4 +53,20 @@ describe('recordingExecutor', () => {
       error: 'sandbox unavailable',
     });
   });
+
+  it('does not treat a domain truncated flag as a capture truncation', async () => {
+    const result = {
+      imageId: 'image-1', exitCode: 0, stdout: 'bounded', stderr: '',
+      truncated: true, metrics: {},
+    };
+    const executor = {
+      run: vi.fn(async () => result),
+    } as unknown as Executor;
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+
+    await recordingExecutor(executor, recorder).run('image-1', 'pnpm test');
+
+    expect(recorder.finish('fixed').completeness.overflowedBoundaries)
+      .not.toContain('executor');
+  });
 });

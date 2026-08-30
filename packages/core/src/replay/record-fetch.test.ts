@@ -29,7 +29,7 @@ describe('recording transport adapters', () => {
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
-      const clone = vi.spyOn(innerResponse, 'clone');
+      const arrayBuffer = vi.spyOn(innerResponse, 'arrayBuffer');
       const response = boundary === 'nebius'
         ? await recordingNebiusFetch(recorder, vi.fn(async () => innerResponse))(
             'https://example.test/nebius', { method: 'POST', headers: {}, body: '{}' },
@@ -39,7 +39,8 @@ describe('recording transport adapters', () => {
           );
 
       await expect(response.json()).resolves.toEqual({ answer: 42 });
-      expect(clone).toHaveBeenCalledOnce();
+      expect(arrayBuffer).toHaveBeenCalledOnce();
+      expect(innerResponse.bodyUsed).toBe(true);
       expect(recorder.finish('fixed').http[0]?.response).toMatchObject({
         body: {
           raw: true,
@@ -50,24 +51,34 @@ describe('recording transport adapters', () => {
     },
   );
 
-  it('returns decoded text while recording its exact non-UTF-8 bytes', async () => {
+  it('returns decoded text but stores non-UTF-8 evidence hash-only and incomplete', async () => {
     const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
-    const bytes = new Uint8Array([0x66, 0x6f, 0x80]);
+    const bytes = new Uint8Array([
+      0xff,
+      ...Buffer.from('Authorization: Bearer raw-secret', 'utf8'),
+    ]);
     const innerResponse = new Response(bytes, {
       status: 200,
       headers: { 'content-type': 'text/plain' },
     });
-    const clone = vi.spyOn(innerResponse, 'clone');
+    const arrayBuffer = vi.spyOn(innerResponse, 'arrayBuffer');
     const response = await recordingNebiusFetch(recorder, vi.fn(async () => innerResponse))(
       'https://example.test/nebius', { method: 'POST', headers: {}, body: '{}' },
     );
 
-    await expect(response.text()).resolves.toBe('fo�');
+    await expect(response.text()).resolves.toContain('Authorization: Bearer raw-secret');
     await expect(response.json()).rejects.toBeInstanceOf(TypeError);
-    expect(clone).toHaveBeenCalledOnce();
-    expect(recorder.finish('fixed').http[0]?.response).toMatchObject({
-      body: { raw: true, encoding: 'base64', data: Buffer.from(bytes).toString('base64') },
+    expect(arrayBuffer).toHaveBeenCalledOnce();
+    const bundle = recorder.finish('fixed');
+    expect(bundle.http[0]?.response).toMatchObject({
+      body: {
+        truncated: true,
+        bytes: bytes.byteLength,
+        sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      },
     });
+    expect(JSON.stringify(bundle)).not.toContain('raw-secret');
+    expect(bundle.completeness.overflowedBoundaries).toContain('http');
   });
 
   it('preserves response consumption and sequences exchanges across boundaries', async () => {
@@ -212,7 +223,65 @@ describe('recording transport adapters', () => {
     await expect(response.json()).rejects.toBeInstanceOf(SyntaxError);
 
     expect(recorder.finish('infra-stop').http[0]?.response).toMatchObject({
-      body: { raw: true, encoding: 'base64', data: '/w==' },
+      body: {
+        truncated: true,
+        bytes: 1,
+        sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      },
+    });
+  });
+
+  it.each(['nebius', 'tavily'] as const)(
+    'bounds an over-limit %s response without changing its JSON result',
+    async (boundary) => {
+      const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+      const source = JSON.stringify({ value: 'x'.repeat(1_048_576) });
+      const innerResponse = new Response(source, {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+      const response = boundary === 'nebius'
+        ? await recordingNebiusFetch(recorder, vi.fn(async () => innerResponse))(
+            'https://example.test/nebius', { method: 'POST', headers: {}, body: '{}' },
+          )
+        : await recordingTavilyFetch(recorder, vi.fn(async () => innerResponse))(
+            'https://example.test/tavily', { method: 'POST', headers: {}, body: '{}' },
+          );
+
+      await expect(response.json()).resolves.toEqual({ value: 'x'.repeat(1_048_576) });
+      const bundle = recorder.finish('fixed');
+      expect(bundle.http[0]?.response).toMatchObject({
+        body: { truncated: true, bytes: Buffer.byteLength(source) },
+      });
+      expect(bundle.completeness.overflowedBoundaries).toContain('http');
+    },
+  );
+
+  it('cancels an unfinished ConTree request capture and rethrows promptly', async () => {
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull() {
+        // Intentionally never resolves or enqueues.
+        return new Promise<void>(() => undefined);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+    const failure = new Error('transport rejected');
+    const wrapped = recordingContreeFetch(recorder, vi.fn(async () => {
+      throw failure;
+    }));
+
+    await expect(wrapped('https://example.test/contree', {
+      method: 'POST', body: stream, duplex: 'half',
+    })).rejects.toBe(failure);
+    await Promise.resolve();
+
+    expect(cancelled).toBe(true);
+    expect(recorder.finish('infra-stop')).toMatchObject({
+      http: [{ request: { body: null }, response: { transportError: 'transport rejected' } }],
+      completeness: { complete: false, overflowedBoundaries: ['http'] },
     });
   });
 

@@ -63,6 +63,7 @@ export type ReplayBoundary =
   | 'repository'
   | 'executor'
   | RecordedHttpBoundary;
+export type ReplayOverflowBoundary = ReplayBoundary | 'http' | 'configuration';
 
 export interface RecordedHttpExchange {
   boundary: RecordedHttpBoundary;
@@ -127,8 +128,8 @@ export interface ReplayBundle {
   configuration: ReplayOrchestrationConfig;
   completeness: {
     complete: boolean;
-    overflowedBoundaries: string[];
-    pendingBoundaries: string[];
+    overflowedBoundaries: ReplayOverflowBoundary[];
+    pendingBoundaries: ReplayBoundary[];
   };
   outcome?: CaseFile['outcome'];
 }
@@ -198,52 +199,116 @@ function redactHeaders(
   return safe;
 }
 
+interface SafeJsonValue {
+  value: unknown;
+  lossy: boolean;
+}
+
+function normalizedString(
+  value: string,
+  secrets: readonly string[],
+  checkoutPaths: ReadonlyMap<string, string>,
+): string | TruncatedBody {
+  let normalized = value;
+  for (const [checkoutDir, recordedPath] of checkoutPaths) {
+    if (normalized === checkoutDir) {
+      normalized = recordedPath;
+      break;
+    }
+    if (normalized.startsWith(`${checkoutDir}/`)) {
+      normalized = `${recordedPath}${normalized.slice(checkoutDir.length)}`;
+      break;
+    }
+  }
+  return redactString(normalized, secrets);
+}
+
 function safeJsonValue(
   value: unknown,
   secrets: readonly string[],
   checkoutPaths: ReadonlyMap<string, string> = new Map(),
   seen = new WeakSet<object>(),
   depth = 0,
-): unknown {
+): SafeJsonValue {
   if (typeof value === 'string') {
-    let normalized = value;
-    for (const [checkoutDir, recordedPath] of checkoutPaths) {
-      if (normalized === checkoutDir) {
-        normalized = recordedPath;
-        break;
-      }
-      if (normalized.startsWith(`${checkoutDir}/`)) {
-        normalized = `${recordedPath}${normalized.slice(checkoutDir.length)}`;
-        break;
-      }
-    }
-    return redactString(normalized, secrets);
+    const sanitized = normalizedString(value, secrets, checkoutPaths);
+    return { value: sanitized, lossy: typeof sanitized !== 'string' };
   }
-  if (value === null || typeof value === 'boolean') return value;
-  if (typeof value === 'number') return Number.isFinite(value) ? value : String(value);
+  if (value === null || typeof value === 'boolean') return { value, lossy: false };
+  if (typeof value === 'number') {
+    return Number.isFinite(value)
+      ? { value, lossy: false }
+      : { value: String(value), lossy: true };
+  }
   if (typeof value === 'bigint' || typeof value === 'symbol' || typeof value === 'function') {
-    return String(value);
+    return {
+      value: normalizedString(String(value), secrets, checkoutPaths),
+      lossy: true,
+    };
   }
-  if (value === undefined) return null;
-  if (depth >= 32) return '[maximum replay depth]';
-  if (value instanceof Error) return { error: redactString(value.message, secrets) };
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value !== 'object') return String(value);
-  if (seen.has(value)) return '[circular]';
+  // Optional call arguments are represented as null in the replay JSON. This
+  // matches JSON array semantics and does not discard a supplied value.
+  if (value === undefined) return { value: null, lossy: false };
+  if (depth >= 32) return { value: '[maximum replay depth]', lossy: true };
+  if (value instanceof Error) {
+    return {
+      value: { error: redactString(value.message, secrets) },
+      lossy: true,
+    };
+  }
+  if (value instanceof Date) {
+    try {
+      return { value: value.toISOString(), lossy: false };
+    } catch (error) {
+      return {
+        value: { error: redactString(errorMessage(error), secrets) },
+        lossy: true,
+      };
+    }
+  }
+  if (typeof value !== 'object') return { value: String(value), lossy: true };
+  if (seen.has(value)) return { value: '[circular]', lossy: true };
   seen.add(value);
   try {
     if (Array.isArray(value)) {
-      return value.slice(0, 10_000).map((item) =>
-        safeJsonValue(item, secrets, checkoutPaths, seen, depth + 1),
-      );
+      let lossy = value.length > 10_000;
+      const sanitized = value.slice(0, 10_000).map((item) => {
+        const result = safeJsonValue(item, secrets, checkoutPaths, seen, depth + 1);
+        lossy ||= result.lossy;
+        return result.value;
+      });
+      return { value: sanitized, lossy };
     }
-    const entries = Object.entries(value).slice(0, 10_000).map(([key, item]) => [
-      key,
-      safeJsonValue(item, secrets, checkoutPaths, seen, depth + 1),
-    ]);
-    return Object.fromEntries(entries);
+    const sourceEntries = Object.entries(value);
+    const prototype = Object.getPrototypeOf(value) as unknown;
+    let lossy = sourceEntries.length > 10_000;
+    lossy ||= prototype !== Object.prototype && prototype !== null;
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, item] of sourceEntries.slice(0, 10_000)) {
+      const safeKeyValue = normalizedString(key, secrets, checkoutPaths);
+      let safeKey = typeof safeKeyValue === 'string'
+        ? safeKeyValue
+        : `[truncated key ${safeKeyValue.sha256}]`;
+      lossy ||= typeof safeKeyValue !== 'string';
+      if (Object.hasOwn(sanitized, safeKey)) {
+        lossy = true;
+        const base = safeKey;
+        let collision = 2;
+        do {
+          safeKey = `${base} [collision ${collision}]`;
+          collision += 1;
+        } while (Object.hasOwn(sanitized, safeKey));
+      }
+      const result = safeJsonValue(item, secrets, checkoutPaths, seen, depth + 1);
+      lossy ||= result.lossy;
+      sanitized[safeKey] = result.value;
+    }
+    return { value: sanitized, lossy };
   } catch (error) {
-    return { error: redactString(errorMessage(error), secrets) };
+    return {
+      value: { error: redactString(errorMessage(error), secrets) },
+      lossy: true,
+    };
   } finally {
     seen.delete(value);
   }
@@ -269,15 +334,25 @@ function redactBody(body: RecordedBody, secrets: readonly string[]): RecordedBod
       ? rawBody(new TextEncoder().encode(redacted))
       : redacted;
   } catch {
-    return rawBody(bytes);
+    return { truncated: true, bytes: bytes.byteLength, sha256: sha256(bytes) };
   }
+}
+
+function isTruncatedBody(value: object): value is TruncatedBody {
+  const candidate = value as Partial<TruncatedBody>;
+  const keys = Object.keys(value).toSorted();
+  return keys.length === 3 && keys[0] === 'bytes' && keys[1] === 'sha256' &&
+    keys[2] === 'truncated' && candidate.truncated === true &&
+    typeof candidate.bytes === 'number' && Number.isSafeInteger(candidate.bytes) &&
+    candidate.bytes >= 0 && typeof candidate.sha256 === 'string' &&
+    /^[a-f0-9]{64}$/u.test(candidate.sha256);
 }
 
 function containsTruncation(value: unknown, seen = new WeakSet<object>()): boolean {
   if (typeof value !== 'object' || value === null) return false;
   if (seen.has(value)) return false;
   seen.add(value);
-  if ('truncated' in value && value.truncated === true) return true;
+  if (isTruncatedBody(value)) return true;
   try {
     return Object.values(value).some((item) => containsTruncation(item, seen));
   } catch {
@@ -289,7 +364,7 @@ export function redactBundle(
   bundle: ReplayBundle,
   secrets: readonly string[] = [],
 ): ReplayBundle {
-  return safeJsonValue(bundle, secrets) as ReplayBundle;
+  return safeJsonValue(bundle, secrets).value as ReplayBundle;
 }
 
 export class ReplayRecorder {
@@ -299,7 +374,7 @@ export class ReplayRecorder {
   private readonly executor: RecordedExecutorCall[] = [];
   private readonly configuration: ReplayOrchestrationConfig;
   private readonly checkoutPaths = new Map<string, string>();
-  private readonly overflowedBoundaries = new Set<string>();
+  private readonly overflowedBoundaries = new Set<ReplayOverflowBoundary>();
   private readonly pending = {
     http: new Set<number>(),
     ports: new Set<number>(),
@@ -311,17 +386,26 @@ export class ReplayRecorder {
   private portSequence = 0;
   private executorSequence = 0;
 
+  readonly runId: string;
+  readonly repo: string;
+  readonly actionSha: string;
+
   constructor(
-    readonly runId: string,
-    readonly repo: string,
-    readonly actionSha: string,
+    runId: string,
+    repo: string,
+    actionSha: string,
     configuration: ReplayOrchestrationConfig,
     private readonly secrets: readonly string[] = [],
   ) {
-    this.configuration = safeJsonValue(
+    const safeConfig = safeJsonValue(
       configuration,
       this.secrets,
-    ) as ReplayOrchestrationConfig;
+    );
+    this.configuration = safeConfig.value as ReplayOrchestrationConfig;
+    if (safeConfig.lossy) this.markOverflow('configuration');
+    this.runId = redactScalar(runId, this.secrets);
+    this.repo = redactScalar(repo, this.secrets);
+    this.actionSha = redactScalar(actionSha, this.secrets);
   }
 
   reserveHttpSequence(boundary: RecordedHttpBoundary): number | null {
@@ -343,7 +427,7 @@ export class ReplayRecorder {
   private reserveSequence(
     boundary: 'http' | 'ports' | 'executor',
     maximum: number,
-    overflowBoundary: 'http' | 'github' | 'repository' | 'executor' = boundary === 'ports'
+    overflowBoundary: ReplayOverflowBoundary = boundary === 'ports'
       ? 'github'
       : boundary,
   ): number | null {
@@ -360,7 +444,7 @@ export class ReplayRecorder {
     return sequence;
   }
 
-  markOverflow(boundary: 'http' | 'github' | 'repository' | 'executor'): void {
+  markOverflow(boundary: ReplayOverflowBoundary): void {
     this.overflowedBoundaries.add(boundary);
   }
 
@@ -372,8 +456,10 @@ export class ReplayRecorder {
     return recordedPath;
   }
 
-  private safeValue(value: unknown): unknown {
-    return safeJsonValue(value, this.secrets, this.checkoutPaths);
+  private safeValue(value: unknown, boundary: ReplayOverflowBoundary): unknown {
+    const result = safeJsonValue(value, this.secrets, this.checkoutPaths);
+    if (result.lossy) this.markOverflow(boundary);
+    return result.value;
   }
 
   recordHttp(
@@ -442,8 +528,8 @@ export class ReplayRecorder {
       const recorded = {
         sequence,
         method: call.method,
-        args: this.safeValue(call.args) as unknown[],
-        result: this.safeValue(call.result),
+        args: this.safeValue(call.args, 'executor') as unknown[],
+        result: this.safeValue(call.result, 'executor'),
       };
       this.executor.push(recorded);
       if (containsTruncation(recorded)) this.markOverflow('executor');
@@ -477,8 +563,8 @@ export class ReplayRecorder {
       const recorded = {
         sequence,
         method: call.method,
-        args: this.safeValue(call.args) as unknown[],
-        result: this.safeValue(call.result),
+        args: this.safeValue(call.args, boundary) as unknown[],
+        result: this.safeValue(call.result, boundary),
       };
       if (boundary === 'github') {
         this.github.push(recorded as RecordedGitHubCall);
@@ -532,10 +618,6 @@ export class ReplayRecorder {
       },
       outcome,
     };
-    try {
-      return redactBundle(bundle, this.secrets);
-    } catch {
-      return bundle;
-    }
+    return bundle;
   }
 }

@@ -13,6 +13,7 @@ import {
   recordingExecutor,
   recordingNebiusFetch,
   recordingTavilyFetch,
+  type OrchestrationContext,
 } from '@sutura/core';
 
 import { GitHubAdapter } from './github.js';
@@ -40,17 +41,23 @@ export async function runAction(): Promise<void> {
       throw new Error('GITHUB_RUN_ID must be a positive decimal id');
     }
     const octokit = github.getOctokit(action.githubToken);
+    const orchestrationOptions = {
+      triageN: config.triageN,
+      raceK: config.raceK,
+      repairBudgets: config.repairBudgets,
+      search: config.search,
+      ...(config.runtimeId === undefined ? {} : { runtimeId: config.runtimeId }),
+    } satisfies Pick<
+      OrchestrationContext,
+      'triageN' | 'raceK' | 'repairBudgets' | 'search' | 'runtimeId'
+    >;
     const recorder = action.captureReplay
       ? new ReplayRecorder(
           action.runId,
           `${owner}/${repo}`,
           process.env.GITHUB_SHA ?? '',
           {
-            triageN: config.triageN,
-            raceK: config.raceK,
-            repairBudgets: config.repairBudgets,
-            search: config.search,
-            ...(config.runtimeId === undefined ? {} : { runtimeId: config.runtimeId }),
+            ...orchestrationOptions,
             models: config.models,
             routingProfileId: config.routingProfileId,
             maxOps: config.maxOps,
@@ -119,11 +126,7 @@ export async function runAction(): Promise<void> {
       executor,
       llm: nebius,
       cost: nebius.ledger,
-      triageN: config.triageN,
-      raceK: config.raceK,
-      repairBudgets: config.repairBudgets,
-      search: config.search,
-      ...(config.runtimeId === undefined ? {} : { runtimeId: config.runtimeId }),
+      ...orchestrationOptions,
       ...(tavily ? { tavily } : {}),
       ...(recorder ? { replay: recorder } : {}),
     }), (message) => core.warning(message), recorder);
