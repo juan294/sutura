@@ -4,8 +4,9 @@
 
 ## Goal
 
-Turn every historical red run into a captured fixture, make any bundle
-replayable offline through the real orchestrator, and make "captured, not
+Turn each unique historical CI run into a partial captured fixture for GitHub
+and log-parsing boundary tests, make complete bundles replayable offline
+through the real orchestrator, and make "captured, not
 hand-written" a machine-checked property of boundary tests.
 
 ## Files
@@ -20,15 +21,24 @@ Add:
 - `packages/core/src/replay/replay-fetch.ts` — `replayFetch(bundle, boundary)`.
 - `packages/core/src/replay/replay-orchestrate.ts` — `replayBundle(bundle, deps)`.
 - `packages/core/src/replay/*.test.ts`.
+- `packages/core/src/github/types.ts`, `adapter.ts`, and tests — the existing
+  transport-neutral GitHub orchestration adapter moved from Action so live and
+  replay use one implementation.
 - `packages/action/src/replay-github.ts` — add `replayingGitHubApi(bundle)`.
 - `packages/cli/src/replay.ts`, `replay.test.ts`.
 - `packages/action/src/__fixtures__/captured/<runId>/bundle.json` for every
   historical run (GitHub half only), plus one
   `packages/action/src/__fixtures__/captured/manifest.json`.
-- `packages/core/src/__fixtures__/captured/manifest.json` (provider and
-  sandbox halves land here in Phases 3b and 5).
+- `packages/core/src/__fixtures__/captured/manifest.json` (provider, Tavily,
+  and sandbox halves land here in Phase 5 after authorization).
 
 Modify:
+
+- `packages/action/src/github.ts` — retain the Action artifact implementation
+  and re-export the Core adapter/types; no duplicated validation or sequencing.
+- `packages/action/src/checks.ts`, `evidence.ts`, `octokit.ts` — move pure
+  check/adapter logic needed by Core or update imports; keep `@actions/*` and
+  temp-file artifact work in Action only.
 
 - `packages/cli/src/args.ts:6-16` — add
   `sutura replay --bundle <file> --format json [--runtime <auto|node|python>]`
@@ -38,7 +48,7 @@ Modify:
   `packages/core/src/orchestrate.test.ts:552,1079,1152` — each "replays live run
   N" test reads its GitHub half (job log, run metadata) from the captured
   fixture for that run ID instead of the inline literal; the provider reply
-  stays inline until a provider capture exists (Phase 3b / Phase 5).
+  stays inline until a provider capture exists in Phase 5.
 - `scripts/provider-contract-canary.test.mjs:33-47` — the 1..16 coverage
   assertion additionally requires each test to reference a captured run ID
   present in the manifest.
@@ -56,7 +66,9 @@ Modify:
    export const CAPTURED_FIXTURES_SCHEMA_VERSION = 'sutura-captured-fixtures-v1' as const;
 
    export interface CapturedFixtureEntry {
-     runId: string;                       // GitHub CI run id, e.g. '33239848825'
+     workflowRunId: string;               // captured GitHub workflow run
+     targetRunId: string;                 // CI run supplied to Sutura
+     suturaRunId?: string;                // associated Sutura workflow
      kind: 'ci-failure' | 'ci-success' | 'provider-capture' | 'tavily-capture'
          | 'sandbox-capture' | 'dogfood-gave-up';
      headSha: string;                     // exact 40-hex commit the run executed
@@ -65,7 +77,7 @@ Modify:
                                           // or the capture commit SHA when capturedBy === 'local'
      capturedBy: 'workflow' | 'local';
      bundleSha256: string;                // sha256 of bundle.json bytes
-     boundaries: Array<'github' | 'nebius' | 'tavily' | 'contree' | 'repository'>;
+     boundaries: Array<'github' | 'nebius' | 'tavily' | 'contree' | 'repository' | 'executor'>;
      notes: string;                       // e.g. 'A3: bundle.test.ts hook timeout; Sutura crashed: no observed failing command'
    }
 
@@ -75,11 +87,19 @@ Modify:
    }
    ```
 
-   `source` must satisfy `publicGitHubUrl` (`scripts/evidence-contract.mjs:43`);
-   `headSha` must satisfy `exactSha`; `bundleSha256` must equal the SHA-256 of
-   the file bytes.
+   For `capturedBy: 'workflow'`, `source` must satisfy `publicGitHubUrl`
+   (`scripts/evidence-contract.mjs:43`). For `capturedBy: 'local'`, `source`
+   must satisfy `exactSha` and identify the committed capture script used for
+   the run. `headSha` must satisfy `exactSha`; `bundleSha256` must equal the
+   SHA-256 of the file bytes.
 
-2. `capture-run.mjs`: for a CI run ID, call `gh api` for
+2. Add run-time-validated bundle and manifest parsers. Reject unknown schema
+   versions, malformed records, missing outcomes for complete bundles,
+   overflowed captures presented as complete, and files above 16 MiB before
+   full parsing. Put typed canonical JSON in Core and reuse the same ordering
+   contract as `scripts/evidence-contract.mjs`.
+
+3. `capture-run.mjs`: for a CI run ID, call `gh api` for
    `actions/runs/<id>`, `actions/runs/<id>/jobs?filter=latest&per_page=100`,
    and `actions/jobs/<jobId>/logs` for each failed job, and
    `repos/…/pulls?head=` / `commits/<sha>/pulls` to mirror what
@@ -90,50 +110,63 @@ Modify:
    `listJobsForWorkflowRun`, then `downloadJobLogs` per failed job). If
    `--sutura-run` is given and that run has a `sutura-replay-<id>.json`
    artifact, download it and merge its `http` array instead. Write
-   `bundle.json` and append a manifest entry.
+   `bundle.json` and append a manifest entry. When a historical branch no
+   longer exists, derive the logical ref result from immutable workflow-run
+   `head_sha` and record that derivation in `notes`; never claim it was a
+   present-day raw ref response.
 
-3. Capture the 29 historical runs listed in
-   `docs/research/2026-08-29-ci-failure-retrospective.md` (A1–A4, B1–B4 via
-   their triggering CI runs, C 08-27 ×5, C 08-29 ×16) plus the one success
-   `33118205130`. Commit them. These are real GitHub payloads and raw logs
-   including ANSI escapes and the pnpm workspace prefixes.
+4. Capture the 26 unique triggering CI runs represented by the A, B, and C
+   evidence in `docs/research/2026-08-29-ci-failure-retrospective.md`.
+   `workflowRunId`, `targetRunId`, and optional `suturaRunId` are separate
+   manifest fields so B crashes do not duplicate their triggering CI bundle.
+   Commit the real GitHub payloads and raw logs, including ANSI escapes and
+   pnpm workspace prefixes.
 
-4. `replayFetch(bundle, boundary)`: returns a `fetch`-shaped function that
+5. `replayFetch(bundle, boundary)`: returns a boundary-specific fetch-shaped function that
    pops the next recorded exchange for that boundary, asserts the request
    `method`, `url`, and canonical-JSON `body` equal the recorded request (fail
    closed with `ReplayMismatchError` naming the sequence number and the first
    differing JSON path), and returns the recorded response. Transport errors
    replay as rejections.
 
-5. `RecordedExecutor implements Executor`: built from the `contree` exchanges;
+6. `RecordedExecutor implements Executor`: built from the logical executor exchanges;
    maps each `run`/`snapshot`/`import` call to the recorded operation by
    sequence and returns the recorded terminal (exit, stdout, stderr, metrics).
    Reuses `InMemoryExecutor` (`packages/core/src/executor/memory.ts:42`)
    semantics for image ids. Where a bundle has no `contree` exchanges (all
-   historical captures), `replayBundle` accepts an injected `Executor`
-   (tests pass an `InMemoryExecutor` script), and `sutura replay` fails closed
-   with "bundle has no sandbox recording; supply --executor-script".
+   historical captures), boundary-level tests accept injected dependencies.
+   The public `sutura replay` command fails closed with "bundle is partial;
+   complete provider, repository, and sandbox recordings are required".
 
-6. `replayingGitHubApi(bundle)`: returns a `GitHubApi` whose read methods
+7. Before replay wiring, move the existing GitHub orchestration adapter and
+   pure check helpers into Core. It depends on a transport-neutral `GitHubApi`
+   and `TextArtifactPort.upload(name, content, extension)`. The Action
+   `ActionTextArtifactPort` alone writes a temp file and calls
+   `@actions/artifact`; Action re-exports the Core adapter/types so existing
+   call sites remain stable. Adapter behavior and existing tests must remain
+   byte-for-byte equivalent at the public contract.
+
+8. `replayingGitHubApi(bundle)`: returns a `GitHubApi` whose read methods
    return recorded results in order and whose mutating methods record the
    requested mutation into an in-memory list and return the recorded ids.
 
-7. `replayBundle(bundle, { executor?, artifact? })`: constructs
+9. `replayBundle(bundle, { executor?, artifact? })`: requires a complete
+   bundle and constructs
    `GitHubAdapter` over `replayingGitHubApi`, a `RepositoryPort` that serves
-   source excerpts from the recorded `readSourceExcerpts` results (recorded in
-   Phase 1 as GitHub-boundary-adjacent calls: add `RepositoryPort` recording
-   to the recorder, `packages/action/src/repository.ts`), `createTokenFactoryClient`
+   the recorded Phase 1 repository calls and materializes the bounded replay
+   checkout needed by runtime detection, `createTokenFactoryClient`
    with `replayFetch(bundle,'nebius')`, `TavilyClient` with
    `replayFetch(bundle,'tavily')`, and runs `orchestrate()`. Returns
    `{ caseFile, mutations }`.
 
-8. `sutura replay`: parse args; read bundle (≤ 16 MiB); validate schema;
+10. `sutura replay`: parse args; read bundle (≤ 16 MiB); validate schema;
    run `replayBundle`; print `JSON.stringify(caseFile)`; exit 1 if
    `caseFile.outcome !== bundle.outcome` with a message naming both.
 
-9. Contract test `captured-fixtures.test.mjs`:
+11. Contract test `captured-fixtures.test.mjs`:
    - every manifest entry's file exists, hash matches, `source` is a public
-     GitHub run URL for `juan294/sutura`, `headSha` is exact;
+     GitHub run URL for `juan294/sutura` when captured by workflow or an exact
+     capture-script commit SHA when captured locally, and `headSha` is exact;
    - every file under `__fixtures__/captured/` is listed in a manifest;
    - no captured file matches `/Bearer\s+\S+|\bnb-[A-Za-z0-9]{8,}|\bghp_|\bgithub_pat_|\bsk-[A-Za-z0-9]{8,}/u`;
    - for each boundary test file (list enumerated in the script:
@@ -142,37 +175,35 @@ Modify:
      `executor/contree.test.ts`, `diagnose/tavily.test.ts`,
      `runtime/detect.test.ts`, `runtime/python.test.ts`,
      `orchestrate.test.ts`), the file imports from `__fixtures__/captured/`
-     at least once (Phase 3 makes this true; until then the test lists the
-     files it will require and skips with an explicit pending count that must
-     reach zero by the end of Phase 3c).
+     at least once where an authorized capture exists. Provider, Tavily, and
+     ConTree entries remain explicit pending boundaries through Phase 4 and
+     must reach zero in Phase 5.
 
 ## Automated success criteria
 
 - `capture-run.test.mjs`: with an injected `gh api` returning the fixture
   payloads, the script writes a bundle whose `github` call order equals the
   adapter's resolution order and a manifest entry with a correct hash.
-- All 30 historical captures exist, validate, and contain the real ANSI
+- All 26 unique historical CI captures exist, validate, and contain the real ANSI
   Vitest line for the 08-29 dogfood runs (`[31m❯[39m`) and the
   raw `Hook timed out in 10000ms` text for A2/A3.
 - `replay-fetch.test.ts`: a request that differs from the recording by one
   JSON field fails with the field path; matching requests return the recorded
   body; sequence exhaustion fails closed.
-- `replay-orchestrate.test.ts`: the captured bundle for `33239848825` (A3)
-  replayed through `replayBundle` terminates with
-  `OrchestrationError('Failed-step logs do not contain an observed failing command')`
-  at the pre-fix Action behavior when the recorded log is truncated the way
-  `github.ts:182-189` truncated it before `58b4443`, and reaches diagnosis on
-  the current code. (This is the first captured-fixture guard test and the
-  proof that B4 is now a permanent regression case.)
-- The captured bundle for `33238191746` (A2) replayed on current code
-  terminates with `RuntimeDetectionError` only when `.sutura.json` is removed
-  from the recorded policy read, and proceeds when present (B3 regression).
+- A boundary-level regression over captured run `33239848825` (A3) terminates
+  with `OrchestrationError('Failed-step logs do not contain an observed failing command')`
+  when its recorded failed-step log is sliced to the pre-`58b4443` shape, and
+  the current adapter retains the command line. It does not enter diagnosis.
+- The A2 runtime regression is deferred to the exact-commit repository fixture
+  in Phase 3c; a GitHub-only historical partial bundle is not used as policy or
+  runtime evidence.
 - The captured bundle for `33169026068` (A1) replayed on the pre-`0d3b087`
   `ALLOWED_RUN_EVENTS` logic reproduces `github.ts:238`; on current code it
   resolves the direct run (B2 regression).
-- `sutura replay --bundle <A3 bundle>` exits 0 and prints a `CaseFile` whose
-  outcome equals the bundle's recorded outcome; with a tampered outcome it
-  exits 1.
+- `sutura replay --bundle <partial A3 bundle>` fails closed before network or
+  sandbox work. A complete captured bundle exits 0 and prints a `CaseFile`
+  whose outcome equals the bundle's recorded outcome; with a tampered outcome
+  it exits 1.
 - `cli` `args.test.ts`: `replay` parses; unknown flags rejected; `--bundle`
   required.
 - The 1..16 replay coverage assertion passes with run IDs bound to manifest

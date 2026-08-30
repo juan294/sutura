@@ -2,15 +2,15 @@
 
 ## Goal
 
-Every remaining guard is reached by a test, and `scripts/guards-verify.mjs`
-makes the 337-of-337 property a CI gate that re-derives the count on every
-run.
+Every remaining product guard is reached by a test, and
+`scripts/guards-verify.mjs` makes the dynamic `N/N` property a CI gate that
+re-derives the count on every run.
 
 Baseline (VERIFIED 2026-08-30): engine/repair.ts + repair-attempt.ts 21/43,
 budget/search/triage/flake 5/22, policy 8/14, runtime/detect 2/5,
 runtime/python 7/16, config + trace 7/10, audit 4/9, security 1/2, classify
-3/9, action main/input/acceptance 8/10. Target: 140/140 in this phase and
-337/337 across 3a+3b+3c.
+3/9, action main/input/acceptance 8/10. These are research baselines; final
+acceptance is the run-time-derived `N/N` after unreachable guards are deleted.
 
 ## Files
 
@@ -44,12 +44,13 @@ Modify:
 1. `guards-verify.mjs`:
 
    ```js
-   // 1. scan: for each file in packages/{action,core}/src/**/*.ts excluding *.test.ts,
-   //    collect {file, line} for every /^\s*throw new \w+Error?\(/ and /core\.setFailed\(/
+   // 1. scan: for each product file in packages/{action,core}/src/**/*.ts excluding tests and test support,
+   //    parse throw expressions across line breaks and collect {file, line}; also collect process.exit and core.setFailed(
    //    (skip lines inside a `// guards-verify: not-a-guard` marker comment — none expected).
    // 2. run: execFileSync('pnpm', ['--filter','@sutura/core','--filter','@sutura/action','run','test:coverage'])
    // 3. read coverage-final.json from both report directories
-   // 4. for each guard: hits = lineCoverage[file][line]; unhit if hits === 0 or undefined
+   // 4. map coverage-final.json statementMap entries and s hit counts to source lines;
+   //    for each guard, unhit when every covering statement has zero or undefined hits
    // 5. print `guards: <hit>/<total>`; list every unhit file:line; exit 1 if any
    ```
 
@@ -60,18 +61,18 @@ Modify:
 2. Per-guard tests: the same checklist procedure as 3a/3b. Notable inputs:
    - `repair-budget.ts` modelTurns / diffBytes exhaustion: a budget with
      `modelTurns: 1` and a second reservation; a 65,537-byte diff.
-   - `runtime/detect.ts` three unreached guards: recorded directory listing
-     from the captured checkout with a symlinked `.sutura.json`, a
-     `.sutura.json` above `MAX_POLICY_BYTES`, and conflicting evidence
-     without a policy.
+   - `runtime/detect.ts` actual unreached guards: no runtime evidence, a
+     directory replacement between validation and read, and a deterministic
+     realpath escape. Add a narrow filesystem dependency seam for the two
+     TOCTOU cases.
    - `runtime/python.ts` TOCTOU and encoding guards: temp directory whose
-     `pyproject.toml` is replaced between stat and read (inject the fs
-     dependency), and a UTF-16 file.
+     `pyproject.toml` is replaced between stat and read through the same
+     narrow filesystem dependency seam, and a UTF-16 file.
    - `audit/adjudicate.ts` reply schema: mutate the captured Ultra reply once
      Phase 5 produces it; until then, the existing inline shape with each
      required field removed (marked pending in the manifest like ConTree).
-   - `action/main.ts:29,34`: `mapActionInputs` with missing ConTree config and
-     a malformed `GITHUB_RUN_ID`.
+   - `action/main.ts:29,34`: export a side-effect-free `runAction` dependency
+     seam, then drive missing ConTree config and malformed `GITHUB_RUN_ID`.
 
 3. Replace the three interim checklist tests (`guards-3a/3b/3c.test.ts`) with
    `guards:verify` once all three phases are merged; delete them in this

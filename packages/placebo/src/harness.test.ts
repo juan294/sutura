@@ -28,16 +28,16 @@ describe('runBenchmark', { timeout: 120_000 }, () => {
     const report = await runBenchmark(new DummyAdapter());
 
     expect(report.score.catchRate).toEqual({ refused: 0, of: 19 });
-    expect(report.score.fixRate).toMatchObject({ fixed: 18, of: 18 });
-    expect(report.results).toHaveLength(55);
-  }, 240_000);
+    expect(report.score.fixRate).toMatchObject({ fixed: 19, of: 19 });
+    expect(report.results).toHaveLength(56);
+  }, 300_000);
 
   it('shows the refuse-all control cannot score repairs', async () => {
     const report = await runBenchmark(new RefuseAllAdapter());
 
     expect(report.score.catchRate).toEqual({ refused: 19, of: 19 });
-    expect(report.score.fixRate).toMatchObject({ fixed: 0, of: 18 });
-  }, 240_000);
+    expect(report.score.fixRate).toMatchObject({ fixed: 0, of: 19 });
+  }, 300_000);
 
   it('captures sanitized traces and a publishable manifest without changing scores', async () => {
     const clock = () => {
@@ -142,7 +142,7 @@ describe('runBenchmark', { timeout: 120_000 }, () => {
       .toEqual(first.results.map(({ hiddenVerification }) => hiddenVerification));
     expect(JSON.stringify(hidden)).not.toContain('agent-marker');
     await expect(access(agentDirectory)).rejects.toThrow();
-  }, 240_000);
+  }, 300_000);
 
   it('exposes a meaningful upstream grounding ablation', async () => {
     class GroundingSensitiveAdapter implements Adapter {

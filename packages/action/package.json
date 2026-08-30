@@ -8,6 +8,7 @@
     "bundle": "node scripts/bundle.mjs",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:coverage": "vitest run --maxWorkers=1 --testTimeout=60000 --coverage.enabled --coverage.provider=v8 --coverage.reporter=json --coverage.reportsDirectory=../../coverage/action",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

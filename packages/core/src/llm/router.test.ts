@@ -59,4 +59,20 @@ describe('ModelRouter', () => {
       modelId: DEFAULT_MODELS.nano, profileId: DEFAULT_ROUTING_PROFILE_ID,
     });
   });
+
+  it.each([
+    ['requestedRole', { requestedRole: 'invalid' }],
+    ['diagnosisConfidence below zero', { diagnosisConfidence: -0.1 }],
+    ['diagnosisConfidence above one', { diagnosisConfidence: 1.1 }],
+    ['diagnosisConfidence non-finite', { diagnosisConfidence: Number.NaN }],
+    ['boundedContextBytes negative', { boundedContextBytes: -1 }],
+    ['boundedContextBytes unsafe', { boundedContextBytes: Number.MAX_SAFE_INTEGER + 1 }],
+    ['remainingInferenceBudgetUsd negative', { remainingInferenceBudgetUsd: -0.01 }],
+    ['remainingInferenceBudgetUsd non-finite', { remainingInferenceBudgetUsd: Infinity }],
+    ['profileId empty', { profileId: '  ' }],
+  ])('rejects invalid routing input: %s', (_label, override) => {
+    const router = new ModelRouter(DEFAULT_MODELS, DEFAULT_MODEL_PRICES);
+    expect(() => router.select({ ...input(), ...override } as ReturnType<typeof input>))
+      .toThrow();
+  });
 });

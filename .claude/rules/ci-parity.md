@@ -18,3 +18,4 @@ in three days; 3 of 4 `develop` regressions were reproducible locally).
   `packages/core`) must be backed by a fixture captured from a real CI log
   or real provider response. Every `gave-up` becomes a named replay test
   before the next dogfood run.
+- Dogfood runs are dispatched only by `pnpm run dogfood`.

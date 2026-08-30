@@ -54,6 +54,19 @@ describe('parseArgs', () => {
     });
   });
 
+  it('parses replay bundle and runtime options', () => {
+    expect(parseArgs([
+      'replay', '--bundle', '/tmp/replay.json', '--format', 'json', '--runtime', 'python',
+    ])).toEqual({
+      command: 'replay', bundle: '/tmp/replay.json', format: 'json', runtime: 'python',
+    });
+    expect(parseArgs([
+      'replay', '--bundle', '/tmp/replay.json', '--format', 'json', '--runtime', 'auto',
+    ])).toEqual({
+      command: 'replay', bundle: '/tmp/replay.json', format: 'json',
+    });
+  });
+
   it('parses evaluation validation and export commands', () => {
     expect(parseArgs(['eval', 'validate', '--manifest', '/tmp/manifest.json'])).toEqual({
       command: 'eval-validate', manifest: '/tmp/manifest.json',
@@ -100,6 +113,11 @@ describe('parseArgs', () => {
     ['audit'],
     ['audit', '--case-dir', '/tmp/case', '--candidate-diff', '/tmp/fix.diff', '--before-log', '/tmp/before.log', '--after-log', '/tmp/after.log', '--format', 'text'],
     ['audit', '--case-dir', '/tmp/case', '--candidate-diff', '/tmp/fix.diff', '--before-log', '/tmp/before.log', '--before-log', '/tmp/again.log', '--after-log', '/tmp/after.log', '--format', 'json'],
+    ['replay', '--format', 'json'],
+    ['replay', '--bundle', '/tmp/replay.json', '--format', 'json', '--unknown'],
+    ['replay', '--bundle', '/tmp/replay.json', '--bundle', '/tmp/other.json', '--format', 'json'],
+    ['replay', '--bundle', '/tmp/replay.json', '--format', 'text'],
+    ['replay', '--bundle', '/tmp/replay.json', '--format', 'json', '--runtime', 'ruby'],
     ['eval'],
     ['eval', 'validate'],
     ['eval', 'validate', '--manifest', '/tmp/a', '--force'],

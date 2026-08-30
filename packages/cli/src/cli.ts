@@ -9,12 +9,14 @@ import {
   type AuditArguments,
   type HealArguments,
   type InitArguments,
+  type ReplayArguments,
 } from './args.js';
 import { doctorSutura, type DoctorResult } from './doctor.js';
 import { detectLocalRuntimeId, healFromEnvironment } from './heal.js';
 import { auditFromEnvironment } from './heal.js';
 import { installSutura, type SetupResult } from './setup.js';
 import { runEvaluationCommand } from './eval.js';
+import { replayFromFile } from './replay.js';
 
 export interface CliIo {
   write?: (value: string) => void;
@@ -26,6 +28,7 @@ export interface CliDependencies {
   init?: (request: InitArguments) => Promise<SetupResult>;
   doctor?: (request: DoctorArguments) => Promise<DoctorResult>;
   audit?: (request: AuditArguments) => Promise<AuditFile>;
+  replay?: (request: ReplayArguments) => Promise<CaseFile>;
 }
 
 function emptyLedger(): CostLedger {
@@ -127,6 +130,16 @@ export async function runCli(
     try {
       const auditFile = await (dependencies.audit ?? auditFromEnvironment)(request);
       write(`${JSON.stringify(auditFile)}\n`);
+      return 0;
+    } catch (error) {
+      writeError(`${publicError(error)}\n`);
+      return 1;
+    }
+  }
+  if (request.command === 'replay') {
+    try {
+      const caseFile = await (dependencies.replay ?? replayFromFile)(request);
+      write(`${JSON.stringify(caseFile)}\n`);
       return 0;
     } catch (error) {
       writeError(`${publicError(error)}\n`);

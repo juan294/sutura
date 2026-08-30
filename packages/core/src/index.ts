@@ -9,6 +9,15 @@ export {
 } from './config.js';
 export { ContreeError, ContreeExecutor } from './executor/contree.js';
 export { InMemoryExecutor } from './executor/memory.js';
+export { GitHubAdapter, GitHubAdapterError } from './github/adapter.js';
+export {
+  MAX_CHECK_ANNOTATIONS,
+  SUTURA_CHECK_NAME,
+  checkAnnotations,
+  checkConclusion,
+  checkExternalId,
+  checkOutput,
+} from './github/checks.js';
 export {
   AllowlistedExecutor,
   HealCaseError,
@@ -127,6 +136,30 @@ export { PYTHON_IMAGE_REF, PYTHON_RUNTIME, PythonDependencyError, normalizePytho
 export { sanitizeTraceEvent } from './trace/sanitize.js';
 export { TRACE_SCHEMA_VERSION } from './trace/types.js';
 export {
+  REPLAY_BUNDLE_SCHEMA_VERSION,
+  ReplayRecorder,
+  binaryBody,
+  boundedText,
+  redactBundle,
+} from './replay/bundle.js';
+export {
+  recordingContreeFetch,
+  recordingNebiusFetch,
+  recordingTavilyFetch,
+} from './replay/record-fetch.js';
+export { recordingExecutor } from './replay/record-executor.js';
+export { recordingGitHubApi } from './replay/record-github.js';
+export { recordedErrorResult } from './replay/recorded-error.js';
+export { canonicalJson, firstJsonDifference, CanonicalJsonError } from './replay/canonical-json.js';
+export { CAPTURED_FIXTURES_SCHEMA_VERSION, CapturedFixturesValidationError, parseCapturedFixturesManifest } from './replay/manifest.js';
+export { RecordedExecutor } from './replay/replay-executor.js';
+export { ReplayMismatchError, replayFetch } from './replay/replay-fetch.js';
+export { replayingGitHubApi } from './replay/replay-github.js';
+export { replayBundle } from './replay/replay-orchestrate.js';
+export { createCompleteReplayBundleForTest } from './replay/complete-bundle.test-helper.js';
+export { RecordedRepository } from './replay/replay-repository.js';
+export { ReplayValidationError, parseReplayBundle } from './replay/validate.js';
+export {
   ExternalTextError,
   assertExternalEditableText,
   redactExternalMessages,
@@ -141,6 +174,17 @@ export type {
   RepairFailureContext,
 } from './heal.js';
 export type { RepairFailureKind } from './domain.js';
+export type {
+  CheckAnnotation,
+  GitHubAdapterOptions,
+  GitHubApi,
+  GitHubCheckOutput,
+  PullRequestRecord,
+  TextArtifactPort,
+  WorkflowJobRecord,
+  WorkflowJobStep,
+  WorkflowRunRecord,
+} from './github/types.js';
 export type {
   ModelPrice,
   ModelPrices,
@@ -157,6 +201,7 @@ export type {
   NebiusClientConfig,
   NebiusClientDependencies,
 } from './llm/nebius.js';
+export type { NebiusFetch } from './llm/nebius.js';
 export type {
   SuperRepairProviderContractCanaryInput,
   SuperRepairProviderContractCanaryResult,
@@ -191,6 +236,28 @@ export type {
 export type { MechanicalCheck } from './audit/mechanical.js';
 export type { AuditOnlyContext, AuditOnlyLlm } from './audit-only.js';
 export type { ContreeExecutorConfig } from './executor/contree.js';
+export type {
+  BinaryBody,
+  RawBody,
+  RecordedBody,
+  RecordedError,
+  RecordedErrorDetails,
+  RecordedGitHubCall,
+  RecordedHttpExchange,
+  RecordedExecutorCall,
+  RecordedRepositoryCall,
+  ReplayOrchestrationConfig,
+  ReplayBundle,
+  StreamBody,
+  TruncatedBody,
+} from './replay/bundle.js';
+export type {
+  CapturedFixtureBoundary,
+  CapturedFixtureEntry,
+  CapturedFixturesManifest,
+} from './replay/manifest.js';
+export type { RecordedGitHubMutation, ReplayingGitHubApi } from './replay/replay-github.js';
+export type { ReplayBundleOptions, ReplayBundleResult } from './replay/replay-orchestrate.js';
 export type {
   InMemoryCall,
   InMemoryRunResult,

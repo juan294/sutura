@@ -12,9 +12,10 @@ import {
   publicGitHubUrl,
   SHA256_PATTERN,
 } from './evidence-contract.mjs';
+import { validateDogfoodLedger } from './dogfood.mjs';
 
 export const RELEASE_EVIDENCE_IDS = Object.freeze([
-  'benchmark', 'candidate-matrix', 'demo', 'devpost', 'feedback',
+  'benchmark', 'candidate-matrix', 'demo', 'devpost', 'dogfood', 'feedback',
   'github-release', 'local-gate', 'marketplace', 'npm', 'public-matrix',
 ]);
 const STATUSES = new Set(['passed', 'failed', 'skipped', 'pending']);
@@ -170,6 +171,47 @@ export function assertReleaseReady(report) {
   }
 }
 
+export function verifyDogfoodStreak(ledger, releaseCommit, options = {}) {
+  const candidate = exactSha(releaseCommit, 'Dogfood release commit');
+  const validatedLedger = validateDogfoodLedger(ledger);
+  const packagesTreeHash = options.packagesTreeHash ?? execFileSync(
+    'git', ['rev-parse', `${candidate}:packages`], { encoding: 'utf8' },
+  ).trim();
+  if (!/^[a-f0-9]{40}$/u.test(packagesTreeHash)) throw new Error('Dogfood packages tree hash is invalid');
+  const trailing = validatedLedger.entries.slice(-10);
+  const actionShas = new Set(trailing.map((entry) => entry?.actionSha));
+  const actionSha = actionShas.size === 1 && /^[a-f0-9]{40}$/u.test(trailing[0]?.actionSha ?? '')
+    ? trailing[0].actionSha : undefined;
+  const actionPackagesTreeHash = actionSha === undefined ? undefined
+    : options.actionPackagesTreeHash ?? execFileSync(
+      'git', ['rev-parse', `${actionSha}:packages`], { encoding: 'utf8' },
+    ).trim();
+  const totalMicroUsd = trailing.reduce((sum, entry) => sum + Math.round(
+    ((Number.isFinite(entry?.sandboxUsd) ? entry.sandboxUsd : Number.NaN) +
+    (Number.isFinite(entry?.inferenceUsd) ? entry.inferenceUsd : Number.NaN)) * 1_000_000,
+  ), 0);
+  const distinct = (field) => new Set(trailing.map((entry) => entry?.[field])).size === 10;
+  const passed = trailing.length === 10 && actionSha !== undefined &&
+    actionPackagesTreeHash === packagesTreeHash && totalMicroUsd <= 10_000_000 &&
+    distinct('ciRunId') && distinct('suturaRunId') && distinct('dogfoodSha') && distinct('prUrl') &&
+    trailing.every((entry) => entry?.outcome === 'fixed' &&
+      entry.actionSha === actionSha && entry.packagesTreeHash === packagesTreeHash &&
+      typeof entry.prUrl === 'string');
+  const ledgerBytes = options.ledgerBytes ?? Buffer.from(`${JSON.stringify(validatedLedger, null, 2)}\n`);
+  return {
+    id: 'dogfood',
+    required: true,
+    status: passed ? 'passed' : 'pending',
+    candidate,
+    evidence: passed ? [{
+      reference: 'docs/demo/dogfood-ledger.json',
+      contentHash: createHash('sha256').update(ledgerBytes).digest('hex'),
+      candidate,
+    }] : [],
+    ...(passed ? {} : { authorizationGate: 'live-dogfood-streak' }),
+  };
+}
+
 function valueAfter(args, flag) {
   const index = args.indexOf(flag);
   const value = index < 0 ? undefined : args[index + 1];
@@ -178,6 +220,19 @@ function valueAfter(args, flag) {
 }
 
 export async function main(args = process.argv.slice(2), options = {}) {
+  if (args[0] === 'dogfood-status') {
+    if (args.length !== 5 || args[1] !== '--ledger' || args[3] !== '--candidate') {
+      throw new Error('Usage: release-evidence.mjs dogfood-status --ledger <path> --candidate <sha>');
+    }
+    const bytes = await readFile(args[2]);
+    if (bytes.byteLength > 1024 * 1024) throw new Error('Dogfood ledger exceeds 1048576 bytes');
+    const result = verifyDogfoodStreak(JSON.parse(bytes.toString('utf8')), args[4], {
+      ...options,
+      ledgerBytes: bytes,
+    });
+    (options.stdout ?? process.stdout).write(`${canonicalJson(result)}\n`);
+    return result;
+  }
   if (args.length !== 4 || args.some((value, index) => index % 2 === 0 && value !== '--input' && value !== '--output')) {
     throw new Error('Usage: release-evidence.mjs --input <path> --output <path>');
   }

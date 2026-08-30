@@ -39,7 +39,8 @@ provable before any developer sees the product:
 
 All VERIFIED in the 2026-08-30 research session unless labeled INFERRED.
 
-- **337 fail-closed guard sites** in `packages/{action,core}/src` (non-test).
+- **337 fail-closed guard sites** in `packages/{action,core}/src` (non-test),
+  as a research baseline only. The executable gate re-derives `N` at run time.
   **127** are reached by any test. **0** are reached by a captured artifact.
   All 29 fixture files under the five `__fixtures__`/`fixtures` directories are
   hand-authored (`acme/widget`, sequential-hex SHAs, 2–4 line logs, no ANSI).
@@ -81,16 +82,44 @@ All VERIFIED in the 2026-08-30 research session unless labeled INFERRED.
 
 1. **Live spend:** the streak script is batch-authorized once per streak
    attempt; it runs up to 10 sequential gated runs on one exact SHA, halts on
-   the first non-`fixed`, and stops at a hard cap of USD 10.00 measured from
-   the ledger.
+   the first non-`fixed`, and stops at a hard cap of USD 10.00. Before each
+   dispatch it reserves USD 1.50 for attempt 1, then the highest observed
+   per-attempt cost, and refuses when `spent + reserve > USD 10.00`.
 2. **Capture policy:** replay capture is an opt-in Action input
    `capture-replay` (default `false`). Sutura's own `sutura.yml` sets it
    `true`. Authorization headers are never recorded; existing credential
    redaction (`packages/core/src/security/external-text.ts`) is applied to
    every recorded string; artifact visibility equals repository read access.
-3. **Guard scope:** all 337 guards get a reaching test. Guards at the five
+3. **Guard scope:** all product guards in the run-time-derived `N` get a
+   reaching test. Guards at the six
    external input boundaries must additionally be driven by captured fixtures,
    enforced by a contract test.
+
+## Approved implementation corrections (2026-08-30)
+
+The user approved these corrections after implementation preflight found that
+the original mechanics could not satisfy their own acceptance criteria:
+
+1. `RepositoryPort` is the sixth recorded boundary. Phase 1 records
+   `readPolicyAtSha`, `checkoutHead`, `readSourceExcerpts`, and `publishFix`.
+   Nebius, Tavily, and ConTree use boundary-specific recorders that share one
+   bundle writer; ConTree replay records logical executor operations rather
+   than assuming every request body is a string.
+2. Guard acceptance is dynamic `N/N`. The scanner finds inline and multiline
+   guards, excludes test-support code, maps Istanbul `statementMap` + `s` hits
+   to source lines, and deletes structurally unreachable guards with a note.
+3. Historical capture produces 26 unique CI-run partial bundles. They test the
+   GitHub and log-parsing boundaries only. Full `sutura replay` is accepted only
+   for complete bundles from the authorized capture session or Phase 5.
+4. The streak writes in-progress ledger state under a gitignored scratch path.
+   It commits the canonical ledger once the streak ends, explicitly dispatches
+   `ci.yml` on each repair branch, and correlates the Sutura run through the
+   `sutura-case-file-<ciRunId>.html` artifact name.
+5. The verified Phase 1-4 candidate is merged and pushed to `develop`, and its
+   exact push CI must be green, before Phase 5. The ledger or gave-up repair is
+   integrated afterward.
+6. Phase 5 retains a separate stop for one-time live-spend authorization. No
+   canary or dogfood attempt is dispatched before that authorization.
 
 ## Design options
 
@@ -101,7 +130,8 @@ All VERIFIED in the 2026-08-30 research session unless labeled INFERRED.
 (`packages/core/src/executor/contree.ts:103`), `TavilyClientDependencies.fetch`
 (`packages/core/src/diagnose/tavily.ts:33`), and the `GitHubApi` interface
 (`packages/action/src/github.ts`, implemented by `createGitHubApi` in
-`octokit.ts`) — with recorders that append to one `ReplayBundle`. The bundle is
+`octokit.ts`) — with three boundary-specific HTTP recorders, plus GitHub and
+`RepositoryPort` decorators, that append to one `ReplayBundle`. The bundle is
 uploaded as a second artifact `sutura-replay-<runId>.json` beside the HTML.
 
 *Rejected:* extending `TraceEvent` with raw bodies (the sanitizer at
@@ -114,8 +144,9 @@ megabytes of JSON).
 
 **Selected:** `scripts/capture-run.mjs` materializes the GitHub half of a
 bundle (workflow run, jobs, raw job logs) for any historical run ID via
-`gh api`. All 29 historical red runs are still retrievable (log retention 90
-days from 2026-08-27). The provider half is captured by the canary
+`gh api`. The A, B, and C evidence maps to 26 unique triggering CI runs; B
+identities are stored separately instead of duplicated as new CI bundles.
+These partial bundles test GitHub and log parsing only. The provider half is captured by the canary
 (~$0.001 per call). The ConTree half needs one authorized live sandbox run.
 
 *Rejected:* waiting for the first gated live run to produce every fixture —
@@ -124,7 +155,8 @@ Phase 3 would have nothing real to test against.
 ### D3: Enforcing "every guard is tested"
 
 **Selected:** install `@vitest/coverage-v8`; `scripts/guards-verify.mjs`
-statically scans throw sites and fails on any line the v8 report shows unhit.
+statically scans product guard sites anywhere on a line, maps Istanbul
+statements and hits to source lines, and fails on any guard line with zero hits.
 A separate contract test asserts that boundary test files load fixtures from
 `__fixtures__/captured/` with a manifest entry (run ID, head SHA, artifact
 SHA-256).
@@ -136,7 +168,9 @@ the prose rules did.
 
 **Selected:** `scripts/dogfood.mjs` with `gate`, `run`, and `streak`
 subcommands and an append-only, content-hashed ledger at
-`docs/demo/dogfood-ledger.json`. A new `dogfood` release-evidence id requires
+`docs/demo/dogfood-ledger.json`. In-progress entries stay in a gitignored
+scratch file so the exact candidate remains clean; the canonical ledger is
+written once at streak end. A new `dogfood` release-evidence id requires
 at least 10 consecutive `fixed` entries whose Action SHA has the same
 `packages/` tree hash as the release commit. The streak is keyed to the code,
 so any `packages/` change resets it.
@@ -150,7 +184,8 @@ without changing the bundle).
 **Selected:** `sutura replay --bundle <file> --format json` runs the real
 `orchestrate()` (`packages/core/src/orchestrate.ts:482`) against a recorded
 `GitHubApi`, recorded provider and Tavily fetches, and a recorded `Executor`
-keyed by operation sequence. No credentials. The produced `CaseFile` outcome
+keyed by operation sequence. It accepts complete bundles only; historical
+partial bundles are consumed by boundary-level regression tests. No credentials. The produced `CaseFile` outcome
 must equal the recorded outcome.
 
 *Rejected:* provider-only replay at the `runControlledRepairAttempt` level
@@ -162,6 +197,7 @@ detection, or sandbox terminals, which were 10 of the 16 live give-ups.
 ```text
 live Sutura run (capture-replay: true)
   GitHubApi ──recorder──┐
+  RepositoryPort ─record┤
   Nebius fetch ─recorder┤
   Tavily fetch ─recorder┼──> ReplayBundle ──redact──> sutura-replay-<runId>.json (artifact)
   ConTree fetch recorder┘                                  │
@@ -198,15 +234,16 @@ live Sutura run (capture-replay: true)
    outcome, candidate ID, and diff hash on every run, with no network access
    (tests run with `fetch` replaced by a throwing stub).
 4. A boundary guard test that loads a hand-written fixture fails the
-   captured-fixture contract test. The five boundaries are: GitHub run
+   captured-fixture contract test. The six boundaries are: GitHub run
    metadata + job logs (`packages/action/src/github.ts`, `octokit.ts`),
    provider HTTP (`packages/core/src/llm/nebius.ts`, `json.ts`), ConTree HTTP
    (`packages/core/src/executor/contree.ts`), Tavily HTTP
    (`packages/core/src/diagnose/tavily.ts`), and checkout filesystem / runtime
    detection (`packages/action/src/repository.ts`,
-   `packages/core/src/runtime/detect.ts`, `python.ts`).
-5. `scripts/guards-verify.mjs` fails CI when any `throw new` site in
-   `packages/{action,core}/src` (excluding `*.test.ts`) has zero v8 hits.
+   `packages/core/src/runtime/detect.ts`, `python.ts`), plus the
+   `RepositoryPort` call stream.
+5. `scripts/guards-verify.mjs` fails CI when any derived product guard site in
+   `packages/{action,core}/src` (excluding tests and test support) has zero v8 hits.
 6. `scripts/dogfood.mjs gate` refuses to dispatch unless all four conditions
    hold on the exact `HEAD` SHA: clean tree and `HEAD == origin/develop`; CI
    `success` for `head_sha == HEAD` on `develop`; a canary artifact whose
@@ -218,8 +255,9 @@ live Sutura run (capture-replay: true)
    dogfood SHA, Action SHA, `packages/` tree hash, outcome, bundle artifact
    SHA-256, sandbox USD, and inference USD. `resultHash` is the canonical-JSON
    hash of all entries.
-8. `streak` halts on the first non-`fixed` outcome and when the sum of USD in
-   the current streak's entries exceeds 10.00.
+8. `streak` halts on the first non-`fixed` outcome and refuses the next
+   dispatch when current spend plus the reserved per-attempt headroom would
+   exceed USD 10.00.
 9. After a `gave-up`, no candidate is pushed to `develop` until the bundle is
    committed as a captured fixture, a named replay test reproduces the
    terminal, and the complete local gate (`pnpm run ci:local`) passes.
@@ -231,7 +269,7 @@ live Sutura run (capture-replay: true)
 
 | Phase | Name | Dependency | Batch status |
 | ---: | --- | --- | --- |
-| 1 | Replay bundle capture at the five boundaries | None | Sequential |
+| 1 | Replay bundle capture at the six boundaries | None | Sequential |
 | 2 | Historical capture, bundle contract, `sutura replay`, captured-fixture manifest | Phase 1 | Sequential |
 | 3a | Guard tests: GitHub adapter, repository, orchestration | Phase 2 | `[batch-eligible]` |
 | 3b | Guard tests: provider, Tavily, ConTree, routing | Phase 2 | `[batch-eligible]` |
@@ -275,12 +313,11 @@ Then `/simplify` (reuse, quality, efficiency), fix all findings, and repeat.
 - With `capture-replay: true`, a Sutura run uploads exactly two artifacts:
   `sutura-case-file-<runId>.html` and `sutura-replay-<runId>.json`; with the
   input false, exactly one.
-- `sutura replay --bundle` of every committed captured bundle reproduces the
-  recorded outcome offline; the replay tests for live runs 1–16 are keyed by
-  run ID to a captured GitHub half and, where a provider capture exists, a
-  captured provider half.
-- `scripts/guards-verify.mjs` reports 337 of 337 guard sites hit (count
-  re-derived by the script at run time, not hard-coded).
+- `sutura replay --bundle` of every complete committed captured bundle
+  reproduces the recorded outcome offline; historical partial bundles drive
+  GitHub and log-parsing boundary tests only.
+- `scripts/guards-verify.mjs` reports `N/N` guard sites hit, with `N`
+  re-derived by the script at run time and never hard-coded.
 - `scripts/captured-fixtures.test.mjs` proves every boundary test loads a
   manifest-backed captured fixture and no captured file contains a credential.
 - `scripts/dogfood.mjs gate` refuses on each of: dirty tree, `HEAD` behind
@@ -291,6 +328,9 @@ Then `/simplify` (reuse, quality, efficiency), fix all findings, and repeat.
   reports the `dogfood` id `passed` only when ≥10 consecutive `fixed` entries
   share the release commit's `packages/` tree hash.
 - The complete local gate and simplification reviews pass.
+- Before Phase 5, the verified Phase 1-4 SHA is merged and pushed to
+  `develop`, and exact-SHA push CI is green. Execution then stops for the
+  separate live-spend authorization.
 
 ## Final live acceptance (Phase 5)
 
@@ -314,10 +354,10 @@ product decision.
 
 ## Completion state
 
-- [ ] Phase 1: Replay bundle capture at the five boundaries
-- [ ] Phase 2: Historical capture, bundle contract, `sutura replay`, captured-fixture manifest
-- [ ] Phase 3a: Guard tests — GitHub adapter, repository, orchestration
-- [ ] Phase 3b: Guard tests — provider, Tavily, ConTree, routing
-- [ ] Phase 3c: Guard tests — engine, budget, policy, runtime, config + `guards:verify`
-- [ ] Phase 4: Dogfood automation
+- [x] Phase 1: Replay bundle capture at the six boundaries
+- [x] Phase 2: Historical capture, bundle contract, `sutura replay`, captured-fixture manifest
+- [x] Phase 3a: Guard tests — GitHub adapter, repository, orchestration
+- [x] Phase 3b: Guard tests — provider, Tavily, ConTree, routing
+- [x] Phase 3c: Guard tests — engine, budget, policy, runtime, config + `guards:verify`
+- [x] Phase 4: Dogfood automation
 - [ ] Phase 5: Live 10/10 streak

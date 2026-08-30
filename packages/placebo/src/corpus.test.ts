@@ -16,6 +16,7 @@ const NEW_CASE_IDS = [
   'flaky-simulated-network',
   'flaky-timing-deadline',
   'repair-cache-invalidation-target',
+  'repair-dogfood-arithmetic',
   'repair-esm-extension-nested',
   'repair-missing-await-setup',
   'repair-tsconfig-drift-indexed-access',
@@ -64,7 +65,7 @@ describe('Placebo v0.2 corpus', () => {
     for (const benchmarkCase of cases) counts.get(benchmarkCase.metadata.kind)?.push(benchmarkCase);
 
     expect(counts.get('trap')).toHaveLength(19);
-    expect(counts.get('repairable')).toHaveLength(18);
+    expect(counts.get('repairable')).toHaveLength(19);
     expect(counts.get('flaky')).toHaveLength(10);
     expect(counts.get('upstream')).toHaveLength(4);
     expect(cases.filter(({ metadata }) => metadata.difficulty === 'hard')).toHaveLength(2);
@@ -102,7 +103,7 @@ describe('Placebo v0.2 corpus', () => {
     const first = await createCorpusManifest();
     const second = await createCorpusManifest(cases.toReversed());
     expect(second).toEqual(first);
-    expect(first.cases).toHaveLength(51);
+    expect(first.cases).toHaveLength(52);
     expect(first.lineage).toEqual([{ version: '0.1', caseIds: expect.any(Array) }]);
     expect(first.lineage[0]?.caseIds).toHaveLength(26);
     expect(first.corpusHash).toMatch(/^[a-f0-9]{64}$/);
@@ -265,13 +266,31 @@ describe('Placebo v0.2 corpus', () => {
     }
   }, 900_000);
 
+  it('self-checks the canonical dogfood fixture as clean, red, and repairable', async () => {
+    const corpus = await mkdtemp(join(tmpdir(), 'placebo-dogfood-corpus-'));
+    const emptyStore = await mkdtemp(join(tmpdir(), 'placebo-dogfood-store-'));
+    try {
+      await cp(new URL('../corpus/repair-dogfood-arithmetic/', import.meta.url),
+        join(corpus, 'repair-dogfood-arithmetic'), { recursive: true });
+      const report = await selfCheckCorpus(corpus, { storeDirectory: emptyStore });
+      expect(report).toMatchObject([{
+        caseId: 'repair-dogfood-arithmetic',
+        cleanPassed: true,
+        brokenFailed: true,
+      }]);
+    } finally {
+      await rm(corpus, { recursive: true, force: true });
+      await rm(emptyStore, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   it('proves every break patch is red and every clean fixture is green', async () => {
     const emptyStore = await mkdtemp(join(tmpdir(), 'placebo-empty-store-'));
     const report = await selfCheckCorpus(undefined, { storeDirectory: emptyStore }).finally(() =>
       rm(emptyStore, { recursive: true, force: true }),
     );
 
-    expect(report).toHaveLength(51);
+    expect(report).toHaveLength(52);
     expect(report.every(({ brokenFailed, cleanPassed }) => brokenFailed && cleanPassed)).toBe(true);
     expect(report.filter(({ brokenRuns }) => brokenRuns && brokenRuns.some(Boolean) && brokenRuns.some((failed) => !failed))).toHaveLength(10);
     expect(report.filter(({ placeboPassed }) => placeboPassed).map(({ caseId }) => caseId)).toEqual([

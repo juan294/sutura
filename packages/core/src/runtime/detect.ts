@@ -2,7 +2,20 @@ import { NODE_RUNTIME } from './node.js';
 import { PYTHON_RUNTIME } from './python.js';
 import type { RuntimeAdapter, RuntimeEvidence } from './types.js';
 import { lstat, readdir, realpath } from 'node:fs/promises';
+import type { Dirent, Stats } from 'node:fs';
 import { join, sep } from 'node:path';
+
+export interface RuntimeEvidenceFileSystem {
+  lstat(path: string): Promise<Stats>;
+  readdir(path: string, options: { withFileTypes: true }): Promise<Dirent[]>;
+  realpath(path: string): Promise<string>;
+}
+
+const RUNTIME_EVIDENCE_FILE_SYSTEM: RuntimeEvidenceFileSystem = {
+  lstat: async (path) => lstat(path),
+  readdir: async (path, options) => readdir(path, options),
+  realpath: async (path) => realpath(path),
+};
 
 const RUNTIME_BY_ID = Object.freeze({ node: NODE_RUNTIME, python: PYTHON_RUNTIME });
 const RUNTIMES = Object.freeze(Object.values(RUNTIME_BY_ID));
@@ -36,23 +49,27 @@ export const MAX_RUNTIME_EVIDENCE_ENTRIES = 500;
 const MAX_EVIDENCE_DEPTH = 4;
 const SKIPPED_DIRECTORIES = new Set(['.git', 'node_modules', '.venv', 'venv', 'dist', 'build']);
 
-export async function runtimeEvidencePaths(caseDir: string): Promise<string[]> {
-  const root = await realpath(caseDir);
+export async function runtimeEvidencePaths(
+  caseDir: string,
+  overrides: Partial<RuntimeEvidenceFileSystem> = {},
+): Promise<string[]> {
+  const fileSystem = { ...RUNTIME_EVIDENCE_FILE_SYSTEM, ...overrides };
+  const root = await fileSystem.realpath(caseDir);
   const paths: string[] = [];
   const directories: Array<{ relative: string; depth: number }> = [{ relative: '', depth: 0 }];
   let visitedEntries = 0;
   for (let index = 0; index < directories.length; index += 1) {
     const current = directories[index]!;
     const directory = join(root, current.relative);
-    const metadata = await lstat(directory);
+    const metadata = await fileSystem.lstat(directory);
     if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
       throw new RuntimeDetectionError('Runtime evidence directory changed during bounded detection');
     }
-    const canonical = await realpath(directory);
+    const canonical = await fileSystem.realpath(directory);
     if (canonical !== root && !canonical.startsWith(`${root}${sep}`)) {
       throw new RuntimeDetectionError('Runtime evidence directory escapes the repository');
     }
-    const entries = await readdir(canonical, { withFileTypes: true });
+    const entries = await fileSystem.readdir(canonical, { withFileTypes: true });
     visitedEntries += entries.length;
     if (visitedEntries > MAX_RUNTIME_EVIDENCE_ENTRIES) {
       throw new RuntimeDetectionError(
@@ -62,7 +79,7 @@ export async function runtimeEvidencePaths(caseDir: string): Promise<string[]> {
     for (const entry of entries.sort((left, right) =>
       left.name < right.name ? -1 : left.name > right.name ? 1 : 0)) {
       const relative = current.relative ? `${current.relative}/${entry.name}` : entry.name;
-      const metadata = await lstat(join(root, relative));
+      const metadata = await fileSystem.lstat(join(root, relative));
       if (metadata.isSymbolicLink()) continue;
       if (metadata.isFile()) paths.push(relative);
       else if (

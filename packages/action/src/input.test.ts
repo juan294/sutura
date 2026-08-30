@@ -19,6 +19,7 @@ describe('mapActionInputs', () => {
       runId: '12345',
       triageN: 5,
       requireFixed: false,
+      captureReplay: false,
       environment: {
         NEBIUS_API_KEY: 'neb_test',
         CONTREE_TOKEN: 'con_test',
@@ -49,6 +50,18 @@ describe('mapActionInputs', () => {
       const invalid = { ...REQUIRED, 'require-fixed': value };
       expect(() => mapActionInputs((name) => invalid[name as keyof typeof invalid] ?? ''))
         .toThrow(/require-fixed must be true or false/u);
+    }
+  });
+
+  it('maps replay capture and accepts only true or false', () => {
+    const enabled = { ...REQUIRED, 'capture-replay': 'true' };
+    expect(mapActionInputs((name) => enabled[name as keyof typeof enabled] ?? ''))
+      .toMatchObject({ captureReplay: true });
+
+    for (const value of ['1', 'yes', 'TRUE']) {
+      const invalid = { ...REQUIRED, 'capture-replay': value };
+      expect(() => mapActionInputs((name) => invalid[name as keyof typeof invalid] ?? ''))
+        .toThrow(/capture-replay must be true or false/u);
     }
   });
 

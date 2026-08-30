@@ -43,6 +43,7 @@ import { renderComment } from './report/markdown.js';
 import { isSensitiveRepositoryPath } from './security/repository-path.js';
 import { detectRuntimeAtPath } from './runtime/detect.js';
 import type { RuntimeId } from './runtime/types.js';
+import type { ReplayRecorder } from './replay/bundle.js';
 
 const FAILED_STEP_LINES = 200;
 const MAX_SOURCE_FILES = 8;
@@ -124,6 +125,7 @@ export interface GitHubOrchestrationPort {
     input: CreateFixPullRequestInput,
   ): Promise<{ number: number; url: string }>;
   uploadCaseFile(name: string, html: string): Promise<{ url: string }>;
+  uploadReplayBundle(name: string, json: string): Promise<{ url: string }>;
   completeCheck(target: AttemptTarget, input: CompleteCheckInput): Promise<void>;
 }
 
@@ -201,6 +203,7 @@ export interface OrchestrationContext {
   imageRef?: string;
   runtimeId?: RuntimeId;
   lockfileDiff?: string;
+  replay?: ReplayRecorder;
 }
 
 export class AlreadyAttemptedError extends Error {
@@ -467,6 +470,24 @@ async function prepareReport(
   return { body, artifactUrl: artifact.url };
 }
 
+async function uploadReplay(
+  github: GitHubOrchestrationPort,
+  run: FailingWorkflowRun,
+  caseFile: CaseFile,
+  replay?: ReplayRecorder,
+): Promise<void> {
+  if (replay) {
+    try {
+      await github.uploadReplayBundle(
+        `sutura-replay-${run.runId}.json`,
+        JSON.stringify(replay.finish(caseFile.outcome)),
+      );
+    } catch {
+      console.warn('Sutura could not upload the replay bundle.');
+    }
+  }
+}
+
 async function publishReport(
   github: GitHubOrchestrationPort,
   run: FailingWorkflowRun,
@@ -474,10 +495,26 @@ async function publishReport(
   marker: string,
   target: AttemptTarget,
   checkoutDir: string,
+  replay?: ReplayRecorder,
 ): Promise<void> {
   const report = await prepareReport(github, run, caseFile, marker);
   await github.updateAttempt(target, report.body);
   await github.completeCheck(target, { caseFile, artifactUrl: report.artifactUrl, checkoutDir });
+  await uploadReplay(github, run, caseFile, replay);
+}
+
+export function resolveAuditedCandidate(
+  caseFile: Pick<CaseFile, 'race' | 'selectedCandidate'>,
+): CaseFile['race'][number] {
+  const selected = caseFile.selectedCandidate;
+  if (selected === undefined) {
+    throw new OrchestrationError('Fixed case file does not identify its audited candidate');
+  }
+  const winner = findSelectedCandidate(caseFile.race, selected);
+  if (winner === null) {
+    throw new OrchestrationError('Fixed case file audited candidate identity is ambiguous');
+  }
+  return winner;
 }
 
 export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> {
@@ -570,7 +607,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       setup.command,
       setup.result,
     );
-    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir);
+    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir, ctx.replay);
     return caseFile;
   }
   const reproduction = await executor.run(
@@ -600,7 +637,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       },
       mechanical,
     );
-    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir);
+    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir, ctx.replay);
     return caseFile;
   }
 
@@ -635,14 +672,11 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       : { lockfileDiff: ctx.lockfileDiff }),
   });
   if (caseFile.outcome !== 'fixed') {
-    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir);
+    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir, ctx.replay);
     return caseFile;
   }
 
-  const selected = caseFile.selectedCandidate;
-  if (selected === undefined) throw new OrchestrationError('Fixed case file does not identify its audited candidate');
-  const winner = findSelectedCandidate(caseFile.race, selected);
-  if (winner === null) throw new OrchestrationError('Fixed case file audited candidate identity is ambiguous');
+  const winner = resolveAuditedCandidate(caseFile);
   const branch = `sutura/fix-${run.runId}`;
   const report = await prepareReport(ctx.github, run, caseFile, marker);
   await ctx.repository.publishFix({
@@ -665,5 +699,6 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     artifactUrl: report.artifactUrl,
     checkoutDir,
   });
+  await uploadReplay(ctx.github, run, caseFile, ctx.replay);
   return caseFile;
 }

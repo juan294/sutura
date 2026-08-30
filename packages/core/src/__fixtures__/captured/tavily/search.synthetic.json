@@ -1,0 +1,10 @@
+{
+  "results": [
+    {
+      "title": "Synthetic release note",
+      "url": "https://example.test/release",
+      "content": "Synthetic Tavily search content.",
+      "score": 0.9
+    }
+  ]
+}

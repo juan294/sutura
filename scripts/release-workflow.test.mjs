@@ -35,6 +35,13 @@ test('ordinary CI fails a stale Action bundle before the long test suites run', 
   assert.ok(build >= 0 && freshness > build && tests > freshness);
 });
 
+test('ordinary CI verifies every derived product guard after the full test suite', async () => {
+  const workflow = await text('.github/workflows/ci.yml');
+  const tests = workflow.indexOf('pnpm run test\n');
+  const guards = workflow.indexOf('pnpm run guards:verify');
+  assert.ok(tests >= 0 && guards > tests);
+});
+
 test('the polyglot Sutura repository selects its Node repair runtime explicitly', async () => {
   const policy = JSON.parse(await text('.sutura.json'));
   assert.deepEqual(policy, { version: 1, runtime: 'node' });
@@ -77,10 +84,11 @@ test('versioned release evidence requirements name every authorization gate', as
   const requirements = JSON.parse(await text('docs/demo/sutura-v0.2.0-release-evidence-requirements.json'));
   assert.equal(requirements.releaseVersion, '0.2.0');
   assert.deepEqual(requirements.requiredEvidenceIds, [
-    'benchmark', 'candidate-matrix', 'demo', 'devpost', 'feedback',
+    'benchmark', 'candidate-matrix', 'demo', 'dogfood', 'devpost', 'feedback',
     'github-release', 'local-gate', 'marketplace', 'npm', 'public-matrix',
   ]);
   assert.deepEqual(requirements.authorizationGates, [
-    'live-provider-benchmark', 'release-publication', 'public-demo-enable', 'devpost-update',
+    'live-provider-benchmark', 'live-dogfood-streak', 'release-publication',
+    'public-demo-enable', 'devpost-update',
   ]);
 });

@@ -32,6 +32,7 @@ describe('GitHub Action metadata', () => {
       'triage-n',
       'routing-profile',
       'require-fixed',
+      'capture-replay',
       'model-nano',
       'model-super',
       'model-ultra',

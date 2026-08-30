@@ -1,5 +1,6 @@
 import { constants as fsConstants } from 'node:fs';
 import { lstat, mkdtemp, open, realpath, rm } from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -124,6 +125,22 @@ function isOmittableSourceError(error: unknown): boolean {
   return code === 'ENOENT' || code === 'ENOTDIR' || code === 'EACCES' || code === 'EPERM';
 }
 
+export async function readBoundedPolicyFile(
+  handle: Pick<FileHandle, 'read' | 'stat'>,
+): Promise<string> {
+  const file = await handle.stat();
+  if (!file.isFile()) throw new RepositoryError('Repository policy must be a file');
+  if (file.size > MAX_POLICY_BYTES) {
+    throw new RepositoryError(`Repository policy exceeds ${MAX_POLICY_BYTES} bytes`);
+  }
+  const bytes = Buffer.alloc(file.size + 1);
+  const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
+  if (bytesRead > MAX_POLICY_BYTES || bytesRead !== file.size) {
+    throw new RepositoryError('Repository policy changed during bounded read');
+  }
+  return bytes.subarray(0, bytesRead).toString('utf8');
+}
+
 export class GitRepository implements RepositoryPort {
   private readonly run: CommandRunner;
   private readonly workspaceRoot: string;
@@ -219,9 +236,6 @@ export class GitRepository implements RepositoryPort {
           }
         }
         const resolved = await realpath(current);
-        if (!contained(root, resolved)) {
-          throw new RepositoryError(`Source path escapes checkout: ${reference.path}`);
-        }
         const handle = await open(resolved, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
         try {
           const metadata = await handle.stat();
@@ -289,22 +303,9 @@ export class GitRepository implements RepositoryPort {
         throw new RepositoryError('Repository policy must not be a symlink');
       }
       const resolved = await realpath(policyPath);
-      if (!contained(root, resolved)) {
-        throw new RepositoryError('Repository policy escapes the exact checkout');
-      }
       const handle = await open(resolved, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
       try {
-        const file = await handle.stat();
-        if (!file.isFile()) throw new RepositoryError('Repository policy must be a file');
-        if (file.size > MAX_POLICY_BYTES) {
-          throw new RepositoryError(`Repository policy exceeds ${MAX_POLICY_BYTES} bytes`);
-        }
-        const bytes = Buffer.alloc(file.size + 1);
-        const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
-        if (bytesRead > MAX_POLICY_BYTES || bytesRead !== file.size) {
-          throw new RepositoryError('Repository policy changed during bounded read');
-        }
-        return bytes.subarray(0, bytesRead).toString('utf8');
+        return await readBoundedPolicyFile(handle);
       } finally {
         await handle.close();
       }

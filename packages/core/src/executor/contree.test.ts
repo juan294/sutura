@@ -111,6 +111,99 @@ afterEach(() => {
 });
 
 describe('ContreeExecutor', () => {
+  it.each([
+    ['token', { token: ' ' }, /token is required/u],
+    ['project', { project: ' ' }, /project is required/u],
+    ['zero maxOps', { maxOps: 0 }, /positive integer/u],
+    ['fractional maxOps', { maxOps: 1.5 }, /positive integer/u],
+  ])('rejects invalid synthetic configuration: %s', (_label, override, message) => {
+    expect(() => new ContreeExecutor(config(vi.fn<typeof globalThis.fetch>(), override)))
+      .toThrow(message);
+  });
+
+  it('rejects a duplicate caller operation ID', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+      if (init?.method === 'POST') {
+        return jsonResponse({}, 201, { Location: '/sandboxes/v1/operations/one' });
+      }
+      await gate;
+      return jsonResponse(await fixture('operation-success.json'));
+    });
+    const executor = new ContreeExecutor(config(fetch));
+    const first = executor.run('parent', 'first', { operationId: 'duplicate' });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+    await expect(executor.run('parent', 'second', { operationId: 'duplicate' }))
+      .rejects.toThrow(/operation ID already exists/u);
+    release();
+    await first;
+  });
+
+  it.each([
+    ['missing metadata result', { status: 'SUCCESS', result_image_uuid: 'image' }, /metadata\.result/u],
+    ['missing image', {
+      status: 'SUCCESS', metadata: { result: { state: { exit_code: 0 } } },
+    }, /result image uuid/u],
+    ['missing exit code', {
+      status: 'SUCCESS', result_image_uuid: 'image', metadata: { result: { state: {} } },
+    }, /exit code/u],
+    ['invalid stdout value', {
+      status: 'SUCCESS', result_image_uuid: 'image', metadata: { result: {
+        state: { exit_code: 0 }, stdout: { value: 1, encoding: 'ascii' },
+      } },
+    }, /stdout value/u],
+    ['unsupported stdout encoding', {
+      status: 'SUCCESS', result_image_uuid: 'image', metadata: { result: {
+        state: { exit_code: 0 }, stdout: { value: 'x', encoding: 'utf16' },
+      } },
+    }, /stdout has unsupported encoding/u],
+    ['invalid stderr value', {
+      status: 'SUCCESS', result_image_uuid: 'image', metadata: { result: {
+        state: { exit_code: 0 }, stderr: { value: 1, encoding: 'ascii' },
+      } },
+    }, /stderr value/u],
+    ['unsupported stderr encoding', {
+      status: 'SUCCESS', result_image_uuid: 'image', metadata: { result: {
+        state: { exit_code: 0 }, stderr: { value: 'x', encoding: 'utf16' },
+      } },
+    }, /stderr has unsupported encoding/u],
+  ] as const)('rejects synthetic operation shape: %s', async (_label, operation, message) => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({}, 201, {
+        Location: '/sandboxes/v1/operations/shape',
+      }))
+      .mockResolvedValueOnce(jsonResponse(operation));
+    await expect(new ContreeExecutor(config(fetch)).run('parent', 'true'))
+      .rejects.toThrow(message);
+  });
+
+  it('rejects missing and cross-origin operation locations', async () => {
+    const missing = new ContreeExecutor(config(
+      vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({}, 201)),
+    ));
+    await expect(missing.run('parent', 'true')).rejects.toThrow(/Location header/u);
+
+    const foreign = new ContreeExecutor(config(
+      vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({}, 201, {
+        Location: 'https://attacker.example/operations/one',
+      })),
+    ));
+    await expect(foreign.run('parent', 'true')).rejects.toThrow(/configured origin/u);
+  });
+
+  it.each(['FAILED', 'CANCELLED'] as const)(
+    'rejects a terminal %s operation with bounded detail',
+    async (status) => {
+      const fetch = vi.fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(jsonResponse({}, 201, {
+          Location: '/sandboxes/v1/operations/terminal',
+        }))
+        .mockResolvedValueOnce(jsonResponse({ status, error: 'synthetic detail' }));
+      await expect(new ContreeExecutor(config(fetch)).run('parent', 'true'))
+        .rejects.toThrow(new RegExp(`${status}: synthetic detail`, 'u'));
+    },
+  );
   it('maps run options to the documented request and decodes the result fixture', async () => {
     const pending = await fixture('operation-pending.json');
     const success = await fixture('operation-success.json');
@@ -967,6 +1060,88 @@ describe('ContreeExecutor', () => {
       mode: 'replace',
     })).rejects.toThrow(/snapshot profile.*mode/u);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid approved dependency path sets before filesystem access', async () => {
+    const executor = new ContreeExecutor(config(vi.fn<typeof globalThis.fetch>()));
+    const invalidSets = [
+      [],
+      ['package.json', 'package.json'],
+      Array.from({ length: 17 }, (_, index) => `file-${index}.json`),
+    ];
+    for (const includePaths of invalidSets) {
+      await expect(executor.snapshot('.', 'base', {
+        ...DEPENDENCY_REPLACE,
+        includePaths,
+      })).rejects.toThrow(/approved path set is invalid/u);
+    }
+    await expect(executor.snapshot('.', 'base', {
+      ...DEPENDENCY_REPLACE,
+      includePaths: ['../package.json'],
+    })).rejects.toThrow(/unsafe archive path/u);
+  });
+
+  it('rejects unapproved and non-regular approved dependency inputs', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sutura-contree-approved-'));
+    const executor = new ContreeExecutor(config(vi.fn<typeof globalThis.fetch>()));
+    try {
+      await writeFile(join(dir, 'source.ts'), 'export {}\n');
+      await mkdir(join(dir, 'package.json'));
+      await expect(executor.snapshot(dir, 'base', {
+        ...DEPENDENCY_REPLACE,
+        includePaths: ['source.ts'],
+      })).rejects.toThrow(/unapproved input kind/u);
+      await expect(executor.snapshot(dir, 'base', {
+        ...DEPENDENCY_REPLACE,
+        includePaths: ['package.json'],
+      })).rejects.toThrow(/requires a regular file/u);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects invalid, oversized, and unsafe workspace controls', async () => {
+    const invalid = await mkdtemp(join(tmpdir(), 'sutura-contree-invalid-workspace-'));
+    const oversized = await mkdtemp(join(tmpdir(), 'sutura-contree-large-workspace-'));
+    const unsafe = await mkdtemp(join(tmpdir(), 'sutura-contree-unsafe-workspace-'));
+    const executor = new ContreeExecutor(config(vi.fn<typeof globalThis.fetch>()));
+    try {
+      await writeFile(join(invalid, 'package.json'), '{');
+      await expect(executor.snapshot(invalid, 'base', DEPENDENCY_REPLACE))
+        .rejects.toThrow(/invalid package\.json/u);
+
+      await writeFile(join(oversized, 'package.json'), '{}');
+      await writeFile(join(oversized, 'pnpm-workspace.yaml'), 'x'.repeat(1_048_577));
+      await expect(executor.snapshot(oversized, 'base', DEPENDENCY_REPLACE))
+        .rejects.toThrow(/workspace file is too large/u);
+
+      await writeFile(join(unsafe, 'package.json'), JSON.stringify({ workspaces: ['../outside'] }));
+      await expect(executor.snapshot(unsafe, 'base', DEPENDENCY_REPLACE))
+        .rejects.toThrow(/unsafe workspace pattern/u);
+    } finally {
+      await rm(invalid, { recursive: true, force: true });
+      await rm(oversized, { recursive: true, force: true });
+      await rm(unsafe, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects .npmrc in repository snapshots for git and non-git paths', async () => {
+    const tracked = await mkdtemp(join(tmpdir(), 'sutura-contree-tracked-npmrc-'));
+    const plain = await mkdtemp(join(tmpdir(), 'sutura-contree-plain-npmrc-'));
+    const executor = new ContreeExecutor(config(vi.fn<typeof globalThis.fetch>()));
+    try {
+      await execFileAsync('git', ['init', '--quiet', tracked]);
+      await writeFile(join(tracked, '.npmrc'), '_authToken=secret\n');
+      await execFileAsync('git', ['-C', tracked, 'add', '-f', '.npmrc']);
+      await writeFile(join(plain, '.npmrc'), '_authToken=secret\n');
+      await expect(executor.snapshot(tracked, 'base', REPOSITORY_OVERLAY))
+        .rejects.toThrow(/repository \.npmrc credentials/u);
+      await expect(executor.snapshot(plain, 'base', REPOSITORY_OVERLAY))
+        .rejects.toThrow(/repository \.npmrc credentials/u);
+    } finally {
+      await rm(tracked, { recursive: true, force: true });
+      await rm(plain, { recursive: true, force: true });
+    }
   });
 });
 

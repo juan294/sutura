@@ -38,4 +38,16 @@ describe('selectBoundedSourceWindow', () => {
       limits: { ...limits, maxCharactersPerFile: 5, maxBytesPerFile: 5 },
     })).toEqual({ content: '', startLine: 1, truncated: true, boundaryComplete: true });
   });
+
+  it('rejects a referenced line beyond the available source window', () => {
+    const scanned = 'one\ntwo\n';
+
+    expect(() => selectBoundedSourceWindow({
+      scanned,
+      scannedBytes: Buffer.byteLength(scanned),
+      fileSize: Buffer.byteLength(scanned),
+      requestedLine: 3,
+      limits,
+    })).toThrow('Referenced source line exceeds the available source window');
+  });
 });

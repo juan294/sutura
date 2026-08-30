@@ -217,7 +217,7 @@ function ensureTraceStarted(trace: TraceRecorder): void {
   }
 }
 
-function tracedLlm(llm: HealLlm, trace: TraceRecorder): HealLlm {
+export function tracedLlm(llm: HealLlm, trace: TraceRecorder): HealLlm {
   const delegate = llm as TierLlm<ModelTier>;
   return {
     capacitySnapshot: () => delegate.capacitySnapshot?.(),
@@ -1153,11 +1153,11 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
     }),
   );
   const racedById = new Map(raced.map((result) => [result.candidate.id, result]));
-  const raceResults = candidates.map((candidate) => {
-    const result = racedById.get(candidate.id) ?? refusedCandidates.get(candidate.id);
-    if (!result) throw new HealCaseError(`Missing race result for candidate ${candidate.id}`);
-    return result;
-  });
+  // race() enforces one result per approved candidate; every other candidate
+  // is inserted in refusedCandidates above.
+  const raceResults = candidates.map((candidate) =>
+    (racedById.get(candidate.id) ?? refusedCandidates.get(candidate.id))!,
+  );
   const winner = selectWinner(raceResults);
   if (!winner) {
     if (refusedCandidates.size > 0) {

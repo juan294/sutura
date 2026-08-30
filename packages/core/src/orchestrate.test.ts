@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 import { describe, expect, it, vi } from 'vitest';
@@ -21,16 +22,23 @@ import {
 } from './llm/nebius.js';
 import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
 import { createTokenFactoryClient } from './llm/token-factory.js';
+import { ReplayRecorder } from './replay/bundle.js';
 import { repairProposalReply } from './testing/repair-proposal.test-helper.js';
+import {
+  capturedFailingRun,
+  capturedLiveRun,
+} from './__fixtures__/captured/captured-live-run.test-helper.js';
 import { parseRepositoryPolicy } from './policy/schema.js';
 import {
   AlreadyAttemptedError,
+  OrchestrationError,
   SUTURA_SANDBOX_ENV,
   attemptMarker,
   collectFailedLogs,
   extractSourceReferences,
   orchestrate,
   readRepairSourceContext,
+  resolveAuditedCandidate,
   type AttemptTarget,
   type FailingWorkflowRun,
   type GitHubOrchestrationPort,
@@ -68,6 +76,15 @@ const DOGFOOD_DIFF = [
   ' }',
   '',
 ].join('\n');
+
+function capturedDogfoodLog(rawLog: string): string {
+  const lines = rawLog.split(/\r?\n/u).filter((line) =>
+    /##\[group\]Run pnpm run test$/u.test(line)
+    || /dogfood-add|expected -1 to be 5/u.test(line),
+  );
+  if (lines.length < 3) throw new Error('Captured dogfood log lacks its command or failure');
+  return lines.join('\n');
+}
 
 const RUN: FailingWorkflowRun = {
   runId: '98765',
@@ -141,6 +158,11 @@ class FakeGitHub implements GitHubOrchestrationPort {
 
   async uploadCaseFile(name: string, html: string): Promise<{ url: string }> {
     this.artifacts.push({ name, html });
+    return { url: `https://github.test/artifacts/${name}` };
+  }
+
+  async uploadReplayBundle(name: string, json: string): Promise<{ url: string }> {
+    this.artifacts.push({ name, html: json });
     return { url: `https://github.test/artifacts/${name}` };
   }
 
@@ -367,6 +389,115 @@ function runCalls(executor: InMemoryExecutor): Extract<InMemoryCall, { kind: 'ru
 }
 
 describe('orchestrate', () => {
+  it('replays live crash B4', async () => {
+    const captured = await capturedFailingRun('A3', '33239848825');
+    const currentLog = captured.run.failedSteps[0]!.log;
+    const preFixLog = currentLog
+      .split(/\r?\n/u)
+      .slice(1)
+      .join('\n');
+    const run: FailingWorkflowRun = {
+      runId: captured.bundle.runId,
+      repo: captured.bundle.repo,
+      headSha: captured.bundle.actionSha,
+      baseSha: captured.bundle.actionSha,
+      headRef: 'develop',
+      baseRef: 'develop',
+      failedSteps: [{ jobName: 'checks', stepName: 'Test CLI', log: preFixLog }],
+    };
+    const { ctx, chat, executor, github } = context([], true, run);
+
+    await expect(orchestrate(ctx)).rejects.toEqual(new OrchestrationError(
+      'Failed-step logs do not contain an observed failing command',
+    ));
+    expect(currentLog).toContain('##[group]Run pnpm run test');
+    expect(preFixLog).not.toContain('##[group]Run pnpm run test');
+    expect(chat).not.toHaveBeenCalled();
+    expect(executor.calls).toEqual([]);
+    expect(github.comments).toEqual([]);
+  });
+
+  it.each([
+    ['different workflow run id', { runId: '1' }, 'different workflow run id'],
+    ['invalid workflow run id', { runId: '../unsafe' }, 'positive decimal id'],
+    ['empty repository', { repo: '' }, 'invalid repository metadata'],
+    ['invalid pull request number', { prNumber: 0 }, 'invalid repository metadata'],
+    ['invalid head SHA', { headSha: 'bad' }, 'invalid head SHA'],
+    ['invalid base SHA', { baseSha: 'bad' }, 'invalid base SHA'],
+    ['empty head ref', { headRef: '' }, 'empty head or base ref'],
+    ['empty base ref', { baseRef: '' }, 'empty head or base ref'],
+    ['no failed steps', { failedSteps: [] }, 'no failed-step logs'],
+  ] as const)('rejects captured run metadata with %s', async (_case, override, message) => {
+    const captured = await capturedFailingRun('A3', '33239848825');
+    const invalid = { ...captured.run, ...override } as FailingWorkflowRun;
+    const { ctx, github, executor, chat } = context([], true, captured.run);
+    vi.spyOn(github, 'getFailingRun').mockResolvedValue(invalid);
+    if ('runId' in override && override.runId !== '1') ctx.runId = override.runId;
+
+    await expect(orchestrate(ctx)).rejects.toThrow(message);
+    expect(executor.calls).toEqual([]);
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  it('rejects a captured A2 runtime conflict before sandbox or provider work', async () => {
+    const captured = await capturedFailingRun('A2', '33238191746');
+    const { ctx, repository, executor, chat } = context([], true, captured.run);
+    ctx.runtimeId = 'python';
+    repository.policyContent = JSON.stringify({ version: 1, runtime: 'node' });
+
+    await expect(orchestrate(ctx)).rejects.toThrow(
+      'Configured runtime conflicts with repository policy runtime',
+    );
+    expect(executor.calls).toEqual([]);
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unverified Python image before sandbox or provider work', async () => {
+    const captured = await capturedFailingRun('A2', '33238191746');
+    const pythonRun: FailingWorkflowRun = {
+      ...captured.run,
+      failedSteps: [{
+        jobName: 'test',
+        stepName: 'pytest',
+        log: 'Run pytest -q\ntests/test_value.py:1: assertion failed',
+      }],
+    };
+    const { ctx, executor, chat } = context([], true, pythonRun);
+    ctx.runtimeId = 'python';
+    ctx.imageRef = 'python:latest';
+
+    await expect(orchestrate(ctx)).rejects.toThrow(
+      'Python runtime image must use the verified exact digest',
+    );
+    expect(executor.calls).toEqual([]);
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  it('rejects a fixed case file without its audited candidate identity', () => {
+    expect(() => resolveAuditedCandidate({ race: [] })).toThrow(
+      'Fixed case file does not identify its audited candidate',
+    );
+  });
+
+  it('rejects an ambiguous audited candidate identity', () => {
+    const candidate = { id: 'duplicate', rationale: 'same', diff: HONEST_DIFF };
+    const result = {
+      candidate,
+      imageId: 'node-1',
+      nodeId: 'node-1',
+      exitCode: 0,
+      held: true,
+    };
+
+    expect(() => resolveAuditedCandidate({
+      selectedCandidate: {
+        id: candidate.id,
+        diffHash: createHash('sha256').update(candidate.diff).digest('hex'),
+      },
+      race: [result, { ...result, imageId: 'node-2', nodeId: 'node-2' }],
+    })).toThrow('Fixed case file audited candidate identity is ambiguous');
+  });
+
   it('rejects an invalid base policy before provider or sandbox calls', async () => {
     const { ctx, executor, github, repository, chat } = context([]);
     repository.policyContent = '{"version":2}';
@@ -516,6 +647,25 @@ describe('orchestrate', () => {
     expect(runCalls(executor)).toHaveLength(8);
   });
 
+  it('keeps a fixed outcome when replay upload fails', async () => {
+    const { ctx, github } = context([1, 1, 1, 0, 1, 1, 0]);
+    ctx.replay = new ReplayRecorder(RUN.runId, RUN.repo, RUN.headSha, {
+      triageN: 2, raceK: 3,
+      models: { nano: 'nano', super: 'super', ultra: 'ultra' },
+      routingProfileId: 'test', maxOps: 1,
+    });
+    const upload = vi.spyOn(github, 'uploadReplayBundle')
+      .mockRejectedValue(new Error('artifact service unavailable'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(orchestrate(ctx)).resolves.toMatchObject({ outcome: 'fixed' });
+
+    expect(upload).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith('Sutura could not upload the replay bundle.');
+    expect(github.artifacts).toHaveLength(1);
+    warn.mockRestore();
+  });
+
   it('opens a fix PR against the exact branch for a direct push failure', async () => {
     const directRun: FailingWorkflowRun = {
       runId: RUN.runId,
@@ -550,22 +700,22 @@ describe('orchestrate', () => {
   });
 
   it('replays live runs 3, 4, 5, and 10 through the serialized production path', async () => {
+    capturedLiveRun(3, '33241358531');
+    capturedLiveRun(4, '33242204485');
+    capturedLiveRun(5, '33243759945');
+    capturedLiveRun(10, '33252323239');
+    const captured = await capturedFailingRun('Live run 10', '33252323239');
     const dogfoodRun: FailingWorkflowRun = {
-      runId: RUN.runId,
-      repo: RUN.repo,
-      headSha: RUN.headSha,
-      headRef: 'dogfood/sutura-v02-live-replay',
-      baseSha: RUN.headSha,
-      baseRef: 'dogfood/sutura-v02-live-replay',
+      ...captured.run,
       failedSteps: [{
-        jobName: 'checks',
-        stepName: 'Test core',
-        log: [
-          'Run pnpm --filter @sutura/core test',
-          'packages/core test: \u001b[31m❯\u001b[39m src/dogfood-add.test.ts:7: expected -1 to be 5',
-        ].join('\n'),
+        ...captured.run.failedSteps[0]!,
+        log: capturedDogfoodLog(captured.jobLogText),
       }],
     };
+    expect(extractSourceReferences(collectFailedLogs(dogfoodRun.failedSteps))).toContainEqual({
+      path: 'packages/core/src/dogfood-add.test.ts',
+      line: 7,
+    });
     const { ctx, github, repository } = context(
       [1, 1, 1, 0, 1, 1, 0], true, dogfoodRun,
     );
@@ -640,7 +790,7 @@ describe('orchestrate', () => {
 
     expect(caseFile.outcome).toBe('fixed');
     expect(repository.fixes).toEqual([expect.objectContaining({
-      branch: `sutura/fix-${RUN.runId}`,
+      branch: `sutura/fix-${dogfoodRun.runId}`,
       headSha: dogfoodRun.headSha,
       diff: DOGFOOD_DIFF,
     })]);
@@ -1077,16 +1227,7 @@ describe('orchestrate', () => {
   });
 
   it('replays live run 6: absent editable source stops before a Super turn', async () => {
-    const noPathRun: FailingWorkflowRun = {
-      ...RUN,
-      failedSteps: [
-        {
-          jobName: 'typecheck',
-          stepName: 'Typecheck',
-          log: 'Run pnpm test\nerror TS2322: Type string is not assignable to type number',
-        },
-      ],
-    };
+    const noPathRun = (await capturedFailingRun('Live run 6', '33244884596')).run;
     const { ctx, chat, repository } = context([1, 1, 1], true, noPathRun);
     repository.sources.clear();
 
@@ -1149,7 +1290,64 @@ describe('failed log collection', () => {
 });
 
 describe('repair source context', () => {
+  it('rejects a repository response beyond the source file limit', async () => {
+    const captured = await capturedFailingRun('A3', '33239848825');
+    expect(captured.run.failedSteps).not.toHaveLength(0);
+    const paths = Array.from({ length: 8 }, (_, index) => `src/captured-${index}.ts`);
+    const repository = {
+      readSourceExcerpts: vi.fn().mockResolvedValue([
+        ...paths.map((path) => ({
+          path, startLine: 1, content: 'export {};\n', truncated: false,
+        })),
+        { path: 'src/extra.ts', startLine: 1, content: 'export {};\n', truncated: false },
+      ]),
+    };
+
+    await expect(readRepairSourceContext(
+      repository,
+      '/tmp/captured',
+      paths.map((path) => `${path}:1: error`).join('\n'),
+    )).rejects.toThrow('Repository source port exceeded the file limit');
+  });
+
+  it('rejects more repository excerpts than were requested', async () => {
+    const captured = await capturedFailingRun('A3', '33239848825');
+    const path = extractSourceReferences(captured.run.failedSteps[0]?.log ?? '')[0]?.path;
+    if (path === undefined) throw new Error('Captured A3 log has no source path');
+    const repository = {
+      readSourceExcerpts: vi.fn().mockResolvedValue([
+        { path, startLine: 1, content: 'export {};\n', truncated: false },
+        { path: 'src/extra.ts', startLine: 1, content: 'export {};\n', truncated: false },
+      ]),
+    };
+
+    await expect(readRepairSourceContext(
+      repository,
+      '/tmp/captured',
+      `${path}:1: error`,
+    )).rejects.toThrow('Repository source port returned an unsafe or unbounded excerpt');
+  });
+
+  it('rejects a structurally unsafe repository excerpt', async () => {
+    const captured = await capturedFailingRun('A3', '33239848825');
+    const path = extractSourceReferences(captured.run.failedSteps[0]?.log ?? '')[0]?.path;
+    if (path === undefined) throw new Error('Captured A3 log has no source path');
+    const repository = {
+      readSourceExcerpts: vi.fn().mockResolvedValue([
+        { path, startLine: 0, content: 'export {};\n', truncated: false },
+      ]),
+    };
+
+    await expect(readRepairSourceContext(
+      repository,
+      '/tmp/captured',
+      `${path}:1: error`,
+    )).rejects.toThrow('Repository source port returned an unsafe or unbounded excerpt');
+  });
+
   it('replays live runs 4 and 5: monorepo ESM evidence reaches the TypeScript implementation', async () => {
+    capturedLiveRun(4, '33242204485');
+    const captured = await capturedFailingRun('Live run 5', '33243759945');
     const repository = new FakeRepository();
     repository.sources.clear();
     repository.sources.set(
@@ -1164,7 +1362,7 @@ describe('repair source context', () => {
     const context = await readRepairSourceContext(
       repository,
       '/tmp/exact-pr-head',
-      'packages/core test: src/dogfood-add.test.ts:3: expected -1 to be 5',
+      capturedDogfoodLog(captured.jobLogText),
       { class: 'test-assertion' },
     );
 

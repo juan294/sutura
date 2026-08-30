@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -10,6 +10,11 @@ import {
   detectRuntime,
   runtimeEvidencePaths,
 } from './detect.js';
+
+const DOGFOOD_16_RUNTIME = new URL(
+  './__fixtures__/captured/33268037618/runtime-evidence.json',
+  import.meta.url,
+);
 
 describe('detectRuntime', () => {
   it('selects Node and Python from bounded repository and command evidence', () => {
@@ -70,6 +75,56 @@ describe('detectRuntime', () => {
       await writeFile(join(outside, 'hidden.py'), 'value = 1\n');
       await symlink(outside, join(root, 'python-source'));
       await expect(runtimeEvidencePaths(root)).resolves.toEqual(['package.json']);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('detects the runtime from the captured dogfood-16 checkout boundary', async () => {
+    const captured = JSON.parse(await readFile(DOGFOOD_16_RUNTIME, 'utf8')) as {
+      configuredRuntime: 'node';
+      paths: string[];
+    };
+    const policy = JSON.parse(await readFile(
+      new URL('./__fixtures__/captured/33268037618/.sutura.json', import.meta.url),
+      'utf8',
+    )) as { runtime: 'node' };
+    expect(detectRuntime({
+      configuredRuntime: policy.runtime,
+      paths: captured.paths,
+      failingCommand: 'pnpm --filter @sutura/core test',
+    }).id).toBe('node');
+    expect(detectRuntime({
+      paths: captured.paths,
+      failingCommand: 'pnpm --filter @sutura/core test',
+    }).id).toBe('node');
+  });
+
+  it('fails closed when an evidence directory is replaced before it is read', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'sutura-runtime-replaced-'));
+    try {
+      await expect(runtimeEvidencePaths(root, {
+        async lstat() {
+          return { isSymbolicLink: () => true, isDirectory: () => false } as never;
+        },
+      })).rejects.toThrow(/changed during bounded detection/u);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('fails closed on a deterministic realpath escape', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'sutura-runtime-root-'));
+    const outside = await mkdtemp(join(tmpdir(), 'sutura-runtime-escape-'));
+    let realpathCalls = 0;
+    try {
+      await expect(runtimeEvidencePaths(root, {
+        async realpath(path) {
+          realpathCalls += 1;
+          return realpathCalls === 1 ? String(path) : outside;
+        },
+      })).rejects.toThrow(/escapes the repository/u);
     } finally {
       await rm(root, { recursive: true, force: true });
       await rm(outside, { recursive: true, force: true });

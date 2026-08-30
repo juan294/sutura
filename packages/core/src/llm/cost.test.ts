@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_MODEL_PRICES, Ledger } from './cost.js';
+import { calculateModelCostUsd, DEFAULT_MODEL_PRICES, Ledger } from './cost.js';
 
 describe('Ledger', () => {
   it('ships the verified per-million-token prices for each model tier', () => {
@@ -49,5 +49,24 @@ describe('Ledger', () => {
     expect(() =>
       ledger.add('unknown' as 'nano', 'unknown', { inTok: 1, outTok: 1, reasoningTok: 0 }),
     ).toThrow(/No token prices configured for role: unknown/);
+  });
+
+  it.each([
+    ['inTok', { inTok: -1, outTok: 0, reasoningTok: 0 }],
+    ['outTok', { inTok: 0, outTok: 1.5, reasoningTok: 0 }],
+    ['reasoningTok', { inTok: 0, outTok: 0, reasoningTok: Number.MAX_SAFE_INTEGER + 1 }],
+  ])('rejects invalid %s usage', (field, usage) => {
+    expect(() => calculateModelCostUsd(DEFAULT_MODEL_PRICES.nano, usage))
+      .toThrow(`${field} must be a non-negative safe integer`);
+  });
+
+  it.each([
+    { input: -1, output: 1 },
+    { input: Number.NaN, output: 1 },
+    { input: 1, output: -1 },
+    { input: 1, output: Infinity },
+  ])('rejects invalid model prices: %j', (price) => {
+    expect(() => calculateModelCostUsd(price, { inTok: 1, outTok: 1, reasoningTok: 0 }))
+      .toThrow(/non-negative and finite/u);
   });
 });

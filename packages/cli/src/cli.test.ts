@@ -4,7 +4,13 @@ import { join } from 'node:path';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { completedTriageVerdict, notRunTriageVerdict, type AuditFile, type CaseFile } from '@sutura/core';
+import {
+  completedTriageVerdict,
+  createCompleteReplayBundleForTest,
+  notRunTriageVerdict,
+  type AuditFile,
+  type CaseFile,
+} from '@sutura/core';
 
 import { runCli } from './cli.js';
 
@@ -28,6 +34,81 @@ function fixed(): CaseFile {
 }
 
 describe('runCli', () => {
+  it('replays a complete bundle offline and prints matching CaseFile JSON', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-cli-complete-replay-'));
+    const bundlePath = join(directory, 'bundle.json');
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const network = vi.fn(async () => { throw new Error('live network must not run'); });
+    vi.stubGlobal('fetch', network);
+    vi.stubEnv('CONTREE_TOKEN', '');
+    vi.stubEnv('CONTREE_PROJECT', '');
+    try {
+      const bundle = await createCompleteReplayBundleForTest();
+      expect(bundle.completeness).toEqual({
+        complete: true,
+        overflowedBoundaries: [],
+        pendingBoundaries: [],
+      });
+      expect(bundle.executor.length).toBeGreaterThan(0);
+      await writeFile(bundlePath, JSON.stringify(bundle));
+
+      const exitCode = await runCli([
+        'replay', '--bundle', bundlePath, '--format', 'json',
+      ], {
+        write: (value) => stdout.push(value),
+        writeError: (value) => stderr.push(value),
+      });
+
+      expect(exitCode).toBe(0);
+      expect(stderr).toEqual([]);
+      expect(JSON.parse(stdout.join(''))).toMatchObject({
+        runId: bundle.runId,
+        outcome: bundle.outcome,
+      });
+      expect(network).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('exits 1 when a real replay disagrees with a tampered recorded outcome', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-cli-tampered-replay-'));
+    const bundlePath = join(directory, 'bundle.json');
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const network = vi.fn(async () => { throw new Error('live network must not run'); });
+    vi.stubGlobal('fetch', network);
+    vi.stubEnv('CONTREE_TOKEN', '');
+    vi.stubEnv('CONTREE_PROJECT', '');
+    try {
+      const bundle = await createCompleteReplayBundleForTest();
+      const replayedOutcome = bundle.outcome;
+      bundle.outcome = replayedOutcome === 'gave-up' ? 'flaky-no-patch' : 'gave-up';
+      await writeFile(bundlePath, JSON.stringify(bundle));
+
+      const exitCode = await runCli([
+        'replay', '--bundle', bundlePath, '--format', 'json',
+      ], {
+        write: (value) => stdout.push(value),
+        writeError: (value) => stderr.push(value),
+      });
+
+      expect(exitCode).toBe(1);
+      expect(stdout).toEqual([]);
+      expect(stderr.join('')).toContain(
+        `recorded ${bundle.outcome}, replayed ${String(replayedOutcome)}`,
+      );
+      expect(network).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('prints only reduced-assurance AuditFile JSON', async () => {
     const stdout: string[] = [];
     const auditFile = {

@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 import type {
@@ -751,5 +753,109 @@ describe('NebiusClient', () => {
     await expect(client.chat('nano', MESSAGES)).rejects.toThrow(
       `model was not found: ${body}`,
     );
+  });
+
+  it('rethrows an aborted transport request without retrying', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const transportError = new Error('synthetic aborted transport');
+    const fetch = vi.fn().mockRejectedValue(transportError);
+    const client = new NebiusClient(CONFIG, { fetch });
+
+    await expect(client.chat('nano', MESSAGES, { signal: controller.signal }))
+      .rejects.toBe(transportError);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('wraps a synthetic transport failure when retry delay exceeds the deadline', async () => {
+    const fetch = vi.fn().mockRejectedValue(new Error('synthetic network down'));
+    const client = new NebiusClient(CONFIG, {
+      fetch,
+      now: vi.fn()
+        .mockReturnValueOnce(0)
+        .mockReturnValueOnce(0)
+        .mockReturnValue(30_001),
+      random: () => 0,
+    });
+
+    await expect(client.chat('nano', MESSAGES)).rejects.toMatchObject({
+      name: 'NebiusApiError',
+      status: undefined,
+      body: 'synthetic network down',
+    });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('wraps a synthetic transport failure after all retry attempts', async () => {
+    const fetch = vi.fn().mockRejectedValue(new Error('synthetic network down'));
+    const client = new NebiusClient(CONFIG, {
+      fetch,
+      sleep: vi.fn().mockResolvedValue(undefined),
+      now: () => 0,
+      random: () => 0,
+    });
+
+    await expect(client.chat('nano', MESSAGES)).rejects.toThrow(/after 4 attempts/u);
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
+
+  it.each([
+    ['non-object response', null, /non-object response/u],
+    ['non-array tool calls', {
+      choices: [{ message: { content: null, tool_calls: {} } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    }, /message\.tool_calls/u],
+    ['non-object tool call', {
+      choices: [{ message: { content: null, tool_calls: [null] } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    }, /tool call at index/u],
+    ['oversized tool arguments', {
+      choices: [{ message: { content: null, tool_calls: [{
+        id: 'call_1', type: 'function', function: { name: 'read_file', arguments: 'x'.repeat(64_001) },
+      }] } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    }, /tool call arguments/u],
+    ['invalid content type', {
+      choices: [{ message: { content: 1 } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    }, /message\.content/u],
+    ['negative prompt tokens', {
+      choices: [{ message: { content: 'fixed' } }],
+      usage: { prompt_tokens: -1, completion_tokens: 1 },
+    }, /usage\.prompt_tokens/u],
+    ['non-integer completion tokens', {
+      choices: [{ message: { content: 'fixed' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1.5 },
+    }, /usage\.completion_tokens/u],
+    ['invalid reasoning tokens', {
+      choices: [{ message: { content: 'fixed' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, completion_tokens_details: { reasoning_tokens: -1 } },
+    }, /reasoning_tokens/u],
+    ['reasoning exceeds completion', {
+      choices: [{ message: { content: 'fixed' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, completion_tokens_details: { reasoning_tokens: 2 } },
+    }, /exceed total completion/u],
+    ['invalid finish reason', {
+      choices: [{ finish_reason: 1, message: { content: 'fixed' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    }, /finish_reason/u],
+    ['invalid provider model', {
+      model: '',
+      choices: [{ message: { content: 'fixed' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    }, /Invalid model/u],
+  ] as const)('rejects synthetic provider shape: %s', async (_label, body, message) => {
+    const client = new NebiusClient(CONFIG, { fetch: vi.fn().mockResolvedValue(response(body)) });
+    await expect(client.chat('nano', MESSAGES)).rejects.toThrow(message);
+  });
+
+  it('preserves the labeled synthetic live-16 reasoning_effort none error body', async () => {
+    const body = (await readFile(new URL(
+      '../__fixtures__/captured/provider/error-shapes/live-16-reasoning-effort-none.synthetic.json',
+      import.meta.url,
+    ), 'utf8')).trim();
+    const client = new NebiusClient(CONFIG, { fetch: vi.fn().mockResolvedValue(response(body, 400)) });
+
+    await expect(client.chat('super', MESSAGES)).rejects.toMatchObject({ status: 400, body });
   });
 });
