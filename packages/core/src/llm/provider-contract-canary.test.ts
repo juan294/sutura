@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_MODELS, TOKEN_FACTORY_BASE_URL } from '../config.js';
@@ -218,13 +220,16 @@ describe('Super repair provider-contract canary', () => {
   it.each([
     ['CRLF line endings', FIXED_SOURCE.replaceAll('\n', '\r\n')],
     ['a missing final newline', FIXED_SOURCE.trimEnd()],
-  ])('rejects a normalized diff with %s', async (_label, replacement) => {
+  ])('replays canary 33315587765: accepts normalized %s', async (_label, replacement) => {
     const fetch = vi.fn().mockResolvedValue(response(JSON.stringify({ replacement })));
 
     await expect(runSuperRepairProviderContractCanary(
       { apiKey: 'test-key' },
       { fetch },
-    )).rejects.toThrow(/non-canonical arithmetic replacement/u);
+    )).resolves.toMatchObject({
+      replacementCodePoints: [...FIXED_SOURCE].length,
+      replacementSha256: createHash('sha256').update(FIXED_SOURCE).digest('hex'),
+    });
   });
 
   it.each([
