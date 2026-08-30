@@ -4,6 +4,7 @@ import { DEFAULT_MODELS } from '../config.js';
 import { DEFAULT_ROUTING_PROFILE_ID } from '../llm/router.js';
 import { REPLAY_BUNDLE_SCHEMA_VERSION, type ReplayBundle } from './bundle.js';
 import { createCompleteReplayBundleForTest } from './complete-bundle.test-helper.js';
+import { ReplayMismatchError } from './replay-fetch.js';
 import { replayBundle } from './replay-orchestrate.js';
 
 const SHA = 'a'.repeat(40);
@@ -60,5 +61,58 @@ describe('replayBundle', () => {
       'updateCommitComment',
       'updateCheckRun',
     ]);
+  });
+
+  it.each(['github', 'repository', 'executor', 'nebius', 'tavily'] as const)(
+    'fails closed when a recorded %s tail is not consumed',
+    async (boundary) => {
+      const bundle = await createCompleteReplayBundleForTest();
+      if (boundary === 'github' || boundary === 'repository') {
+        const sequence = Math.max(
+          ...bundle.github.map((call) => call.sequence),
+          ...bundle.repository.map((call) => call.sequence),
+        ) + 1;
+        const calls = bundle[boundary];
+        calls.push({ ...structuredClone(calls.at(-1)!), sequence } as never);
+      } else if (boundary === 'executor') {
+        const sequence = Math.max(...bundle.executor.map((call) => call.sequence)) + 1;
+        bundle.executor.push({ ...structuredClone(bundle.executor.at(-1)!), sequence });
+      } else {
+        const sequence = Math.max(...bundle.http.map((exchange) => exchange.sequence)) + 1;
+        const exchange = bundle.http.findLast((item) => item.boundary === boundary)!;
+        bundle.http.push({ ...structuredClone(exchange), sequence });
+      }
+
+      await expect(replayBundle(bundle)).rejects.toBeInstanceOf(ReplayMismatchError);
+    },
+  );
+
+  it('fails closed when shared port boundaries are reordered', async () => {
+    const bundle = await createCompleteReplayBundleForTest();
+    const github = bundle.github[0]!;
+    const repository = bundle.repository[0]!;
+    [github.sequence, repository.sequence] = [repository.sequence, github.sequence];
+
+    await expect(replayBundle(bundle)).rejects.toBeInstanceOf(ReplayMismatchError);
+  });
+
+  it('fails closed when shared provider HTTP boundaries are reordered', async () => {
+    const bundle = await createCompleteReplayBundleForTest();
+    const nebius = bundle.http.find((exchange) => exchange.boundary === 'nebius')!;
+    const tavily = bundle.http.find((exchange) => exchange.boundary === 'tavily')!;
+    [nebius.sequence, tavily.sequence] = [tavily.sequence, nebius.sequence];
+
+    await expect(replayBundle(bundle)).rejects.toBeInstanceOf(ReplayMismatchError);
+  });
+
+  it('does not require diagnostic ConTree HTTP records to be consumed', async () => {
+    const bundle = await createCompleteReplayBundleForTest();
+    const sequence = Math.max(...bundle.http.map((exchange) => exchange.sequence)) + 1;
+    const contree = bundle.http.findLast((exchange) => exchange.boundary === 'contree')!;
+    bundle.http.push({ ...structuredClone(contree), sequence });
+
+    await expect(replayBundle(bundle)).resolves.toMatchObject({
+      caseFile: { outcome: bundle.outcome },
+    });
   });
 });

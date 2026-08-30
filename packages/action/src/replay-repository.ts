@@ -5,6 +5,7 @@ import { resolve, sep } from 'node:path';
 import {
   MAX_POLICY_BYTES,
   isSensitiveRepositoryPath,
+  recordedErrorResult,
   runtimeEvidencePaths,
   type ReplayRecorder,
   type RepositoryPort,
@@ -132,7 +133,7 @@ export function recordingRepositoryPort(
       recorder.recordRepository({
         method,
         args,
-        result: { error: errorMessage(error) },
+        result: recordedErrorResult(error),
       }, sequence);
       throw error;
     }

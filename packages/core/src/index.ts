@@ -148,6 +148,8 @@ export {
   recordingTavilyFetch,
 } from './replay/record-fetch.js';
 export { recordingExecutor } from './replay/record-executor.js';
+export { recordingGitHubApi } from './replay/record-github.js';
+export { recordedErrorResult } from './replay/recorded-error.js';
 export { canonicalJson, firstJsonDifference, CanonicalJsonError } from './replay/canonical-json.js';
 export { CAPTURED_FIXTURES_SCHEMA_VERSION, CapturedFixturesValidationError, parseCapturedFixturesManifest } from './replay/manifest.js';
 export { RecordedExecutor } from './replay/replay-executor.js';
@@ -238,6 +240,8 @@ export type {
   BinaryBody,
   RawBody,
   RecordedBody,
+  RecordedError,
+  RecordedErrorDetails,
   RecordedGitHubCall,
   RecordedHttpExchange,
   RecordedExecutorCall,

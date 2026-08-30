@@ -141,10 +141,24 @@ function body(value: unknown, path: string): RecordedBody {
   throw new ReplayValidationError(path, 'must be a recorded body');
 }
 
-function isRecordedError(value: unknown): boolean {
+function validateRecordedError(value: unknown, path: string): boolean {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
-  return exactKeys(record, ['error']) && typeof record.error === 'string';
+  if (!Object.hasOwn(record, 'error')) return false;
+  if (!exactKeys(record, ['error'])) {
+    throw new ReplayValidationError(`${path}.error`, 'must be the only result field');
+  }
+  const error = object(record.error, `${path}.error`);
+  const allowed = new Set(['message', 'name', 'status']);
+  const unknown = Object.keys(error).find((key) => !allowed.has(key));
+  if (unknown) throw new ReplayValidationError(`${path}.error.${unknown}`, 'is unknown');
+  string(error.message, `${path}.error.message`);
+  string(error.name, `${path}.error.name`);
+  if (Object.hasOwn(error, 'status') &&
+      (typeof error.status !== 'number' || !Number.isFinite(error.status))) {
+    throw new ReplayValidationError(`${path}.error.status`, 'must be a finite number');
+  }
+  return true;
 }
 
 function validateRunResult(value: unknown, path: string): void {
@@ -167,7 +181,7 @@ function validateRunResult(value: unknown, path: string): void {
 }
 
 function validateExecutorResult(method: string, value: unknown, path: string): void {
-  if (isRecordedError(value)) return;
+  if (validateRecordedError(value, path)) return;
   if (method === 'importImage' || method === 'snapshot') {
     string(value, path);
   } else if (method === 'run') {
@@ -202,7 +216,7 @@ function validateWorkflowRun(value: unknown, path: string): void {
 }
 
 function validateGitHubResult(method: string, value: unknown, path: string): void {
-  if (isRecordedError(value)) return;
+  if (validateRecordedError(value, path)) return;
   if (method === 'getWorkflowRun') {
     validateWorkflowRun(value, path);
   } else if (method === 'listPullRequestsForCommit') {
@@ -263,7 +277,7 @@ function validateGitHubResult(method: string, value: unknown, path: string): voi
 }
 
 function validateRepositoryResult(method: string, value: unknown, path: string): void {
-  if (isRecordedError(value)) return;
+  if (validateRecordedError(value, path)) return;
   if (method === 'readPolicyAtSha') {
     if (value !== null) string(value, path);
   } else if (method === 'checkoutHead') {

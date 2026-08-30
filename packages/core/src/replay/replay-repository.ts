@@ -9,9 +9,14 @@ import type {
   SourceReadLimits,
   SourceReference,
 } from '../orchestrate.js';
-import { canonicalJson, firstJsonDifference } from './canonical-json.js';
 import type { RecordedRepositoryCall } from './bundle.js';
-import { ReplayMismatchError } from './replay-fetch.js';
+import {
+  describeMethodCall,
+  RecordedCallCursor,
+} from './recorded-call-cursor.js';
+import { throwRecordedErrorResult } from './recorded-error.js';
+import { ReplayMismatchError } from './replay-error.js';
+import type { RecordedPortCall } from './replay-github.js';
 
 interface RecordedCheckout {
   checkoutId: string;
@@ -19,12 +24,6 @@ interface RecordedCheckout {
     runtimeEvidencePaths: string[];
     files: Array<{ path: string; content: string }>;
   };
-}
-
-function recordedError(value: unknown): string | null {
-  if (typeof value !== 'object' || value === null || Object.keys(value).length !== 1) return null;
-  const error = (value as { error?: unknown }).error;
-  return typeof error === 'string' ? error : null;
 }
 
 function safeSnapshotPath(path: string): boolean {
@@ -62,14 +61,17 @@ function inside(root: string, path: string): boolean {
 }
 
 export class RecordedRepository implements RepositoryPort {
-  private readonly calls: RecordedRepositoryCall[];
   private readonly checkoutPaths = new Map<string, string>();
-  private index = 0;
   private temporaryRoot: string | undefined;
 
-  constructor(calls: readonly RecordedRepositoryCall[]) {
-    this.calls = [...calls].toSorted((left, right) => left.sequence - right.sequence);
-  }
+  constructor(
+    calls: readonly RecordedRepositoryCall[],
+    private readonly cursor = new RecordedCallCursor<RecordedPortCall>(
+      calls,
+      describeMethodCall,
+      'port',
+    ),
+  ) {}
 
   normalizeArgs(args: unknown[]): unknown[] {
     return this.normalize(args) as unknown[];
@@ -94,24 +96,8 @@ export class RecordedRepository implements RepositoryPort {
   }
 
   private next(method: keyof RepositoryPort, args: unknown[]): RecordedRepositoryCall {
-    const call = this.calls[this.index];
-    if (!call) throw new ReplayMismatchError(this.index + 1, '$', method, 'sequence exhausted');
-    this.index += 1;
-    if (call.method !== method) {
-      throw new ReplayMismatchError(call.sequence, '$.method', call.method, method);
-    }
-    const normalized = this.normalizeArgs(args);
-    if (canonicalJson(call.args) !== canonicalJson(normalized)) {
-      const difference = firstJsonDifference(call.args, normalized);
-      throw new ReplayMismatchError(
-        call.sequence,
-        difference?.path ?? '$.args',
-        difference?.expected,
-        difference?.actual,
-      );
-    }
-    const error = recordedError(call.result);
-    if (error) throw new Error(error);
+    const call = this.cursor.next(method, args, (value) => this.normalizeArgs(value)) as RecordedRepositoryCall;
+    throwRecordedErrorResult(call.result);
     return call;
   }
 

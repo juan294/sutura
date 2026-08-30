@@ -56,7 +56,26 @@ describe('recordingGitHubApi', () => {
 
     await expect(recordingGitHubApi(api, recorder).getWorkflowRun(77)).rejects.toBe(failure);
     expect(recorder.finish('infra-stop').github[0]?.result).toEqual({
-      error: 'GitHub unavailable',
+      error: {
+        message: 'GitHub unavailable',
+        name: 'Error',
+      },
+    });
+  });
+
+  it('preserves a numeric API status in recorded errors', async () => {
+    const failure = Object.assign(new Error('Reference already exists'), { status: 422 });
+    const api = { createRef: vi.fn(async () => { throw failure; }) } as unknown as GitHubApi;
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+
+    await expect(recordingGitHubApi(api, recorder).createRef('refs/tags/attempt', 'b'.repeat(40)))
+      .rejects.toBe(failure);
+    expect(recorder.finish('infra-stop').github[0]?.result).toEqual({
+      error: {
+        message: 'Reference already exists',
+        name: 'Error',
+        status: 422,
+      },
     });
   });
 

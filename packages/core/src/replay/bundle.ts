@@ -82,25 +82,35 @@ export interface RecordedHttpExchange {
   latencyMs: number;
 }
 
+export interface RecordedErrorDetails {
+  message: string;
+  name: string;
+  status?: number;
+}
+
+export interface RecordedError {
+  error: RecordedErrorDetails;
+}
+
 export interface RecordedGitHubCall {
   sequence: number;
   method: string;
   args: unknown[];
-  result: unknown | { error: string };
+  result: unknown | RecordedError;
 }
 
 export interface RecordedRepositoryCall {
   sequence: number;
   method: keyof RepositoryPort;
   args: unknown[];
-  result: unknown | { error: string };
+  result: unknown | RecordedError;
 }
 
 export interface RecordedExecutorCall {
   sequence: number;
   method: keyof Executor;
   args: unknown[];
-  result: unknown | { error: string };
+  result: unknown | RecordedError;
 }
 
 export interface ReplayOrchestrationConfig {

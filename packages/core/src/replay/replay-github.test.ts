@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ReplayBundle } from './bundle.js';
+import { GitHubAdapter } from '../github/adapter.js';
+import type { GitHubApi } from '../github/types.js';
+import { ReplayRecorder, type ReplayBundle } from './bundle.js';
+import { recordingGitHubApi } from './record-github.js';
 import { ReplayMismatchError } from './replay-fetch.js';
 import { replayingGitHubApi } from './replay-github.js';
 
@@ -42,11 +45,58 @@ describe('replayingGitHubApi', () => {
   it('replays recorded errors without recording a mutation', async () => {
     const bundle = {
       ...BUNDLE,
-      github: [{ sequence: 4, method: 'getCommitSha', args: ['bad'], result: { error: 'missing' } }],
+      github: [{
+        sequence: 4,
+        method: 'getCommitSha',
+        args: ['bad'],
+        result: { error: { message: 'missing', name: 'NotFoundError', status: 404 } },
+      }],
     } as ReplayBundle;
     const replay = replayingGitHubApi(bundle);
 
-    await expect(replay.api.getCommitSha('bad')).rejects.toThrow('missing');
+    await expect(replay.api.getCommitSha('bad')).rejects.toMatchObject({
+      message: 'missing',
+      name: 'NotFoundError',
+      status: 404,
+    });
     expect(replay.mutations).toEqual([]);
+  });
+
+  it('captures and replays a 422 claim as an idempotent no-op', async () => {
+    const sha = 'a'.repeat(40);
+    const duplicate = Object.assign(new Error('Reference already exists'), { status: 422 });
+    const api = {
+      getWorkflowRun: async () => ({
+        id: 77,
+        headSha: sha,
+        repository: 'acme/widget',
+        event: 'push',
+        conclusion: 'failure',
+        pullRequests: [],
+      }),
+      createRef: async () => { throw duplicate; },
+      listCheckRunsForRef: async () => [],
+    } as unknown as GitHubApi;
+    const recorder = new ReplayRecorder('77', 'acme/widget', sha, {
+      triageN: 1,
+      raceK: 1,
+      models: { nano: 'nano', super: 'super', ultra: 'ultra' },
+      routingProfileId: 'test',
+      maxOps: 1,
+    });
+    const captured = new GitHubAdapter(recordingGitHubApi(api, recorder), {
+      owner: 'acme', repo: 'widget', runId: '77',
+    });
+    await expect(captured.claimAttempt(undefined, '<!-- marker -->')).resolves.toBeNull();
+
+    const replay = replayingGitHubApi(recorder.finish('infra-stop'));
+    const adapter = new GitHubAdapter(replay.api, {
+      owner: 'acme', repo: 'widget', runId: '77',
+    });
+
+    await expect(adapter.claimAttempt(undefined, '<!-- marker -->')).resolves.toBeNull();
+    expect(replay.mutations).toEqual([{ sequence: 2, method: 'createRef', args: [
+      'refs/tags/sutura-attempt-77', sha,
+    ] }]);
   });
 });

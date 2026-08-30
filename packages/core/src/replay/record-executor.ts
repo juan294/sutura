@@ -1,9 +1,6 @@
 import type { Executor } from '../executor/types.js';
 import type { ReplayRecorder } from './bundle.js';
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+import { recordedErrorResult } from './recorded-error.js';
 
 export function recordingExecutor(
   executor: Executor,
@@ -23,7 +20,7 @@ export function recordingExecutor(
       recorder.recordExecutor({
         method,
         args,
-        result: { error: errorMessage(error) },
+        result: recordedErrorResult(error),
       }, sequence);
       throw error;
     }
@@ -58,7 +55,7 @@ export function recordingExecutor(
         recorder.recordExecutor({
           method: 'operationCapacity',
           args: [],
-          result: { error: errorMessage(error) },
+          result: recordedErrorResult(error),
         }, sequence);
         throw error;
       }

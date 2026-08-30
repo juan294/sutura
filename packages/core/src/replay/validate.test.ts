@@ -98,6 +98,40 @@ describe('parseReplayBundle', () => {
     expect(() => parseReplayBundle(executor)).toThrow(/executor.*result/iu);
   });
 
+  it('accepts structured recorded errors with an optional numeric status', () => {
+    const value = clone(PARTIAL);
+    value.github = [{
+      sequence: 1,
+      method: 'createRef',
+      args: ['refs/tags/attempt', 'a'.repeat(40)],
+      result: {
+        error: { message: 'Reference already exists', name: 'HttpError', status: 422 },
+      },
+    }];
+
+    expect(parseReplayBundle(value)).toEqual(value);
+  });
+
+  it.each([
+    [{ error: 'legacy string' }, /error/iu],
+    [{ error: { message: 'failed' } }, /name/iu],
+    [{ error: { message: 42, name: 'Error' } }, /message/iu],
+    [{ error: { message: 'failed', name: 'Error', status: '422' } }, /status/iu],
+    [{ error: { message: 'failed', name: 'Error', status: Number.NaN } }, /status/iu],
+    [{ error: { message: 'failed', name: 'Error', status: undefined } }, /status/iu],
+    [{ error: { message: 'failed', name: 'Error', extra: true } }, /error/iu],
+  ])('rejects malformed structured recorded errors', (result, expected) => {
+    const value = clone(PARTIAL);
+    value.github = [{
+      sequence: 1,
+      method: 'createRef',
+      args: ['refs/tags/attempt', 'a'.repeat(40)],
+      result,
+    }];
+
+    expect(() => parseReplayBundle(value)).toThrow(expected);
+  });
+
   it('rejects exact truncation markers in a complete bundle', () => {
     const value = clone(complete);
     value.http[0]!.response = {

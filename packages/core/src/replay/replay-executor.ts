@@ -7,46 +7,24 @@ import type {
   RunResult,
   SnapshotOptions,
 } from '../executor/types.js';
-import { canonicalJson, firstJsonDifference } from './canonical-json.js';
-import { ReplayMismatchError } from './replay-fetch.js';
 import type { RecordedExecutorCall } from './bundle.js';
-
-function recordedError(value: unknown): string | null {
-  if (typeof value !== 'object' || value === null || Object.keys(value).length !== 1) return null;
-  const error = (value as { error?: unknown }).error;
-  return typeof error === 'string' ? error : null;
-}
+import { describeMethodCall, RecordedCallCursor } from './recorded-call-cursor.js';
+import { throwRecordedErrorResult } from './recorded-error.js';
 
 export class RecordedExecutor implements Executor {
-  private readonly calls: RecordedExecutorCall[];
-  private index = 0;
+  private readonly cursor: RecordedCallCursor<RecordedExecutorCall>;
 
   constructor(
     calls: readonly RecordedExecutorCall[],
     private readonly normalizeArgs: (args: unknown[]) => unknown[] = (args) => args,
+    cursor?: RecordedCallCursor<RecordedExecutorCall>,
   ) {
-    this.calls = [...calls].toSorted((left, right) => left.sequence - right.sequence);
+    this.cursor = cursor ?? new RecordedCallCursor(calls, describeMethodCall, 'executor');
   }
 
   private next<T>(method: keyof Executor, args: unknown[]): T {
-    const call = this.calls[this.index];
-    if (!call) throw new ReplayMismatchError(this.index + 1, '$', method, 'sequence exhausted');
-    this.index += 1;
-    if (call.method !== method) {
-      throw new ReplayMismatchError(call.sequence, '$.method', call.method, method);
-    }
-    const normalized = this.normalizeArgs(args);
-    if (canonicalJson(call.args) !== canonicalJson(normalized)) {
-      const difference = firstJsonDifference(call.args, normalized);
-      throw new ReplayMismatchError(
-        call.sequence,
-        difference?.path ?? '$.args',
-        difference?.expected,
-        difference?.actual,
-      );
-    }
-    const error = recordedError(call.result);
-    if (error) throw new Error(error);
+    const call = this.cursor.next(method, args, this.normalizeArgs);
+    throwRecordedErrorResult(call.result);
     return call.result as T;
   }
 

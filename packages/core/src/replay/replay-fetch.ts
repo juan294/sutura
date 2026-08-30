@@ -10,20 +10,10 @@ import type {
   RecordedHttpExchange,
   ReplayBundle,
 } from './bundle.js';
+import { RecordedCallCursor } from './recorded-call-cursor.js';
+import { ReplayMismatchError } from './replay-error.js';
 
-export class ReplayMismatchError extends Error {
-  constructor(
-    readonly sequence: number,
-    readonly path: string,
-    readonly expected: unknown,
-    readonly actual: unknown,
-  ) {
-    super(
-      `Replay exchange ${sequence} differs at ${path}: expected ${JSON.stringify(expected)}, received ${JSON.stringify(actual)}`,
-    );
-    this.name = 'ReplayMismatchError';
-  }
-}
+export { ReplayMismatchError } from './replay-error.js';
 
 function jsonBody(value: RecordedBody, sequence: number, side: string): unknown {
   if (typeof value !== 'string') {
@@ -109,25 +99,31 @@ function recordedResponse(exchange: RecordedHttpExchange): HttpResponse {
   };
 }
 
-export function replayFetch(bundle: ReplayBundle, boundary: 'nebius'): NebiusFetch;
-export function replayFetch(bundle: ReplayBundle, boundary: 'tavily'): TavilyFetch;
+export function replayFetch(
+  bundle: ReplayBundle,
+  boundary: 'nebius',
+  cursor?: RecordedCallCursor<RecordedHttpExchange>,
+): NebiusFetch;
+export function replayFetch(
+  bundle: ReplayBundle,
+  boundary: 'tavily',
+  cursor?: RecordedCallCursor<RecordedHttpExchange>,
+): TavilyFetch;
 export function replayFetch(
   bundle: ReplayBundle,
   boundary: Exclude<RecordedHttpBoundary, 'contree'>,
+  sharedCursor?: RecordedCallCursor<RecordedHttpExchange>,
 ): NebiusFetch | TavilyFetch {
-  const exchanges = bundle.http
-    .filter((exchange) => exchange.boundary === boundary)
-    .toSorted((left, right) => left.sequence - right.sequence);
-  let index = 0;
+  const cursor = sharedCursor ?? new RecordedCallCursor(
+    bundle.http.filter((exchange) => exchange.boundary === boundary),
+    (exchange) => ({ method: exchange.boundary, args: [] }),
+    'HTTP',
+  );
   const fetch = async (
     input: string,
     init: { method: string; headers: Readonly<Record<string, string>>; body?: string },
   ): Promise<HttpResponse> => {
-    const exchange = exchanges[index];
-    if (!exchange) {
-      throw new ReplayMismatchError(index + 1, '$', 'recorded exchange', 'sequence exhausted');
-    }
-    index += 1;
+    const exchange = cursor.next(boundary, []);
     assertRequest(exchange, input, init);
     return recordedResponse(exchange);
   };

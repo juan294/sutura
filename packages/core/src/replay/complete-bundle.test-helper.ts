@@ -25,6 +25,8 @@ import {
 } from './bundle.js';
 import { recordingExecutor } from './record-executor.js';
 import { recordingNebiusFetch, recordingTavilyFetch } from './record-fetch.js';
+import { recordingGitHubApi } from './record-github.js';
+import { recordedErrorResult } from './recorded-error.js';
 
 const RUN_ID = '77';
 const HEAD_SHA = 'a'.repeat(40);
@@ -155,30 +157,6 @@ function githubApi(): GitHubApi {
   };
 }
 
-function recordingGitHubApi(api: GitHubApi, recorder: ReplayRecorder): GitHubApi {
-  return new Proxy(api, {
-    get(target, property, receiver) {
-      const value = Reflect.get(target, property, receiver) as unknown;
-      if (typeof property !== 'string' || typeof value !== 'function') return value;
-      return async (...args: unknown[]): Promise<unknown> => {
-        const sequence = recorder.reservePortSequence('github');
-        try {
-          const result = await Reflect.apply(value, target, args) as unknown;
-          recorder.recordGitHub({ method: property, args, result }, sequence);
-          return result;
-        } catch (error) {
-          recorder.recordGitHub({
-            method: property,
-            args,
-            result: { error: error instanceof Error ? error.message : String(error) },
-          }, sequence);
-          throw error;
-        }
-      };
-    },
-  });
-}
-
 function recordingRepository(
   checkoutDir: string,
   recorder: ReplayRecorder,
@@ -198,7 +176,7 @@ function recordingRepository(
       recorder.recordRepository({
         method,
         args,
-        result: { error: error instanceof Error ? error.message : String(error) },
+        result: recordedErrorResult(error),
       }, sequence);
       throw error;
     }

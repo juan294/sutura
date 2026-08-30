@@ -50,7 +50,10 @@ describe('recordingExecutor', () => {
     await expect(recordingExecutor(executor, recorder).importImage('node:22'))
       .rejects.toBe(failure);
     expect(recorder.finish('infra-stop').executor[0]?.result).toEqual({
-      error: 'sandbox unavailable',
+      error: {
+        message: 'sandbox unavailable',
+        name: 'Error',
+      },
     });
   });
 

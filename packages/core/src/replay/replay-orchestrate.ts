@@ -6,10 +6,15 @@ import { GitHubAdapter } from '../github/adapter.js';
 import type { TextArtifactPort } from '../github/types.js';
 import { orchestrate } from '../orchestrate.js';
 import type { RuntimeId } from '../runtime/types.js';
-import type { ReplayBundle } from './bundle.js';
+import type { RecordedHttpExchange, ReplayBundle } from './bundle.js';
+import { describeMethodCall, RecordedCallCursor } from './recorded-call-cursor.js';
 import { RecordedExecutor } from './replay-executor.js';
 import { replayFetch } from './replay-fetch.js';
-import { replayingGitHubApi, type RecordedGitHubMutation } from './replay-github.js';
+import {
+  replayingGitHubApi,
+  type RecordedGitHubMutation,
+  type RecordedPortCall,
+} from './replay-github.js';
 import { RecordedRepository } from './replay-repository.js';
 import { parseReplayBundle, ReplayValidationError } from './validate.js';
 
@@ -24,15 +29,27 @@ export interface ReplayBundleResult {
   mutations: RecordedGitHubMutation[];
 }
 
+interface ReplayCursor {
+  assertConsumed(): void;
+  rethrowMismatch(): void;
+}
+
+function recordedCaseFileUrl(bundle: ReplayBundle): string | undefined {
+  for (const call of bundle.github) {
+    for (const arg of call.args) {
+      if (typeof arg !== 'object' || arg === null) continue;
+      const detailsUrl = (arg as { detailsUrl?: unknown }).detailsUrl;
+      if (typeof detailsUrl === 'string' && detailsUrl.length > 0) return detailsUrl;
+    }
+  }
+  return undefined;
+}
+
 class ReplayTextArtifactPort implements TextArtifactPort {
   private readonly caseFileUrl: string | undefined;
 
   constructor(bundle: ReplayBundle) {
-    this.caseFileUrl = bundle.github.flatMap((call) => call.args)
-      .map((arg) => typeof arg === 'object' && arg !== null
-        ? (arg as { detailsUrl?: unknown }).detailsUrl
-        : undefined)
-      .find((value): value is string => typeof value === 'string' && value.length > 0);
+    this.caseFileUrl = recordedCaseFileUrl(bundle);
   }
 
   uploadTextArtifact(
@@ -60,11 +77,25 @@ export async function replayBundle(
   }
   const [owner, repo] = validated.repo.split('/');
   if (!owner || !repo) throw new ReplayValidationError('bundle.repo', 'must use owner/repo format');
-  const githubReplay = replayingGitHubApi(validated);
-  const repository = new RecordedRepository(validated.repository);
+  const portCursor = new RecordedCallCursor<RecordedPortCall>(
+    [...validated.github, ...validated.repository],
+    describeMethodCall,
+    'port',
+  );
+  const httpCursor = new RecordedCallCursor<RecordedHttpExchange>(
+    validated.http.filter(({ boundary }) => boundary !== 'contree'),
+    (exchange) => ({ method: exchange.boundary, args: [] }),
+    'HTTP',
+  );
+  const executorCursor = options.executor === undefined
+    ? new RecordedCallCursor(validated.executor, describeMethodCall, 'executor')
+    : undefined;
+  const githubReplay = replayingGitHubApi(validated, portCursor);
+  const repository = new RecordedRepository(validated.repository, portCursor);
   const executor = options.executor ?? new RecordedExecutor(
     validated.executor,
     (args) => repository.normalizeArgs(args),
+    executorCursor,
   );
   const github = new GitHubAdapter(githubReplay.api, {
     owner,
@@ -76,35 +107,43 @@ export async function replayBundle(
     apiKey: 'replay-only',
     models: validated.configuration.models,
     routingProfileId: validated.configuration.routingProfileId,
-  }, { fetch: replayFetch(validated, 'nebius') });
+  }, { fetch: replayFetch(validated, 'nebius', httpCursor) });
   const tavily = new TavilyClient('replay-only', {
-    fetch: replayFetch(validated, 'tavily'),
+    fetch: replayFetch(validated, 'tavily', httpCursor),
   });
+  const cursors: ReplayCursor[] = [portCursor, httpCursor];
+  if (executorCursor) cursors.push(executorCursor);
   try {
-    const caseFile = await orchestrate({
-      runId: validated.runId,
-      github,
-      repository,
-      executor,
-      llm,
-      cost: llm.ledger,
-      triageN: validated.configuration.triageN,
-      raceK: validated.configuration.raceK,
-      ...(validated.configuration.repairBudgets === undefined
-        ? {}
-        : { repairBudgets: validated.configuration.repairBudgets }),
-      ...(validated.configuration.search === undefined
-        ? {}
-        : { search: validated.configuration.search }),
-      tavily,
-      ...(validated.configuration.imageRef === undefined
-        ? {}
-        : { imageRef: validated.configuration.imageRef }),
-      ...(options.runtimeId ?? validated.configuration.runtimeId
-        ? { runtimeId: options.runtimeId ?? validated.configuration.runtimeId }
-        : {}),
-    });
-    return { caseFile, mutations: githubReplay.mutations };
+    try {
+      const caseFile = await orchestrate({
+        runId: validated.runId,
+        github,
+        repository,
+        executor,
+        llm,
+        cost: llm.ledger,
+        triageN: validated.configuration.triageN,
+        raceK: validated.configuration.raceK,
+        ...(validated.configuration.repairBudgets === undefined
+          ? {}
+          : { repairBudgets: validated.configuration.repairBudgets }),
+        ...(validated.configuration.search === undefined
+          ? {}
+          : { search: validated.configuration.search }),
+        tavily,
+        ...(validated.configuration.imageRef === undefined
+          ? {}
+          : { imageRef: validated.configuration.imageRef }),
+        ...(options.runtimeId ?? validated.configuration.runtimeId
+          ? { runtimeId: options.runtimeId ?? validated.configuration.runtimeId }
+          : {}),
+      });
+      for (const cursor of cursors) cursor.assertConsumed();
+      return { caseFile, mutations: githubReplay.mutations };
+    } catch (error) {
+      for (const cursor of cursors) cursor.rethrowMismatch();
+      throw error;
+    }
   } finally {
     await repository.cleanup();
   }
