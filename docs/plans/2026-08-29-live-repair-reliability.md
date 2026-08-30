@@ -196,4 +196,4 @@ This reliability cycle does not publish v0.2.0, create a tag or GitHub release, 
 - [x] Phase 2: Controller-owned repair attempt
 - [x] Phase 3: Search budgets, feedback, and exact winner identity
 - [x] Phase 4: Sixteen-run replay and production-path integration gates
-- [ ] Phase 5: Exact-SHA CI and final live dogfood proof
+- [ ] Phase 5: Exact-SHA CI and final live dogfood proof — superseded on 2026-08-30 by `docs/plans/2026-08-30-first-try-repair-reliability.md` (gated, ledgered 10-run streak)
