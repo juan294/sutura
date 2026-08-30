@@ -189,7 +189,7 @@ describe('Super repair provider-contract canary', () => {
     )).rejects.toThrow(/think prefix/u);
   });
 
-  it('fails when the provider omits reasoning-token details', async () => {
+  it('replays canary 33314221139: accepts omitted zero-reasoning details', async () => {
     const fetch = vi.fn().mockResolvedValue(response(
       JSON.stringify({ replacement: FIXED_SOURCE }),
       'stop',
@@ -199,7 +199,9 @@ describe('Super repair provider-contract canary', () => {
     await expect(runSuperRepairProviderContractCanary(
       { apiKey: 'test-key' },
       { fetch },
-    )).rejects.toThrow(/reasoning-token details/u);
+    )).resolves.toMatchObject({
+      usage: { inTok: 321, outTok: 17, reasoningTok: 0 },
+    });
   });
 
   it('rejects a non-canonical arithmetic replacement', async () => {

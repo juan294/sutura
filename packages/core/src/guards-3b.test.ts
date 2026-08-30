@@ -16,7 +16,7 @@ const CHECKLIST: readonly GuardChecklistEntry[] = [
   { source: 'llm/token-factory.ts', lines: [31, 35, 41] },
   { source: 'llm/router.ts', lines: [35, 41, 43, 46, 48] },
   { source: 'llm/cost.ts', lines: [37, 50, 71] },
-  { source: 'llm/provider-contract-canary.ts', lines: [79, 138, 143, 148, 153, 167, 173, 179, 184] },
+  { source: 'llm/provider-contract-canary.ts', lines: [79, 138, 143, 148, 162, 168, 174, 179] },
   { source: 'diagnose/tavily.ts', lines: [130, 142, 145, 149, 168, 172, 182, 185, 190, 202, 206, 209, 229, 232, 242, 245, 249, 269] },
   { source: 'executor/contree.ts', lines: [137, 139, 144, 226, 250, 299, 330, 376, 413, 485, 495, 504, 564, 575, 593, 598, 627, 633, 643, 752, 770, 788, 794, 829, 841, 870, 882, 888, 899, 907, 917, 923, 928, 938, 944, 950, 991, 1016, 1021, 1025, 1028, 1041, 1051, 1055, 1061, 1069, 1076, 1114, 1137, 1158, 1167] },
   { source: 'executor/memory.ts', lines: [107, 113] },
@@ -37,7 +37,7 @@ function throwLines(source: string, fileName: string): number[] {
 }
 
 describe('Phase 3b interim guard checklist', () => {
-  it('inventories all 120 canonical provider-scope guards for merged coverage', async () => {
+  it('inventories all 119 canonical provider-scope guards for merged coverage', async () => {
     const root = new URL('./', import.meta.url);
     let mapped = 0;
     for (const entry of CHECKLIST) {
@@ -45,7 +45,7 @@ describe('Phase 3b interim guard checklist', () => {
       expect(throwLines(source, entry.source), entry.source).toEqual(entry.lines);
       mapped += entry.lines.length;
     }
-    expect(mapped).toBe(120);
+    expect(mapped).toBe(119);
   });
 
   it('keeps live capture boundaries explicitly pending for Phase 5', async () => {

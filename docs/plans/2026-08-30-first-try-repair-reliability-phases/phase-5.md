@@ -96,3 +96,10 @@ name created for each.
   contract sends `chat_template_kwargs` at the top level and omits both
   `extra_body` and `reasoning_effort`. A regression test names the failed
   canary run.
+- Provider-contract canary run `33314221139` on candidate
+  `f6af25a2bd1de124e40786d98c79860658858466` accepted the corrected request,
+  completed inference, and returned the canonical repair, but omitted the
+  optional `completion_tokens_details` object. The corrected v3 contract
+  accepts an omitted breakdown as zero reasoning tokens while it still fails
+  on an explicit nonzero value or a returned `<think>` prefix. A regression
+  test names this canary run.

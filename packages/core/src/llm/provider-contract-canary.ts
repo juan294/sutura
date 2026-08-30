@@ -14,7 +14,7 @@ import type { NebiusClientDependencies } from './nebius.js';
 import { createTokenFactoryClient } from './token-factory.js';
 import type { LlmReply, TierLlm } from './types.js';
 
-export const SUPER_REPAIR_PROVIDER_CONTRACT_VERSION = 'sutura-super-repair-v2';
+export const SUPER_REPAIR_PROVIDER_CONTRACT_VERSION = 'sutura-super-repair-v3';
 
 const BROKEN_SOURCE = [
   'export function add(left: number, right: number): number {',
@@ -147,11 +147,6 @@ export async function runSuperRepairProviderContractCanary(
   if (reply?.hadThinkPrefix === true) {
     throw new SuperRepairProviderContractCanaryError(
       'Super provider contract returned a think prefix while thinking was disabled',
-    );
-  }
-  if (reply !== undefined && !reply.reasoningTokensReported) {
-    throw new SuperRepairProviderContractCanaryError(
-      'Super provider contract omitted reasoning-token details',
     );
   }
   if (
