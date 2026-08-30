@@ -208,6 +208,35 @@ Run the complete local gate before you open a pull request:
 Live tests are opt-in with `SUTURA_LIVE=1` and require the corresponding
 credentials. Normal tests use recorded fixtures and do not spend API credit.
 
+### Offline replay and fixture capture
+
+Replay a complete, credential-free bundle through the real orchestrator without
+network or provider access:
+
+```text
+sutura replay --bundle /tmp/sutura-replay-77001.json --format json
+```
+
+Partial historical bundles fail closed before provider or sandbox work. To
+capture the GitHub and raw failed-job-log boundary for a CI run, use the
+read-only capture script:
+
+```text
+node scripts/capture-run.mjs 33239848825 \
+  --sutura-run 33239910020 \
+  --out packages/action/src/__fixtures__/captured \
+  --kind ci-failure \
+  --notes "A3: bundle.test.ts hook timeout"
+pnpm run test:captured-fixtures
+```
+
+The script records `workflowRunId`, `targetRunId`, and optional `suturaRunId`
+as separate values, preserves ANSI escapes and raw log text, and binds each
+bundle to its exact capture source, head SHA, and SHA-256 in the manifest. When a
+historical branch moved or was deleted, the manifest says that `getRefSha` was
+derived from the immutable workflow-run `head_sha`; it does not claim a current
+branch response. Capture does not call a model, Tavily, or a sandbox.
+
 Before any self-hosted dogfood run, verify the exact production Super repair
 contract without creating a branch or pull request:
 
