@@ -10,6 +10,16 @@ import { checkAnnotations, checkConclusion, checkExternalId, MAX_CHECK_ANNOTATIO
 
 const execFileAsync = promisify(execFile);
 
+async function foreignGitEnvironment(): Promise<NodeJS.ProcessEnv> {
+  const environment = { ...process.env };
+  const localVariables = (await execFileAsync(
+    'git',
+    ['rev-parse', '--local-env-vars'],
+  )).stdout.trim().split('\n').filter(Boolean);
+  for (const name of localVariables) delete environment[name];
+  return environment;
+}
+
 function caseFile(excerpt: string, outcome: CaseFile['outcome'] = 'fixed'): CaseFile {
   return {
     runId: '123', repo: 'acme/widget', runtime: 'node', outcome,
@@ -40,12 +50,15 @@ describe('GitHub check helpers', () => {
       await Promise.all(Array.from({ length: 55 }, (_, index) =>
         writeFile(join(directory, 'src', `file-${index}.ts`), 'export {};\n'),
       ));
-      await execFileAsync('git', ['init', '--quiet'], { cwd: directory });
-      await execFileAsync('git', ['config', 'user.name', 'Test'], { cwd: directory });
-      await execFileAsync('git', ['config', 'user.email', 'test@example.test'], { cwd: directory });
-      await execFileAsync('git', ['add', 'src'], { cwd: directory });
-      await execFileAsync('git', ['commit', '--quiet', '-m', 'fixture'], { cwd: directory });
-      const headSha = (await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: directory })).stdout.trim();
+      const gitOptions = { cwd: directory, env: await foreignGitEnvironment() };
+      await execFileAsync('git', ['init', '--quiet'], gitOptions);
+      await execFileAsync('git', ['add', 'src'], gitOptions);
+      await execFileAsync('git', [
+        '-c', 'user.name=Test',
+        '-c', 'user.email=test@example.test',
+        'commit', '--quiet', '-m', 'fixture',
+      ], gitOptions);
+      const headSha = (await execFileAsync('git', ['rev-parse', 'HEAD'], gitOptions)).stdout.trim();
       await writeFile(join(outside, 'secret.ts'), 'secret\n');
       await symlink(join(outside, 'secret.ts'), join(directory, 'src', 'linked.ts'));
       await writeFile(join(directory, 'src', 'untracked.ts'), 'untracked\n');

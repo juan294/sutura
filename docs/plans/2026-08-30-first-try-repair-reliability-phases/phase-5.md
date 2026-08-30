@@ -111,3 +111,13 @@ name created for each.
   The corrected v4 contract hashes the canonical applied replacement after
   the exact diff check. A semantically different repair still fails that
   exact diff check. A regression test names this canary run.
+- A linked-worktree push of candidate `5e96c741345b8152563503dbbc6fc36391d98198`
+  exposed repository-local `GIT_DIR` and `GIT_WORK_TREE` variables to the
+  pre-push test process. The foreign-repository fixture in `checks.test.ts`
+  then targeted Sutura's shared Git directory, set the fixture identity, and
+  created fixture commit `a531f696` on the local candidate branch. The hook
+  now clears only the variables reported by `git rev-parse --local-env-vars`
+  before it runs tests; the fixture also clears those variables itself and
+  uses per-command identity flags instead of persistent Git configuration. A
+  regression test executes the real hook with sentinel values for every local
+  Git variable.

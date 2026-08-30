@@ -1,3 +1,4 @@
 # Fast deterministic mirror of .github/workflows/ci.yml (minus the 10-minute core/placebo suites).
 # Full mirror: pnpm run ci:local. Rationale: docs/research/2026-08-29-ci-failure-retrospective.md
+unset $(git rev-parse --local-env-vars)
 pnpm run ci:fast
