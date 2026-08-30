@@ -2,10 +2,11 @@
 
 ## Goal
 
-Every guard in `packages/action/src/github.ts`, `octokit.ts`,
-`repository.ts`, `packages/core/src/orchestrate.ts`, and `heal.ts` is reached
-by a test, and every input-boundary guard among them is driven by a captured
-fixture.
+Every guard in `packages/core/src/github/adapter.ts`,
+`packages/action/src/github.ts`, `octokit.ts`, `repository.ts`,
+`packages/core/src/orchestrate.ts`, `heal.ts`, and `source-window.ts` is
+reached by a test, and every input-boundary guard among them is driven by a
+captured fixture.
 
 Research baseline (VERIFIED 2026-08-30): github.ts 4/29 reached, octokit.ts 0/1,
 repository.ts + source-window.ts 6/23, orchestrate.ts + heal.ts 4/23.
@@ -15,8 +16,10 @@ Acceptance: the Phase 3a subset of the run-time-derived `N/N` is complete.
 
 Modify tests only (plus captured fixtures and exports):
 
-- `packages/action/src/github.test.ts` — replace the `api()` stub defaults
-  (`:7`) with a loader over captured bundles; add one `it` per unreached guard.
+- `packages/core/src/github/adapter.test.ts` — load the transport-neutral
+  adapter over captured bundles and add one `it` per unreached adapter guard.
+- `packages/action/src/github.test.ts` — cover the three Action-only wrapper
+  and artifact guards.
 - `packages/action/src/octokit.test.ts` — new; drives `createGitHubApi` with
   a fake Octokit whose `downloadJobLogsForWorkflowRun` returns string,
   `ArrayBuffer`, `Uint8Array`, and an unsupported object.
@@ -39,7 +42,9 @@ No production `.ts` changes except making a currently private helper
    multiline `throw`, `process.exit`, and `core.setFailed` forms are included;
    write the Phase 3a subset into the phase notes as the checklist.
 
-2. For each unreached guard in `github.ts` (`:143`, `:145`, `:170`, `:175`,
+2. For each unreached guard in `packages/core/src/github/adapter.ts` (moved
+   from Action in Phase 2; the scanner-derived lines replace this research
+   baseline: `:143`, `:145`, `:170`, `:175`,
    `:183`, `:221`, `:228`, `:238`, `:259`, `:262`, `:268`, `:276`, `:300`,
    `:319`, `:346`, `:363`, `:376`, `:398`, `:429`, `:462`, `:465`, `:470`,
    `:482`, `:485`, `:493`): start from a captured bundle's recorded
