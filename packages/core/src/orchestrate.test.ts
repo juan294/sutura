@@ -766,8 +766,9 @@ describe('orchestrate', () => {
           max_tokens: 8_192,
           temperature: 1,
           top_p: 0.95,
-          extra_body: { chat_template_kwargs: { enable_thinking: false } },
+          chat_template_kwargs: { enable_thinking: false },
         });
+        expect(body).not.toHaveProperty('extra_body');
         return providerResponse(JSON.stringify({
           replacement: 'export function add(left: number, right: number): number {\n  return left + right;\n}\n',
         }));

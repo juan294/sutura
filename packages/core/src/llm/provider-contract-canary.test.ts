@@ -68,7 +68,7 @@ describe('Super repair provider-contract canary', () => {
       max_tokens: 8_192,
       temperature: 1,
       top_p: 0.95,
-      extra_body: { chat_template_kwargs: { enable_thinking: false } },
+      chat_template_kwargs: { enable_thinking: false },
       response_format: {
         type: 'json_schema',
         json_schema: {
@@ -83,6 +83,7 @@ describe('Super repair provider-contract canary', () => {
         },
       },
     });
+    expect(body).not.toHaveProperty('extra_body');
     expect(body).not.toHaveProperty('reasoning_effort');
     expect(body).not.toHaveProperty('parallel_tool_calls');
     expect(body).not.toHaveProperty('tool_choice');

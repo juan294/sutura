@@ -185,7 +185,7 @@ describe('NebiusClient', () => {
     },
   );
 
-  it('replays live run 16: disables Super thinking through extra_body', async () => {
+  it('replays canary 33312570131: sends chat_template_kwargs directly', async () => {
     const fetch = vi.fn().mockResolvedValue(successResponse('{"replacement":"fixed"}'));
     const client = new NebiusClient(CONFIG, { fetch });
 
@@ -203,8 +203,9 @@ describe('NebiusClient', () => {
       max_tokens: 8_192,
       temperature: 1,
       top_p: 0.95,
-      extra_body: { chat_template_kwargs: { enable_thinking: false } },
+      chat_template_kwargs: { enable_thinking: false },
     });
+    expect(body).not.toHaveProperty('extra_body');
     expect(body).not.toHaveProperty('reasoning_effort');
   });
 
@@ -221,10 +222,10 @@ describe('NebiusClient', () => {
       JSON.parse((init as HttpRequestInit).body as string),
     );
     expect(bodies[0]).toMatchObject({
-      extra_body: { chat_template_kwargs: { enable_thinking: true } },
+      chat_template_kwargs: { enable_thinking: true },
     });
     expect(bodies[1]).toMatchObject({
-      extra_body: { chat_template_kwargs: { enable_thinking: true, low_effort: true } },
+      chat_template_kwargs: { enable_thinking: true, low_effort: true },
     });
   });
 

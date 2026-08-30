@@ -85,3 +85,14 @@ the ten attempts the dogfood SHA, intentional CI URL, Sutura run URL, repair
 PR URL, repair commit SHA, repair PR CI URL, sandbox USD, inference USD; the
 ledger `resultHash`; the number of gave-ups encountered and the replay test
 name created for each.
+
+## Execution notes
+
+- Provider-contract canary run `33312570131` on candidate
+  `5e70a8bf1093173acd6142078b3015c4a25183b5` reached Nebius and failed before
+  inference with HTTP 422, `Invalid parameter: extra_body`.
+- The plan and prior replay assertions used OpenAI SDK notation for
+  `extra_body`. Sutura sends raw JSON with `fetch`, so the corrected v2 wire
+  contract sends `chat_template_kwargs` at the top level and omits both
+  `extra_body` and `reasoning_effort`. A regression test names the failed
+  canary run.

@@ -422,7 +422,7 @@ export class NebiusClient {
         : {}),
       ...(chatTemplateKwargs === undefined
         ? {}
-        : { extra_body: { chat_template_kwargs: chatTemplateKwargs } }),
+        : { chat_template_kwargs: chatTemplateKwargs }),
       ...(options.responseFormat
         ? { response_format: wireResponseFormat(options.responseFormat) }
         : {}),

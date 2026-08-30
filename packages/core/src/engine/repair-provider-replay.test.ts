@@ -278,8 +278,9 @@ describe('recorded live repair failures at the serialized provider boundary', ()
     expect(sandbox.calls).toHaveLength(0);
     expect(value.bodies[0]).toMatchObject({
       max_tokens: 8_192,
-      extra_body: { chat_template_kwargs: { enable_thinking: false } },
+      chat_template_kwargs: { enable_thinking: false },
     });
+    expect(value.bodies[0]).not.toHaveProperty('extra_body');
   });
 
   it('replays live run 16: the exact Super request omits reasoning_effort', async () => {
@@ -290,8 +291,9 @@ describe('recorded live repair failures at the serialized provider boundary', ()
       model: DEFAULT_MODELS.super,
       temperature: 1,
       top_p: 0.95,
-      extra_body: { chat_template_kwargs: { enable_thinking: false } },
+      chat_template_kwargs: { enable_thinking: false },
     });
+    expect(value.bodies[0]).not.toHaveProperty('extra_body');
     expect(value.bodies[0]).not.toHaveProperty('reasoning_effort');
   });
 });
