@@ -131,7 +131,7 @@ describe('NebiusClient', () => {
     expect(reply.usage.outTok).toBeGreaterThan(0);
   });
 
-  it('replays Sutura 33326031664: accepts null tool_calls with audit content', async () => {
+  it('replays live run 33326031664: accepts null tool_calls with audit content', async () => {
     const client = new NebiusClient(CONFIG, {
       fetch: vi.fn().mockResolvedValue(response(await capturedUltraAuditResponse())),
     });
