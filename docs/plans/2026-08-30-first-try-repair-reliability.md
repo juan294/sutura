@@ -356,8 +356,8 @@ product decision.
 
 - [x] Phase 1: Replay bundle capture at the six boundaries
 - [x] Phase 2: Historical capture, bundle contract, `sutura replay`, captured-fixture manifest
-- [ ] Phase 3a: Guard tests — GitHub adapter, repository, orchestration
-- [ ] Phase 3b: Guard tests — provider, Tavily, ConTree, routing
-- [ ] Phase 3c: Guard tests — engine, budget, policy, runtime, config + `guards:verify`
-- [ ] Phase 4: Dogfood automation
+- [x] Phase 3a: Guard tests — GitHub adapter, repository, orchestration
+- [x] Phase 3b: Guard tests — provider, Tavily, ConTree, routing
+- [x] Phase 3c: Guard tests — engine, budget, policy, runtime, config + `guards:verify`
+- [x] Phase 4: Dogfood automation
 - [ ] Phase 5: Live 10/10 streak

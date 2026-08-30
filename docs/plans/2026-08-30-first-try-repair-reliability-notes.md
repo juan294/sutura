@@ -257,3 +257,13 @@
 - Final review corrections: enforce the hard USD 10 cap and minimum USD 1.50 initial reserve; restart attempt numbering at 1 for a new candidate; refuse reuse after a non-fixed outcome; parse exact `gh run view --log` prefixes from captured run `33269188958`; and promote the exact complete `gave-up` replay bytes with all streams and the recorded outcome intact.
 - Simplification corrections: reject attempt 11 before the gate or any remote action, and inspect each completed Sutura run's artifacts only once during correlation polling.
 - Current `develop` gate output is recorded after the verified Phase 1-4 candidate is merged and pushed, because the gate intentionally requires local `HEAD === origin/develop`.
+
+## Phase 1-4 integration evidence
+
+- Integrated verification commit: `826ceaf08a342a1b89bb6d16bc96ef737fb86a43`; Action bundle SHA-256 `f0b696f057a26fe0f703f7e20aaec1fbeec4c029e416f0393365b65dfb06da36`.
+- `ci:fast`: passed with 69 release-contract tests, 3 README tests, Action 118/118, CLI 93/93, typecheck, lint, build, and exact bundle identity.
+- Dynamic guard gate: `427/427`; Core coverage 1020 passed and 8 skipped; Action coverage 118 passed.
+- Captured-fixture contracts: 26/26 passed and retained 26 unique manifest-backed historical partial bundles.
+- `ci:local`: passed after one isolated load-sensitive Core timeout did not reproduce; the clean rerun passed Core 1020, Action 118, Evaluation 5, CLI 93, Placebo 72, offline runtime smoke, package build, bundle identity, and packed install.
+- The required integrated `codex-simplify` review found no remaining reuse, quality, or efficiency blocker. The complete acceptance sequence then passed again; the repeated Placebo suite passed 72/72 and the packed install used Action `826ceaf08a342a1b89bb6d16bc96ef737fb86a43`.
+- No provider canary, live dogfood attempt, or repair branch was dispatched in Phases 1-4.
