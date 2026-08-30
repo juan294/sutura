@@ -134,6 +134,97 @@ describe('parseReplayBundle', () => {
     expect(() => parseReplayBundle(request({ ...valid, sha256: '0'.repeat(64) }))).toThrow(/sha256/iu);
   });
 
+  it('accepts bounded repair-budget overrides and a complete search structure', () => {
+    const value = clone(PARTIAL);
+    value.configuration.repairBudgets = {
+      modelTurns: 4,
+      inferenceCostUsd: 0.1,
+      diffBytes: 1_024,
+    };
+    value.configuration.search = {
+      initialBranches: 2,
+      beamWidth: 1,
+      maximumDepth: 3,
+      maximumTotalBranches: 6,
+    };
+
+    expect(parseReplayBundle(value)).toEqual(value);
+  });
+
+  it.each([
+    ['repairBudgets', 'string'],
+    ['search', 42],
+  ])('rejects a non-object %s configuration', (field, malformed) => {
+    const value = clone(PARTIAL);
+    (value.configuration as unknown as Record<string, unknown>)[field] = malformed;
+
+    expect(() => parseReplayBundle(value)).toThrow(new RegExp(field, 'u'));
+  });
+
+  it.each([
+    ['modelTurns', '4'],
+    ['toolCalls', 25],
+    ['branches', 0],
+    ['sandboxOperations', 1.5],
+    ['elapsedTimeSec', 601],
+    ['inferenceCostUsd', 0.251],
+    ['diffBytes', 65_537],
+  ])('rejects malformed repairBudgets.%s', (field, malformed) => {
+    const value = clone(PARTIAL);
+    value.configuration.repairBudgets = {
+      [field]: malformed,
+    } as never;
+
+    expect(() => parseReplayBundle(value)).toThrow(new RegExp(`repairBudgets.${field}`, 'u'));
+  });
+
+  it.each([
+    ['initialBranches', '2'],
+    ['beamWidth', 0],
+    ['maximumDepth', 5],
+    ['maximumTotalBranches', 13],
+  ])('rejects malformed search.%s', (field, malformed) => {
+    const value = clone(PARTIAL);
+    value.configuration.search = {
+      initialBranches: 2,
+      beamWidth: 1,
+      maximumDepth: 3,
+      maximumTotalBranches: 6,
+      [field]: malformed,
+    } as never;
+
+    expect(() => parseReplayBundle(value)).toThrow(new RegExp(`search.${field}`, 'u'));
+  });
+
+  it('rejects missing, unknown, and cross-field-invalid search fields', () => {
+    const missing = clone(PARTIAL);
+    missing.configuration.search = {
+      initialBranches: 2,
+      beamWidth: 1,
+      maximumTotalBranches: 6,
+    } as never;
+    expect(() => parseReplayBundle(missing)).toThrow(/search.maximumDepth/u);
+
+    const unknown = clone(PARTIAL);
+    unknown.configuration.search = {
+      initialBranches: 2,
+      beamWidth: 1,
+      maximumDepth: 3,
+      maximumTotalBranches: 6,
+      extra: 1,
+    } as never;
+    expect(() => parseReplayBundle(unknown)).toThrow(/search.extra/u);
+
+    const crossField = clone(PARTIAL);
+    crossField.configuration.search = {
+      initialBranches: 7,
+      beamWidth: 1,
+      maximumDepth: 3,
+      maximumTotalBranches: 6,
+    };
+    expect(() => parseReplayBundle(crossField)).toThrow(/search.initialBranches/u);
+  });
+
   it('rejects unknown schema versions and malformed records', () => {
     expect(() => parseReplayBundle({ ...PARTIAL, schemaVersion: 'future' }))
       .toThrow(/schemaVersion/u);

@@ -1,6 +1,8 @@
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 
+import { DEFAULT_REPAIR_BUDGET_LIMITS } from '../engine/repair-budget.js';
+import { DEFAULT_SEARCH_LIMITS } from '../engine/search.js';
 import {
   REPLAY_BUNDLE_SCHEMA_VERSION,
   type RecordedBody,
@@ -337,6 +339,59 @@ function isIncompleteMarker(value: unknown, seen = new WeakSet<object>()): boole
   return Object.values(record).some((item) => isIncompleteMarker(item, seen));
 }
 
+function boundedPositiveNumber(
+  value: unknown,
+  path: string,
+  maximum: number,
+  integerRequired: boolean,
+): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > maximum) {
+    throw new ReplayValidationError(path, `must be greater than 0 and at most ${maximum}`);
+  }
+  if (integerRequired && !Number.isSafeInteger(value)) {
+    throw new ReplayValidationError(path, 'must be an integer');
+  }
+  return value;
+}
+
+function validateRepairBudgets(value: unknown, path: string): void {
+  const budgets = object(value, path);
+  const limits = Object.entries(DEFAULT_REPAIR_BUDGET_LIMITS) as Array<
+    [keyof typeof DEFAULT_REPAIR_BUDGET_LIMITS, number]
+  >;
+  const allowed = new Set(limits.map(([key]) => key));
+  const unknown = Object.keys(budgets).find((key) => !allowed.has(key as keyof typeof DEFAULT_REPAIR_BUDGET_LIMITS));
+  if (unknown) throw new ReplayValidationError(`${path}.${unknown}`, 'is unknown');
+  for (const [key, maximum] of limits) {
+    if (budgets[key] === undefined) continue;
+    boundedPositiveNumber(
+      budgets[key],
+      `${path}.${key}`,
+      maximum,
+      key !== 'inferenceCostUsd',
+    );
+  }
+}
+
+function validateSearch(value: unknown, path: string): void {
+  const search = object(value, path);
+  const keys = ['initialBranches', 'beamWidth', 'maximumDepth', 'maximumTotalBranches'] as const;
+  const unknown = Object.keys(search).find((key) => !keys.includes(key as typeof keys[number]));
+  if (unknown) throw new ReplayValidationError(`${path}.${unknown}`, 'is unknown');
+  for (const key of keys) {
+    const maximum = key === 'maximumDepth'
+      ? DEFAULT_SEARCH_LIMITS.maximumDepth
+      : DEFAULT_SEARCH_LIMITS.maximumTotalBranches;
+    boundedPositiveNumber(search[key], `${path}.${key}`, maximum, true);
+  }
+  const maximumTotalBranches = search.maximumTotalBranches as number;
+  for (const key of ['initialBranches', 'beamWidth'] as const) {
+    if ((search[key] as number) > maximumTotalBranches) {
+      throw new ReplayValidationError(`${path}.${key}`, 'must not exceed maximumTotalBranches');
+    }
+  }
+}
+
 export function parseReplayBundle(value: unknown): ReplayBundle {
   const bundle = object(value, 'bundle');
   if (bundle.schemaVersion !== REPLAY_BUNDLE_SCHEMA_VERSION) throw new ReplayValidationError('bundle.schemaVersion', 'is unsupported');
@@ -384,6 +439,12 @@ export function parseReplayBundle(value: unknown): ReplayBundle {
     throw new ReplayValidationError('bundle.configuration.runtimeId', 'is unknown');
   }
   if (config.imageRef !== undefined) string(config.imageRef, 'bundle.configuration.imageRef');
+  if (config.repairBudgets !== undefined) {
+    validateRepairBudgets(config.repairBudgets, 'bundle.configuration.repairBudgets');
+  }
+  if (config.search !== undefined) {
+    validateSearch(config.search, 'bundle.configuration.search');
+  }
 
   const completeness = object(bundle.completeness, 'bundle.completeness');
   const complete = boolean(completeness.complete, 'bundle.completeness.complete');
