@@ -40,6 +40,8 @@ describe('installSutura', () => {
       expect(workflow).toContain("workflow_run.conclusion == 'timed_out'");
       expect(workflow).toContain(`uses: juan294/sutura@${ACTION_SHA}`);
       expect(workflow).toContain('checks: write');
+      expect(workflow).toContain('run-name: >-');
+      expect(workflow).toContain('#${{ github.event.workflow_run.run_number }}');
       expect(workflow).toContain('nebius-api-key: ${{ secrets.NEBIUS_API_KEY }}');
       expect(workflow).toContain('contree-project: ${{ vars.CONTREE_PROJECT }}');
       expect(result.lines.join('\n')).not.toMatch(/private|project-id/u);

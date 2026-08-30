@@ -49,6 +49,11 @@ function actionWorkflow(
     ? '          tavily-api-key: ${{ secrets.TAVILY_API_KEY }}\n'
     : '';
   return `name: Sutura
+run-name: >-
+  Sutura: \${{ github.event.workflow_run.name }}
+  #\${{ github.event.workflow_run.run_number }}
+  (\${{ github.event.workflow_run.conclusion }})
+  on \${{ github.event.workflow_run.head_branch }}
 
 on:
   workflow_run:
