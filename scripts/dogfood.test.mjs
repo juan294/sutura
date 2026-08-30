@@ -374,6 +374,7 @@ test('dogfood real path validates dispatch, correlation, artifacts, repair, and 
       return '';
     }
     if (args[0] === 'show') {
+      assert.equal(options.trim, false);
       return args[1].endsWith('dogfood-add.test.ts')
         ? "import { add } from './dogfood-add.js';\nimport { expect, it } from 'vitest';\nit('adds', () => expect(add(2, 3)).toBe(5));\n"
         : 'export function add(left: number, right: number): number {\n  return left + right;\n}\n';

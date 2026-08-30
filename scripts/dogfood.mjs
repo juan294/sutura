@@ -113,7 +113,8 @@ async function command(command, args, options = {}) {
     timeout: options.timeout ?? 120_000,
     env: { ...process.env, ...(options.env ?? {}) },
   });
-  return options.binary ? result.stdout : result.stdout.trim();
+  if (options.binary) return result.stdout;
+  return options.trim === false ? result.stdout : result.stdout.trim();
 }
 
 async function readJson(path) {
@@ -513,7 +514,10 @@ export async function runDogfoodAttempt(options, inputDependencies = {}) {
     await dependencies.git(['worktree', 'add', '-b', branch, worktree, sha]);
     for (const name of ['dogfood-add.ts', 'dogfood-add.test.ts']) {
       const object = `${sha}:${FIXTURE_ROOT}/fixture/packages/core/src/${name}`;
-      await writeFile(join(worktree, 'packages/core/src', name), await dependencies.git(['show', object]));
+      await writeFile(
+        join(worktree, 'packages/core/src', name),
+        await dependencies.git(['show', object], { trim: false }),
+      );
     }
     await dependencies.git(['apply', resolve(ROOT, FIXTURE_ROOT, 'break.diff')], { cwd: worktree });
     await dependencies.git(['add', 'packages/core/src/dogfood-add.ts', 'packages/core/src/dogfood-add.test.ts'], { cwd: worktree });

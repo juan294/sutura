@@ -121,3 +121,9 @@ name created for each.
   uses per-command identity flags instead of persistent Git configuration. A
   regression test executes the real hook with sentinel values for every local
   Git variable.
+- The first streak start on candidate `3a17bccdd51365265d39e2a5eade4ac4f4432042`
+  stopped before dispatch and before provider spend because the command wrapper
+  trimmed the final newline from the fixture blob returned by `git show`.
+  `break.diff` therefore did not apply to the otherwise matching source. The
+  dogfood runner now requests untrimmed Git text when it materializes the two
+  fixture files, and the real-path regression test requires that option.
