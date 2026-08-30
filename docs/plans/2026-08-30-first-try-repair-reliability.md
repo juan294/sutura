@@ -354,7 +354,7 @@ product decision.
 
 ## Completion state
 
-- [ ] Phase 1: Replay bundle capture at the six boundaries
+- [x] Phase 1: Replay bundle capture at the six boundaries
 - [ ] Phase 2: Historical capture, bundle contract, `sutura replay`, captured-fixture manifest
 - [ ] Phase 3a: Guard tests — GitHub adapter, repository, orchestration
 - [ ] Phase 3b: Guard tests — provider, Tavily, ConTree, routing

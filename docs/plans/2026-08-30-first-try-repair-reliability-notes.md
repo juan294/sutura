@@ -2,7 +2,7 @@
 
 ## Phase 1 exit evidence
 
-- Implementation lineage: `a084bce`, `44863f2`, and `67a7e14`, plus the Phase 1 hardening in this commit.
+- Implementation lineage: `a084bce`, `44863f2`, `67a7e14`, and hardening commit `55cbe8a`.
 - Core tests: 805 passed, 8 skipped.
 - Action tests: 82 passed.
 - Core and Action typecheck: passed.

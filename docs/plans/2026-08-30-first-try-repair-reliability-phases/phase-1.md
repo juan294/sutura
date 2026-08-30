@@ -117,7 +117,11 @@ Modify:
      executor: RecordedExecutorCall[];
      configuration: ReplayOrchestrationConfig;
      http: RecordedHttpExchange[];
-     completeness: { complete: boolean; overflowedBoundaries: string[] };
+     completeness: {
+       complete: boolean;
+       overflowedBoundaries: string[];
+       pendingBoundaries: string[];
+     };
      outcome?: CaseFile['outcome'];    // filled before upload
    }
    ```
@@ -140,9 +144,11 @@ Modify:
    sha256 }`; binary or stream bodies record length/hash metadata. Truncation
    happens before redaction and recording never throws or fails a repair.
    Crossing a count/body bound marks the applicable boundary overflowed and
-   `complete: false`; a replay consumer can never mistake truncation for a
-   complete recording. Sequence numbers are reserved when a call starts, not
-   when its asynchronous response finishes.
+   `complete: false`. Boundaries that were not exercised are listed in
+   `pendingBoundaries` and also keep `complete: false`; a replay consumer can
+   never mistake a partial recording for a complete recording. Sequence
+   numbers are reserved when a call starts, not when its asynchronous response
+   finishes.
 
 3. Redaction (`redactBundle`): request and response records include headers;
    strip `authorization`, `x-api-key`, `cookie`,
@@ -154,9 +160,13 @@ Modify:
 
 4. Recording transport wrappers (`record-fetch.ts`): implement separate
    `recordingNebiusFetch`, `recordingTavilyFetch`, and `recordingContreeFetch`
-   adapters over the exact boundary types. Nebius and Tavily preserve their
-   one-shot response semantics. ConTree records safe HTTP metadata and logical
+   adapters over the exact boundary types. Nebius and Tavily capture raw
+   response bytes once, then implement `json()`/`text()` over the captured
+   bytes so malformed JSON and non-2xx bodies remain replayable. ConTree
+   records safe HTTP metadata and logical
    executor operations; stream bodies are represented by length/hash metadata.
+   If any request or response body cannot be captured, the recorder marks that
+   boundary overflowed/incomplete instead of substituting `null` as complete.
 
 5. Recording `GitHubApi` decorator (`replay-github.ts`):
 
@@ -229,9 +239,10 @@ Modify:
 - `orchestration.e2e.test.ts`: the `fixed` and `gave-up` storylines with a
   recorder upload exactly two artifacts named
   `sutura-case-file-77001.html` and `sutura-replay-77001.json`; the JSON parses
-  to schema `sutura-replay-v1` with `github.length > 0` and `outcome` equal to
-  the storyline outcome; without a recorder exactly one artifact is uploaded
-  and every mutation count is unchanged.
+  to schema `sutura-replay-v1` with GitHub, Repository, HTTP, and logical
+  Executor streams populated, `completeness.complete === true`, and `outcome`
+  equal to the storyline outcome; without a recorder exactly one artifact is
+  uploaded and every mutation count is unchanged.
 - `packages/action/src/bundle.test.ts` still passes on the rebuilt bundle.
 
 ## Manual success criteria
