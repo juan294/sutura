@@ -237,25 +237,41 @@ historical branch moved or was deleted, the manifest says that `getRefSha` was
 derived from the immutable workflow-run `head_sha`; it does not claim a current
 branch response. Capture does not call a model, Tavily, or a sandbox.
 
-Before any self-hosted dogfood run, verify the exact production Super repair
-contract without creating a branch or pull request:
+Dogfood runs are produced only through the guarded command. Check the exact
+candidate first:
 
 ```text
-NEBIUS_API_KEY=... pnpm run canary:provider-contract
+pnpm run dogfood gate --sha <40-hex-develop-sha>
 ```
 
-The canary uses the same request serializer, strict one-field JSON Schema,
-thinking-off control, 8,192-token envelope, Token Factory endpoint, and Super
-model as production. It requires a canonical arithmetic replacement, the exact
-provider-reported model ID, `finish_reason: stop`, non-zero usage, explicit zero
-reasoning-token details, and no hidden-thought prefix. The manual `Provider
-contract canary` workflow runs the same command with read-only repository
-permissions. Unverified Super model overrides fail closed.
+The gate requires a clean tree, that exact SHA on `origin/develop`, green push
+CI, a successful SHA-bound provider canary artifact from the last 24 hours, and
+any regression required by the previous ledger entry. One authorized attempt
+uses the canonical arithmetic fixture and records its result in ignored scratch
+state:
+
+```text
+pnpm run dogfood run --sha <40-hex-develop-sha> --attempt 1
+```
+
+The live ten-run streak has a separate authorization flag and a hard total
+spend cap. It reserves USD 1.50 before attempt 1, then reserves the highest
+observed attempt cost before each later dispatch:
+
+```text
+pnpm run dogfood streak --sha <40-hex-develop-sha> --authorize --cap-usd 10
+```
+
+The provider canary uses the same request serializer, strict one-field JSON
+Schema, thinking-off control, 8,192-token envelope, Token Factory endpoint,
+and Super model as production. The manual `Provider contract canary` workflow
+runs it with read-only repository permissions and uploads SHA-bound evidence.
+Unverified Super model overrides fail closed.
 
 The versioned [release evidence requirements](docs/demo/sutura-v0.2.0-release-evidence-requirements.json)
-define the ten required records, including separate candidate and public
-matrices. Live benchmark, publication, public demo,
-and Devpost evidence remain pending their separate authorization gates.
+define the eleven required records, including dogfood plus separate candidate and public
+matrices. Live benchmark, dogfood, publication, public demo, and Devpost evidence
+remain pending their separate authorization gates.
 
 ### Evaluation Lab
 

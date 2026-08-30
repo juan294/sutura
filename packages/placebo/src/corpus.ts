@@ -75,7 +75,7 @@ export async function discoverCases(corpusDirectory = DEFAULT_CORPUS_DIRECTORY):
   return cases.sort((left, right) => left.id.localeCompare(right.id));
 }
 
-interface CommandResult { exitCode: number; stderr: string }
+interface CommandResult { exitCode: number; stdout: string; stderr: string }
 
 function run(
   command: string,
@@ -85,13 +85,15 @@ function run(
 ): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
-      cwd, shell: false, stdio: ['ignore', 'ignore', 'pipe'],
+      cwd, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
       env: { PATH: process.env.PATH, CI: '1', ...extraEnv },
     });
+    let stdout = '';
     let stderr = '';
+    child.stdout.setEncoding('utf8').on('data', (chunk: string) => { stdout = `${stdout}${chunk}`.slice(-20_000); });
     child.stderr.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
     child.once('error', reject);
-    child.once('close', (exitCode) => resolve({ exitCode: exitCode ?? 1, stderr }));
+    child.once('close', (exitCode) => resolve({ exitCode: exitCode ?? 1, stdout, stderr }));
   });
 }
 
@@ -101,12 +103,18 @@ export async function applyPatch(fixtureDirectory: string, patch: string, revers
 }
 
 export async function installFixture(fixtureDirectory: string, storeDirectory?: string): Promise<void> {
+  const isWorkspace = await lstat(join(fixtureDirectory, 'pnpm-workspace.yaml'))
+    .then((entry) => entry.isFile())
+    .catch(() => false);
   const result = await run('pnpm', [
-    'install', '--offline', '--frozen-lockfile', '--ignore-scripts', '--ignore-workspace',
+    'install', '--offline', '--frozen-lockfile', '--ignore-scripts',
+    ...(isWorkspace ? [] : ['--ignore-workspace']),
     '--trust-lockfile',
     ...(storeDirectory ? ['--store-dir', storeDirectory] : []),
   ], fixtureDirectory);
-  if (result.exitCode !== 0) throw new Error(`Fixture install failed in ${fixtureDirectory}: ${result.stderr}`);
+  if (result.exitCode !== 0) {
+    throw new Error(`Fixture install failed in ${fixtureDirectory}: ${result.stderr || result.stdout}`);
+  }
 }
 
 export interface PortableTestRuntime {

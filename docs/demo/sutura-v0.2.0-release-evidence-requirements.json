@@ -5,6 +5,7 @@
     "benchmark",
     "candidate-matrix",
     "demo",
+    "dogfood",
     "devpost",
     "feedback",
     "github-release",
@@ -15,6 +16,7 @@
   ],
   "authorizationGates": [
     "live-provider-benchmark",
+    "live-dogfood-streak",
     "release-publication",
     "public-demo-enable",
     "devpost-update"

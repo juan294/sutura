@@ -1,0 +1,3 @@
+repair	UNKNOWN STEP	2026-08-29T18:49:04.3584064Z Nemotron runtime: nano=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B calls=1; inference cost USD=0.000376
+repair	UNKNOWN STEP	2026-08-29T18:49:04.3587131Z Sandbox evidence: operations=16; elapsed=12.656s; cpu=12.656s; max-rss=858932KB; sandbox cost USD=0.134053
+repair	UNKNOWN STEP	2026-08-29T18:49:04.3588723Z Sutura outcome: gave-up
