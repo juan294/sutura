@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "sutura-runtime-evidence-v1",
+  "targetRunId": "33268037618",
+  "headSha": "7488afea0c123f3ef84354301c6a1d90e4f9cfb0",
+  "configuredRuntime": "node",
+  "paths": [
+    ".sutura.json",
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "packages/core/package.json",
+    "packages/core/src/index.ts"
+  ],
+  "directoryListings": {
+    ".": [
+      ".claude", ".github", ".gitignore", ".gitleaksignore", ".husky",
+      ".summon", ".sutura.json", "AGENTS.md", "CHANGELOG.md", "CLAUDE.md",
+      "LICENSE", "README.md", "action.yml", "docs", "eslint.config.mjs",
+      "package.json", "packages", "pnpm-lock.yaml", "pnpm-workspace.yaml",
+      "scripts", "tsconfig.json"
+    ],
+    "packages": ["action", "cli", "core", "evaluation", "placebo"],
+    "packages/core": ["package.json", "src", "tsconfig.build.json", "tsconfig.json"]
+  }
+}

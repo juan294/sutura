@@ -35,6 +35,13 @@ test('ordinary CI fails a stale Action bundle before the long test suites run', 
   assert.ok(build >= 0 && freshness > build && tests > freshness);
 });
 
+test('ordinary CI verifies every derived product guard after the full test suite', async () => {
+  const workflow = await text('.github/workflows/ci.yml');
+  const tests = workflow.indexOf('pnpm run test\n');
+  const guards = workflow.indexOf('pnpm run guards:verify');
+  assert.ok(tests >= 0 && guards > tests);
+});
+
 test('the polyglot Sutura repository selects its Node repair runtime explicitly', async () => {
   const policy = JSON.parse(await text('.sutura.json'));
   assert.deepEqual(policy, { version: 1, runtime: 'node' });

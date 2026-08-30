@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { ReplayRecorder } from '@sutura/core';
+import { ReplayRecorder, loadConfig } from '@sutura/core';
 
 import { GitHubAdapter, type GitHubApi } from './github.js';
 import { withFailureSafeCheck } from './failure-safe.js';
+import { runAction } from './main.js';
 
 const SHA = 'a'.repeat(40);
 const REPLAY_CONFIG = {
@@ -83,5 +84,50 @@ describe('action check failure safety', () => {
       schemaVersion: 'sutura-replay-v1',
       outcome: 'infra-stop',
     });
+  });
+});
+
+describe('runAction input guards', () => {
+  const action = {
+    githubToken: 'github-test',
+    runId: '77',
+    triageN: 1,
+    requireFixed: false,
+    captureReplay: false,
+    environment: {},
+  } as const;
+
+  it('reports missing ConTree configuration through the side-effect-free seam', async () => {
+    const setFailed = vi.fn();
+
+    await runAction({
+      readAction: () => action,
+      loadConfiguration: () => loadConfig({ NEBIUS_API_KEY: 'nebius-test' }),
+      repository: () => ({ owner: 'acme', repo: 'widget' }),
+      environment: { GITHUB_RUN_ID: '88' },
+      setFailed,
+    });
+
+    expect(setFailed).toHaveBeenCalledWith(
+      'ConTree token and project are required by the GitHub Action',
+    );
+  });
+
+  it('reports a malformed action run id before creating an Octokit client', async () => {
+    const setFailed = vi.fn();
+
+    await runAction({
+      readAction: () => action,
+      loadConfiguration: () => loadConfig({
+        NEBIUS_API_KEY: 'nebius-test',
+        CONTREE_TOKEN: 'contree-test',
+        CONTREE_PROJECT: 'project-test',
+      }),
+      repository: () => ({ owner: 'acme', repo: 'widget' }),
+      environment: { GITHUB_RUN_ID: 'not-an-id' },
+      setFailed,
+    });
+
+    expect(setFailed).toHaveBeenCalledWith('GITHUB_RUN_ID must be a positive decimal id');
   });
 });

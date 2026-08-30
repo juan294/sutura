@@ -31,6 +31,17 @@ describe('RepairBudget', () => {
     expect(() => budget.reserveModelTurn(0.04)).not.toThrow();
   });
 
+  it('rejects a second model reservation when the model-turn limit is one', () => {
+    const budget = new RepairBudget({ ...DEFAULT_REPAIR_BUDGET_LIMITS, modelTurns: 1 });
+    budget.reserveModelTurn(0.01);
+    expect(() => budget.reserveModelTurn(0.01)).toThrowError(new BudgetExceededError('modelTurns'));
+  });
+
+  it('rejects a 65,537-byte diff', () => {
+    const budget = new RepairBudget();
+    expect(() => budget.assertDiffBytes(65_537)).toThrowError(new BudgetExceededError('diffBytes'));
+  });
+
   it('accepts lower limits and rejects values above the core hard maxima', () => {
     expect(repairBudgetLimits({ modelTurns: 2 })).toMatchObject({ modelTurns: 2 });
     expect(() => repairBudgetLimits({ modelTurns: 9 })).toThrow(/at most 8/u);
