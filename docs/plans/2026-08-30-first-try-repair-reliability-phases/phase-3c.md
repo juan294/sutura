@@ -45,7 +45,7 @@ Modify:
 
    ```js
    // 1. scan: for each product file in packages/{action,core}/src/**/*.ts excluding tests and test support,
-   //    collect {file, line} for throw sites anywhere on a line, process.exit, and core.setFailed(
+   //    parse throw expressions across line breaks and collect {file, line}; also collect process.exit and core.setFailed(
    //    (skip lines inside a `// guards-verify: not-a-guard` marker comment — none expected).
    // 2. run: execFileSync('pnpm', ['--filter','@sutura/core','--filter','@sutura/action','run','test:coverage'])
    // 3. read coverage-final.json from both report directories

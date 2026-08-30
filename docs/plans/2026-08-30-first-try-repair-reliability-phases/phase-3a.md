@@ -7,9 +7,9 @@ Every guard in `packages/action/src/github.ts`, `octokit.ts`,
 by a test, and every input-boundary guard among them is driven by a captured
 fixture.
 
-Baseline (VERIFIED 2026-08-30): github.ts 4/29 reached, octokit.ts 0/1,
+Research baseline (VERIFIED 2026-08-30): github.ts 4/29 reached, octokit.ts 0/1,
 repository.ts + source-window.ts 6/23, orchestrate.ts + heal.ts 4/23.
-Target: 76/76.
+Acceptance: the Phase 3a subset of the run-time-derived `N/N` is complete.
 
 ## Files
 
@@ -35,9 +35,9 @@ No production `.ts` changes except making a currently private helper
 
 ## Implementation
 
-1. Enumerate the exact guard list from
-   `grep -nE "throw new " packages/action/src/{github,octokit,repository}.ts packages/core/src/{orchestrate,heal,source-window}.ts`
-   and write it into the phase notes as the checklist.
+1. Enumerate the exact guard list with the Phase 3c scanner so inline and
+   multiline `throw`, `process.exit`, and `core.setFailed` forms are included;
+   write the Phase 3a subset into the phase notes as the checklist.
 
 2. For each unreached guard in `github.ts` (`:143`, `:145`, `:170`, `:175`,
    `:183`, `:221`, `:228`, `:238`, `:259`, `:262`, `:268`, `:276`, `:300`,
@@ -92,9 +92,10 @@ No production `.ts` changes except making a currently private helper
 
 - `pnpm run guards:verify --scope action,orchestration` (Phase 3c adds the
   script; until it lands, the phase's own checklist test
-  `packages/action/src/guards-3a.test.ts` asserts each listed `file:line`
+  `packages/action/src/guards-3a.test.ts` asserts each derived `file:line`
   message string is thrown by at least one test in the phase, by grepping the
-  vitest JSON reporter output for the message) reports 76/76.
+  vitest JSON reporter output for the message) reports the derived subset as
+  complete.
 - Every new test in `github.test.ts`, `octokit.test.ts`, `repository.test.ts`,
   and the B-class tests in `orchestrate.test.ts` imports from
   `__fixtures__/captured/` (checked by `scripts/captured-fixtures.test.mjs`).

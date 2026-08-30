@@ -26,8 +26,8 @@ Add:
 - `packages/action/src/__fixtures__/captured/<runId>/bundle.json` for every
   historical run (GitHub half only), plus one
   `packages/action/src/__fixtures__/captured/manifest.json`.
-- `packages/core/src/__fixtures__/captured/manifest.json` (provider and
-  sandbox halves land here in Phases 3b and 5).
+- `packages/core/src/__fixtures__/captured/manifest.json` (provider, Tavily,
+  and sandbox halves land here in Phase 5 after authorization).
 
 Modify:
 
@@ -39,7 +39,7 @@ Modify:
   `packages/core/src/orchestrate.test.ts:552,1079,1152` — each "replays live run
   N" test reads its GitHub half (job log, run metadata) from the captured
   fixture for that run ID instead of the inline literal; the provider reply
-  stays inline until a provider capture exists (Phase 3b / Phase 5).
+  stays inline until a provider capture exists in Phase 5.
 - `scripts/provider-contract-canary.test.mjs:33-47` — the 1..16 coverage
   assertion additionally requires each test to reference a captured run ID
   present in the manifest.
@@ -144,9 +144,9 @@ Modify:
      `executor/contree.test.ts`, `diagnose/tavily.test.ts`,
      `runtime/detect.test.ts`, `runtime/python.test.ts`,
      `orchestrate.test.ts`), the file imports from `__fixtures__/captured/`
-     at least once (Phase 3 makes this true; until then the test lists the
-     files it will require and skips with an explicit pending count that must
-     reach zero by the end of Phase 3c).
+     at least once where an authorized capture exists. Provider, Tavily, and
+     ConTree entries remain explicit pending boundaries through Phase 4 and
+     must reach zero in Phase 5.
 
 ## Automated success criteria
 
@@ -159,16 +159,13 @@ Modify:
 - `replay-fetch.test.ts`: a request that differs from the recording by one
   JSON field fails with the field path; matching requests return the recorded
   body; sequence exhaustion fails closed.
-- `replay-orchestrate.test.ts`: the captured bundle for `33239848825` (A3)
-  replayed through `replayBundle` terminates with
-  `OrchestrationError('Failed-step logs do not contain an observed failing command')`
-  at the pre-fix Action behavior when the recorded log is truncated the way
-  `github.ts:182-189` truncated it before `58b4443`, and reaches diagnosis on
-  the current code. (This is the first captured-fixture guard test and the
-  proof that B4 is now a permanent regression case.)
-- The captured bundle for `33238191746` (A2) replayed on current code
-  terminates with `RuntimeDetectionError` only when `.sutura.json` is removed
-  from the recorded policy read, and proceeds when present (B3 regression).
+- A boundary-level regression over captured run `33239848825` (A3) terminates
+  with `OrchestrationError('Failed-step logs do not contain an observed failing command')`
+  when its recorded failed-step log is sliced to the pre-`58b4443` shape, and
+  the current adapter retains the command line. It does not enter diagnosis.
+- The A2 runtime regression is deferred to the exact-commit repository fixture
+  in Phase 3c; a GitHub-only historical partial bundle is not used as policy or
+  runtime evidence.
 - The captured bundle for `33169026068` (A1) replayed on the pre-`0d3b087`
   `ALLOWED_RUN_EVENTS` logic reproduces `github.ts:238`; on current code it
   resolves the direct run (B2 regression).

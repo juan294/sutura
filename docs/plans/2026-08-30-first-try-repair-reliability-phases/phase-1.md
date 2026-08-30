@@ -56,11 +56,17 @@ Modify:
    // packages/core/src/replay/bundle.ts
    export const REPLAY_BUNDLE_SCHEMA_VERSION = 'sutura-replay-v1' as const;
 
+   export type RecordedBody =
+     | { kind: 'text'; value: string }
+     | { kind: 'binary'; bytes: number; sha256: string }
+     | { kind: 'truncated'; bytes: number; sha256: string }
+     | { kind: 'empty' };
+
    export interface RecordedHttpExchange {
      boundary: 'nebius' | 'tavily' | 'contree';
      sequence: number;                 // 1-based, per bundle
-     request: { method: string; url: string; body: string | null };
-     response: { status: number; headers: Record<string, string>; body: string }
+     request: { method: string; url: string; headers: Record<string, string>; body: RecordedBody };
+     response: { status: number; headers: Record<string, string>; body: RecordedBody }
              | { transportError: string };
      latencyMs: number;
    }
@@ -69,6 +75,13 @@ Modify:
      sequence: number;
      method: keyof GitHubApi;          // 'getWorkflowRun' | 'downloadJobLogs' | ...
      args: unknown[];                  // JSON-safe
+     result: unknown | { error: string };
+   }
+
+   export interface RecordedRepositoryCall {
+     sequence: number;
+     method: 'readPolicyAtSha' | 'checkoutHead' | 'readSourceExcerpts' | 'publishFix';
+     args: unknown[];
      result: unknown | { error: string };
    }
 
@@ -92,6 +105,7 @@ Modify:
      constructor(readonly runId: string, readonly repo: string, readonly actionSha: string, secrets?: readonly string[]);
      recordHttp(exchange: Omit<RecordedHttpExchange, 'sequence'>): void;
      recordGitHub(call: Omit<RecordedGitHubCall, 'sequence'>): void;
+     recordRepository(call: Omit<RecordedRepositoryCall, 'sequence'>): void;
      finish(outcome: CaseFile['outcome']): ReplayBundle;   // applies redactBundle
    }
    ```

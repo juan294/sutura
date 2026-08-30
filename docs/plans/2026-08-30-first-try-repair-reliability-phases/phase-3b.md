@@ -5,27 +5,28 @@
 Every guard in `packages/core/src/llm/{nebius,json,token-factory,router,cost,provider-contract-canary}.ts`,
 `packages/core/src/diagnose/tavily.ts`, and
 `packages/core/src/executor/{contree,memory,live-diagnostics}.ts` is reached
-by a test; provider, Tavily, and ConTree HTTP guards are driven by captured
-responses.
+by a test. Before Phase 5, provider, Tavily, and ConTree HTTP guards use
+labeled synthetic fixtures; the authorized Phase 5 capture session replaces
+applicable shapes and closes the captured-boundary pending count.
 
-Baseline (VERIFIED 2026-08-30): nebius 14/25, json 4/4, token-factory +
+Research baseline (VERIFIED 2026-08-30): nebius 14/25, json 4/4, token-factory +
 router + cost 3/11, canary 6/9, tavily 2/18, contree + memory +
-live-diagnostics 18/54. Target: 121/121.
+live-diagnostics 18/54. Acceptance: the Phase 3b subset of the
+run-time-derived `N/N` is complete.
 
 ## Files
 
 Add captured fixtures under `packages/core/src/__fixtures__/captured/`:
 
 - `provider/<canary-run-id>/bundle.json` — one real Super exchange recorded by
-  the canary (Phase 4 makes the canary upload a bundle; until then, one
-  authorized local `SUTURA_LIVE=1` canary run with the Phase 1 recorder
-  writes it — inference cost ≈ USD 0.001, no sandbox).
+  the Phase 5 authorized canary. Before that authorization, provider boundary
+  tests remain explicitly pending and synthetic contract tests cover shapes.
 - `provider/error-shapes/*.json` — real 400/401 bodies captured by sending
   deliberately malformed requests to the exact endpoint during the same
   authorized session; includes the live-16 `reasoning_effort: none` 400 body.
   429/503 remain labeled synthetic until observed provider bodies exist.
 - `tavily/<capture-id>/bundle.json` — one real search exchange and one real
-  extract exchange.
+  extract exchange from the Phase 5 authorized capture session.
 - `contree/<capture-id>/bundle.json` — from the first Phase 5 live run, or
   from one authorized sandbox smoke (`contree.live.test.ts` shape) with the
   recorder attached; until then, ConTree guard tests use the existing
@@ -52,11 +53,11 @@ Modify tests only:
 
 ## Implementation
 
-1. Write the guard checklist from
-   `grep -nE "throw new " packages/core/src/llm/*.ts packages/core/src/diagnose/tavily.ts packages/core/src/executor/*.ts | grep -v test`.
+1. Derive the guard checklist with the Phase 3c scanner so inline and
+   multiline `throw`, `process.exit`, and `core.setFailed` forms are included.
 
-2. Provider capture session (one authorized run, recorded with the Phase 1
-   recorder through `createTokenFactoryClient({apiKey}, {fetch: recordingFetch(...)})`):
+2. During the separately authorized Phase 5 capture session, record with the Phase 1
+   recorder through `createTokenFactoryClient({apiKey}, {fetch: recordingNebiusFetch(...)})`):
    - the canary request/response (success shape);
    - the same request with `reasoning_effort: 'none'` (expected 400 — the
      live-16 terminal, captured verbatim);
@@ -71,7 +72,7 @@ Modify tests only:
    use the captured error bodies and usage blocks; keep the others inline
    until Phase 5 produces their captures.
 
-4. Tavily: capture one real `search` response with the query used by
+4. During the separately authorized Phase 5 capture session, capture one real `search` response with the query used by
    `tavily.live.test.ts` and one real `extract` response; guard tests mutate
    fields (missing `results`, non-https URL, oversized snippet, non-array
    citations) on the applicable captured body.
@@ -86,23 +87,23 @@ Modify tests only:
 ## Automated success criteria
 
 - The checklist test `packages/core/src/guards-3b.test.ts` (same mechanism as
-  3a) reports 121/121 until `guards:verify` replaces it.
-- `nebius.test.ts` includes a test named `replays live run 16 from the
-  captured 400 body` whose response is loaded from
-  `__fixtures__/captured/provider/…` and whose assertion is the exact
-  `NebiusApiError` message the endpoint produced.
-- `tavily.test.ts` drives `new TavilyClient(key, {fetch})` in at least 16
-  tests that load the captured exchange.
+  3a) reports the derived subset as complete until `guards:verify` replaces it.
+- Before Phase 5, `nebius.test.ts` names the live-run-16 400 regression and
+  asserts the exact known error shape from a labeled synthetic fixture; Phase
+  5 replaces it with the captured body without changing the assertion.
+- Before Phase 5, `tavily.test.ts` drives `new TavilyClient(key, {fetch})` for
+  all guards with labeled synthetic fixtures; Phase 5 replaces applicable
+  search and extract shapes with captured exchanges.
 - No committed capture contains a credential (contract test).
 - Core suite passes; `pnpm run ci:fast` passes.
 
 ## Manual success criteria
 
-- One authorized live capture session (provider + Tavily; ≤ USD 0.05).
-  The session is logged in the notes with the run/commit reference and cost.
+None before the Phase 5 authorization stop. The provider, Tavily, and ConTree
+captured-boundary entries remain explicit pending items until that session.
 
 ## Exit evidence
 
-Record the checklist, the capture session cost, and which ConTree guards
-remain on synthetic fixtures pending the Phase 5 sandbox capture (must be
-zero after Phase 5).
+Record the checklist and which provider, Tavily, and ConTree guards remain on
+synthetic fixtures pending the Phase 5 capture session (must be zero after
+Phase 5).

@@ -83,8 +83,8 @@ All VERIFIED in the 2026-08-30 research session unless labeled INFERRED.
 1. **Live spend:** the streak script is batch-authorized once per streak
    attempt; it runs up to 10 sequential gated runs on one exact SHA, halts on
    the first non-`fixed`, and stops at a hard cap of USD 10.00. Before each
-   dispatch it reserves `max(USD 1.50, highest observed per-attempt cost)` and
-   refuses when `spent + reserve > USD 10.00`.
+   dispatch it reserves USD 1.50 for attempt 1, then the highest observed
+   per-attempt cost, and refuses when `spent + reserve > USD 10.00`.
 2. **Capture policy:** replay capture is an opt-in Action input
    `capture-replay` (default `false`). Sutura's own `sutura.yml` sets it
    `true`. Authorization headers are never recorded; existing credential
@@ -197,6 +197,7 @@ detection, or sandbox terminals, which were 10 of the 16 live give-ups.
 ```text
 live Sutura run (capture-replay: true)
   GitHubApi ──recorder──┐
+  RepositoryPort ─record┤
   Nebius fetch ─recorder┤
   Tavily fetch ─recorder┼──> ReplayBundle ──redact──> sutura-replay-<runId>.json (artifact)
   ConTree fetch recorder┘                                  │
