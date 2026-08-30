@@ -113,9 +113,7 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
     }
 
     let prNumber: number | undefined;
-    let headRef: string | undefined;
-    let baseSha: string | undefined;
-    let baseRef: string | undefined;
+    let targetBranch: { headRef: string; baseSha: string; baseRef: string } | undefined;
     if (workflowRun.event === 'pull_request' || workflowRun.event === 'workflow_dispatch') {
       const candidates = workflowRun.pullRequests.length > 0
         ? workflowRun.pullRequests
@@ -145,12 +143,14 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
           throw new GitHubAdapterError('Pull request base commit is invalid');
         }
         prNumber = pullRequest.number;
-        headRef = pullRequest.headRef;
-        baseSha = pullRequest.baseSha;
-        baseRef = pullRequest.baseRef;
+        targetBranch = {
+          headRef: pullRequest.headRef,
+          baseSha: pullRequest.baseSha,
+          baseRef: pullRequest.baseRef,
+        };
       }
     }
-    if (headRef === undefined) {
+    if (targetBranch === undefined) {
       if (!workflowRun.headBranch || !validBranch(workflowRun.headBranch)) {
         throw new GitHubAdapterError('Workflow run head branch is invalid');
       }
@@ -159,14 +159,13 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
         branchTip.toLowerCase() !== workflowRun.headSha.toLowerCase()) {
         throw new GitHubAdapterError('Workflow run head branch no longer matches the failing SHA');
       }
-      headRef = workflowRun.headBranch;
-      baseSha = workflowRun.headSha;
-      baseRef = workflowRun.headBranch;
+      targetBranch = {
+        headRef: workflowRun.headBranch,
+        baseSha: workflowRun.headSha,
+        baseRef: workflowRun.headBranch,
+      };
     }
-    if (baseSha === undefined || baseRef === undefined) {
-      throw new GitHubAdapterError('Workflow run base commit is unavailable');
-    }
-
+    const { headRef, baseSha, baseRef } = targetBranch;
     const jobs = await this.api.listJobsForWorkflowRun(numericRunId);
     const failedSteps: FailingWorkflowRun['failedSteps'] = [];
     for (const job of jobs) {

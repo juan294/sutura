@@ -8,11 +8,13 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { AuditVerdict, Candidate, CostLedger, Diagnosis } from './domain.js';
-import { DEFAULT_MODELS } from './config.js';
+import { DEFAULT_MODELS, MAX_STAGE_EVIDENCE_ENTRIES } from './config.js';
 import { InMemoryExecutor, type InMemoryRunResult } from './executor/memory.js';
 import {
   buildSandboxRepositoryInitializationCommandForTest,
   healCase,
+  StageLedger,
+  tracedLlm,
   sandboxExecutableCommand,
   sandboxPreparationCommand,
   sandboxTargetCommand,
@@ -24,6 +26,7 @@ import { DEFAULT_MODEL_PRICES } from './llm/cost.js';
 import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
 import { parseRepositoryPolicy } from './policy/schema.js';
 import { repairProposalReply } from './testing/repair-proposal.test-helper.js';
+import { TraceRecorder } from './trace/recorder.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'placebo', 'corpus');
 const HONEST_DIFF = [
@@ -156,6 +159,58 @@ function context(
 }
 
 describe('healCase', () => {
+  it('bounds public stage evidence entries', () => {
+    const stageLedger = new StageLedger();
+    for (let attempt = 1; attempt <= MAX_STAGE_EVIDENCE_ENTRIES; attempt += 1) {
+      stageLedger.record({ stage: 'triage', attempt, network: 'disabled' });
+    }
+
+    expect(() => stageLedger.record({
+      stage: 'triage',
+      attempt: MAX_STAGE_EVIDENCE_ENTRIES + 1,
+      network: 'disabled',
+    })).toThrow('Stage evidence exceeds the bounded entry count');
+  });
+
+  it('fails closed when model routing has no quote', () => {
+    const value = context('repair-off-by-one', [1, 1, 1, 1, 1], 'test-assertion');
+    const llm = tracedLlm({ chat: value.ctx.llm.chat }, new TraceRecorder('quote-guard'));
+
+    expect(() => llm.modelQuote?.('nano', [])).toThrow('Model routing quote is unavailable');
+  });
+
+  it.each([
+    ['run id', { runId: '' }],
+    ['repository', { repo: '' }],
+    ['case directory', { caseDir: '' }],
+  ])('requires a non-empty %s', async (_case, override) => {
+    const value = context('repair-off-by-one', [], 'test-assertion');
+
+    await expect(healCase({ ...value.ctx, ...override })).rejects.toThrow(
+      'runId, repo, and caseDir must be non-empty',
+    );
+  });
+
+  it('requires a non-empty failure command', async () => {
+    const value = context('repair-off-by-one', [], 'test-assertion');
+
+    await expect(healCase({ ...value.ctx, failureCommand: ' ' })).rejects.toThrow(
+      'failureCommand must be non-empty',
+    );
+  });
+
+  it('rejects a configured runtime that conflicts with repository policy', async () => {
+    const value = context('repair-off-by-one', [], 'test-assertion', {
+      runtimeId: 'python',
+      policy: parseRepositoryPolicy(JSON.stringify({ version: 1, runtime: 'node' })),
+    });
+
+    await expect(healCase(value.ctx)).rejects.toThrow(
+      'Configured runtime conflicts with repository policy runtime',
+    );
+    expect(value.executor.calls).toEqual([]);
+  });
+
   it('uses raceK only as a direct-call compatibility width when search settings are absent', async () => {
     const legacy = context('repair-off-by-one', [1, 1, 1, 1, 1, 0, 0], 'test-assertion');
     const legacyCase = await healCase(legacy.ctx);

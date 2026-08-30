@@ -503,6 +503,20 @@ async function publishReport(
   await uploadReplay(github, run, caseFile, replay);
 }
 
+export function resolveAuditedCandidate(
+  caseFile: Pick<CaseFile, 'race' | 'selectedCandidate'>,
+): CaseFile['race'][number] {
+  const selected = caseFile.selectedCandidate;
+  if (selected === undefined) {
+    throw new OrchestrationError('Fixed case file does not identify its audited candidate');
+  }
+  const winner = findSelectedCandidate(caseFile.race, selected);
+  if (winner === null) {
+    throw new OrchestrationError('Fixed case file audited candidate identity is ambiguous');
+  }
+  return winner;
+}
+
 export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> {
   const run = await ctx.github.getFailingRun(ctx.runId);
   validateRun(run, ctx.runId);
@@ -662,10 +676,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     return caseFile;
   }
 
-  const selected = caseFile.selectedCandidate;
-  if (selected === undefined) throw new OrchestrationError('Fixed case file does not identify its audited candidate');
-  const winner = findSelectedCandidate(caseFile.race, selected);
-  if (winner === null) throw new OrchestrationError('Fixed case file audited candidate identity is ambiguous');
+  const winner = resolveAuditedCandidate(caseFile);
   const branch = `sutura/fix-${run.runId}`;
   const report = await prepareReport(ctx.github, run, caseFile, marker);
   await ctx.repository.publishFix({

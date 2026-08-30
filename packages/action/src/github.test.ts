@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { capturedJobLog } from './__fixtures__/captured/test-helper.js';
 import { GitHubAdapter, GitHubAdapterError, type GitHubApi } from './github.js';
 
 const SHA = 'a'.repeat(40);
@@ -392,6 +393,7 @@ describe('GitHubAdapter', () => {
   });
 
   it('links uploaded artifacts to the current Sutura action run', async () => {
+    expect(capturedJobLog('33239848825')).toContain('Hook timed out in 10000ms');
     const artifact = { uploadArtifact: async () => ({ id: 321 }) };
     const adapter = new GitHubAdapter(api(), {
       owner: 'owner',
@@ -404,5 +406,51 @@ describe('GitHubAdapter', () => {
     await expect(adapter.uploadCaseFile('case.html', '<html></html>')).resolves.toEqual({
       url: 'https://github.com/owner/repo/actions/runs/88/artifacts/321',
     });
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['zero', 0],
+    ['unsafe', Number.MAX_SAFE_INTEGER + 1],
+  ])('rejects an artifact upload with a %s id', async (_case, id) => {
+    const adapter = new GitHubAdapter(api(), {
+      owner: 'owner',
+      repo: 'repo',
+      runId: '77',
+      actionRunId: '88',
+      artifact: { uploadArtifact: async () => id === undefined ? {} : { id } },
+    });
+
+    await expect(adapter.uploadCaseFile('case.html', '<html></html>')).rejects.toThrow(
+      'Artifact upload did not return an id',
+    );
+  });
+
+  it.each(['', '0', '../88'])('rejects invalid Action run id %j', async (actionRunId) => {
+    const adapter = new GitHubAdapter(api(), {
+      owner: 'owner',
+      repo: 'repo',
+      runId: '77',
+      actionRunId,
+      artifact: { uploadArtifact: async () => ({ id: 321 }) },
+    });
+
+    await expect(adapter.uploadCaseFile('case.html', '<html></html>')).rejects.toThrow(
+      'Action run id is invalid',
+    );
+  });
+
+  it('rejects an unsafe integer Action run id', async () => {
+    const adapter = new GitHubAdapter(api(), {
+      owner: 'owner',
+      repo: 'repo',
+      runId: '77',
+      actionRunId: '9007199254740992',
+      artifact: { uploadArtifact: async () => ({ id: 321 }) },
+    });
+
+    await expect(adapter.uploadCaseFile('case.html', '<html></html>')).rejects.toThrow(
+      'Action run id is invalid',
+    );
   });
 });
