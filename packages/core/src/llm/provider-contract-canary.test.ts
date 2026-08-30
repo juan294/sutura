@@ -45,6 +45,12 @@ function response(
 }
 
 describe('Super repair provider-contract canary', () => {
+  it('rejects an empty provider credential before constructing the client', async () => {
+    await expect(runSuperRepairProviderContractCanary(
+      { apiKey: '  ' },
+      { fetch: vi.fn() },
+    )).rejects.toThrow(/NEBIUS_API_KEY is required/u);
+  });
   it('uses the exact production endpoint, model, serializer, and one-field repair contract', async () => {
     const fetch = vi.fn().mockResolvedValue(response(JSON.stringify({ replacement: FIXED_SOURCE })));
 
@@ -193,5 +199,44 @@ describe('Super repair provider-contract canary', () => {
       { apiKey: 'test-key' },
       { fetch },
     )).rejects.toThrow(/reasoning-token details/u);
+  });
+
+  it('rejects a non-canonical arithmetic replacement', async () => {
+    const fetch = vi.fn().mockResolvedValue(response(JSON.stringify({
+      replacement: FIXED_SOURCE.replace('left + right', 'right + left'),
+    })));
+
+    await expect(runSuperRepairProviderContractCanary(
+      { apiKey: 'test-key' },
+      { fetch },
+    )).rejects.toThrow(/provider contract canary failed/u);
+  });
+
+  it.each([
+    ['CRLF line endings', FIXED_SOURCE.replaceAll('\n', '\r\n')],
+    ['a missing final newline', FIXED_SOURCE.trimEnd()],
+  ])('rejects a normalized diff with %s', async (_label, replacement) => {
+    const fetch = vi.fn().mockResolvedValue(response(JSON.stringify({ replacement })));
+
+    await expect(runSuperRepairProviderContractCanary(
+      { apiKey: 'test-key' },
+      { fetch },
+    )).rejects.toThrow(/non-canonical arithmetic replacement/u);
+  });
+
+  it.each([
+    ['prompt', { prompt_tokens: 0, completion_tokens: 17, completion_tokens_details: { reasoning_tokens: 0 } }],
+    ['completion', { prompt_tokens: 321, completion_tokens: 0, completion_tokens_details: { reasoning_tokens: 0 } }],
+  ])('fails when %s token usage is zero', async (_label, usage) => {
+    const fetch = vi.fn().mockResolvedValue(response(
+      JSON.stringify({ replacement: FIXED_SOURCE }),
+      'stop',
+      usage,
+    ));
+
+    await expect(runSuperRepairProviderContractCanary(
+      { apiKey: 'test-key' },
+      { fetch },
+    )).rejects.toThrow(/empty token usage/u);
   });
 });

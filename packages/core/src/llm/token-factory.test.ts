@@ -65,4 +65,11 @@ describe('createTokenFactoryClient', () => {
       models: { ...DEFAULT_MODELS, super: 'example/unverified-super' },
     }, { fetch: vi.fn() })).toThrow(/verified Super model/u);
   });
+
+  it('rejects an unverified routing profile before any request', () => {
+    expect(() => createTokenFactoryClient({
+      apiKey: 'test-key',
+      routingProfileId: 'unverified-profile',
+    }, { fetch: vi.fn() })).toThrow(/verified routing profile/u);
+  });
 });

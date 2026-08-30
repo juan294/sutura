@@ -1,0 +1,9 @@
+{
+  "results": [
+    {
+      "url": "https://github.com/example/project/releases/tag/v1.0.0",
+      "raw_content": "Synthetic release content."
+    }
+  ],
+  "failed_results": []
+}
