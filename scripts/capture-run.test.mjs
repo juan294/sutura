@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -60,6 +60,21 @@ function completeArtifact() {
     },
     completeness: { complete: true, overflowedBoundaries: [], pendingBoundaries: [] },
     outcome: 'fixed',
+  };
+}
+
+function pushApi(runId, onWorkflowRun = async () => undefined) {
+  return async (endpoint) => {
+    if (endpoint.endsWith(`/actions/runs/${runId}`)) {
+      await onWorkflowRun();
+      return {
+        id: Number(runId), head_sha: SHA, head_branch: 'develop', event: 'push',
+        conclusion: 'success', repository: { full_name: 'juan294/sutura' }, pull_requests: [],
+      };
+    }
+    if (endpoint.endsWith('/git/ref/heads/develop')) return { object: { sha: SHA } };
+    if (endpoint.includes('/jobs?')) return { jobs: [] };
+    assert.fail(`unexpected endpoint ${endpoint}`);
   };
 }
 
@@ -163,23 +178,58 @@ test('capture-run records adapter call order, raw logs, branch drift, and manife
   }
 });
 
-test('capture arguments keep workflow, target, and Sutura run ids distinct', () => {
-  assert.deepEqual(parseCaptureArguments([
-    '33239848825', '--target-run', '33238191746', '--sutura-run', '33239910020',
-    '--out', '/tmp/captured', '--kind', 'dogfood-gave-up', '--notes', 'historical case',
-  ]), {
+test('capture arguments allow equal workflow/target ids and an independent Sutura run', () => {
+  const minimal = {
     workflowRunId: '33239848825',
-    targetRunId: '33238191746',
+    targetRunId: '33239848825',
+    outDir: '/tmp/captured',
+    notes: '',
+  };
+  assert.deepEqual(parseCaptureArguments([
+    '33239848825', '--out', '/tmp/captured',
+  ]), minimal);
+  assert.deepEqual(parseCaptureArguments([
+    '33239848825', '--target-run', '33239848825', '--out', '/tmp/captured',
+  ]), minimal);
+  const expected = {
+    workflowRunId: '33239848825',
+    targetRunId: '33239848825',
     suturaRunId: '33239910020',
     outDir: '/tmp/captured',
     kind: 'dogfood-gave-up',
     notes: 'historical case',
-  });
+  };
+  assert.deepEqual(parseCaptureArguments([
+    '33239848825', '--target-run', '33239848825', '--sutura-run', '33239910020',
+    '--out', '/tmp/captured', '--kind', 'dogfood-gave-up', '--notes', 'historical case',
+  ]), expected);
+  assert.deepEqual(parseCaptureArguments([
+    '33239848825', '--sutura-run', '33239910020', '--out', '/tmp/captured',
+    '--kind', 'dogfood-gave-up', '--notes', 'historical case',
+  ]), expected);
   assert.throws(() => parseCaptureArguments(['33239848825']), /--out/u);
   assert.throws(
     () => parseCaptureArguments(['33239848825', '--out', '/tmp/x', '--unknown']),
     /Unknown capture option/u,
   );
+  for (const args of [
+    ['33239848825', '--target-run', '33238191746', '--out', '/tmp/captured'],
+    [
+      '33239848825', '--target-run', '33238191746', '--sutura-run', '33239910020',
+      '--out', '/tmp/captured',
+    ],
+  ]) {
+    assert.throws(() => parseCaptureArguments(args), /target run.*workflow run/u);
+  }
+});
+
+test('capture-run rejects a distinct target before GitHub or filesystem work', async () => {
+  let apiCalled = false;
+  await assert.rejects(captureRun({
+    workflowRunId: '77', targetRunId: '78', outDir: '/tmp/not-used',
+    api: async () => { apiCalled = true; },
+  }), /target run.*workflow run/u);
+  assert.equal(apiCalled, false);
 });
 
 test('capture-run writes a valid default note when the branch has not drifted', async () => {
@@ -208,9 +258,52 @@ test('capture-run writes a valid default note when the branch has not drifted', 
   }
 });
 
-test('capture-run keeps run roles distinct and merges an available Sutura HTTP artifact', async () => {
+test('capture-run leaves no bundle when capture-source validation fails', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'sutura-invalid-source-'));
+  try {
+    await assert.rejects(captureRun({
+      workflowRunId: '77', outDir: output, api: pushApi('77'),
+      captureSource: async () => 'not-a-sha',
+    }), /source/u);
+    assert.deepEqual(await readdir(output), []);
+  } finally {
+    await rm(output, { recursive: true, force: true });
+  }
+});
+
+test('capture-run fails closed while another capture owns the output lock', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'sutura-concurrent-capture-'));
+  let releaseFirst;
+  const firstMayContinue = new Promise((resolve) => { releaseFirst = resolve; });
+  let firstStarted;
+  const firstHasStarted = new Promise((resolve) => { firstStarted = resolve; });
+  const first = captureRun({
+    workflowRunId: '77', outDir: output,
+    api: pushApi('77', async () => {
+      firstStarted();
+      await firstMayContinue;
+    }),
+    captureSource: async () => CAPTURE_SHA,
+  });
+  try {
+    await firstHasStarted;
+    await assert.rejects(captureRun({
+      workflowRunId: '78', outDir: output, api: pushApi('78'),
+      captureSource: async () => CAPTURE_SHA,
+    }), /capture lock/u);
+    releaseFirst();
+    await first;
+    assert.deepEqual((await readdir(output)).toSorted(), ['77', 'manifest.json']);
+  } finally {
+    releaseFirst?.();
+    await first.catch(() => undefined);
+    await rm(output, { recursive: true, force: true });
+  }
+});
+
+test('capture-run keeps the Sutura run distinct and merges a complete HTTP artifact', async () => {
   const output = await mkdtemp(join(tmpdir(), 'sutura-capture-artifact-'));
-  const workflowRunId = '33268672246';
+  const workflowRunId = '33268037618';
   const targetRunId = '33268037618';
   const suturaRunId = '33270000000';
   const responses = new Map([
@@ -300,8 +393,8 @@ test('capture-run rejects invalid, partial, lossy, or incomplete replay artifact
     await t.test(name, async () => {
       const output = await mkdtemp(join(tmpdir(), 'sutura-invalid-artifact-'));
       const api = async (endpoint) => {
-        if (endpoint.endsWith('/actions/runs/33268672246')) return {
-          id: 33268672246, head_sha: SHA, head_branch: 'develop', event: 'push',
+        if (endpoint.endsWith('/actions/runs/33268037618')) return {
+          id: 33268037618, head_sha: SHA, head_branch: 'develop', event: 'push',
           conclusion: 'failure', repository: { full_name: 'juan294/sutura' }, pull_requests: [],
         };
         if (endpoint.endsWith('/git/ref/heads/develop')) return { object: { sha: SHA } };
@@ -313,7 +406,7 @@ test('capture-run rejects invalid, partial, lossy, or incomplete replay artifact
       };
       try {
         await assert.rejects(captureRun({
-          workflowRunId: '33268672246',
+          workflowRunId: '33268037618',
           targetRunId: '33268037618',
           suturaRunId: '33270000000',
           outDir: output,

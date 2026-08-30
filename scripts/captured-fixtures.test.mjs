@@ -13,6 +13,8 @@ import {
 
 const ACTION_CAPTURE_ROOT = 'packages/action/src/__fixtures__/captured';
 const SECRET_PATTERN = /Bearer\s+\S+|\bnb-[A-Za-z0-9]{8,}|\bghp_|\bgithub_pat_|\bsk-[A-Za-z0-9]{8,}/u;
+const fixtureCache = new Map();
+let manifestCache;
 const DOGFOOD_0829_RUNS = [
   '33238860852', '33240572371', '33241358531', '33242204485',
   '33243759945', '33244884596', '33246383946', '33247360873',
@@ -52,17 +54,31 @@ function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-async function fixture(runId) {
-  const path = join(ACTION_CAPTURE_ROOT, runId, 'bundle.json');
-  const bytes = await readFile(path);
-  return { path, bytes, bundle: parseReplayBundle(bytes) };
+function capturedManifest() {
+  manifestCache ??= (async () => {
+    const path = join(ACTION_CAPTURE_ROOT, 'manifest.json');
+    const bytes = await readFile(path);
+    return { path, bytes, manifest: parseCapturedFixturesManifest(bytes) };
+  })();
+  return manifestCache;
+}
+
+function fixture(runId) {
+  let captured = fixtureCache.get(runId);
+  if (captured === undefined) {
+    captured = (async () => {
+      const path = join(ACTION_CAPTURE_ROOT, runId, 'bundle.json');
+      const bytes = await readFile(path);
+      return { path, bytes, bundle: parseReplayBundle(bytes) };
+    })();
+    fixtureCache.set(runId, captured);
+  }
+  return captured;
 }
 
 test('captured fixture manifest binds 26 unique real bundles to hashes and sources', async () => {
-  const manifestPath = join(ACTION_CAPTURE_ROOT, 'manifest.json');
-  const manifestBytes = await readFile(manifestPath);
-  assert.doesNotMatch(manifestBytes.toString('utf8'), SECRET_PATTERN);
-  const manifest = parseCapturedFixturesManifest(manifestBytes);
+  const { bytes, manifest } = await capturedManifest();
+  assert.doesNotMatch(bytes.toString('utf8'), SECRET_PATTERN);
   assert.equal(manifest.entries.length, 26);
 
   const listed = new Set();
@@ -124,9 +140,7 @@ test('historical logs retain exact ANSI and hook-timeout evidence', async () => 
 });
 
 test('boundary tests name captured fixtures when their authorized boundary is ready', async () => {
-  const manifest = parseCapturedFixturesManifest(
-    await readFile(join(ACTION_CAPTURE_ROOT, 'manifest.json')),
-  );
+  const { manifest } = await capturedManifest();
   const capturedBoundaries = new Set(
     manifest.entries.flatMap(({ boundaries }) => boundaries),
   );

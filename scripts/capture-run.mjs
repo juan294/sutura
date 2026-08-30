@@ -2,9 +2,9 @@
 
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
@@ -12,6 +12,7 @@ import {
   completedReplayBoundaries,
   parseCapturedFixturesManifest,
   parseCompleteReplayArtifact,
+  parseReplayBundle,
 } from './replay-contract.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -77,6 +78,9 @@ export function parseCaptureArguments(args) {
     }
   }
   if (!outDir) throw new Error('--out is required');
+  if (targetRunId !== workflowRunId) {
+    throw new Error('target run id must equal workflow run id for GitHub-half captures');
+  }
   return {
     workflowRunId,
     targetRunId,
@@ -235,7 +239,51 @@ async function readManifest(path) {
   }
 }
 
-export async function captureRun({
+async function writeSyncedFile(path, content) {
+  const handle = await open(path, 'wx', 0o600);
+  try {
+    await handle.writeFile(content);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function installCapture(outDir, workflowRunId, bundleBytes, manifestBytes) {
+  const stageDirectory = await mkdtemp(join(outDir, '.capture-run-stage-'));
+  const stagedBundle = join(stageDirectory, 'bundle.json');
+  const stagedManifest = join(stageDirectory, 'manifest.json');
+  const previousBundle = join(stageDirectory, 'previous-bundle.json');
+  const fixtureDirectory = join(outDir, workflowRunId);
+  const bundlePath = join(fixtureDirectory, 'bundle.json');
+  const manifestPath = join(outDir, 'manifest.json');
+  let movedPreviousBundle = false;
+  let installedBundle = false;
+  try {
+    await writeSyncedFile(stagedBundle, bundleBytes);
+    await writeSyncedFile(stagedManifest, manifestBytes);
+    await mkdir(fixtureDirectory, { recursive: true, mode: 0o700 });
+    try {
+      await rename(bundlePath, previousBundle);
+      movedPreviousBundle = true;
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    try {
+      await rename(stagedBundle, bundlePath);
+      installedBundle = true;
+      await rename(stagedManifest, manifestPath);
+    } catch (error) {
+      if (installedBundle) await rm(bundlePath, { force: true });
+      if (movedPreviousBundle) await rename(previousBundle, bundlePath);
+      throw error;
+    }
+  } finally {
+    await rm(stageDirectory, { recursive: true, force: true });
+  }
+}
+
+async function captureRunLocked({
   workflowRunId,
   targetRunId = workflowRunId,
   suturaRunId,
@@ -359,9 +407,7 @@ export async function captureRun({
   if (bundleBytes.byteLength > MAX_BUNDLE_BYTES) {
     throw new Error('Captured replay bundle exceeds 16 MiB');
   }
-  const fixtureDirectory = join(outDir, workflowRunId);
-  await mkdir(fixtureDirectory, { recursive: true });
-  await writeFile(join(fixtureDirectory, 'bundle.json'), bundleBytes);
+  parseReplayBundle(bundle);
 
   const boundaries = ['github', ...capturedHttpBoundaries].sort();
   const entryNotes = branchDriftNote
@@ -388,10 +434,41 @@ export async function captureRun({
     .filter(({ workflowRunId: existing }) => existing !== workflowRunId)
     .concat(entry)
     .sort((left, right) => Number(left.workflowRunId) - Number(right.workflowRunId));
-  parseCapturedFixturesManifest(manifest);
-  await mkdir(dirname(manifestPath), { recursive: true });
-  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  const nextManifest = parseCapturedFixturesManifest(manifest);
+  const manifestBytes = Buffer.from(`${JSON.stringify(nextManifest, null, 2)}\n`);
+  await installCapture(outDir, workflowRunId, bundleBytes, manifestBytes);
   return { bundle, entry };
+}
+
+export async function captureRun(options) {
+  const workflowRunId = runId(options.workflowRunId, 'Workflow run id');
+  const targetRunId = runId(options.targetRunId ?? workflowRunId, 'Target run id');
+  if (targetRunId !== workflowRunId) {
+    throw new Error('target run id must equal workflow run id for GitHub-half captures');
+  }
+  if (typeof options.outDir !== 'string' || options.outDir.length === 0) {
+    throw new Error('Capture output directory is required');
+  }
+  await mkdir(options.outDir, { recursive: true });
+  const lockPath = join(options.outDir, '.capture-run.lock');
+  let lock;
+  try {
+    lock = await open(lockPath, 'wx', 0o600);
+  } catch (error) {
+    if (error?.code === 'EEXIST') {
+      throw new Error(`capture lock is already held for ${options.outDir}`);
+    }
+    throw error;
+  }
+  try {
+    return await captureRunLocked({ ...options, workflowRunId, targetRunId });
+  } finally {
+    try {
+      await lock.close();
+    } finally {
+      await rm(lockPath, { force: true });
+    }
+  }
 }
 
 async function main() {
