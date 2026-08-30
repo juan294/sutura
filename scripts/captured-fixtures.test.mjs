@@ -143,3 +143,16 @@ test('boundary tests name captured fixtures when their authorized boundary is re
     assert.ok(BOUNDARY_TESTS.some(([path]) => path === pending), `${pending} is not enumerated`);
   }
 });
+
+test('Node replay contract commands build the ignored Core distribution first', async () => {
+  const packageJson = JSON.parse(await readFile('package.json', 'utf8'));
+  for (const name of [
+    'test:capture-run', 'test:captured-fixtures', 'test:release-contracts',
+  ]) {
+    assert.match(
+      packageJson.scripts[name],
+      /^pnpm --filter @sutura\/core build && node /u,
+      `${name} must build Core before importing its compiled replay parser`,
+    );
+  }
+});

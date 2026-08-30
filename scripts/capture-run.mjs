@@ -364,6 +364,9 @@ export async function captureRun({
   await writeFile(join(fixtureDirectory, 'bundle.json'), bundleBytes);
 
   const boundaries = ['github', ...capturedHttpBoundaries].sort();
+  const entryNotes = branchDriftNote
+    ? appendNote(notes, branchDriftNote)
+    : notes || `Captured GitHub boundary for workflow run ${workflowRunId}`;
   const entry = {
     workflowRunId,
     targetRunId,
@@ -377,7 +380,7 @@ export async function captureRun({
     capturedBy,
     bundleSha256: sha256(bundleBytes),
     boundaries,
-    notes: branchDriftNote ? appendNote(notes, branchDriftNote) : notes,
+    notes: entryNotes,
   };
   const manifestPath = join(outDir, 'manifest.json');
   const manifest = await readManifest(manifestPath);
@@ -385,6 +388,7 @@ export async function captureRun({
     .filter(({ workflowRunId: existing }) => existing !== workflowRunId)
     .concat(entry)
     .sort((left, right) => Number(left.workflowRunId) - Number(right.workflowRunId));
+  parseCapturedFixturesManifest(manifest);
   await mkdir(dirname(manifestPath), { recursive: true });
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   return { bundle, entry };

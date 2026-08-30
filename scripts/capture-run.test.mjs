@@ -6,7 +6,10 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import { captureRun, parseCaptureArguments } from './capture-run.mjs';
-import { MAX_REPLAY_BYTES } from './replay-contract.mjs';
+import {
+  MAX_REPLAY_BYTES,
+  parseCapturedFixturesManifest,
+} from './replay-contract.mjs';
 
 const SHA = 'a'.repeat(40);
 const CAPTURE_SHA = 'c'.repeat(40);
@@ -177,6 +180,32 @@ test('capture arguments keep workflow, target, and Sutura run ids distinct', () 
     () => parseCaptureArguments(['33239848825', '--out', '/tmp/x', '--unknown']),
     /Unknown capture option/u,
   );
+});
+
+test('capture-run writes a valid default note when the branch has not drifted', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'sutura-default-note-'));
+  const api = async (endpoint) => {
+    if (endpoint.endsWith('/actions/runs/77')) return {
+      id: 77, head_sha: SHA, head_branch: 'develop', event: 'push',
+      conclusion: 'success', repository: { full_name: 'juan294/sutura' }, pull_requests: [],
+    };
+    if (endpoint.endsWith('/git/ref/heads/develop')) return { object: { sha: SHA } };
+    if (endpoint.includes('/jobs?')) return { jobs: [] };
+    assert.fail(`unexpected endpoint ${endpoint}`);
+  };
+  try {
+    await captureRun({
+      workflowRunId: '77', outDir: output, api,
+      captureSource: async () => CAPTURE_SHA,
+      now: () => new Date('2026-08-30T08:00:00.000Z'),
+    });
+    const manifest = parseCapturedFixturesManifest(
+      await readFile(join(output, 'manifest.json')),
+    );
+    assert.equal(manifest.entries[0].notes, 'Captured GitHub boundary for workflow run 77');
+  } finally {
+    await rm(output, { recursive: true, force: true });
+  }
 });
 
 test('capture-run keeps run roles distinct and merges an available Sutura HTTP artifact', async () => {
