@@ -68,11 +68,13 @@ export async function runAction(
       repairBudgets: config.repairBudgets,
       search: config.search,
       sourceReferenceOrder: 'latest',
+      repairVerificationScope: 'failing-workspace',
       ...(config.runtimeId === undefined ? {} : { runtimeId: config.runtimeId }),
     } satisfies Pick<
       OrchestrationContext,
       'triageN' | 'raceK' | 'repairBudgets' | 'search' | 'runtimeId' |
       'sourceReferenceOrder'
+      | 'repairVerificationScope'
     >;
     const recorder = action.captureReplay
       ? new ReplayRecorder(

@@ -391,6 +391,25 @@
         "repository"
       ],
       "notes": "Live dogfood gave up after seven search nodes; recovered losslessly for replay by omitting optional Tavily and replacing the legacy checkout capture error with an empty runtime snapshot because the recorded repository policy fixes runtime=node"
+    },
+    {
+      "workflowRunId": "33323765566",
+      "targetRunId": "33323765566",
+      "suturaRunId": "33323856253",
+      "kind": "dogfood-gave-up",
+      "headSha": "eeaaf1191dfb000fe4f262c6b1716aaf4624e10d",
+      "capturedAt": "2026-08-30T17:03:08.478Z",
+      "source": "https://github.com/juan294/sutura/actions/runs/33323765566",
+      "capturedBy": "workflow",
+      "bundleSha256": "26090235fa2d017fe6538e5799e535f0af433573b54e8e7430ae6ef81725550d",
+      "boundaries": [
+        "contree",
+        "executor",
+        "github",
+        "nebius",
+        "repository"
+      ],
+      "notes": "Live dogfood streak attempt 1 gave up"
     }
   ]
 }

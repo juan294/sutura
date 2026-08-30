@@ -226,6 +226,15 @@ describe('parseReplayBundle', () => {
     expect(() => parseReplayBundle(value)).toThrow(/sourceReferenceOrder/iu);
   });
 
+  it('accepts known repair verification scopes and rejects an unknown value', () => {
+    const value = clone(PARTIAL);
+    value.configuration.repairVerificationScope = 'failing-workspace';
+    expect(parseReplayBundle(value)).toEqual(value);
+
+    value.configuration.repairVerificationScope = 'future' as never;
+    expect(() => parseReplayBundle(value)).toThrow(/repairVerificationScope/iu);
+  });
+
   it.each([
     ['repairBudgets', 'string'],
     ['search', 42],

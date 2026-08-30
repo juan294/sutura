@@ -460,6 +460,13 @@ export function parseReplayBundle(value: unknown): ReplayBundle {
   ) {
     throw new ReplayValidationError('bundle.configuration.sourceReferenceOrder', 'is unknown');
   }
+  if (
+    config.repairVerificationScope !== undefined &&
+    config.repairVerificationScope !== 'full' &&
+    config.repairVerificationScope !== 'failing-workspace'
+  ) {
+    throw new ReplayValidationError('bundle.configuration.repairVerificationScope', 'is unknown');
+  }
   if (config.imageRef !== undefined) string(config.imageRef, 'bundle.configuration.imageRef');
   if (config.repairBudgets !== undefined) {
     validateRepairBudgets(config.repairBudgets, 'bundle.configuration.repairBudgets');

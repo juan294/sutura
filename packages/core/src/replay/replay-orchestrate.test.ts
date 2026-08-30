@@ -80,6 +80,24 @@ describe('replayBundle', () => {
     expect(result.caseFile.outcome).toBe(bundle.outcome);
   });
 
+  it('replays live run 33323856253: recursive trusted test outlived the repaired workspace', async () => {
+    const bundle = await capturedDogfoodReplayBundle('33323765566');
+
+    const result = await replayBundle(bundle);
+
+    expect(result.caseFile).toMatchObject({
+      runId: '33323765566',
+      outcome: 'gave-up',
+      diagnosis: {
+        class: 'test-assertion',
+        failingCmd: 'pnpm -r test',
+      },
+    });
+    expect(result.caseFile.stages.filter(({ stage }) => stage === 'search').at(-1)?.note)
+      .toBe('sandbox failure: Automatic trusted test did not produce valid evidence');
+    expect(result.caseFile.outcome).toBe(bundle.outcome);
+  });
+
   it.each(['github', 'repository', 'executor', 'nebius', 'tavily'] as const)(
     'fails closed when a recorded %s tail is not consumed',
     async (boundary) => {

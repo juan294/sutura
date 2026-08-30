@@ -7,14 +7,19 @@ import type {
   ReplayBundle,
 } from '../../replay/bundle.js';
 
-let bundlePromise: Promise<ReplayBundle> | undefined;
+const bundlePromises = new Map<string, Promise<ReplayBundle>>();
 
-export function capturedDogfoodReplayBundle(): Promise<ReplayBundle> {
-  bundlePromise ??= readFile(new URL(
-    '../../../../action/src/__fixtures__/captured/33321106629/bundle.json',
+export function capturedDogfoodReplayBundle(
+  workflowRunId = '33321106629',
+): Promise<ReplayBundle> {
+  const existing = bundlePromises.get(workflowRunId);
+  if (existing !== undefined) return existing;
+  const promise = readFile(new URL(
+    `../../../../action/src/__fixtures__/captured/${workflowRunId}/bundle.json`,
     import.meta.url,
   ), 'utf8').then((value) => JSON.parse(value) as ReplayBundle);
-  return bundlePromise;
+  bundlePromises.set(workflowRunId, promise);
+  return promise;
 }
 
 export function decodedRecordedBody(body: RecordedBody): string {

@@ -8,6 +8,7 @@ import type { Executor } from '../executor/types.js';
 import type { ModelTier } from '../llm/cost.js';
 import type { RepositoryPort } from '../orchestrate.js';
 import type { RuntimeId } from '../runtime/types.js';
+import type { RepairVerificationScope } from '../heal.js';
 import type { SourceReferenceOrder } from '../orchestrate.js';
 import { redactExternalText } from '../security/external-text.js';
 
@@ -125,6 +126,7 @@ export interface ReplayOrchestrationConfig {
   routingProfileId: string;
   maxOps: number;
   sourceReferenceOrder?: SourceReferenceOrder;
+  repairVerificationScope?: RepairVerificationScope;
 }
 
 export interface ReplayBundle {

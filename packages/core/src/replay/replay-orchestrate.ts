@@ -140,6 +140,8 @@ export async function replayBundle(
         ...(validated.configuration.sourceReferenceOrder === undefined
           ? {}
           : { sourceReferenceOrder: validated.configuration.sourceReferenceOrder }),
+        repairVerificationScope:
+          validated.configuration.repairVerificationScope ?? 'full',
       });
       for (const cursor of cursors) cursor.assertConsumed();
       return { caseFile, mutations: githubReplay.mutations };

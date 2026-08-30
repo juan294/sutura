@@ -267,3 +267,11 @@
 - `ci:local`: passed after one isolated load-sensitive Core timeout did not reproduce; the clean rerun passed Core 1020, Action 118, Evaluation 5, CLI 93, Placebo 72, offline runtime smoke, package build, bundle identity, and packed install.
 - The required integrated `codex-simplify` review found no remaining reuse, quality, or efficiency blocker. The complete acceptance sequence then passed again; the repeated Placebo suite passed 72/72 and the packed install used Action `826ceaf08a342a1b89bb6d16bc96ef737fb86a43`.
 - No provider canary, live dogfood attempt, or repair branch was dispatched in Phases 1-4.
+
+## Phase 5 gave-up loop evidence
+
+- Live run `33321172589` repaired the replay capture path but gave up because the bounded source closure did not include the dogfood source. Its complete recovered bundle is fixture `33321106629`; total measured spend was USD 0.838811.
+- Candidate `02c75f150a36633a19c1d28407d211680931dc82` passed exact-SHA CI run `33323313586`, provider canary run `33323718184`, and all six dogfood gate checks before the next paid attempt.
+- Live run `33323856253` made the canonical `left - right` to `left + right` repair twice. The Core workspace passed 1030 tests after the patch. The attempt gave up because the automatic trusted command reran `pnpm -r test`; the unrelated Placebo corpus then failed in the intentionally modified dogfood checkout and the sandbox returned `-1`. Its complete bundle is fixture `33323765566`; attempt spend was USD 0.814220 and cumulative spend was USD 1.653031.
+- New live captures declare `repairVerificationScope: failing-workspace`. A recursive pnpm diagnosis is scoped only when one failure-marked `packages/* test:` prefix is present; ambiguous logs keep the full command. Historical bundles without the field replay with `full`, so their recorded Executor calls remain exact. The repair PR CI remains the independent full-repository check.
+- No further paid attempt was dispatched before the new live bundle had a named replay regression, focused tests, dynamic guard coverage, captured-fixture validation, and the local acceptance gate.

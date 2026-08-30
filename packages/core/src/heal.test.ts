@@ -13,6 +13,7 @@ import { InMemoryExecutor, type InMemoryRunResult } from './executor/memory.js';
 import {
   buildSandboxRepositoryInitializationCommandForTest,
   healCase,
+  repairVerificationCommand,
   StageLedger,
   tracedLlm,
   sandboxExecutableCommand,
@@ -910,6 +911,45 @@ describe('sandbox command resolution', () => {
     expect(command).toContain("corepack yarn exec sh -c 'vitest run'");
     expect(command).toContain("PATH=\"./node_modules/.bin:$PATH\" sh -c 'vitest run'");
     expect(sandboxTargetCommand('vitest run')).toContain('corepack pnpm exec sh -c');
+  });
+
+  it('scopes a recursive pnpm repair check to the one failing workspace', () => {
+    const diagnosed = {
+      class: 'test-assertion',
+      confidence: 0.95,
+      signals: ['scripted'],
+      failingCmd: 'pnpm -r test',
+      errorExcerpt: 'AssertionError: expected -1 to be 5',
+    } satisfies Diagnosis;
+    expect(repairVerificationCommand(diagnosed, [
+      '2026-08-30T16:56:38Z packages/action test: Tests 118 passed',
+      '2026-08-30T16:56:38Z packages/core test: FAIL src/dogfood-add.test.ts',
+      '2026-08-30T16:56:38Z packages/core test: AssertionError: expected -1 to be 5',
+    ].join('\n'))).toBe('pnpm --filter ./packages/core test');
+  });
+
+  it('keeps a full recursive pnpm repair check for a legacy replay', () => {
+    expect(repairVerificationCommand({
+      class: 'test-assertion',
+      confidence: 0.95,
+      signals: ['scripted'],
+      failingCmd: 'pnpm -r test',
+      errorExcerpt: 'packages/core test: AssertionError: failed',
+    }, undefined, 'full')).toBe('pnpm -r test');
+  });
+
+  it('keeps a recursive pnpm repair check when the failing workspace is ambiguous', () => {
+    const diagnosed = {
+      class: 'test-assertion',
+      confidence: 0.95,
+      signals: ['scripted'],
+      failingCmd: 'pnpm --recursive test',
+      errorExcerpt: 'assertion failed',
+    } satisfies Diagnosis;
+    expect(repairVerificationCommand(diagnosed, [
+        'packages/core test: AssertionError: expected -1 to be 5',
+        'packages/action test: Error: failed',
+    ].join('\n'))).toBe('pnpm --recursive test');
   });
 
   it.each([

@@ -31,6 +31,7 @@ import {
   sandboxTargetCommand,
   type HealLlm,
 } from './heal.js';
+import type { RepairVerificationScope } from './heal.js';
 import { TraceRecorder } from './trace/recorder.js';
 import { loadRepositoryPolicy } from './policy/load.js';
 import { policyAllowsSourceRead } from './policy/evaluate.js';
@@ -211,6 +212,7 @@ export interface OrchestrationContext {
   lockfileDiff?: string;
   replay?: ReplayRecorder;
   sourceReferenceOrder?: SourceReferenceOrder;
+  repairVerificationScope?: RepairVerificationScope;
 }
 
 export class AlreadyAttemptedError extends Error {
@@ -701,6 +703,9 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     stageLedger,
     traceRecorder,
     runtime,
+    ...(ctx.repairVerificationScope === undefined
+      ? {}
+      : { repairVerificationScope: ctx.repairVerificationScope }),
     ...(ctx.tavily ? { tavily: ctx.tavily } : {}),
     ...(ctx.lockfileDiff === undefined
       ? {}

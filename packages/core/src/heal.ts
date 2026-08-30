@@ -86,6 +86,7 @@ export const SUTURA_SANDBOX_ENV = Object.freeze({
 });
 
 export type HealLlm = DiagnosisLlm & RepairLlm & AuditLlm;
+export type RepairVerificationScope = 'full' | 'failing-workspace';
 
 export interface RepairFailureContext {
   runId: string;
@@ -108,6 +109,7 @@ export interface RepairFailureContext {
   stageLedger?: StageLedger;
   traceRecorder?: TraceRecorder;
   runtime?: RuntimeAdapter;
+  repairVerificationScope?: RepairVerificationScope;
   readSourceContext(
     log: string,
     diagnosis: Diagnosis,
@@ -563,6 +565,29 @@ export function sandboxExecutableCommand(command: string, runtime: RuntimeAdapte
   return runtime.normalizeCommand(command);
 }
 
+const PNPM_RECURSIVE_TEST_COMMAND = /^pnpm\s+(?:-r|--recursive)\s+test$/u;
+const PNPM_WORKSPACE_TEST_FAILURE = /\b(packages\/[A-Za-z0-9_@./-]+)\s+test:.*(?:\bFAIL\b|AssertionError|\bfailed\b)/iu;
+
+export function repairVerificationCommand(
+  diagnosis: Diagnosis,
+  failedLog = diagnosis.errorExcerpt,
+  scope: RepairVerificationScope = 'failing-workspace',
+): string {
+  const command = diagnosis.failingCmd.trim();
+  if (scope === 'full' || !PNPM_RECURSIVE_TEST_COMMAND.test(command)) return command;
+  const workspaces = new Set(
+    failedLog
+      .split(/\r?\n/u)
+      .flatMap((line) => line.match(PNPM_WORKSPACE_TEST_FAILURE)?.[1] ?? []),
+  );
+  if (workspaces.size !== 1) return command;
+  const workspace = [...workspaces][0]!;
+  if (workspace.split('/').some((segment) => !segment || segment === '.' || segment === '..')) {
+    return command;
+  }
+  return `pnpm --filter ./${workspace} test`;
+}
+
 function withGrounding(
   diagnosis: Diagnosis,
   grounding: Awaited<ReturnType<typeof ground>>,
@@ -759,6 +784,14 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
   });
   const runtime = ctx.runtime ?? NODE_RUNTIME;
   const executableCommand = sandboxExecutableCommand(diagnosis.failingCmd, runtime);
+  const verificationCommand = sandboxExecutableCommand(
+    repairVerificationCommand(
+      diagnosis,
+      providerLog,
+      ctx.repairVerificationScope ?? 'failing-workspace',
+    ),
+    runtime,
+  );
 
   const triageVerdict = await triage(
     ctx.executor,
@@ -804,7 +837,7 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
     });
     let candidateAttempt = 0;
     const trustedCommands = Object.fromEntries([
-      ['diagnosed', executableCommand],
+      ['diagnosed', verificationCommand],
       ...policy.requiredCommands.map((command, index) => [
         `policy-${index + 1}`,
         sandboxExecutableCommand(command, runtime),
@@ -1066,7 +1099,7 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
     let auditVerdict = await audit(ctx.executor, fullContext.llm, winner, {
       diagnosis,
       beforeLog: providerLog,
-      suiteCommand: executableCommand,
+      suiteCommand: verificationCommand,
     }, (result) => ledger.record({
       stage: 'audit',
       attempt: 1,
@@ -1142,7 +1175,7 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
     ctx.executor,
     ctx.failingImage,
     approvedCandidates,
-    executableCommand,
+    verificationCommand,
     (result, attempt) => ledger.record({
       stage: 'candidate',
       attempt,
@@ -1187,7 +1220,7 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
   let auditVerdict = await audit(ctx.executor, fullContext.llm, winner, {
     diagnosis,
     beforeLog: providerLog,
-    suiteCommand: executableCommand,
+    suiteCommand: verificationCommand,
   }, (result) => ledger.record({
     stage: 'audit',
     attempt: 1,
