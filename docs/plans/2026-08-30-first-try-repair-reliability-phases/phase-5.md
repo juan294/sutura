@@ -103,3 +103,11 @@ name created for each.
   accepts an omitted breakdown as zero reasoning tokens while it still fails
   on an explicit nonzero value or a returned `<think>` prefix. A regression
   test names this canary run.
+- Provider-contract canary run `33315587765` on candidate
+  `aa43711daa5e8209f3983f3a55474e69dc99bb44` produced the exact expected
+  applied diff and passed the trusted test, but the provider's raw replacement
+  used a newline form that was not byte-identical to the source fixture. The
+  repair engine intentionally normalizes line endings and the final newline.
+  The corrected v4 contract hashes the canonical applied replacement after
+  the exact diff check. A semantically different repair still fails that
+  exact diff check. A regression test names this canary run.

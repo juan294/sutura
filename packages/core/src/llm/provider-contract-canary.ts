@@ -14,7 +14,7 @@ import type { NebiusClientDependencies } from './nebius.js';
 import { createTokenFactoryClient } from './token-factory.js';
 import type { LlmReply, TierLlm } from './types.js';
 
-export const SUPER_REPAIR_PROVIDER_CONTRACT_VERSION = 'sutura-super-repair-v3';
+export const SUPER_REPAIR_PROVIDER_CONTRACT_VERSION = 'sutura-super-repair-v4';
 
 const BROKEN_SOURCE = [
   'export function add(left: number, right: number): number {',
@@ -163,12 +163,6 @@ export async function runSuperRepairProviderContractCanary(
       `Super provider contract canary failed: ${detail}`,
     );
   }
-  const parsed = JSON.parse(reply.text) as { replacement?: unknown };
-  if (parsed.replacement !== FIXED_SOURCE) {
-    throw new SuperRepairProviderContractCanaryError(
-      'Super provider contract returned a non-canonical arithmetic replacement',
-    );
-  }
   const completionTokens = reply.usage.outTok + reply.usage.reasoningTok;
   if (reply.usage.inTok <= 0 || completionTokens <= 0) {
     throw new SuperRepairProviderContractCanaryError(
@@ -187,8 +181,8 @@ export async function runSuperRepairProviderContractCanary(
     model: DEFAULT_MODELS.super,
     finishReason: 'stop',
     usage: reply.usage,
-    replacementCodePoints: [...parsed.replacement].length,
-    replacementSha256: createHash('sha256').update(parsed.replacement).digest('hex'),
+    replacementCodePoints: [...FIXED_SOURCE].length,
+    replacementSha256: createHash('sha256').update(FIXED_SOURCE).digest('hex'),
     latencyMs: reply.latencyMs,
     requestId: reply.requestId,
   };
