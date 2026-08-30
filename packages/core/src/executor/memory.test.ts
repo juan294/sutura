@@ -94,4 +94,18 @@ describe('InMemoryExecutor', () => {
     await expect(executor.cancel('missing')).resolves.toEqual({ operationId: 'missing', requested: false });
     expect(executor.completions).toEqual([]);
   });
+
+  it('rejects a duplicate operation ID before running the second command', async () => {
+    let release!: () => void;
+    const executor = new InMemoryExecutor(async () => {
+      await new Promise<void>((resolve) => { release = resolve; });
+      return { exitCode: 0, stdout: '', stderr: '', truncated: false, metrics: {} };
+    });
+    const first = executor.run('parent', 'first', { operationId: 'duplicate' });
+    await Promise.resolve();
+    await expect(executor.run('parent', 'second', { operationId: 'duplicate' }))
+      .rejects.toThrow(/already exists/u);
+    release();
+    await first;
+  });
 });

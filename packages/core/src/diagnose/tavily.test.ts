@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Diagnosis } from '../domain.js';
@@ -21,6 +23,13 @@ function response(body: unknown, status = 200): TavilyHttpResponse {
   };
 }
 
+async function syntheticFixture(name: 'search' | 'extract'): Promise<unknown> {
+  return JSON.parse(await readFile(
+    new URL(`../__fixtures__/captured/tavily/${name}.synthetic.json`, import.meta.url),
+    'utf8',
+  ));
+}
+
 const BUILD_DIAGNOSIS: Diagnosis = {
   class: 'build',
   confidence: 0.9,
@@ -30,6 +39,99 @@ const BUILD_DIAGNOSIS: Diagnosis = {
 };
 
 describe('Tavily grounding', () => {
+  it('uses the labeled synthetic search fixture until Phase 5 capture', async () => {
+    const fetch = vi.fn().mockResolvedValue(response(await syntheticFixture('search')));
+    const tavily = new TavilyClient('test-key', { fetch });
+
+    await expect(tavily.search('synthetic query')).resolves.toHaveLength(1);
+  });
+
+  it('uses the labeled synthetic extract fixture until Phase 5 capture', async () => {
+    const body = await syntheticFixture('extract') as { results: Array<{ url: string }> };
+    const fetch = vi.fn().mockResolvedValue(response(body));
+    const tavily = new TavilyClient('test-key', { fetch });
+
+    await expect(tavily.extract([body.results[0]?.url ?? ''], 'synthetic query'))
+      .resolves.toHaveLength(1);
+  });
+
+  it.each([0, 21, 1.5, Number.NaN])(
+    'rejects invalid search maxResults %s before transport',
+    async (maxResults) => {
+      const fetch = vi.fn();
+      await expect(new TavilyClient('test-key', { fetch }).search('query', { maxResults }))
+        .rejects.toThrow(/maxResults must be an integer/u);
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects empty search input and missing credentials before transport', async () => {
+    const fetch = vi.fn();
+    await expect(new TavilyClient(' ', { fetch }).search('query'))
+      .rejects.toBeInstanceOf(TavilyConfigError);
+    await expect(new TavilyClient('test-key', { fetch }).search('  '))
+      .rejects.toThrow(/query must not be empty/u);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['transport', () => Promise.reject(new Error('synthetic transport failure')), /search request failed/u],
+    ['status', () => Promise.resolve(response({}, 503)), /status 503/u],
+    ['invalid JSON', () => Promise.resolve({ ok: true, status: 200, json: () => Promise.reject(new SyntaxError('synthetic')) }), /invalid response/u],
+    ['null body', () => Promise.resolve(response(null)), /invalid response/u],
+    ['missing results', () => Promise.resolve(response({})), /invalid response/u],
+  ] as const)('rejects synthetic search %s', async (_label, implementation, message) => {
+    const tavily = new TavilyClient('test-key', { fetch: vi.fn(implementation) });
+    await expect(tavily.search('query')).rejects.toThrow(message);
+  });
+
+  it('filters malformed search citations and bounds accepted snippets', async () => {
+    const content = 'x'.repeat(2_001);
+    const tavily = new TavilyClient('test-key', { fetch: vi.fn().mockResolvedValue(response({
+      results: [null, {}, { title: 'bad', url: 'file:///tmp/x', content }, {
+        title: 'valid', url: 'https://example.test', content,
+      }],
+    })) });
+    await expect(tavily.search('query')).resolves.toEqual([{
+      title: 'valid', url: 'https://example.test', snippet: 'x'.repeat(2_000),
+    }]);
+  });
+
+  it('rejects invalid extract inputs and missing credentials before transport', async () => {
+    const fetch = vi.fn();
+    const githubUrl = 'https://github.com/example/project';
+    await expect(new TavilyClient(' ', { fetch }).extract([githubUrl], 'query'))
+      .rejects.toBeInstanceOf(TavilyConfigError);
+    await expect(new TavilyClient('test-key', { fetch }).extract([], 'query'))
+      .rejects.toThrow(/1 to 10 GitHub URLs/u);
+    await expect(new TavilyClient('test-key', { fetch }).extract(
+      Array.from({ length: 11 }, (_, index) => `${githubUrl}/${index}`),
+      'query',
+    )).rejects.toThrow(/1 to 10 GitHub URLs/u);
+    await expect(new TavilyClient('test-key', { fetch }).extract([githubUrl], ' '))
+      .rejects.toThrow(/query must not be empty/u);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['transport', () => Promise.reject(new Error('synthetic transport failure')), /extract request failed/u],
+    ['status', () => Promise.resolve(response({}, 503)), /status 503/u],
+    ['invalid JSON', () => Promise.resolve({ ok: true, status: 200, json: () => Promise.reject(new SyntaxError('synthetic')) }), /invalid response/u],
+    ['null body', () => Promise.resolve(response(null)), /invalid response/u],
+    ['missing results', () => Promise.resolve(response({})), /invalid response/u],
+  ] as const)('rejects synthetic extract %s', async (_label, implementation, message) => {
+    const tavily = new TavilyClient('test-key', { fetch: vi.fn(implementation) });
+    await expect(tavily.extract(['https://github.com/example/project'], 'query'))
+      .rejects.toThrow(message);
+  });
+
+  it('rejects invalid package identities before npm transport', async () => {
+    const fetch = vi.fn();
+    const tavily = new TavilyClient('test-key', { fetch });
+    await expect(tavily.packageRepository('bad name', '1.0.0')).rejects.toThrow(/valid/u);
+    await expect(tavily.packageRepository('valid-name', 'latest')).rejects.toThrow(/valid/u);
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it('posts the current search API shape and maps citations', async () => {
     const fetch = vi.fn().mockResolvedValue(response({
       results: [

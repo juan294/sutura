@@ -25,6 +25,20 @@
 - Actual result: exit 1 with `bundle is partial; complete provider, repository, and sandbox recordings are required` before network or sandbox construction, as required for a historical partial bundle.
 - Final verification: Core 872 passed and 8 skipped; Action 83 passed; CLI 93 passed; captured fixtures 25 passed; release contracts 52 passed; typecheck, lint, build, `verify:bundle`, `git diff --check`, and a clean archive checkout passed.
 
+## Phase 3b exit evidence
+
+- Interim checklist: `packages/core/src/guards-3b.test.ts` derives 132 current throw sites across the ten Phase 3b source files and binds the exact `file:line` list to its focused test suite. The Phase 3c scanner and `@vitest/coverage-v8` are not present on base `5d94e0a`, so Phase 3c must replace this interim checklist with statement-to-line `guards:verify` evidence.
+- Focused guard suites: 205 passed across Nebius, JSON extraction, token factory, routing, cost, provider canary, Tavily, ConTree, memory executor, live diagnostics, and the interim checklist.
+- Core suite: passed.
+- Captured fixture contracts: 25 passed.
+- `ci:fast`: passed after the generated Action bundle was committed with the Core control-flow change.
+- Typecheck, lint, build, Action bundle verification, and `git diff --check`: passed.
+- Synthetic provider evidence pending Phase 5: Nebius success and malformed response shapes, transport rejection, retry exhaustion and deadline, 400/401/404/429/503 bodies, and the labeled live-run-16 `reasoning_effort: none` 400 shape. The committed synthetic fixture is `provider/error-shapes/live-16-reasoning-effort-none.synthetic.json`.
+- Synthetic Tavily evidence pending Phase 5: search and extract success shapes, transport rejection, non-success status, JSON parse failure, null/non-object bodies, missing/non-array results, invalid citations, snippet bounds, and invalid input/configuration. The committed fixtures are `tavily/search.synthetic.json` and `tavily/extract.synthetic.json`.
+- Synthetic ConTree evidence pending Phase 5: import/run/snapshot operation responses, transport and timeout paths, operation status and cancellation, Location validation, file-upload IDs, output encoding and metrics, snapshot option/path/workspace validation, non-git and git symlink handling, `.npmrc` and embedded credential rejection, file/source/archive caps, and overlay shell safety. Existing `executor/__fixtures__/*.json` plus temporary local repositories provide these shapes.
+- Pending captured boundaries are explicit in `packages/core/src/__fixtures__/captured/pending-boundaries.phase-3b.json`: `provider`, `tavily`, and `contree`, all pending the separately authorized Phase 5 session. No live provider, Tavily, or ConTree call was made in Phase 3b.
+- Deleted unreachable guards: the final Nebius `request failed unexpectedly` throw was unreachable because each final retry path throws inside the loop; the loop is now structurally unbounded with terminal guards. The provider-canary non-canonical replacement guard was shadowed because a different replacement cannot first pass the exact candidate-diff guard; its red regression proved the earlier fail-closed outcome.
+
 ## Deviations
 
 ### Local capture source validation

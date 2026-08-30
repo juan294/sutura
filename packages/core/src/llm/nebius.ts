@@ -441,7 +441,7 @@ export class NebiusClient {
     };
 
     const retryDeadline = this.now() + RETRY_DEADLINE_MS;
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+    for (let attempt = 0; ; attempt += 1) {
       let response: HttpResponse;
       try {
         response = await this.fetch(requestUrl, request);
@@ -498,8 +498,6 @@ export class NebiusClient {
         throw error;
       }
     }
-
-    throw new NebiusApiError('Nebius request failed unexpectedly', undefined, '');
   }
 
   private localBackoff(attempt: number): number {

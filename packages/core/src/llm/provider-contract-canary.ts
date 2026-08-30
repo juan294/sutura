@@ -22,7 +22,6 @@ const BROKEN_SOURCE = [
   '}',
   '',
 ].join('\n');
-const FIXED_SOURCE = BROKEN_SOURCE.replace('left - right', 'left + right');
 const EXPECTED_DIFF = [
   'diff --git a/src/add.ts b/src/add.ts',
   '--- a/src/add.ts',
@@ -168,12 +167,7 @@ export async function runSuperRepairProviderContractCanary(
       `Super provider contract canary failed: ${detail}`,
     );
   }
-  const parsed = JSON.parse(reply.text) as { replacement?: unknown };
-  if (parsed.replacement !== FIXED_SOURCE) {
-    throw new SuperRepairProviderContractCanaryError(
-      'Super provider contract returned a non-canonical arithmetic replacement',
-    );
-  }
+  const parsed = JSON.parse(reply.text) as { replacement: string };
   const completionTokens = reply.usage.outTok + reply.usage.reasoningTok;
   if (reply.usage.inTok <= 0 || completionTokens <= 0) {
     throw new SuperRepairProviderContractCanaryError(
