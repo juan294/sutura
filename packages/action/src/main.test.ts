@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
+import { ReplayRecorder } from '@sutura/core';
+
 import { GitHubAdapter, type GitHubApi } from './github.js';
 import { withFailureSafeCheck } from './failure-safe.js';
 
 const SHA = 'a'.repeat(40);
+const REPLAY_CONFIG = {
+  triageN: 1, raceK: 1,
+  models: { nano: 'nano', super: 'super', ultra: 'ultra' },
+  routingProfileId: 'test', maxOps: 1,
+} as const;
 
 describe('action check failure safety', () => {
   it('completes the same created check when orchestration throws', async () => {
@@ -51,5 +58,30 @@ describe('action check failure safety', () => {
     expect(warnings).toEqual([
       'Sutura could not complete its GitHub check after an unexpected failure.',
     ]);
+  });
+
+  it('uploads an infra-stop replay bundle when orchestration crashes', async () => {
+    const uploads: Array<{ name: string; json: string }> = [];
+    const recorder = new ReplayRecorder('77', 'owner/repo', SHA, REPLAY_CONFIG);
+
+    await expect(withFailureSafeCheck(
+      {
+        completeUnexpectedFailure: async () => undefined,
+        uploadReplayBundle: async (name, json) => {
+          uploads.push({ name, json });
+          return { url: 'https://example.test/replay' };
+        },
+      },
+      async () => { throw new Error('provider failed'); },
+      () => undefined,
+      recorder,
+    )).rejects.toThrow('provider failed');
+
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0]?.name).toBe('sutura-replay-77.json');
+    expect(JSON.parse(uploads[0]?.json ?? '{}')).toMatchObject({
+      schemaVersion: 'sutura-replay-v1',
+      outcome: 'infra-stop',
+    });
   });
 });

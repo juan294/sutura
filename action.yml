@@ -33,6 +33,10 @@ inputs:
     description: Fail the action unless Sutura produces a fixed outcome. Intended for strict self-hosting and acceptance gates.
     required: false
     default: 'false'
+  capture-replay:
+    description: Capture credential-free external boundary data for offline repair replay.
+    required: false
+    default: 'false'
   runtime:
     description: Runtime selection for polyglot repositories. Auto fails closed when evidence is ambiguous.
     required: false

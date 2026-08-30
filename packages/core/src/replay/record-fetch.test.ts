@@ -1,0 +1,125 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import { ReplayRecorder } from './bundle.js';
+import {
+  recordingContreeFetch,
+  recordingNebiusFetch,
+  recordingTavilyFetch,
+} from './record-fetch.js';
+
+const CONFIG = {
+  triageN: 1, raceK: 1,
+  models: { nano: 'nano', super: 'super', ultra: 'ultra' },
+  routingProfileId: 'test', maxOps: 1,
+} as const;
+
+const headers = {
+  get(name: string): string | null {
+    return name.toLowerCase() === 'content-type' ? 'application/json' : null;
+  },
+};
+
+describe('recording transport adapters', () => {
+  it('preserves response consumption and sequences exchanges across boundaries', async () => {
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+    const nebiusJson = vi.fn(async () => ({ answer: 42 }));
+    const nebius = recordingNebiusFetch(recorder, vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers,
+      json: nebiusJson,
+      text: async () => 'unused',
+    })));
+    const tavily = recordingTavilyFetch(recorder, vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ results: [] }),
+    })));
+    const contree = recordingContreeFetch(recorder, vi.fn(async () => new Response(
+      JSON.stringify({ status: 'SUCCESS' }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )));
+
+    const nebiusResponse = await nebius('https://example.test/nebius', {
+      method: 'POST', headers: {}, body: '{}',
+    });
+    expect(await nebiusResponse.json()).toEqual({ answer: 42 });
+    expect(nebiusJson).toHaveBeenCalledOnce();
+
+    const tavilyResponse = await tavily('https://example.test/tavily', {
+      method: 'POST', headers: {}, body: '{}',
+    });
+    expect(await tavilyResponse.json()).toEqual({ results: [] });
+
+    const contreeResponse = await contree('https://example.test/contree', {
+      method: 'GET', headers: { Authorization: 'Bearer test' },
+    });
+    expect(await contreeResponse.json()).toEqual({ status: 'SUCCESS' });
+
+    expect(recorder.finish('fixed').http.map(({ boundary, sequence }) => ({ boundary, sequence })))
+      .toEqual([
+        { boundary: 'nebius', sequence: 1 },
+        { boundary: 'tavily', sequence: 2 },
+        { boundary: 'contree', sequence: 3 },
+      ]);
+  });
+
+  it('records a transport error and rethrows the same rejection', async () => {
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+    const failure = new Error('socket closed');
+    const wrapped = recordingNebiusFetch(recorder, vi.fn(async () => {
+      throw failure;
+    }));
+
+    await expect(wrapped('https://example.test/nebius', {
+      method: 'POST', headers: {}, body: '{}',
+    })).rejects.toBe(failure);
+    expect(recorder.finish('infra-stop').http[0]?.response).toEqual({
+      transportError: 'socket closed',
+    });
+  });
+
+  it('returns the ConTree response when replay body capture fails', async () => {
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+    const response = new Response('{"ok":true}', {
+      headers: { 'content-type': 'application/json' },
+    });
+    Object.defineProperty(response, 'clone', {
+      value: () => { throw new Error('clone unavailable'); },
+    });
+    const wrapped = recordingContreeFetch(recorder, vi.fn(async () => response));
+
+    await expect(wrapped('https://example.test/contree')).resolves.toBe(response);
+  });
+
+  it('keeps HTTP invocation sequence when responses finish out of order', async () => {
+    let resolveFirst: ((response: {
+      ok: boolean; status: number; headers: typeof headers;
+      json(): Promise<unknown>; text(): Promise<string>;
+    }) => void) | undefined;
+    let resolveSecond: typeof resolveFirst;
+    const inner = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+    const wrapped = recordingNebiusFetch(recorder, inner);
+    const response = (id: number) => ({
+      ok: true, status: 200, headers,
+      json: async () => ({ id }), text: async () => String(id),
+    });
+
+    const first = wrapped('https://example.test/1', { method: 'POST', headers: {}, body: '{}' });
+    const second = wrapped('https://example.test/2', { method: 'POST', headers: {}, body: '{}' });
+    resolveSecond?.(response(2));
+    await (await second).json();
+    resolveFirst?.(response(1));
+    await (await first).json();
+
+    expect(recorder.finish('fixed').http.map(({ sequence, request }) => ({
+      sequence, url: request.url,
+    }))).toEqual([
+      { sequence: 1, url: 'https://example.test/1' },
+      { sequence: 2, url: 'https://example.test/2' },
+    ]);
+  });
+});

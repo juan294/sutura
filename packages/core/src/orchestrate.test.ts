@@ -21,6 +21,7 @@ import {
 } from './llm/nebius.js';
 import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
 import { createTokenFactoryClient } from './llm/token-factory.js';
+import { ReplayRecorder } from './replay/bundle.js';
 import { repairProposalReply } from './testing/repair-proposal.test-helper.js';
 import { parseRepositoryPolicy } from './policy/schema.js';
 import {
@@ -141,6 +142,11 @@ class FakeGitHub implements GitHubOrchestrationPort {
 
   async uploadCaseFile(name: string, html: string): Promise<{ url: string }> {
     this.artifacts.push({ name, html });
+    return { url: `https://github.test/artifacts/${name}` };
+  }
+
+  async uploadReplayBundle(name: string, json: string): Promise<{ url: string }> {
+    this.artifacts.push({ name, html: json });
     return { url: `https://github.test/artifacts/${name}` };
   }
 
@@ -514,6 +520,25 @@ describe('orchestrate', () => {
     expect(github.artifacts).toHaveLength(1);
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super', 'ultra']);
     expect(runCalls(executor)).toHaveLength(8);
+  });
+
+  it('keeps a fixed outcome when replay upload fails', async () => {
+    const { ctx, github } = context([1, 1, 1, 0, 1, 1, 0]);
+    ctx.replay = new ReplayRecorder(RUN.runId, RUN.repo, RUN.headSha, {
+      triageN: 2, raceK: 3,
+      models: { nano: 'nano', super: 'super', ultra: 'ultra' },
+      routingProfileId: 'test', maxOps: 1,
+    });
+    const upload = vi.spyOn(github, 'uploadReplayBundle')
+      .mockRejectedValue(new Error('artifact service unavailable'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(orchestrate(ctx)).resolves.toMatchObject({ outcome: 'fixed' });
+
+    expect(upload).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith('Sutura could not upload the replay bundle.');
+    expect(github.artifacts).toHaveLength(1);
+    warn.mockRestore();
   });
 
   it('opens a fix PR against the exact branch for a direct push failure', async () => {

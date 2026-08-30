@@ -478,16 +478,28 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
   }
 
   async uploadCaseFile(name: string, html: string): Promise<{ url: string }> {
+    return this.uploadTextArtifact(name, html, 'html');
+  }
+
+  async uploadReplayBundle(name: string, json: string): Promise<{ url: string }> {
+    return this.uploadTextArtifact(name, json, 'json');
+  }
+
+  async uploadTextArtifact(
+    name: string,
+    content: string,
+    extension: 'html' | 'json',
+  ): Promise<{ url: string }> {
     if (!this.options.artifact) {
       throw new GitHubAdapterError('Artifact client is unavailable');
     }
-    if (!/^[A-Za-z0-9._-]{1,120}$/.test(name)) {
+    if (!/^[A-Za-z0-9._-]{1,120}$/.test(name) || !name.endsWith(`.${extension}`)) {
       throw new GitHubAdapterError('Artifact name is invalid');
     }
-    const directory = await mkdtemp(join(tmpdir(), 'sutura-case-file-'));
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-artifact-'));
     try {
       const path = join(directory, name);
-      await writeFile(path, html, { encoding: 'utf8', mode: 0o600 });
+      await writeFile(path, content, { encoding: 'utf8', mode: 0o600 });
       const uploaded = await this.options.artifact.uploadArtifact(name, [path], directory);
       if (!Number.isSafeInteger(uploaded.id) || (uploaded.id ?? 0) <= 0) {
         throw new GitHubAdapterError('Artifact upload did not return an id');

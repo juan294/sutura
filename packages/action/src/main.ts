@@ -4,10 +4,15 @@ import * as github from '@actions/github';
 import {
   AlreadyAttemptedError,
   ContreeExecutor,
+  ReplayRecorder,
   TavilyClient,
   createTokenFactoryClient,
   loadConfig,
   orchestrate,
+  recordingContreeFetch,
+  recordingExecutor,
+  recordingNebiusFetch,
+  recordingTavilyFetch,
 } from '@sutura/core';
 
 import { GitHubAdapter } from './github.js';
@@ -17,6 +22,8 @@ import { withFailureSafeCheck } from './failure-safe.js';
 import { mapActionInputs } from './input.js';
 import { createGitHubApi } from './octokit.js';
 import { GitRepository } from './repository.js';
+import { recordingGitHubApi } from './replay-github.js';
+import { recordingRepositoryPort } from './replay-repository.js';
 
 export async function runAction(): Promise<void> {
   let requireFixed = false;
@@ -33,13 +40,43 @@ export async function runAction(): Promise<void> {
       throw new Error('GITHUB_RUN_ID must be a positive decimal id');
     }
     const octokit = github.getOctokit(action.githubToken);
+    const recorder = action.captureReplay
+      ? new ReplayRecorder(
+          action.runId,
+          `${owner}/${repo}`,
+          process.env.GITHUB_SHA ?? '',
+          {
+            triageN: config.triageN,
+            raceK: config.raceK,
+            repairBudgets: config.repairBudgets,
+            search: config.search,
+            ...(config.runtimeId === undefined ? {} : { runtimeId: config.runtimeId }),
+            models: config.models,
+            routingProfileId: config.routingProfileId,
+            maxOps: config.maxOps,
+          },
+          [
+            action.githubToken,
+            config.nebiusApiKey,
+            config.tavilyApiKey ?? '',
+            config.contreeToken,
+            config.contreeProject,
+          ],
+        )
+      : undefined;
     const nebius = createTokenFactoryClient({
       apiKey: config.nebiusApiKey,
       models: config.models,
       routingProfileId: config.routingProfileId,
-    });
+    }, recorder ? {
+      fetch: recordingNebiusFetch(
+        recorder,
+        globalThis.fetch as Parameters<typeof recordingNebiusFetch>[1],
+      ),
+    } : {});
+    const githubApi = createGitHubApi(octokit, owner, repo);
     const adapter = new GitHubAdapter(
-      createGitHubApi(octokit, owner, repo),
+      recorder ? recordingGitHubApi(githubApi, recorder) : githubApi,
       {
         owner,
         repo,
@@ -48,17 +85,31 @@ export async function runAction(): Promise<void> {
         artifact: new DefaultArtifactClient(),
       },
     );
-    const repository = new GitRepository({
+    const baseRepository = new GitRepository({
       token: action.githubToken,
       ...(process.env.RUNNER_TEMP ? { workspaceRoot: process.env.RUNNER_TEMP } : {}),
     });
-    const executor = new ContreeExecutor({
+    const repository = recorder
+      ? recordingRepositoryPort(baseRepository, recorder)
+      : baseRepository;
+    const baseExecutor = new ContreeExecutor({
       token: config.contreeToken,
       project: config.contreeProject,
       maxOps: config.maxOps,
+      ...(recorder
+        ? { fetch: recordingContreeFetch(recorder, globalThis.fetch) }
+        : {}),
     });
+    const executor = recorder
+      ? recordingExecutor(baseExecutor, recorder)
+      : baseExecutor;
     const tavily = config.tavilyApiKey
-      ? new TavilyClient(config.tavilyApiKey)
+      ? new TavilyClient(config.tavilyApiKey, recorder ? {
+          fetch: recordingTavilyFetch(
+            recorder,
+            globalThis.fetch as Parameters<typeof recordingTavilyFetch>[1],
+          ),
+        } : {})
       : undefined;
 
     const result = await withFailureSafeCheck(adapter, () => orchestrate({
@@ -74,7 +125,8 @@ export async function runAction(): Promise<void> {
       search: config.search,
       ...(config.runtimeId === undefined ? {} : { runtimeId: config.runtimeId }),
       ...(tavily ? { tavily } : {}),
-    }), (message) => core.warning(message));
+      ...(recorder ? { replay: recorder } : {}),
+    }), (message) => core.warning(message), recorder);
     reportOutcome(result.outcome, action.requireFixed, core);
     for (const evidence of runtimeEvidence(result)) core.info(evidence);
     core.info(`Sutura outcome: ${result.outcome}`);

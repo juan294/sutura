@@ -6,6 +6,7 @@ import {
   DEFAULT_MODEL_PRICES,
   DEFAULT_ROUTING_PROFILE_ID,
   InMemoryExecutor,
+  ReplayRecorder,
   SUTURA_SANDBOX_ENV,
   attemptMarker,
   orchestrate,
@@ -28,6 +29,8 @@ import {
   type WorkflowJobRecord,
   type WorkflowRunRecord,
 } from './github.js';
+import { recordingGitHubApi } from './replay-github.js';
+import { recordingRepositoryPort } from './replay-repository.js';
 
 const RUN_ID = '77001';
 const ACTION_RUN_ID = '88001';
@@ -544,8 +547,17 @@ async function harnessFor(storyline: Storyline): Promise<{
   ctx: OrchestrationContext;
 }> {
   const api = new RecordedGitHubApi(await loadFixtures());
+  const capturesReplay = storyline.outcome === 'fixed' || storyline.outcome === 'gave-up';
+  const recorder = capturesReplay
+    ? new ReplayRecorder(RUN_ID, 'acme/widget', HEAD_SHA, {
+        triageN: 2, raceK: 3,
+        models: DEFAULT_MODELS,
+        routingProfileId: DEFAULT_ROUTING_PROFILE_ID,
+        maxOps: 40,
+      })
+    : undefined;
   const artifact = new RecordedArtifactApi();
-  const github = new CapturingGitHubAdapter(api, {
+  const github = new CapturingGitHubAdapter(recorder ? recordingGitHubApi(api, recorder) : api, {
     owner: 'acme',
     repo: 'widget',
     runId: RUN_ID,
@@ -558,13 +570,14 @@ async function harnessFor(storyline: Storyline): Promise<{
   const ctx: OrchestrationContext = {
     runId: RUN_ID,
     github,
-    repository,
+    repository: recorder ? recordingRepositoryPort(repository, recorder) : repository,
     executor,
     llm,
     cost: ledger(),
     triageN: 2,
     raceK: 3,
     runtimeId: 'node',
+    ...(recorder ? { replay: recorder } : {}),
   };
   return { api, artifact, executor, github, llm, repository, ctx };
 }
@@ -724,11 +737,33 @@ describe('recorded GitHub API orchestration E2E', () => {
           expect(call.opts?.env).not.toHaveProperty('RECORDED_GITHUB_SECRET');
         }
 
-        expect(harness.artifact.uploads).toHaveLength(1);
+        const capturesReplay = storyline.outcome === 'fixed' || storyline.outcome === 'gave-up';
+        expect(harness.artifact.uploads).toHaveLength(capturesReplay ? 2 : 1);
         expect(harness.artifact.uploads[0]?.name).toBe(
           `sutura-case-file-${RUN_ID}.html`,
         );
         expect(harness.artifact.uploads[0]?.html).toContain('<!doctype html>');
+        if (capturesReplay) {
+          expect(harness.artifact.uploads[1]?.name).toBe(`sutura-replay-${RUN_ID}.json`);
+          const replay = JSON.parse(harness.artifact.uploads[1]?.html ?? '{}') as {
+            schemaVersion: string;
+            outcome: string;
+            github: Array<{ method: string }>;
+            repository: Array<{ method: string }>;
+          };
+          expect(replay).toMatchObject({
+            schemaVersion: 'sutura-replay-v1',
+            outcome: storyline.outcome,
+            github: expect.arrayContaining([expect.any(Object)]),
+          });
+          expect(replay.github.map(({ method }) => method)).toEqual(expect.arrayContaining([
+            'updateIssueComment', 'updateCheckRun',
+          ]));
+          if (storyline.outcome === 'fixed') {
+            expect(replay.github.map(({ method }) => method)).toContain('createPullRequest');
+            expect(replay.repository.map(({ method }) => method)).toContain('publishFix');
+          }
+        }
         expect(harness.api.comments).toHaveLength(1);
         expect(harness.api.comments[0]?.body).toContain(attemptMarker(RUN_ID));
         expect(harness.api.comments[0]?.body).toContain(storyline.commentSignal);

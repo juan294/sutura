@@ -16,6 +16,8 @@ Add:
 - `packages/core/src/replay/record-fetch.ts` — boundary-specific recording
   wrappers for the Nebius, Tavily, and ConTree transport shapes.
 - `packages/core/src/replay/bundle.test.ts`, `record-fetch.test.ts`.
+- `packages/core/src/replay/record-executor.ts` and test — logical `Executor`
+  decorator for import, snapshot, run, run-many, capacity, and cancellation.
 - `packages/action/src/replay-github.ts` — recording `GitHubApi` decorator.
 - `packages/action/src/replay-github.test.ts`.
 - `packages/action/src/replay-repository.ts` — recording `RepositoryPort`
@@ -85,6 +87,25 @@ Modify:
      result: unknown | { error: string };
    }
 
+   export interface RecordedExecutorCall {
+     sequence: number;
+     method: 'importImage' | 'snapshot' | 'run' | 'runMany' | 'operationCapacity' | 'cancel';
+     args: unknown[];
+     result: unknown | { error: string };
+   }
+
+   export interface ReplayOrchestrationConfig {
+     triageN: number;
+     raceK: number;
+     repairBudgets?: RepairBudgetOverrides;
+     search?: SearchLimits;
+     runtimeId?: RuntimeId;
+     imageRef?: string;
+     routingProfileId: string;
+     models: Readonly<Record<ModelTier, string>>;
+     maxOps: number;
+   }
+
    export interface ReplayBundle {
      schemaVersion: typeof REPLAY_BUNDLE_SCHEMA_VERSION;
      runId: string;
@@ -93,7 +114,10 @@ Modify:
      capturedAt: string;               // ISO
      github: RecordedGitHubCall[];
      repository: RecordedRepositoryCall[];
+     executor: RecordedExecutorCall[];
+     configuration: ReplayOrchestrationConfig;
      http: RecordedHttpExchange[];
+     completeness: { complete: boolean; overflowedBoundaries: string[] };
      outcome?: CaseFile['outcome'];    // filled before upload
    }
    ```
@@ -102,10 +126,11 @@ Modify:
 
    ```ts
    export class ReplayRecorder {
-     constructor(readonly runId: string, readonly repo: string, readonly actionSha: string, secrets?: readonly string[]);
+     constructor(readonly runId: string, readonly repo: string, readonly actionSha: string, configuration: ReplayOrchestrationConfig, secrets?: readonly string[]);
      recordHttp(exchange: Omit<RecordedHttpExchange, 'sequence'>): void;
      recordGitHub(call: Omit<RecordedGitHubCall, 'sequence'>): void;
      recordRepository(call: Omit<RecordedRepositoryCall, 'sequence'>): void;
+     recordExecutor(call: Omit<RecordedExecutorCall, 'sequence'>): void;
      finish(outcome: CaseFile['outcome']): ReplayBundle;   // applies redactBundle
    }
    ```
@@ -114,6 +139,10 @@ Modify:
    bounded-body union stores text up to 1 MiB or `{ truncated: true, bytes,
    sha256 }`; binary or stream bodies record length/hash metadata. Truncation
    happens before redaction and recording never throws or fails a repair.
+   Crossing a count/body bound marks the applicable boundary overflowed and
+   `complete: false`; a replay consumer can never mistake truncation for a
+   complete recording. Sequence numbers are reserved when a call starts, not
+   when its asynchronous response finishes.
 
 3. Redaction (`redactBundle`): request and response records include headers;
    strip `authorization`, `x-api-key`, `cookie`,
@@ -144,20 +173,31 @@ Modify:
 
 6. `recordingRepositoryPort` records `readPolicyAtSha`, `checkoutHead`,
    `readSourceExcerpts`, and `publishFix` in call order while returning the
-   wrapped port's exact result.
+   wrapped port's exact result. After `checkoutHead`, it records a bounded,
+   path-safe snapshot of policy and runtime-evidence files needed by
+   `detectRuntimeAtPath`; replay materializes this snapshot instead of the
+   ephemeral checkout path. Symlinks, sensitive paths, and files outside the
+   recorded root are rejected; entry and byte caps match runtime detection.
+   Later repository-call arguments use a stable recorded checkout id, not the
+   ephemeral absolute path, so replay can map it to a materialized temp root.
 
-7. `orchestrate.ts`: in `prepareReport`, after the HTML upload, if
-   `ctx.replay` is set, call
+7. `recordingExecutor` records the logical `Executor` method, JSON-safe
+   arguments, result or error, and call sequence. This is the canonical
+   sandbox replay stream; ConTree HTTP remains diagnostic evidence only.
+
+8. `orchestrate.ts`: keep HTML creation in `prepareReport`, then perform every
+   outcome mutation (`publishFix`, PR creation, attempt update, and check
+   completion) before one final best-effort
    `github.uploadReplayBundle(\`sutura-replay-${run.runId}.json\`, JSON.stringify(ctx.replay.finish(caseFile.outcome)))`.
-   The replay artifact is best-effort: capture or upload failure emits a
-   warning but cannot change a valid product outcome. Also upload on the
-   `fixed` path (`:647`) and in the failure-safe path so a
-   crash still yields a bundle (the `withFailureSafeCheck` wrapper in
-   `packages/action/src/failure-safe.ts` gets the recorder and uploads on
-   error with `outcome: 'infra-stop'`).
+   Capture or upload failure emits a warning but cannot change a valid product
+   outcome. The failure-safe path also uploads after unexpected-check
+   completion with `outcome: 'infra-stop'`. This ordering ensures the uploaded
+   bundle contains the final requested mutations and each recorded run still
+   produces exactly one HTML artifact plus one replay artifact.
 
-8. `main.ts`: build wrappers only when `action.captureReplay` and wrap the
-   repository before it enters orchestration:
+9. `main.ts`: build wrappers only when `action.captureReplay`, populate the
+   JSON-safe orchestration configuration from the validated action config,
+   and wrap the repository and executor before they enter orchestration:
 
    ```ts
    const recorder = action.captureReplay
@@ -169,7 +209,7 @@ Modify:
    Same for `TavilyClient` and `ContreeExecutor.fetch`; the adapter receives
    `recorder ? recordingGitHubApi(api, recorder) : api`.
 
-9. Rebuild the bundle; commit `dist/index.cjs` with the change.
+10. Rebuild the bundle; commit `dist/index.cjs` with the change.
 
 ## Automated success criteria
 

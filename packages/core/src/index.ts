@@ -127,6 +127,19 @@ export { PYTHON_IMAGE_REF, PYTHON_RUNTIME, PythonDependencyError, normalizePytho
 export { sanitizeTraceEvent } from './trace/sanitize.js';
 export { TRACE_SCHEMA_VERSION } from './trace/types.js';
 export {
+  REPLAY_BUNDLE_SCHEMA_VERSION,
+  ReplayRecorder,
+  binaryBody,
+  boundedText,
+  redactBundle,
+} from './replay/bundle.js';
+export {
+  recordingContreeFetch,
+  recordingNebiusFetch,
+  recordingTavilyFetch,
+} from './replay/record-fetch.js';
+export { recordingExecutor } from './replay/record-executor.js';
+export {
   ExternalTextError,
   assertExternalEditableText,
   redactExternalMessages,
@@ -157,6 +170,7 @@ export type {
   NebiusClientConfig,
   NebiusClientDependencies,
 } from './llm/nebius.js';
+export type { NebiusFetch } from './llm/nebius.js';
 export type {
   SuperRepairProviderContractCanaryInput,
   SuperRepairProviderContractCanaryResult,
@@ -191,6 +205,18 @@ export type {
 export type { MechanicalCheck } from './audit/mechanical.js';
 export type { AuditOnlyContext, AuditOnlyLlm } from './audit-only.js';
 export type { ContreeExecutorConfig } from './executor/contree.js';
+export type {
+  BinaryBody,
+  RecordedBody,
+  RecordedGitHubCall,
+  RecordedHttpExchange,
+  RecordedExecutorCall,
+  RecordedRepositoryCall,
+  ReplayOrchestrationConfig,
+  ReplayBundle,
+  StreamBody,
+  TruncatedBody,
+} from './replay/bundle.js';
 export type {
   InMemoryCall,
   InMemoryRunResult,

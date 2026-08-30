@@ -12,6 +12,7 @@ export interface ActionConfiguration {
   runId: string;
   triageN: number;
   requireFixed: boolean;
+  captureReplay: boolean;
   environment: Readonly<Record<string, string>>;
 }
 
@@ -114,6 +115,7 @@ export function mapActionInputs(read: InputReader): ActionConfiguration {
     runId,
     triageN,
     requireFixed: booleanInput(read('require-fixed'), false, 'require-fixed'),
+    captureReplay: booleanInput(read('capture-replay'), false, 'capture-replay'),
     environment,
   };
 }

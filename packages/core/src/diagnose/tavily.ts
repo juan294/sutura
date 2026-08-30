@@ -24,7 +24,7 @@ const MAX_ERROR_QUERY_CHARACTERS = 1_000;
 export type TavilyHttpResponse = Pick<HttpResponse, 'ok' | 'status' | 'json'>;
 export type TavilyHttpRequestInit = Omit<HttpRequestInit, 'body'> & { body?: string };
 
-type TavilyFetch = (
+export type TavilyFetch = (
   input: string,
   init: TavilyHttpRequestInit,
 ) => Promise<TavilyHttpResponse>;

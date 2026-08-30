@@ -46,11 +46,11 @@ export interface HttpRequestInit {
   signal?: AbortSignal;
 }
 
-type Fetch = (input: string, init: HttpRequestInit) => Promise<HttpResponse>;
+export type NebiusFetch = (input: string, init: HttpRequestInit) => Promise<HttpResponse>;
 type Sleep = (milliseconds: number) => Promise<void>;
 
 export interface NebiusClientDependencies {
-  fetch?: Fetch;
+  fetch?: NebiusFetch;
   sleep?: Sleep;
   random?: () => number;
   now?: () => number;
@@ -333,7 +333,7 @@ export class NebiusClient {
   readonly ledger: Ledger;
   private latestCapacity: CapacitySnapshot | undefined;
 
-  private readonly fetch: Fetch;
+  private readonly fetch: NebiusFetch;
   private readonly sleep: Sleep;
   private readonly random: () => number;
   private readonly now: () => number;
@@ -343,11 +343,11 @@ export class NebiusClient {
     private readonly config: NebiusClientConfig,
     dependencies: NebiusClientDependencies = {},
   ) {
-    const runtimeFetch = (globalThis as unknown as { fetch?: Fetch }).fetch;
+    const runtimeFetch = (globalThis as unknown as { fetch?: NebiusFetch }).fetch;
     if (!dependencies.fetch && !runtimeFetch) {
       throw new Error('This runtime does not provide fetch');
     }
-    this.fetch = dependencies.fetch ?? (runtimeFetch as Fetch);
+    this.fetch = dependencies.fetch ?? (runtimeFetch as NebiusFetch);
     this.sleep = dependencies.sleep ?? defaultSleep;
     this.random = dependencies.random ?? Math.random;
     this.now = dependencies.now ?? Date.now;
