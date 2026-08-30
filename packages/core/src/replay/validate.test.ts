@@ -47,7 +47,7 @@ describe('parseReplayBundle', () => {
     expect(() => parseReplayBundle(value)).toThrow(/outcome/u);
   });
 
-  it.each(['github', 'repository', 'executor', 'nebius', 'tavily', 'contree'] as const)(
+  it.each(['github', 'repository', 'executor', 'nebius', 'contree'] as const)(
     'rejects a complete bundle without the %s stream',
     (boundary) => {
       const value = clone(complete);
@@ -59,6 +59,12 @@ describe('parseReplayBundle', () => {
       expect(() => parseReplayBundle(value)).toThrow(new RegExp(boundary, 'u'));
     },
   );
+
+  it('accepts a complete bundle when optional Tavily grounding did not run', () => {
+    const value = clone(complete);
+    value.http = value.http.filter((exchange) => exchange.boundary !== 'tavily');
+    expect(parseReplayBundle(value)).toEqual(value);
+  });
 
   it('rejects duplicate sequences in each recorder reservation domain', () => {
     const ports = clone(complete);
@@ -134,12 +140,24 @@ describe('parseReplayBundle', () => {
 
   it('rejects exact truncation markers in a complete bundle', () => {
     const value = clone(complete);
-    value.http[0]!.response = {
+    value.http.find((exchange) => exchange.boundary === 'nebius')!.response = {
       status: 200,
       headers: {},
       body: { truncated: true, bytes: 9, sha256: 'b'.repeat(64) },
     };
     expect(() => parseReplayBundle(value)).toThrow(/truncated/iu);
+  });
+
+  it('accepts hash-only ConTree transport bodies because replay uses logical executor calls', () => {
+    const value = clone(complete);
+    const contree = value.http.find((exchange) => exchange.boundary === 'contree')!;
+    contree.request.body = {
+      stream: true,
+      bytes: 60_334_080,
+      sha256: 'b'.repeat(64),
+    };
+
+    expect(parseReplayBundle(value)).toEqual(value);
   });
 
   it('rejects an unknown recorded-body shape', () => {
@@ -197,6 +215,15 @@ describe('parseReplayBundle', () => {
     };
 
     expect(parseReplayBundle(value)).toEqual(value);
+  });
+
+  it('accepts known source-reference ordering and rejects an unknown value', () => {
+    const value = clone(PARTIAL);
+    value.configuration.sourceReferenceOrder = 'latest';
+    expect(parseReplayBundle(value)).toEqual(value);
+
+    value.configuration.sourceReferenceOrder = 'future' as never;
+    expect(() => parseReplayBundle(value)).toThrow(/sourceReferenceOrder/iu);
   });
 
   it.each([

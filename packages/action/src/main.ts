@@ -67,10 +67,12 @@ export async function runAction(
       raceK: config.raceK,
       repairBudgets: config.repairBudgets,
       search: config.search,
+      sourceReferenceOrder: 'latest',
       ...(config.runtimeId === undefined ? {} : { runtimeId: config.runtimeId }),
     } satisfies Pick<
       OrchestrationContext,
-      'triageN' | 'raceK' | 'repairBudgets' | 'search' | 'runtimeId'
+      'triageN' | 'raceK' | 'repairBudgets' | 'search' | 'runtimeId' |
+      'sourceReferenceOrder'
     >;
     const recorder = action.captureReplay
       ? new ReplayRecorder(

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { capturedDogfoodReplayBundle } from '../__fixtures__/captured/live-dogfood-replay.test-helper.js';
 import { DEFAULT_MODELS } from '../config.js';
 import { DEFAULT_ROUTING_PROFILE_ID } from '../llm/router.js';
 import { REPLAY_BUNDLE_SCHEMA_VERSION, type ReplayBundle } from './bundle.js';
@@ -61,6 +62,22 @@ describe('replayBundle', () => {
       'updateCommitComment',
       'updateCheckRun',
     ]);
+  });
+
+  it('replays live run 33321172589: source-limit gave-up with seven search nodes', async () => {
+    const bundle = await capturedDogfoodReplayBundle();
+
+    const result = await replayBundle(bundle);
+
+    expect(result.caseFile).toMatchObject({
+      runId: '33321106629',
+      outcome: 'gave-up',
+      diagnosis: { class: 'test-assertion' },
+    });
+    expect(result.caseFile.search).toHaveLength(7);
+    expect(result.caseFile.stages.filter(({ stage }) => stage === 'search').at(-1)?.note)
+      .toBe('invalid failure: Repair proposal must be valid JSON');
+    expect(result.caseFile.outcome).toBe(bundle.outcome);
   });
 
   it.each(['github', 'repository', 'executor', 'nebius', 'tavily'] as const)(

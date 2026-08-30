@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { ReplayRecorder, type RepositoryPort } from '@sutura/core';
+import { parseReplayBundle, ReplayRecorder, type RepositoryPort } from '@sutura/core';
 
 import { recordingRepositoryPort } from './replay-repository.js';
 
@@ -76,15 +76,45 @@ describe('recordingRepositoryPort', () => {
 
     const bundle = recorder.finish('infra-stop');
     expect(bundle.repository[0]?.result).toMatchObject({
-      result: 'checkout-1',
+      checkoutId: 'checkout-1',
+      snapshot: { runtimeEvidencePaths: [], files: [] },
       captureError: expect.stringContaining('must not be a symlink'),
     });
     expect(bundle.completeness).toMatchObject({
       complete: false,
       overflowedBoundaries: ['repository'],
     });
+    expect(() => parseReplayBundle(bundle)).not.toThrow();
     await rm(checkoutDir, { recursive: true, force: true });
     await rm(outside, { force: true });
+  });
+
+  it('does not enumerate runtime evidence when repository policy configures it', async () => {
+    const checkoutDir = await mkdtemp(join(tmpdir(), 'sutura-replay-repository-'));
+    try {
+      await writeFile(join(checkoutDir, '.sutura.json'), '{"version":1,"runtime":"node"}\n');
+      await Promise.all(Array.from({ length: 501 }, (_, index) =>
+        writeFile(join(checkoutDir, `file-${index}.ts`), 'export {};\n'),
+      ));
+      const port = {
+        checkoutHead: vi.fn(async () => checkoutDir),
+      } as unknown as RepositoryPort;
+      const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+
+      await recordingRepositoryPort(port, recorder).checkoutHead(
+        'acme/widget', 'a'.repeat(40),
+      );
+
+      expect(recorder.finish('gave-up').repository[0]?.result).toMatchObject({
+        checkoutId: 'checkout-1',
+        snapshot: {
+          runtimeEvidencePaths: [],
+          files: [{ path: '.sutura.json', content: '{"version":1,"runtime":"node"}\n' }],
+        },
+      });
+    } finally {
+      await rm(checkoutDir, { recursive: true, force: true });
+    }
   });
 
   it('does not treat a source excerpt truncated flag as capture loss', async () => {

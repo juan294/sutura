@@ -425,8 +425,8 @@ test('capture-run rejects invalid, partial, lossy, or incomplete replay artifact
     ['wrong target run', { ...valid, runId: '33268037619' }, /target run id/u],
     ['missing completed exchange', {
       ...valid,
-      http: valid.http.filter(({ boundary }) => boundary !== 'tavily'),
-    }, /tavily/u],
+      http: valid.http.filter(({ boundary }) => boundary !== 'contree'),
+    }, /contree/u],
   ];
 
   for (const [name, artifactBundle, expected] of cases) {

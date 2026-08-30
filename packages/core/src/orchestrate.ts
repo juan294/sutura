@@ -35,7 +35,10 @@ import { TraceRecorder } from './trace/recorder.js';
 import { loadRepositoryPolicy } from './policy/load.js';
 import { policyAllowsSourceRead } from './policy/evaluate.js';
 import type { RepositoryPolicy } from './policy/schema.js';
-import { redactExternalText } from './security/external-text.js';
+import {
+  containsExternalTextRedaction,
+  redactExternalText,
+} from './security/external-text.js';
 
 export { SUTURA_SANDBOX_ENV } from './heal.js';
 import { renderCaseFile } from './report/casefile.js';
@@ -47,6 +50,7 @@ import type { ReplayRecorder } from './replay/bundle.js';
 
 const FAILED_STEP_LINES = 200;
 const MAX_SOURCE_FILES = 8;
+const MAX_LATEST_ROOT_SOURCE_FILES = 4;
 const MAX_SOURCE_LINES = 120;
 const MAX_DEPENDENCY_CANDIDATE_PROBES_PER_DEPTH = 192;
 const ANSI_CSI_PATTERN = /\u001B\[[0-?]*[ -/]*[@-~]/gu;
@@ -142,6 +146,8 @@ export interface SourceReference {
   line?: number;
 }
 
+export type SourceReferenceOrder = 'first' | 'latest';
+
 export interface SourceReadLimits {
   maxFiles: number;
   maxLinesPerFile: number;
@@ -204,6 +210,7 @@ export interface OrchestrationContext {
   runtimeId?: RuntimeId;
   lockfileDiff?: string;
   replay?: ReplayRecorder;
+  sourceReferenceOrder?: SourceReferenceOrder;
 }
 
 export class AlreadyAttemptedError extends Error {
@@ -292,13 +299,23 @@ function safeSourcePath(path: string): string | null {
   return normalized;
 }
 
-export function extractSourceReferences(log: string): SourceReference[] {
+export function extractSourceReferences(
+  log: string,
+  order: SourceReferenceOrder = 'first',
+): SourceReference[] {
   const normalizedLog = log
     .replace(ANSI_CSI_PATTERN, '')
     .replaceAll('file:///workspace/', '')
     .replaceAll('/workspace/', '')
     .replace(GITHUB_WORKSPACE_PREFIX_PATTERN, '$1');
   const references = new Map<string, SourceReference>();
+  const workspacePaths = new Set<string>();
+  const isWorkspaceQualified = (path: string): boolean => {
+    for (const workspacePath of workspacePaths) {
+      if (workspacePath === path || workspacePath.endsWith(`/${path}`)) return true;
+    }
+    return false;
+  };
   const remember = (path: string, lineValue: number): void => {
     const line = Number.isSafeInteger(lineValue) && lineValue > 0
       ? lineValue
@@ -308,7 +325,12 @@ export function extractSourceReferences(log: string): SourceReference[] {
       if (existing.line === undefined && line !== undefined) {
         references.set(path, { path, line });
       }
-    } else if (references.size < MAX_SOURCE_FILES) {
+    } else {
+      if (references.size >= MAX_SOURCE_FILES) {
+        if (order === 'first') return;
+        const oldest = references.keys().next().value as string | undefined;
+        if (oldest !== undefined) references.delete(oldest);
+      }
       references.set(path, line === undefined ? { path } : { path, line });
     }
   };
@@ -324,12 +346,14 @@ export function extractSourceReferences(log: string): SourceReference[] {
           ? relativePath
           : safeSourcePath(`${workspace}/${relativePath}`);
       if (path) remember(path, Number(sourceMatch.groups?.line));
+      if (path) workspacePaths.add(path);
     }
   }
 
   for (const match of normalizedLog.matchAll(SOURCE_PATH_PATTERN)) {
     const path = safeSourcePath(match.groups?.path ?? '');
     if (!path) continue;
+    if (isWorkspaceQualified(path)) continue;
     remember(path, Number(match.groups?.line));
   }
 
@@ -343,10 +367,17 @@ export async function readRepairSourceContext(
   diagnosis?: Pick<Diagnosis, 'class'>,
   policy?: RepositoryPolicy,
   runtimeId: RuntimeId = 'node',
+  sourceReferenceOrder: SourceReferenceOrder = 'first',
 ): Promise<RepairSourceContext> {
-  const references = extractSourceReferences(log).filter((reference) =>
+  const extractedReferences = extractSourceReferences(log, sourceReferenceOrder).filter((reference) =>
     policy === undefined || policyAllowsSourceRead(reference.path, policy),
   );
+  const references = sourceReferenceOrder === 'latest'
+    ? [
+        ...extractedReferences.filter(({ line }) => line !== undefined).toReversed(),
+        ...extractedReferences.filter(({ line }) => line === undefined).toReversed(),
+      ].slice(0, MAX_LATEST_ROOT_SOURCE_FILES)
+    : extractedReferences;
   const fallbackPaths = runtimeId === 'python'
     ? PYTHON_FALLBACK_SOURCE_PATHS
     : NODE_FALLBACK_SOURCE_PATHS;
@@ -397,7 +428,10 @@ export async function readRepairSourceContext(
         );
       }
       returned.add(path);
-      if (redactExternalText(source.content).count > 0) return [];
+      if (
+        containsExternalTextRedaction(source.content) ||
+        redactExternalText(source.content).count > 0
+      ) return [];
       return [{
         path,
         startLine: source.startLine,
@@ -660,6 +694,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       diagnosis,
       loadedPolicy.policy,
       runtime.id,
+      ctx.sourceReferenceOrder,
     ),
     policy: loadedPolicy.policy,
     policyEvidence,

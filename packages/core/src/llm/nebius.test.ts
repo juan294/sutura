@@ -14,6 +14,11 @@ import type {
   ToolMessage,
 } from '@sutura/core';
 
+import {
+  capturedDogfoodReplayBundle,
+  decodedRecordedBody,
+  successfulCapturedHttp,
+} from '../__fixtures__/captured/live-dogfood-replay.test-helper.js';
 import { DEFAULT_MODEL_PRICES } from './cost.js';
 import {
   MODEL_SELECTION_SCHEMA_VERSION,
@@ -95,7 +100,26 @@ function successResponse(content = 'fixed', reasoningTokens = 0): HttpResponse {
   });
 }
 
+async function capturedNebiusResponse(): Promise<unknown> {
+  const bundle = await capturedDogfoodReplayBundle();
+  const body = successfulCapturedHttp(bundle, 'nebius')[0]?.response.body;
+  if (body === undefined) throw new Error('Captured Nebius response body is unavailable');
+  return JSON.parse(decodedRecordedBody(body));
+}
+
 describe('NebiusClient', () => {
+  it('accepts the captured workflow 33321172589 Nebius response shape', async () => {
+    const client = new NebiusClient(CONFIG, {
+      fetch: vi.fn().mockResolvedValue(response(await capturedNebiusResponse())),
+    });
+
+    const reply = await client.chat('nano', MESSAGES);
+
+    expect(reply.text).toContain('test-assertion');
+    expect(reply.usage.inTok).toBeGreaterThan(0);
+    expect(reply.usage.outTok).toBeGreaterThan(0);
+  });
+
   it('exports the Token Factory protocol types from the package root', () => {
     expectTypeOf<ChatMessage>().toBeObject();
     expectTypeOf<AssistantMessage>().toBeObject();

@@ -18,6 +18,7 @@ const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 const OUTCOMES = new Set(['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop']);
 const HTTP_BOUNDARIES = new Set(['nebius', 'tavily', 'contree']);
 const REPLAY_BOUNDARIES = new Set(['github', 'repository', 'executor', ...HTTP_BOUNDARIES]);
+const REQUIRED_REPLAY_BOUNDARIES = new Set(['github', 'repository', 'executor', 'nebius', 'contree']);
 const OVERFLOW_BOUNDARIES = new Set([...REPLAY_BOUNDARIES, 'http', 'configuration']);
 const GITHUB_METHODS = new Set([
   'getWorkflowRun', 'listPullRequestsForCommit', 'getPullRequest',
@@ -452,6 +453,13 @@ export function parseReplayBundle(value: unknown): ReplayBundle {
   if (config.runtimeId !== undefined && config.runtimeId !== 'node' && config.runtimeId !== 'python') {
     throw new ReplayValidationError('bundle.configuration.runtimeId', 'is unknown');
   }
+  if (
+    config.sourceReferenceOrder !== undefined &&
+    config.sourceReferenceOrder !== 'first' &&
+    config.sourceReferenceOrder !== 'latest'
+  ) {
+    throw new ReplayValidationError('bundle.configuration.sourceReferenceOrder', 'is unknown');
+  }
   if (config.imageRef !== undefined) string(config.imageRef, 'bundle.configuration.imageRef');
   if (config.repairBudgets !== undefined) {
     validateRepairBudgets(config.repairBudgets, 'bundle.configuration.repairBudgets');
@@ -475,9 +483,16 @@ export function parseReplayBundle(value: unknown): ReplayBundle {
       ...(executor.length > 0 ? ['executor' as const] : []),
       ...http.map(({ boundary }) => boundary as ReplayBoundary),
     ]);
-    const missing = [...REPLAY_BOUNDARIES].filter((boundary) => !completed.has(boundary as ReplayBoundary));
+    const missing = [...REQUIRED_REPLAY_BOUNDARIES]
+      .filter((boundary) => !completed.has(boundary as ReplayBoundary));
     if (missing.length > 0) throw new ReplayValidationError('bundle.completeness', `is missing completed ${missing.join(', ')} streams`);
-    if (isIncompleteMarker(bundle)) throw new ReplayValidationError('bundle.completeness', 'contains truncated or unreplayable body evidence');
+    const replayedEvidence = {
+      github,
+      repository,
+      executor,
+      http: http.filter(({ boundary }) => boundary !== 'contree'),
+    };
+    if (isIncompleteMarker(replayedEvidence)) throw new ReplayValidationError('bundle.completeness', 'contains truncated or unreplayable body evidence');
   }
   assertSequenceDomain([...github, ...repository], 'port', complete);
   assertSequenceDomain(http, 'http', complete);

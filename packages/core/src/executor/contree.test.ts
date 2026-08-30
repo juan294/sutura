@@ -9,6 +9,10 @@ import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  capturedDogfoodReplayBundle,
+  successfulCapturedHttp,
+} from '../__fixtures__/captured/live-dogfood-replay.test-helper.js';
+import {
   ContreeError,
   ContreeExecutor,
   buildSnapshotCommandForTest,
@@ -30,6 +34,24 @@ async function fixture(name: string): Promise<unknown> {
   return JSON.parse(
     await readFile(new URL(`./__fixtures__/${name}`, import.meta.url), 'utf8'),
   );
+}
+
+async function capturedImportImageExchanges(): Promise<Array<{
+  request: { method: string; url: string };
+  response: { status: number; headers: Record<string, string>; body: string };
+}>> {
+  const bundle = await capturedDogfoodReplayBundle();
+  return successfulCapturedHttp(bundle, 'contree')
+    .filter(({ sequence }) => sequence <= 16)
+    .map(({ request, response }) => {
+      if (typeof response.status !== 'number' || typeof response.body !== 'string') {
+        throw new Error('Captured ConTree response body is unavailable');
+      }
+      return {
+        request,
+        response: { status: response.status, headers: response.headers ?? {}, body: response.body },
+      };
+    });
 }
 
 function jsonResponse(
@@ -111,6 +133,30 @@ afterEach(() => {
 });
 
 describe('ContreeExecutor', () => {
+  it('accepts the captured workflow 33321172589 image-import operation shapes', async () => {
+    const exchanges = await capturedImportImageExchanges();
+    let index = 0;
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const exchange = exchanges[index++];
+      if (!exchange) throw new Error('Captured ConTree exchanges are exhausted');
+      expect(String(input)).toBe(exchange.request.url);
+      expect(init?.method ?? 'GET').toBe(exchange.request.method);
+      return new Response(exchange.response.body, {
+        status: exchange.response.status,
+        headers: exchange.response.headers,
+      });
+    });
+    const executor = new ContreeExecutor(config(fetch, {
+      pollIntervalMs: 0,
+      operationTimeoutMs: 5_000,
+    }));
+
+    await expect(executor.importImage('node:22')).resolves.toBe(
+      'd507f8b4-bfc3-3d23-9f96-f310bff17c9b',
+    );
+    expect(index).toBe(exchanges.length);
+  });
+
   it.each([
     ['token', { token: ' ' }, /token is required/u],
     ['project', { project: ' ' }, /project is required/u],

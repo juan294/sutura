@@ -5,6 +5,7 @@ import { resolve, sep } from 'node:path';
 import {
   MAX_POLICY_BYTES,
   isSensitiveRepositoryPath,
+  loadRepositoryPolicy,
   recordedErrorResult,
   runtimeEvidencePaths,
   type ReplayRecorder,
@@ -86,14 +87,20 @@ async function checkoutSnapshot(checkoutDir: string): Promise<{
   files: Array<{ path: string; content: string }>;
 }> {
   const root = await realpath(checkoutDir);
-  const evidencePaths = (await runtimeEvidencePaths(root)).filter((path) =>
-    !isSensitiveRepositoryPath(path),
-  );
+  const policyContent = await boundedSnapshotFile(root, '.sutura.json');
+  const configuredRuntime = policyContent === null
+    ? undefined
+    : loadRepositoryPolicy(policyContent).policy.runtime;
+  const evidencePaths = configuredRuntime === undefined
+    ? (await runtimeEvidencePaths(root)).filter((path) => !isSensitiveRepositoryPath(path))
+    : [];
   const files: Array<{ path: string; content: string }> = [];
   let totalBytes = 0;
   for (const path of SNAPSHOT_CONTENT_PATHS) {
     if (isSensitiveRepositoryPath(path)) continue;
-    const content = await boundedSnapshotFile(root, path);
+    const content = path === '.sutura.json'
+      ? policyContent
+      : await boundedSnapshotFile(root, path);
     if (content === null) continue;
     totalBytes += Buffer.byteLength(content, 'utf8');
     if (totalBytes > MAX_SNAPSHOT_TOTAL_BYTES) {
@@ -113,6 +120,10 @@ export function recordingRepositoryPort(
     args: unknown[],
     operation: () => Promise<T>,
     captureResult: (result: T) => Promise<unknown> = async (result) => result,
+    captureFailure: (result: T, error: unknown) => unknown = (result, error) => ({
+      result,
+      captureError: errorMessage(error),
+    }),
   ): Promise<T> => {
     const sequence = recorder.reservePortSequence('repository');
     try {
@@ -122,10 +133,7 @@ export function recordingRepositoryPort(
         recordedResult = await captureResult(result);
       } catch (error) {
         recorder.markOverflow('repository');
-        recordedResult = {
-          result,
-          captureError: errorMessage(error),
-        };
+        recordedResult = captureFailure(result, error);
       }
       recorder.recordRepository({ method, args, result: recordedResult }, sequence);
       return result;
@@ -151,6 +159,11 @@ export function recordingRepositoryPort(
       async (checkoutDir) => ({
         checkoutId: recorder.registerCheckoutPath(checkoutDir),
         snapshot: await checkoutSnapshot(checkoutDir),
+      }),
+      (checkoutDir, error) => ({
+        checkoutId: recorder.registerCheckoutPath(checkoutDir),
+        snapshot: { runtimeEvidencePaths: [], files: [] },
+        captureError: errorMessage(error),
       }),
       );
     },

@@ -66,7 +66,28 @@ describe('ReplayRecorder', () => {
     expect(bundle.completeness).toMatchObject({
       complete: false,
       overflowedBoundaries: ['http'],
-      pendingBoundaries: ['contree', 'executor', 'github', 'repository', 'tavily'],
+      pendingBoundaries: ['contree', 'executor', 'github', 'repository'],
+    });
+  });
+
+  it('finishes complete without an optional Tavily exchange', () => {
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+    recorder.recordGitHub({ method: 'getWorkflowRun', args: [], result: null });
+    recorder.recordRepository({ method: 'readPolicyAtSha', args: [], result: null });
+    recorder.recordExecutor({ method: 'run', args: [], result: null });
+    for (const boundary of ['nebius', 'contree'] as const) {
+      recorder.recordHttp({
+        boundary,
+        request: { method: 'POST', url: 'https://example.test', headers: {}, body: null },
+        response: { status: 200, headers: {}, body: '{}' },
+        latencyMs: 0,
+      });
+    }
+
+    expect(recorder.finish('fixed').completeness).toEqual({
+      complete: true,
+      overflowedBoundaries: [],
+      pendingBoundaries: [],
     });
   });
 
@@ -155,11 +176,11 @@ describe('ReplayRecorder', () => {
     expect(recorder.finish('infra-stop').completeness).toEqual({
       complete: false,
       overflowedBoundaries: [],
-      pendingBoundaries: ['contree', 'executor', 'github', 'nebius', 'repository', 'tavily'],
+      pendingBoundaries: ['contree', 'executor', 'github', 'nebius', 'repository'],
     });
   });
 
-  it('is complete only after all six named boundaries complete a record', () => {
+  it('is complete after all required boundaries complete a record', () => {
     const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
     recorder.recordGitHub({ method: 'getWorkflowRun', args: [], result: {} });
     recorder.recordRepository({ method: 'readPolicyAtSha', args: [], result: null });

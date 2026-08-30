@@ -2,6 +2,12 @@ import { Buffer } from 'node:buffer';
 
 const MAX_EXTERNAL_TEXT_BYTES = 1 * 1_024 * 1_024;
 const REDACTED_CREDENTIAL = '[redacted credential]';
+const EXTERNAL_TEXT_REDACTION_MARKERS = [
+  REDACTED_CREDENTIAL,
+  '[redacted private key]',
+  '[redacted token]',
+  '[redacted secret]',
+] as const;
 
 export interface ExternalTextRedaction {
   text: string;
@@ -64,6 +70,10 @@ export function redactExternalText(value: string): ExternalTextRedaction {
   );
 
   return { text, count };
+}
+
+export function containsExternalTextRedaction(value: string): boolean {
+  return EXTERNAL_TEXT_REDACTION_MARKERS.some((marker) => value.includes(marker));
 }
 
 export function assertExternalEditableText(value: string): string {

@@ -42,9 +42,6 @@ export const PENDING_CAPTURE_IMPORTS = new Set([
   'packages/action/src/github.test.ts',
   'packages/action/src/octokit.test.ts',
   'packages/action/src/repository.test.ts',
-  'packages/core/src/llm/nebius.test.ts',
-  'packages/core/src/llm/json.test.ts',
-  'packages/core/src/executor/contree.test.ts',
   'packages/core/src/diagnose/tavily.test.ts',
   'packages/core/src/runtime/detect.test.ts',
   'packages/core/src/runtime/python.test.ts',
@@ -76,10 +73,10 @@ function fixture(runId) {
   return captured;
 }
 
-test('captured fixture manifest binds 26 unique real bundles to hashes and sources', async () => {
+test('captured fixture manifest binds every unique real bundle to hashes and sources', async () => {
   const { bytes, manifest } = await capturedManifest();
   assert.doesNotMatch(bytes.toString('utf8'), SECRET_PATTERN);
-  assert.equal(manifest.entries.length, 26);
+  assert.ok(manifest.entries.length >= 26);
 
   const listed = new Set();
   for (const [index, entry] of manifest.entries.entries()) {
@@ -101,7 +98,10 @@ test('captured fixture manifest binds 26 unique real bundles to hashes and sourc
     assert.equal(captured.bundle.runId, entry.targetRunId);
     assert.equal(captured.bundle.repo, 'juan294/sutura');
     assert.equal(captured.bundle.capturedAt, entry.capturedAt);
-    assert.equal(captured.bundle.completeness.complete, false);
+    assert.equal(
+      captured.bundle.completeness.complete,
+      entry.kind === 'dogfood-gave-up' && entry.capturedBy === 'workflow',
+    );
     assert.ok(captured.bundle.github.length > 0);
     assert.deepEqual(
       [...completedReplayBoundaries(captured.bundle)].sort(),

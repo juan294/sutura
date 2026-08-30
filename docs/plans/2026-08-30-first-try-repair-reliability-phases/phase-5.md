@@ -133,3 +133,34 @@ name created for each.
   unnamed run step `Run pnpm run test`, while the validator and its mock used
   `pnpm run test`. The validator now requires the exact live API name, and the
   former mock-only name is rejected.
+- The same CI run had already triggered Sutura run `33321172589`. It completed
+  as `gave-up` after seven search nodes. The run spent USD 0.825674 on ConTree
+  and USD 0.013137 on inference, for USD 0.838811 total. No repair PR was
+  created. The check-run identity, HTML artifact, and replay artifact all bind
+  to CI run `33321106629` and dogfood commit
+  `1951701b95fd559335af3d3a7502e271c02befa2`.
+- That first real replay exposed three capture-contract defects. A repository
+  policy that fixes `runtime: node` did not suppress the 500-path runtime scan;
+  the checkout error fallback was not schema-valid; and completeness required
+  a Tavily exchange even when grounding was not applicable. Replay now records
+  a schema-valid logical checkout on capture failure, skips runtime discovery
+  when the captured policy fixes it, and treats Tavily as optional. Hash-only
+  ConTree upload bodies are accepted because deterministic replay uses the
+  recorded logical Executor stream, not diagnostic ConTree HTTP bodies.
+- The recovered complete fixture is
+  `packages/action/src/__fixtures__/captured/33321106629/bundle.json`. The named
+  test `replays live run 33321172589: source-limit gave-up with seven search
+  nodes` reproduces the terminal offline. The raw artifact hash remains in the
+  scratch ledger; the recovered replay fixture has its own manifest hash.
+- Replay showed that the final failure path arrived after eight earlier Vitest
+  reporter paths had filled the source limit. New Action captures record the
+  `latest` source-reference strategy. It gives line-bearing recent failures
+  priority and reserves four of the eight source slots for dependency closure,
+  so `packages/core/src/dogfood-add.test.ts` reaches
+  `packages/core/src/dogfood-add.ts`. Bundles without the strategy keep the
+  legacy `first` rule and remain deterministic.
+- The consolidated local gate found that `guards-3a.test.ts` and
+  `guards-3b.test.ts` still hard-coded interim file-and-line inventories.
+  Phase 3c already replaced those inventories with the run-time AST and v8
+  `guards:verify` gate. Both obsolete tests were deleted as Phase 3c required;
+  guard coverage is no longer invalidated by unrelated line movement.

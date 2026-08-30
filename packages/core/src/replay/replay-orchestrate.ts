@@ -137,6 +137,9 @@ export async function replayBundle(
         ...(options.runtimeId ?? validated.configuration.runtimeId
           ? { runtimeId: options.runtimeId ?? validated.configuration.runtimeId }
           : {}),
+        ...(validated.configuration.sourceReferenceOrder === undefined
+          ? {}
+          : { sourceReferenceOrder: validated.configuration.sourceReferenceOrder }),
       });
       for (const cursor of cursors) cursor.assertConsumed();
       return { caseFile, mutations: githubReplay.mutations };

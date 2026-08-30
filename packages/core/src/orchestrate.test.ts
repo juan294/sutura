@@ -1376,7 +1376,6 @@ describe('repair source context', () => {
         checkoutDir: '/tmp/exact-pr-head',
         paths: [
           'packages/core/src/dogfood-add.test.ts',
-          'src/dogfood-add.test.ts',
         ],
       },
       {
@@ -1407,6 +1406,21 @@ describe('repair source context', () => {
 
     expect(context.sources.map(({ path }) => path)).toEqual(['src/test.ts']);
     expect(JSON.stringify(context)).not.toContain('super-secret-value');
+  });
+
+  it('omits source evidence that capture already redacted', async () => {
+    const repository = new FakeRepository();
+    repository.sources.clear();
+    repository.sources.set('src/test.ts', '[redacted credential]\n');
+
+    const context = await readRepairSourceContext(
+      repository,
+      '/tmp/exact-pr-head',
+      'src/test.ts:1: assertion failed',
+      { class: 'test-assertion' },
+    );
+
+    expect(context.sources).toEqual([]);
   });
 
   it('does not add another dependency variant when the failed log already supplied one', async () => {
@@ -1542,7 +1556,6 @@ describe('repair source context', () => {
     });
     expect(repository.sourceReads[0]?.paths).toEqual([
       'packages/core/src/diagnose/tavily.ts',
-      'src/diagnose/tavily.ts',
       'tsconfig.json',
       'package.json',
     ]);
@@ -1615,6 +1628,78 @@ describe('repair source context', () => {
     expect(references).not.toContainEqual(
       expect.objectContaining({ path: 'packages/ignored/src/ninth.ts' }),
     );
+  });
+
+  it('keeps the latest failure paths when earlier reporter summaries fill the cap', () => {
+    const log = [
+      ...Array.from({ length: 8 }, (_, index) => `src/summary-${index}.test.ts`),
+      'src/dogfood-add.test.ts:7:23 AssertionError: expected -1 to be 5',
+    ].join('\n');
+
+    const references = extractSourceReferences(log, 'latest');
+
+    expect(references).toHaveLength(8);
+    expect(references).not.toContainEqual({ path: 'src/summary-0.test.ts' });
+    expect(references).toContainEqual({ path: 'src/dogfood-add.test.ts', line: 7 });
+  });
+
+  it('keeps latest pnpm reporter paths qualified by their workspace', () => {
+    const log = [
+      ...Array.from(
+        { length: 8 },
+        (_, index) => `packages/core test: src/summary-${index}.test.ts`,
+      ),
+      'packages/core test: src/dogfood-add.test.ts:7:23 AssertionError',
+    ].join('\n');
+
+    const references = extractSourceReferences(log, 'latest');
+
+    expect(references).toContainEqual({
+      path: 'packages/core/src/dogfood-add.test.ts',
+      line: 7,
+    });
+    expect(references).not.toContainEqual({ path: 'src/dogfood-add.test.ts', line: 7 });
+  });
+
+  it('reserves dependency capacity for the latest line-bearing failure source', async () => {
+    const repository = new FakeRepository();
+    repository.sources.clear();
+    for (let index = 0; index < 8; index += 1) {
+      repository.sources.set(
+        `packages/core/src/summary-${index}.test.ts`,
+        'export {};\n',
+      );
+    }
+    repository.sources.set(
+      'packages/core/src/dogfood-add.test.ts',
+      "import { add } from './dogfood-add.js';\nexpect(add(2, 3)).toBe(5);\n",
+    );
+    repository.sources.set(
+      'packages/core/src/dogfood-add.ts',
+      'export const add = (left: number, right: number) => left - right;\n',
+    );
+    const log = [
+      ...Array.from(
+        { length: 8 },
+        (_, index) => `packages/core test: src/summary-${index}.test.ts`,
+      ),
+      'packages/core test: src/dogfood-add.test.ts:7:23 AssertionError',
+    ].join('\n');
+
+    const context = await readRepairSourceContext(
+      repository,
+      '/tmp/exact-pr-head',
+      log,
+      { class: 'test-assertion' },
+      undefined,
+      'node',
+      'latest',
+    );
+
+    expect(context.sources.map(({ path }) => path)).toContain(
+      'packages/core/src/dogfood-add.ts',
+    );
+    expect(repository.sourceReads[0]?.paths).toHaveLength(4);
   });
 
   it('extracts exact JSON paths without accepting partial extensions', () => {

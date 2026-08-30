@@ -8,6 +8,7 @@ import type { Executor } from '../executor/types.js';
 import type { ModelTier } from '../llm/cost.js';
 import type { RepositoryPort } from '../orchestrate.js';
 import type { RuntimeId } from '../runtime/types.js';
+import type { SourceReferenceOrder } from '../orchestrate.js';
 import { redactExternalText } from '../security/external-text.js';
 
 export const REPLAY_BUNDLE_SCHEMA_VERSION = 'sutura-replay-v1' as const;
@@ -123,6 +124,7 @@ export interface ReplayOrchestrationConfig {
   models: Readonly<Record<ModelTier, string>>;
   routingProfileId: string;
   maxOps: number;
+  sourceReferenceOrder?: SourceReferenceOrder;
 }
 
 export interface ReplayBundle {
@@ -592,7 +594,7 @@ export class ReplayRecorder {
 
   finish(outcome: CaseFile['outcome']): ReplayBundle {
     const requiredBoundaries: readonly ReplayBoundary[] = [
-      'github', 'repository', 'executor', 'nebius', 'tavily', 'contree',
+      'github', 'repository', 'executor', 'nebius', 'contree',
     ];
     const completedBoundaries = new Set<ReplayBoundary>([
       ...(this.github.length > 0 ? ['github' as const] : []),

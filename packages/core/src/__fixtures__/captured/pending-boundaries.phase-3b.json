@@ -2,9 +2,7 @@
   "schemaVersion": "sutura-phase-3b-pending-v1",
   "pendingPhase": "phase-5",
   "boundaries": [
-    "provider",
-    "tavily",
-    "contree"
+    "tavily"
   ],
-  "reason": "Phase 3b uses labeled synthetic guard fixtures. Live capture requires the separate Phase 5 authorization."
+  "reason": "The Phase 5 live run captured Nebius and ConTree. Tavily remains synthetic because test-assertion grounding was not applicable and made no Tavily request."
 }

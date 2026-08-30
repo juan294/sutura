@@ -372,6 +372,25 @@
         "github"
       ],
       "notes": "A4: committed Action bundle was stale; branch develop changed; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33321106629",
+      "targetRunId": "33321106629",
+      "suturaRunId": "33321172589",
+      "kind": "dogfood-gave-up",
+      "headSha": "1951701b95fd559335af3d3a7502e271c02befa2",
+      "capturedAt": "2026-08-30T16:02:28.403Z",
+      "source": "https://github.com/juan294/sutura/actions/runs/33321106629",
+      "capturedBy": "workflow",
+      "bundleSha256": "be789a2c58c298768224239d3cf84965a8b85ea558a705acd410dd52a62d47d3",
+      "boundaries": [
+        "contree",
+        "executor",
+        "github",
+        "nebius",
+        "repository"
+      ],
+      "notes": "Live dogfood gave up after seven search nodes; recovered losslessly for replay by omitting optional Tavily and replacing the legacy checkout capture error with an empty runtime snapshot because the recorded repository policy fixes runtime=node"
     }
   ]
 }
