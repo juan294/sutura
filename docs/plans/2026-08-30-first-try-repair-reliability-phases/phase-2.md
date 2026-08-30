@@ -1,3 +1,5 @@
+<!-- contract:allow-emoji -->
+<!-- The Vitest reporter glyph U+276F is quoted verbatim: the log-parsing finding depends on the exact byte. -->
 # Phase 2: Historical capture, bundle contract, `sutura replay`, captured-fixture manifest
 
 ## Goal

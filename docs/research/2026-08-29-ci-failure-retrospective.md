@@ -1,3 +1,5 @@
+<!-- contract:allow-emoji -->
+<!-- The Vitest reporter glyph U+276F is quoted verbatim: the log-parsing finding depends on the exact byte. -->
 # CI failure retrospective: every red run, 2026-08-27 to 2026-08-29
 
 Date: 2026-08-29
