@@ -87,9 +87,11 @@ Modify:
    }
    ```
 
-   `source` must satisfy `publicGitHubUrl` (`scripts/evidence-contract.mjs:43`);
-   `headSha` must satisfy `exactSha`; `bundleSha256` must equal the SHA-256 of
-   the file bytes.
+   For `capturedBy: 'workflow'`, `source` must satisfy `publicGitHubUrl`
+   (`scripts/evidence-contract.mjs:43`). For `capturedBy: 'local'`, `source`
+   must satisfy `exactSha` and identify the committed capture script used for
+   the run. `headSha` must satisfy `exactSha`; `bundleSha256` must equal the
+   SHA-256 of the file bytes.
 
 2. Add run-time-validated bundle and manifest parsers. Reject unknown schema
    versions, malformed records, missing outcomes for complete bundles,
@@ -163,7 +165,8 @@ Modify:
 
 11. Contract test `captured-fixtures.test.mjs`:
    - every manifest entry's file exists, hash matches, `source` is a public
-     GitHub run URL for `juan294/sutura`, `headSha` is exact;
+     GitHub run URL for `juan294/sutura` when captured by workflow or an exact
+     capture-script commit SHA when captured locally, and `headSha` is exact;
    - every file under `__fixtures__/captured/` is listed in a manifest;
    - no captured file matches `/Bearer\s+\S+|\bnb-[A-Za-z0-9]{8,}|\bghp_|\bgithub_pat_|\bsk-[A-Za-z0-9]{8,}/u`;
    - for each boundary test file (list enumerated in the script:

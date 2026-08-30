@@ -12,7 +12,27 @@
 - E2E artifact contract: the `fixed` and `gave-up` storylines assert exactly `sutura-case-file-77001.html` plus `sutura-replay-77001.json`. The replay assertion checks the final outcome, populated GitHub, Repository, logical Executor, and HTTP streams, and `completeness.complete === true`. A run without replay capture still uploads exactly one artifact.
 - `git diff --check`: passed.
 
+## Phase 2 exit evidence
+
+- Implementation lineage: capture commits `c026b69` and `c91ff2b`; replay runtime and CLI commits `9948465` and `e1bc839`; contract and simplify corrections through `cf278fd`.
+- Historical corpus: 26 unique GitHub/log partial bundles, all with local capture provenance bound to `c026b69`; manifest SHA-256 `49a0fba717ad3f71551439c489da633ad389109e83bb21ffb1e3e8b128f6d50a`.
+- B-class regression tests:
+  - `replays A1 push metadata as a direct run while the pre-fix guard rejects it`
+  - `replays A3 with the current command retention and reproduces pre-fix slicing`
+  - `replays captured A3 pre-fix log slicing and stops before diagnosis`
+- Real complete replay coverage: `replays every recorded boundary through the real offline orchestration path` and CLI test `replays a complete bundle offline and prints matching CaseFile JSON` exercise the generated complete bundle without external I/O.
+- Actual command: `node packages/cli/dist/bin.js replay --bundle packages/action/src/__fixtures__/captured/33239848825/bundle.json --format json`.
+- Actual result: exit 1 with `bundle is partial; complete provider, repository, and sandbox recordings are required` before network or sandbox construction, as required for a historical partial bundle.
+- Final verification: Core 872 passed and 8 skipped; Action 83 passed; CLI 93 passed; captured fixtures 25 passed; release contracts 52 passed; typecheck, lint, build, `verify:bundle`, `git diff --check`, and a clean archive checkout passed.
+
 ## Deviations
+
+### Local capture source validation
+
+- Plan said: Validate every manifest `source` as a public GitHub run URL, while the manifest type also allowed a capture commit SHA for local captures.
+- Found: The 26 historical bundles were captured locally through read-only `gh api`; labeling them as workflow captures would give false provenance, and a fixture commit cannot refer to its own SHA.
+- Chose: Commit the capture tool first, label every fixture `capturedBy: 'local'`, and bind `source` to capture-tool commit `c026b69`; validate workflow URLs only for workflow captures and exact commit SHAs for local captures.
+- Why: The two-commit sequence gives honest, immutable, non-self-referential provenance.
 
 ### Logical Executor recording
 
