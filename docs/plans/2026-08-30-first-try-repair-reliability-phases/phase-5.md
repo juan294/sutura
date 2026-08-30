@@ -12,9 +12,10 @@ named replay test before the next candidate.
 
 ## Preconditions
 
-- Phases 3a, 3b, 3c, and 4 are merged to `develop`; `guards:verify` is
-  337/337 (re-derived); `ci:local` is green.
-- The user has batch-authorized one streak attempt (decision 1 in the plan).
+- Phases 3a, 3b, 3c, and 4 are merged and pushed to `develop`;
+  `guards:verify` is dynamic `N/N`; `ci:local` and exact-SHA push CI are green.
+- Execution stops here until the user gives the one-time live-spend
+  authorization for the canary and one reserved-headroom streak attempt.
 - `docs/demo/thumbnail/` remains untracked and untouched.
 
 ## Implementation
@@ -25,7 +26,8 @@ named replay test before the next candidate.
    `gh workflow run provider-contract-canary.yml --ref develop`; wait; the
    `provider-contract-canary` artifact must exist and bind to the SHA.
 3. `pnpm run dogfood gate` — all conditions PASS.
-4. `pnpm run dogfood streak --sha <sha> --authorize --cap-usd 10`.
+4. `pnpm run dogfood streak --sha <sha> --authorize --cap-usd 10
+   --initial-reserve-usd 1.50`.
 5. On the first non-`fixed`:
    a. the script has stored `sutura-replay-<ci>.json` under
       `packages/action/src/__fixtures__/captured/<ci>/`; commit it with a
@@ -44,8 +46,10 @@ named replay test before the next candidate.
       `test:captured-fixtures`, `ci:local`, `/simplify`);
    f. push one candidate; return to step 1. The ledger keeps the failed
       entry; the streak restarts at attempt 1 on the new tree hash.
-6. On streak completion: `node scripts/release-evidence.mjs` shows
-   `dogfood: passed`; commit the ledger and the regenerated `.md`.
+6. On streak completion: promote the scratch ledger to
+   `docs/demo/dogfood-ledger.json`, regenerate the `.md`, and run the
+   documented release-evidence status mode to show `dogfood: passed`; commit
+   both canonical files once.
 7. Preserve every remote `dogfood/streak-*` and `sutura/fix-*` branch.
 8. Remove task-owned local worktrees; local `develop` equals
    `origin/develop`.

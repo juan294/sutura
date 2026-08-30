@@ -4,8 +4,9 @@
 
 ## Goal
 
-Turn every historical red run into a captured fixture, make any bundle
-replayable offline through the real orchestrator, and make "captured, not
+Turn each unique historical CI run into a partial captured fixture for GitHub
+and log-parsing boundary tests, make complete bundles replayable offline
+through the real orchestrator, and make "captured, not
 hand-written" a machine-checked property of boundary tests.
 
 ## Files
@@ -92,11 +93,12 @@ Modify:
    artifact, download it and merge its `http` array instead. Write
    `bundle.json` and append a manifest entry.
 
-3. Capture the 29 historical runs listed in
-   `docs/research/2026-08-29-ci-failure-retrospective.md` (A1–A4, B1–B4 via
-   their triggering CI runs, C 08-27 ×5, C 08-29 ×16) plus the one success
-   `33118205130`. Commit them. These are real GitHub payloads and raw logs
-   including ANSI escapes and the pnpm workspace prefixes.
+3. Capture the 26 unique triggering CI runs represented by the A, B, and C
+   evidence in `docs/research/2026-08-29-ci-failure-retrospective.md`.
+   `workflowRunId`, `targetRunId`, and optional `suturaRunId` are separate
+   manifest fields so B crashes do not duplicate their triggering CI bundle.
+   Commit the real GitHub payloads and raw logs, including ANSI escapes and
+   pnpm workspace prefixes.
 
 4. `replayFetch(bundle, boundary)`: returns a `fetch`-shaped function that
    pops the next recorded exchange for that boundary, asserts the request
@@ -110,19 +112,19 @@ Modify:
    sequence and returns the recorded terminal (exit, stdout, stderr, metrics).
    Reuses `InMemoryExecutor` (`packages/core/src/executor/memory.ts:42`)
    semantics for image ids. Where a bundle has no `contree` exchanges (all
-   historical captures), `replayBundle` accepts an injected `Executor`
-   (tests pass an `InMemoryExecutor` script), and `sutura replay` fails closed
-   with "bundle has no sandbox recording; supply --executor-script".
+   historical captures), boundary-level tests accept injected dependencies.
+   The public `sutura replay` command fails closed with "bundle is partial;
+   complete provider, repository, and sandbox recordings are required".
 
 6. `replayingGitHubApi(bundle)`: returns a `GitHubApi` whose read methods
    return recorded results in order and whose mutating methods record the
    requested mutation into an in-memory list and return the recorded ids.
 
-7. `replayBundle(bundle, { executor?, artifact? })`: constructs
+7. `replayBundle(bundle, { executor?, artifact? })`: requires a complete
+   bundle and constructs
    `GitHubAdapter` over `replayingGitHubApi`, a `RepositoryPort` that serves
-   source excerpts from the recorded `readSourceExcerpts` results (recorded in
-   Phase 1 as GitHub-boundary-adjacent calls: add `RepositoryPort` recording
-   to the recorder, `packages/action/src/repository.ts`), `createTokenFactoryClient`
+   the recorded Phase 1 repository calls and materializes the bounded replay
+   checkout needed by runtime detection, `createTokenFactoryClient`
    with `replayFetch(bundle,'nebius')`, `TavilyClient` with
    `replayFetch(bundle,'tavily')`, and runs `orchestrate()`. Returns
    `{ caseFile, mutations }`.
@@ -151,7 +153,7 @@ Modify:
 - `capture-run.test.mjs`: with an injected `gh api` returning the fixture
   payloads, the script writes a bundle whose `github` call order equals the
   adapter's resolution order and a manifest entry with a correct hash.
-- All 30 historical captures exist, validate, and contain the real ANSI
+- All 26 unique historical CI captures exist, validate, and contain the real ANSI
   Vitest line for the 08-29 dogfood runs (`[31m❯[39m`) and the
   raw `Hook timed out in 10000ms` text for A2/A3.
 - `replay-fetch.test.ts`: a request that differs from the recording by one
@@ -170,9 +172,10 @@ Modify:
 - The captured bundle for `33169026068` (A1) replayed on the pre-`0d3b087`
   `ALLOWED_RUN_EVENTS` logic reproduces `github.ts:238`; on current code it
   resolves the direct run (B2 regression).
-- `sutura replay --bundle <A3 bundle>` exits 0 and prints a `CaseFile` whose
-  outcome equals the bundle's recorded outcome; with a tampered outcome it
-  exits 1.
+- `sutura replay --bundle <partial A3 bundle>` fails closed before network or
+  sandbox work. A complete captured bundle exits 0 and prints a `CaseFile`
+  whose outcome equals the bundle's recorded outcome; with a tampered outcome
+  it exits 1.
 - `cli` `args.test.ts`: `replay` parses; unknown flags rejected; `--bundle`
   required.
 - The 1..16 replay coverage assertion passes with run IDs bound to manifest

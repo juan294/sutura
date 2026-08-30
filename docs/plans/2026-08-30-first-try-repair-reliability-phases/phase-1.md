@@ -1,10 +1,10 @@
-# Phase 1: Replay bundle capture at the five boundaries
+# Phase 1: Replay bundle capture at the six boundaries
 
 ## Goal
 
 Every live Sutura run with `capture-replay: true` uploads a machine-readable
 `sutura-replay-<runId>.json` containing the raw (credential-free) inputs and
-outputs at all five external boundaries, sufficient to re-run `orchestrate()`
+outputs at all six external boundaries, sufficient to re-run `orchestrate()`
 offline.
 
 ## Files
@@ -13,11 +13,14 @@ Add:
 
 - `packages/core/src/replay/bundle.ts` — `ReplayBundle` type, schema version,
   `ReplayRecorder` class, redaction.
-- `packages/core/src/replay/record-fetch.ts` — recording wrappers for the
-  Nebius, Tavily, and ConTree `fetch` shapes.
+- `packages/core/src/replay/record-fetch.ts` — boundary-specific recording
+  wrappers for the Nebius, Tavily, and ConTree transport shapes.
 - `packages/core/src/replay/bundle.test.ts`, `record-fetch.test.ts`.
 - `packages/action/src/replay-github.ts` — recording `GitHubApi` decorator.
 - `packages/action/src/replay-github.test.ts`.
+- `packages/action/src/replay-repository.ts` — recording `RepositoryPort`
+  decorator for reads and the requested `publishFix` mutation.
+- `packages/action/src/replay-repository.test.ts`.
 
 Modify:
 
@@ -76,40 +79,41 @@ Modify:
      actionSha: string;                // GITHUB_SHA of the Sutura run
      capturedAt: string;               // ISO
      github: RecordedGitHubCall[];
+     repository: RecordedRepositoryCall[];
      http: RecordedHttpExchange[];
      outcome?: CaseFile['outcome'];    // filled before upload
    }
    ```
 
-2. `ReplayRecorder`:
+2. `ReplayRecorder` receives the secret values that must never be persisted:
 
    ```ts
    export class ReplayRecorder {
-     constructor(readonly runId: string, readonly repo: string, readonly actionSha: string);
+     constructor(readonly runId: string, readonly repo: string, readonly actionSha: string, secrets?: readonly string[]);
      recordHttp(exchange: Omit<RecordedHttpExchange, 'sequence'>): void;
      recordGitHub(call: Omit<RecordedGitHubCall, 'sequence'>): void;
      finish(outcome: CaseFile['outcome']): ReplayBundle;   // applies redactBundle
    }
    ```
 
-   Bounds: at most 512 HTTP exchanges and 256 GitHub calls; each body at most
-   2 MiB; exceeding a bound records `{ truncated: true, bytes }` in place of the
-   body rather than throwing (recording must never fail a repair).
+   Bounds: at most 512 HTTP exchanges and 256 GitHub or repository calls. A
+   bounded-body union stores text up to 1 MiB or `{ truncated: true, bytes,
+   sha256 }`; binary or stream bodies record length/hash metadata. Truncation
+   happens before redaction and recording never throws or fails a repair.
 
-3. Redaction (`redactBundle`): strip `authorization`, `x-api-key`, `cookie`,
+3. Redaction (`redactBundle`): request and response records include headers;
+   strip `authorization`, `x-api-key`, `cookie`,
    `set-cookie` headers on both request and response; run every string
    through `redactExternalText` from
    `packages/core/src/security/external-text.ts`; replace the API key value if
    it appears anywhere in a body (the recorder receives the key values to
    scrub, never stores them).
 
-4. Recording fetch wrappers (`record-fetch.ts`): one generic
-   `recordingFetch<F>(boundary, recorder, fetch: F): F` that clones the
-   request init (`body` string), calls the inner fetch, reads the response
-   body once via `text()`, and returns a new `HttpResponse` whose `json()` and
-   `text()` re-parse the captured string. Typed overloads for the three
-   boundary `fetch` signatures (`nebius.ts:42-50`, `tavily.ts:25-30`,
-   `contree.ts:103`).
+4. Recording transport wrappers (`record-fetch.ts`): implement separate
+   `recordingNebiusFetch`, `recordingTavilyFetch`, and `recordingContreeFetch`
+   adapters over the exact boundary types. Nebius and Tavily preserve their
+   one-shot response semantics. ConTree records safe HTTP metadata and logical
+   executor operations; stream bodies are represented by length/hash metadata.
 
 5. Recording `GitHubApi` decorator (`replay-github.ts`):
 
@@ -124,27 +128,34 @@ Modify:
    `createCheckRun`, comments, `updateCheckRun`) are recorded with args and
    returned ids so replay can assert the same mutations were requested.
 
-6. `orchestrate.ts`: in `prepareReport`, after the HTML upload, if
+6. `recordingRepositoryPort` records `readPolicyAtSha`, `checkoutHead`,
+   `readSourceExcerpts`, and `publishFix` in call order while returning the
+   wrapped port's exact result.
+
+7. `orchestrate.ts`: in `prepareReport`, after the HTML upload, if
    `ctx.replay` is set, call
    `github.uploadReplayBundle(\`sutura-replay-${run.runId}.json\`, JSON.stringify(ctx.replay.finish(caseFile.outcome)))`.
-   Also upload on the `fixed` path (`:647`) and in the failure-safe path so a
+   The replay artifact is best-effort: capture or upload failure emits a
+   warning but cannot change a valid product outcome. Also upload on the
+   `fixed` path (`:647`) and in the failure-safe path so a
    crash still yields a bundle (the `withFailureSafeCheck` wrapper in
    `packages/action/src/failure-safe.ts` gets the recorder and uploads on
    error with `outcome: 'infra-stop'`).
 
-7. `main.ts`: build wrappers only when `action.captureReplay`:
+8. `main.ts`: build wrappers only when `action.captureReplay` and wrap the
+   repository before it enters orchestration:
 
    ```ts
    const recorder = action.captureReplay
      ? new ReplayRecorder(action.runId, `${owner}/${repo}`, process.env.GITHUB_SHA ?? '')
      : undefined;
-   const nebius = createTokenFactoryClient({...}, recorder ? { fetch: recordingFetch('nebius', recorder, globalThis.fetch) } : {});
+   const nebius = createTokenFactoryClient({...}, recorder ? { fetch: recordingNebiusFetch(recorder, globalThis.fetch) } : {});
    ```
 
    Same for `TavilyClient` and `ContreeExecutor.fetch`; the adapter receives
    `recorder ? recordingGitHubApi(api, recorder) : api`.
 
-8. Rebuild the bundle; commit `dist/index.cjs` with the change.
+9. Rebuild the bundle; commit `dist/index.cjs` with the change.
 
 ## Automated success criteria
 

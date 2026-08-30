@@ -20,11 +20,12 @@ Add captured fixtures under `packages/core/src/__fixtures__/captured/`:
   the canary (Phase 4 makes the canary upload a bundle; until then, one
   authorized local `SUTURA_LIVE=1` canary run with the Phase 1 recorder
   writes it — inference cost ≈ USD 0.001, no sandbox).
-- `provider/error-shapes/*.json` — real 400/401/429/503 bodies captured by
-  sending deliberately malformed requests to the exact endpoint during the
-  same authorized session (each is one HTTP call, no inference charged on
-  rejection); includes the live-16 `reasoning_effort: none` 400 body.
-- `tavily/<capture-id>/bundle.json` — one real search exchange.
+- `provider/error-shapes/*.json` — real 400/401 bodies captured by sending
+  deliberately malformed requests to the exact endpoint during the same
+  authorized session; includes the live-16 `reasoning_effort: none` 400 body.
+  429/503 remain labeled synthetic until observed provider bodies exist.
+- `tavily/<capture-id>/bundle.json` — one real search exchange and one real
+  extract exchange.
 - `contree/<capture-id>/bundle.json` — from the first Phase 5 live run, or
   from one authorized sandbox smoke (`contree.live.test.ts` shape) with the
   recorder attached; until then, ConTree guard tests use the existing
@@ -71,9 +72,9 @@ Modify tests only:
    until Phase 5 produces their captures.
 
 4. Tavily: capture one real `search` response with the query used by
-   `tavily.live.test.ts`; guard tests mutate fields (missing `results`,
-   non-https URL, oversized snippet, non-array citations) on the captured
-   body.
+   `tavily.live.test.ts` and one real `extract` response; guard tests mutate
+   fields (missing `results`, non-https URL, oversized snippet, non-array
+   citations) on the applicable captured body.
 
 5. ConTree: for the 35 unreached guards, construct inputs per guard; for
    response-shape guards prefer the captured bundle once it exists; for
