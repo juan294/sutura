@@ -9,6 +9,15 @@ export {
 } from './config.js';
 export { ContreeError, ContreeExecutor } from './executor/contree.js';
 export { InMemoryExecutor } from './executor/memory.js';
+export { GitHubAdapter, GitHubAdapterError } from './github/adapter.js';
+export {
+  MAX_CHECK_ANNOTATIONS,
+  SUTURA_CHECK_NAME,
+  checkAnnotations,
+  checkConclusion,
+  checkExternalId,
+  checkOutput,
+} from './github/checks.js';
 export {
   AllowlistedExecutor,
   HealCaseError,
@@ -139,6 +148,14 @@ export {
   recordingTavilyFetch,
 } from './replay/record-fetch.js';
 export { recordingExecutor } from './replay/record-executor.js';
+export { canonicalJson, firstJsonDifference, CanonicalJsonError } from './replay/canonical-json.js';
+export { CAPTURED_FIXTURES_SCHEMA_VERSION, CapturedFixturesValidationError, parseCapturedFixturesManifest } from './replay/manifest.js';
+export { RecordedExecutor } from './replay/replay-executor.js';
+export { ReplayMismatchError, replayFetch } from './replay/replay-fetch.js';
+export { replayingGitHubApi } from './replay/replay-github.js';
+export { replayBundle } from './replay/replay-orchestrate.js';
+export { RecordedRepository } from './replay/replay-repository.js';
+export { ReplayValidationError, parseReplayBundle } from './replay/validate.js';
 export {
   ExternalTextError,
   assertExternalEditableText,
@@ -154,6 +171,17 @@ export type {
   RepairFailureContext,
 } from './heal.js';
 export type { RepairFailureKind } from './domain.js';
+export type {
+  CheckAnnotation,
+  GitHubAdapterOptions,
+  GitHubApi,
+  GitHubCheckOutput,
+  PullRequestRecord,
+  TextArtifactPort,
+  WorkflowJobRecord,
+  WorkflowJobStep,
+  WorkflowRunRecord,
+} from './github/types.js';
 export type {
   ModelPrice,
   ModelPrices,
@@ -207,6 +235,7 @@ export type { AuditOnlyContext, AuditOnlyLlm } from './audit-only.js';
 export type { ContreeExecutorConfig } from './executor/contree.js';
 export type {
   BinaryBody,
+  RawBody,
   RecordedBody,
   RecordedGitHubCall,
   RecordedHttpExchange,
@@ -217,6 +246,13 @@ export type {
   StreamBody,
   TruncatedBody,
 } from './replay/bundle.js';
+export type {
+  CapturedFixtureBoundary,
+  CapturedFixtureEntry,
+  CapturedFixturesManifest,
+} from './replay/manifest.js';
+export type { RecordedGitHubMutation, ReplayingGitHubApi } from './replay/replay-github.js';
+export type { ReplayBundleOptions, ReplayBundleResult } from './replay/replay-orchestrate.js';
 export type {
   InMemoryCall,
   InMemoryRunResult,

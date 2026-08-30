@@ -1,5 +1,7 @@
 import { aggregateStageEvidence, type CaseFile } from '@sutura/core';
 
+export { checkOutput } from '@sutura/core';
+
 export function runtimeEvidence(
   caseFile: CaseFile,
 ): string[] {
@@ -40,16 +42,4 @@ export function runtimeEvidence(
     `Policy evidence: base-ref=${caseFile.policy.baseRef}; base-sha=${caseFile.policy.baseSha}; policy-sha=${caseFile.policy.policySha}`,
   );
   return lines;
-}
-
-export function checkOutput(caseFile: CaseFile): { title: string; summary: string } {
-  return {
-    title: `Sutura outcome: ${caseFile.outcome}`,
-    summary: [
-      `Outcome: ${caseFile.outcome}`,
-      `Diagnosis: ${caseFile.diagnosis.class}`,
-      `Policy SHA: ${caseFile.policy.policySha}`,
-      `Inference cost: $${caseFile.cost.totalUsd().toFixed(6)}`,
-    ].join('\n').slice(0, 65_535),
-  };
 }
