@@ -216,7 +216,7 @@ function capacitySnapshot(headers: HttpHeaders): CapacitySnapshot {
 }
 
 function parseToolCalls(value: unknown): readonly FunctionToolCall[] {
-  if (value === undefined) {
+  if (value === undefined || value === null) {
     return Object.freeze([]);
   }
   if (!Array.isArray(value)) {

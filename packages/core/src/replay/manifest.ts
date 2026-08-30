@@ -8,7 +8,7 @@ export interface CapturedFixtureEntry {
   targetRunId: string;
   suturaRunId?: string;
   kind: 'ci-failure' | 'ci-success' | 'provider-capture' | 'tavily-capture'
-    | 'sandbox-capture' | 'dogfood-gave-up';
+    | 'sandbox-capture' | 'dogfood-gave-up' | 'dogfood-refused';
   headSha: string;
   capturedAt: string;
   source: string;
@@ -35,7 +35,7 @@ const SHA = /^[a-f0-9]{40}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const KINDS = new Set([
   'ci-failure', 'ci-success', 'provider-capture', 'tavily-capture',
-  'sandbox-capture', 'dogfood-gave-up',
+  'sandbox-capture', 'dogfood-gave-up', 'dogfood-refused',
 ]);
 const BOUNDARIES = new Set(['github', 'nebius', 'tavily', 'contree', 'repository', 'executor']);
 const ENTRY_KEYS = new Set([

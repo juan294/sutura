@@ -410,6 +410,25 @@
         "repository"
       ],
       "notes": "Live dogfood streak attempt 1 gave up"
+    },
+    {
+      "workflowRunId": "33325938237",
+      "targetRunId": "33325938237",
+      "suturaRunId": "33326031664",
+      "kind": "dogfood-refused",
+      "headSha": "506c6cc44aae56df0d0e820d3733bb6bc900d4de",
+      "capturedAt": "2026-08-30T17:45:35.801Z",
+      "source": "https://github.com/juan294/sutura/actions/runs/33325938237",
+      "capturedBy": "workflow",
+      "bundleSha256": "126969bd50159b7bbf05d885e9402d889ecba7d2e3398cfa2fd481ca7111d993",
+      "boundaries": [
+        "contree",
+        "executor",
+        "github",
+        "nebius",
+        "repository"
+      ],
+      "notes": "Live dogfood streak attempt 1 refused because Ultra returned null tool_calls with valid audit content"
     }
   ]
 }

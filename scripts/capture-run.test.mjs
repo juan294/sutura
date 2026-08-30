@@ -118,6 +118,30 @@ test('complete dogfood promotion preserves every replay stream and outcome', asy
   }
 });
 
+test('complete dogfood promotion preserves a refused replay for regression', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'sutura-refused-capture-'));
+  const artifact = completeArtifact();
+  artifact.outcome = 'refused';
+  const bytes = Buffer.from(JSON.stringify(artifact));
+  try {
+    await installCompleteCapturedFixture({
+      workflowRunId: artifact.runId,
+      suturaRunId: '33269188958',
+      headSha: SHA,
+      bundleBytes: bytes,
+      outDir: output,
+    });
+    const promotedBytes = await readFile(join(output, artifact.runId, 'bundle.json'));
+    const manifest = parseCapturedFixturesManifest(
+      JSON.parse(await readFile(join(output, 'manifest.json'), 'utf8')),
+    );
+    assert.deepEqual(promotedBytes, bytes);
+    assert.equal(manifest.entries[0].kind, 'dogfood-refused');
+  } finally {
+    await rm(output, { recursive: true, force: true });
+  }
+});
+
 test('capture-run records adapter call order, raw logs, branch drift, and manifest hash', async () => {
   const output = await mkdtemp(join(tmpdir(), 'sutura-capture-run-'));
   const calls = [];

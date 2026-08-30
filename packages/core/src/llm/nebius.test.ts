@@ -107,6 +107,17 @@ async function capturedNebiusResponse(): Promise<unknown> {
   return JSON.parse(decodedRecordedBody(body));
 }
 
+async function capturedUltraAuditResponse(): Promise<unknown> {
+  const bundle = await capturedDogfoodReplayBundle('33325938237');
+  for (const exchange of successfulCapturedHttp(bundle, 'nebius')) {
+    const parsed = JSON.parse(decodedRecordedBody(exchange.response.body)) as {
+      choices?: Array<{ message?: { tool_calls?: unknown } }>;
+    };
+    if (parsed.choices?.[0]?.message?.tool_calls === null) return parsed;
+  }
+  throw new Error('Captured Ultra audit response is unavailable');
+}
+
 describe('NebiusClient', () => {
   it('accepts the captured workflow 33321172589 Nebius response shape', async () => {
     const client = new NebiusClient(CONFIG, {
@@ -118,6 +129,18 @@ describe('NebiusClient', () => {
     expect(reply.text).toContain('test-assertion');
     expect(reply.usage.inTok).toBeGreaterThan(0);
     expect(reply.usage.outTok).toBeGreaterThan(0);
+  });
+
+  it('replays Sutura 33326031664: accepts null tool_calls with audit content', async () => {
+    const client = new NebiusClient(CONFIG, {
+      fetch: vi.fn().mockResolvedValue(response(await capturedUltraAuditResponse())),
+    });
+
+    const reply = await client.chat('ultra', MESSAGES);
+
+    expect(reply.text).toContain('"approved":true');
+    expect(reply.toolCalls).toEqual([]);
+    expect(reply.usage.reasoningTok).toBeGreaterThan(0);
   });
 
   it('exports the Token Factory protocol types from the package root', () => {

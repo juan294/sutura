@@ -616,15 +616,15 @@ export async function runDogfoodAttempt(options, inputDependencies = {}) {
       recordedAt: new Date(dependencies.now()).toISOString(),
     };
     await (dependencies.appendEntry ?? appendScratchEntry)(entry, dependencies);
-    if (outcome === 'gave-up') {
+    if (outcome === 'gave-up' || outcome === 'refused') {
       const { installCompleteCapturedFixture } = await import('./capture-run.mjs');
-      await (dependencies.promoteGaveUp ?? installCompleteCapturedFixture)({
+      await (dependencies.promoteNonFixed ?? dependencies.promoteGaveUp ?? installCompleteCapturedFixture)({
         workflowRunId: ciRunId,
         suturaRunId,
         headSha: dogfoodSha,
         bundleBytes,
         outDir: resolve(ROOT, 'packages/action/src/__fixtures__/captured'),
-        notes: `Live dogfood streak attempt ${options.attempt} gave up`,
+        notes: `Live dogfood streak attempt ${options.attempt} ${outcome}`,
       });
     }
     return entry;

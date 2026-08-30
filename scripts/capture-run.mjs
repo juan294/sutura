@@ -29,6 +29,7 @@ const KINDS = new Set([
   'tavily-capture',
   'sandbox-capture',
   'dogfood-gave-up',
+  'dogfood-refused',
 ]);
 
 function runId(value, label) {
@@ -492,8 +493,8 @@ export async function installCompleteCapturedFixture(options) {
   if (bundle.runId !== workflowRunId) {
     throw new Error('Complete replay artifact run id differs from the workflow run');
   }
-  if (bundle.outcome !== 'gave-up') {
-    throw new Error('Only a gave-up replay artifact can be promoted by the dogfood path');
+  if (bundle.outcome !== 'gave-up' && bundle.outcome !== 'refused') {
+    throw new Error('Only a gave-up or refused replay artifact can be promoted by the dogfood path');
   }
   const boundaries = [...completedReplayBoundaries(bundle)].sort();
   if (boundaries.length === 0) throw new Error('Complete replay artifact has no captured boundaries');
@@ -502,14 +503,14 @@ export async function installCompleteCapturedFixture(options) {
     workflowRunId,
     targetRunId: workflowRunId,
     suturaRunId,
-    kind: 'dogfood-gave-up',
+    kind: bundle.outcome === 'gave-up' ? 'dogfood-gave-up' : 'dogfood-refused',
     headSha: options.headSha,
     capturedAt: bundle.capturedAt,
     source: `https://github.com/${REPOSITORY}/actions/runs/${workflowRunId}`,
     capturedBy: 'workflow',
     bundleSha256: sha256(bundleBytes),
     boundaries,
-    notes: options.notes ?? `Live dogfood run ${suturaRunId} gave up`,
+    notes: options.notes ?? `Live dogfood run ${suturaRunId} ${bundle.outcome}`,
   };
   return withCaptureLock(options.outDir, async () => {
     const manifestPath = join(options.outDir, 'manifest.json');

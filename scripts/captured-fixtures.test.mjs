@@ -100,7 +100,8 @@ test('captured fixture manifest binds every unique real bundle to hashes and sou
     assert.equal(captured.bundle.capturedAt, entry.capturedAt);
     assert.equal(
       captured.bundle.completeness.complete,
-      entry.kind === 'dogfood-gave-up' && entry.capturedBy === 'workflow',
+      (entry.kind === 'dogfood-gave-up' || entry.kind === 'dogfood-refused') &&
+        entry.capturedBy === 'workflow',
     );
     assert.ok(captured.bundle.github.length > 0);
     assert.deepEqual(
