@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_MODELS } from '../config.js';
 import { DEFAULT_ROUTING_PROFILE_ID } from '../llm/router.js';
-import { OrchestrationError } from '../orchestrate.js';
 import { REPLAY_BUNDLE_SCHEMA_VERSION, type ReplayBundle } from './bundle.js';
+import { createCompleteReplayBundleForTest } from './complete-bundle.test-helper.js';
 import { replayBundle } from './replay-orchestrate.js';
 
 const SHA = 'a'.repeat(40);
@@ -41,55 +41,24 @@ describe('replayBundle', () => {
     );
   });
 
-  it('passes recorded GitHub logs through the real adapter and orchestrator', async () => {
-    const bundle = baseBundle();
-    bundle.completeness = { complete: true, overflowedBoundaries: [], pendingBoundaries: [] };
-    bundle.outcome = 'gave-up';
-    bundle.github = [
-      {
-        sequence: 1,
-        method: 'getWorkflowRun',
-        args: [77],
-        result: {
-          id: 77,
-          headSha: SHA,
-          repository: 'acme/widget',
-          event: 'push',
-          conclusion: 'failure',
-          headBranch: 'main',
-          pullRequests: [],
-        },
-      },
-      { sequence: 2, method: 'getRefSha', args: ['heads/main'], result: SHA },
-      {
-        sequence: 3,
-        method: 'listJobsForWorkflowRun',
-        args: [77],
-        result: [{
-          id: 9,
-          name: 'test',
-          conclusion: 'failure',
-          steps: [{
-            name: 'Run tests',
-            conclusion: 'failure',
-            startedAt: '2026-08-30T10:00:00Z',
-            completedAt: '2026-08-30T10:00:01Z',
-          }],
-        }],
-      },
-      {
-        sequence: 4,
-        method: 'downloadJobLogs',
-        args: [9],
-        result: '2026-08-30T10:00:00Z a failure without a command',
-      },
-    ];
-    bundle.repository = [
-      { sequence: 5, method: 'readPolicyAtSha', args: ['acme/widget', SHA], result: null },
-    ];
+  it('replays every recorded boundary through the real offline orchestration path', async () => {
+    const bundle = await createCompleteReplayBundleForTest();
 
-    await expect(replayBundle(bundle)).rejects.toEqual(
-      new OrchestrationError('Failed-step logs do not contain an observed failing command'),
-    );
+    const result = await replayBundle(bundle);
+
+    expect(bundle.completeness.complete).toBe(true);
+    expect(new Set(bundle.http.map(({ boundary }) => boundary)))
+      .toEqual(new Set(['nebius', 'tavily', 'contree']));
+    expect(result.caseFile.outcome).toBe('flaky-no-patch');
+    expect(result.caseFile.outcome).toBe(bundle.outcome);
+    expect(result.caseFile.diagnosis.grounding).toMatchObject({ skipped: false });
+    expect(result.mutations.map(({ method }) => method)).toEqual([
+      'createRef',
+      'createCheckRun',
+      'createCommitComment',
+      'deleteRef',
+      'updateCommitComment',
+      'updateCheckRun',
+    ]);
   });
 });

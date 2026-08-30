@@ -1,4 +1,3 @@
-import { DEFAULT_MODEL_PRICES, Ledger } from '../llm/cost.js';
 import { createTokenFactoryClient } from '../llm/token-factory.js';
 import { TavilyClient } from '../diagnose/tavily.js';
 import type { CaseFile } from '../domain.js';
@@ -88,7 +87,7 @@ export async function replayBundle(
       repository,
       executor,
       llm,
-      cost: new Ledger(DEFAULT_MODEL_PRICES),
+      cost: llm.ledger,
       triageN: validated.configuration.triageN,
       raceK: validated.configuration.raceK,
       ...(validated.configuration.repairBudgets === undefined

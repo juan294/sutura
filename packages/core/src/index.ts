@@ -154,6 +154,7 @@ export { RecordedExecutor } from './replay/replay-executor.js';
 export { ReplayMismatchError, replayFetch } from './replay/replay-fetch.js';
 export { replayingGitHubApi } from './replay/replay-github.js';
 export { replayBundle } from './replay/replay-orchestrate.js';
+export { createCompleteReplayBundleForTest } from './replay/complete-bundle.test-helper.js';
 export { RecordedRepository } from './replay/replay-repository.js';
 export { ReplayValidationError, parseReplayBundle } from './replay/validate.js';
 export {
