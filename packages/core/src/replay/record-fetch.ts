@@ -14,6 +14,7 @@ import type {
 import {
   binaryBody,
   boundedText,
+  rawBody,
   type RecordedBody,
   type RecordedHttpExchange,
   type ReplayRecorder,
@@ -99,6 +100,72 @@ function recordResponseOnce(
   };
 }
 
+interface RawReadableResponse {
+  arrayBuffer?(): Promise<ArrayBuffer>;
+  clone?(): RawReadableResponse;
+  text?(): Promise<string>;
+}
+
+type BodyCapture = { body: RecordedBody } | { error: unknown };
+
+function captureResult(promise: Promise<RecordedBody>): Promise<BodyCapture> {
+  return promise.then(
+    (body) => ({ body }),
+    (error: unknown) => ({ error }),
+  );
+}
+
+function clonedRawBody(response: unknown): Promise<BodyCapture> | null {
+  const readable = response as RawReadableResponse;
+  if (typeof readable.clone !== 'function') return null;
+  try {
+    const clone = readable.clone();
+    if (typeof clone.arrayBuffer === 'function') {
+      return captureResult(clone.arrayBuffer().then((value) =>
+        rawBody(new Uint8Array(value)),
+      ));
+    }
+    if (typeof clone.text === 'function') {
+      return captureResult(clone.text().then((value) =>
+        rawBody(new TextEncoder().encode(value)),
+      ));
+    }
+  } catch (error) {
+    return Promise.resolve({ error });
+  }
+  return null;
+}
+
+function consumedRawBody(response: unknown): Promise<BodyCapture> {
+  const readable = response as RawReadableResponse;
+  if (typeof readable.arrayBuffer === 'function') {
+    return captureResult(readable.arrayBuffer().then((value) =>
+      rawBody(new Uint8Array(value)),
+    ));
+  }
+  if (typeof readable.text === 'function') {
+    return captureResult(readable.text().then((value) =>
+      rawBody(new TextEncoder().encode(value)),
+    ));
+  }
+  return Promise.resolve({ error: new Error('Raw response body is unavailable') });
+}
+
+async function recordCapturedBody(
+  recorder: ReplayRecorder,
+  record: (body: RecordedBody) => void,
+  capture: Promise<BodyCapture> | null,
+  response: unknown,
+): Promise<void> {
+  const result = await (capture ?? consumedRawBody(response));
+  if ('body' in result) {
+    record(result.body);
+  } else {
+    recorder.markOverflow('http');
+    record(null);
+  }
+}
+
 export function recordingNebiusFetch(
   recorder: ReplayRecorder,
   fetch: NebiusFetch,
@@ -134,6 +201,7 @@ export function recordingNebiusFetch(
       selectedHeaders(response.headers),
       sequence,
     );
+    const rawCapture = clonedRawBody(response);
     return {
       ok: response.ok,
       status: response.status,
@@ -144,7 +212,7 @@ export function recordingNebiusFetch(
           record(serializedJson(value));
           return value;
         } catch (error) {
-          record(boundedText(JSON.stringify({ bodyError: errorMessage(error) })));
+          await recordCapturedBody(recorder, record, rawCapture, response);
           throw error;
         }
       },
@@ -193,6 +261,10 @@ export function recordingTavilyFetch(
       throw error;
     }
     const record = recordResponseOnce(recorder, request, startedAt, response, {}, sequence);
+    const rawCapture = clonedRawBody(response);
+    if (!response.ok) {
+      await recordCapturedBody(recorder, record, rawCapture, response);
+    }
     return {
       ok: response.ok,
       status: response.status,
@@ -202,7 +274,7 @@ export function recordingTavilyFetch(
           record(serializedJson(value));
           return value;
         } catch (error) {
-          record(boundedText(JSON.stringify({ bodyError: errorMessage(error) })));
+          await recordCapturedBody(recorder, record, rawCapture, response);
           throw error;
         }
       },
@@ -293,32 +365,19 @@ export function recordingContreeFetch(
     try {
       captured = captureContreeRequest(init);
     } catch {
+      recorder.markOverflow('http');
       captured = { init, body: Promise.resolve(null) };
     }
-    const capturedBody = captured.body.catch(() => null);
+    const capturedBody = captured.body.catch(() => {
+      recorder.markOverflow('http');
+      return null;
+    });
     const url = input instanceof Request ? input.url : String(input);
     let response: Response;
     try {
       response = await fetch(input, captured.init);
     } catch (error) {
-      recorder.recordHttp({
-        boundary: 'contree',
-        request: {
-          method: init.method ?? (input instanceof Request ? input.method : 'GET'),
-          url,
-          headers: webHeaders(init.headers),
-          body: null,
-        },
-        response: { transportError: errorMessage(error) },
-        latencyMs: Date.now() - startedAt,
-      }, sequence);
-      throw error;
-    }
-    try {
-      const [requestBody, recordedResponseBody] = await Promise.all([
-        capturedBody,
-        responseBody(response.clone()),
-      ]);
+      const requestBody = await capturedBody;
       recorder.recordHttp({
         boundary: 'contree',
         request: {
@@ -327,16 +386,33 @@ export function recordingContreeFetch(
           headers: webHeaders(init.headers),
           body: requestBody,
         },
-        response: {
-          status: response.status,
-          headers: Object.fromEntries(response.headers.entries()),
-          body: recordedResponseBody,
-        },
+        response: { transportError: errorMessage(error) },
         latencyMs: Date.now() - startedAt,
       }, sequence);
-    } catch {
-      // Replay capture must not change ConTree transport behavior.
+      throw error;
     }
+    const requestBody = await capturedBody;
+    let recordedResponseBody: RecordedBody = null;
+    try {
+      recordedResponseBody = await responseBody(response.clone());
+    } catch {
+      recorder.markOverflow('http');
+    }
+    recorder.recordHttp({
+      boundary: 'contree',
+      request: {
+        method: init.method ?? (input instanceof Request ? input.method : 'GET'),
+        url,
+        headers: webHeaders(init.headers),
+        body: requestBody,
+      },
+      response: {
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: recordedResponseBody,
+      },
+      latencyMs: Date.now() - startedAt,
+    }, sequence);
     return response;
   };
 }

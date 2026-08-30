@@ -66,6 +66,7 @@ describe('ReplayRecorder', () => {
     expect(bundle.completeness).toMatchObject({
       complete: false,
       overflowedBoundaries: ['http'],
+      pendingBoundaries: [],
     });
   });
 
@@ -101,6 +102,7 @@ describe('ReplayRecorder', () => {
     expect(bundle.completeness).toEqual({
       complete: false,
       overflowedBoundaries: ['github', 'http', 'repository'],
+      pendingBoundaries: [],
     });
   });
 
@@ -153,6 +155,7 @@ describe('ReplayRecorder', () => {
     expect(recorder.finish('infra-stop').completeness).toEqual({
       complete: false,
       overflowedBoundaries: [],
+      pendingBoundaries: ['http'],
     });
   });
 });

@@ -41,7 +41,21 @@ export interface StreamBody {
   sha256: string;
 }
 
-export type RecordedBody = string | null | TruncatedBody | BinaryBody | StreamBody;
+export interface RawBody {
+  raw: true;
+  encoding: 'base64';
+  data: string;
+  bytes: number;
+  sha256: string;
+}
+
+export type RecordedBody =
+  | string
+  | null
+  | TruncatedBody
+  | BinaryBody
+  | StreamBody
+  | RawBody;
 
 export interface RecordedHttpExchange {
   boundary: 'nebius' | 'tavily' | 'contree';
@@ -107,6 +121,7 @@ export interface ReplayBundle {
   completeness: {
     complete: boolean;
     overflowedBoundaries: string[];
+    pendingBoundaries: string[];
   };
   outcome?: CaseFile['outcome'];
 }
@@ -130,6 +145,18 @@ export function binaryBody(
   return kind === 'stream'
     ? { stream: true, ...metadata }
     : { binary: true, ...metadata };
+}
+
+export function rawBody(value: Uint8Array): RawBody | TruncatedBody {
+  const metadata = { bytes: value.byteLength, sha256: sha256(value) };
+  return value.byteLength <= MAX_BODY_BYTES
+    ? {
+        raw: true,
+        encoding: 'base64',
+        data: Buffer.from(value).toString('base64'),
+        ...metadata,
+      }
+    : { truncated: true, ...metadata };
 }
 
 function errorMessage(error: unknown): string {
@@ -216,7 +243,27 @@ function safeJsonValue(
 }
 
 function redactBody(body: RecordedBody, secrets: readonly string[]): RecordedBody {
-  return typeof body === 'string' ? redactString(body, secrets) : body;
+  if (typeof body === 'string') return redactString(body, secrets);
+  if (body === null || !('raw' in body)) return body;
+  let bytes = Buffer.from(body.data, 'base64');
+  let byteString = bytes.toString('latin1');
+  for (const secret of secrets) {
+    if (!secret) continue;
+    byteString = byteString.replaceAll(
+      Buffer.from(secret, 'utf8').toString('latin1'),
+      '[redacted secret]',
+    );
+  }
+  bytes = Buffer.from(byteString, 'latin1');
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    const redacted = redactString(text, secrets);
+    return typeof redacted === 'string'
+      ? rawBody(new TextEncoder().encode(redacted))
+      : redacted;
+  } catch {
+    return rawBody(bytes);
+  }
 }
 
 function containsTruncation(value: unknown, seen = new WeakSet<object>()): boolean {
@@ -458,6 +505,7 @@ export class ReplayRecorder {
       completeness: {
         complete,
         overflowedBoundaries,
+        pendingBoundaries,
       },
       outcome,
     };

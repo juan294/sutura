@@ -79,6 +79,140 @@ describe('recording transport adapters', () => {
     });
   });
 
+  it('records a Tavily non-2xx response even when its body is not consumed', async () => {
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+    const wrapped = recordingTavilyFetch(recorder, vi.fn(async () => new Response(
+      '{"error":"rate limited"}',
+      { status: 429, headers: { 'content-type': 'application/json' } },
+    )));
+
+    const response = await wrapped('https://example.test/tavily', {
+      method: 'POST', headers: {}, body: '{}',
+    });
+
+    expect(response.status).toBe(429);
+    expect(recorder.finish('gave-up').http[0]).toMatchObject({
+      boundary: 'tavily',
+      response: {
+        status: 429,
+        body: {
+          raw: true,
+          encoding: 'base64',
+          data: Buffer.from('{"error":"rate limited"}').toString('base64'),
+        },
+      },
+    });
+  });
+
+  it.each(['nebius', 'tavily'] as const)(
+    'records raw %s response bytes when JSON parsing fails',
+    async (boundary) => {
+      const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+      const innerResponse = new Response('{not-json', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+      const response = boundary === 'nebius'
+        ? await recordingNebiusFetch(recorder, vi.fn(async () => innerResponse))(
+            'https://example.test/nebius', { method: 'POST', headers: {}, body: '{}' },
+          )
+        : await recordingTavilyFetch(recorder, vi.fn(async () => innerResponse))(
+            'https://example.test/tavily', { method: 'POST', headers: {}, body: '{}' },
+          );
+
+      await expect(response.json()).rejects.toBeInstanceOf(SyntaxError);
+      expect(recorder.finish('infra-stop').http[0]?.response).toMatchObject({
+        status: 200,
+        body: {
+          raw: true,
+          encoding: 'base64',
+          data: Buffer.from('{not-json').toString('base64'),
+        },
+      });
+    },
+  );
+
+  it('redacts secrets from raw invalid-JSON response bytes', async () => {
+    const recorder = new ReplayRecorder(
+      '77001', 'acme/widget', 'a'.repeat(40), CONFIG, ['nb-secret'],
+    );
+    const wrapped = recordingNebiusFetch(recorder, vi.fn(async () => new Response(
+      'nb-secret {not-json',
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )));
+
+    const response = await wrapped('https://example.test/nebius', {
+      method: 'POST', headers: {}, body: '{}',
+    });
+    await expect(response.json()).rejects.toBeInstanceOf(SyntaxError);
+
+    const bundle = recorder.finish('infra-stop');
+    const recorded = bundle.http[0]?.response;
+    expect(JSON.stringify(bundle)).not.toContain('nb-secret');
+    expect(recorded).toMatchObject({ body: { raw: true, encoding: 'base64' } });
+    if (recorded && 'status' in recorded && recorded.body && typeof recorded.body !== 'string'
+      && 'raw' in recorded.body) {
+      expect(Buffer.from(recorded.body.data, 'base64').toString('utf8'))
+        .toContain('[redacted secret]');
+    }
+  });
+
+  it('keeps non-UTF-8 invalid-JSON response bytes replayable', async () => {
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+    const wrapped = recordingNebiusFetch(recorder, vi.fn(async () => new Response(
+      new Uint8Array([0xff]),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )));
+
+    const response = await wrapped('https://example.test/nebius', {
+      method: 'POST', headers: {}, body: '{}',
+    });
+    await expect(response.json()).rejects.toBeInstanceOf(SyntaxError);
+
+    expect(recorder.finish('infra-stop').http[0]?.response).toMatchObject({
+      body: { raw: true, encoding: 'base64', data: '/w==' },
+    });
+  });
+
+  it('records a ConTree request body before rethrowing a fetch rejection', async () => {
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+    const failure = new Error('socket closed');
+    const wrapped = recordingContreeFetch(recorder, vi.fn(async () => {
+      throw failure;
+    }));
+
+    await expect(wrapped('https://example.test/contree', {
+      method: 'POST', body: 'request-payload',
+    })).rejects.toBe(failure);
+    expect(recorder.finish('infra-stop').http[0]).toMatchObject({
+      request: { body: 'request-payload' },
+      response: { transportError: 'socket closed' },
+    });
+  });
+
+  it('marks a failed ConTree request-body capture incomplete', async () => {
+    class BrokenBlob extends Blob {
+      override arrayBuffer(): Promise<ArrayBuffer> {
+        return Promise.reject(new Error('blob unavailable'));
+      }
+    }
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+    const wrapped = recordingContreeFetch(
+      recorder,
+      vi.fn(async () => new Response('{"ok":true}', {
+        headers: { 'content-type': 'application/json' },
+      })),
+    );
+
+    await expect(wrapped('https://example.test/contree', {
+      method: 'POST', body: new BrokenBlob(['request-payload']),
+    })).resolves.toBeInstanceOf(Response);
+    expect(recorder.finish('fixed').completeness).toMatchObject({
+      complete: false,
+      overflowedBoundaries: ['http'],
+    });
+  });
+
   it('returns the ConTree response when replay body capture fails', async () => {
     const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
     const response = new Response('{"ok":true}', {

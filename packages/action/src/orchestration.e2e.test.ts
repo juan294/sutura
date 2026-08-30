@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, rm } from 'node:fs/promises';
 
 import {
   AlreadyAttemptedError,
@@ -10,6 +10,8 @@ import {
   SUTURA_SANDBOX_ENV,
   attemptMarker,
   orchestrate,
+  recordingExecutor,
+  recordingTavilyFetch,
   type CostLedger,
   type OrchestrationContext,
   type OrchestratorLlm,
@@ -19,7 +21,7 @@ import {
   type SourceReadLimits,
   type SourceReference,
 } from '@sutura/core';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import {
   GitHubAdapter,
@@ -35,7 +37,7 @@ import { recordingRepositoryPort } from './replay-repository.js';
 const RUN_ID = '77001';
 const ACTION_RUN_ID = '88001';
 const HEAD_SHA = '0123456789abcdef0123456789abcdef01234567';
-const CHECKOUT_DIR = '/tmp/sutura-recorded-checkout';
+const CHECKOUT_DIR = `/tmp/sutura-recorded-checkout-${String(process.pid)}`;
 const FIX_TIP_SHA = 'fedcba9876543210fedcba9876543210fedcba98';
 const ARTIFACT_URL =
   'https://github.com/acme/widget/actions/runs/88001/artifacts/9001';
@@ -564,14 +566,24 @@ async function harnessFor(storyline: Storyline): Promise<{
     actionRunId: ACTION_RUN_ID,
     artifact,
   });
+  await mkdir(CHECKOUT_DIR, { recursive: true });
   const repository = new RecordedRepository(api);
   const executor = executorFor(storyline.exits, storyline.preparationFails);
+  if (recorder) {
+    const recordedHttp = recordingTavilyFetch(recorder, async () => new Response(
+      '{"results":[]}',
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ));
+    await (await recordedHttp('https://example.test/tavily', {
+      method: 'POST', headers: {}, body: '{}',
+    })).json();
+  }
   const llm = new ScriptedLlm(storyline.auditApproved);
   const ctx: OrchestrationContext = {
     runId: RUN_ID,
     github,
     repository: recorder ? recordingRepositoryPort(repository, recorder) : repository,
-    executor,
+    executor: recorder ? recordingExecutor(executor, recorder) : executor,
     llm,
     cost: ledger(),
     triageN: 2,
@@ -750,6 +762,9 @@ describe('recorded GitHub API orchestration E2E', () => {
             outcome: string;
             github: Array<{ method: string }>;
             repository: Array<{ method: string }>;
+            executor: Array<{ method: string }>;
+            http: Array<{ boundary: string }>;
+            completeness: { complete: boolean };
           };
           expect(replay).toMatchObject({
             schemaVersion: 'sutura-replay-v1',
@@ -759,6 +774,11 @@ describe('recorded GitHub API orchestration E2E', () => {
           expect(replay.github.map(({ method }) => method)).toEqual(expect.arrayContaining([
             'updateIssueComment', 'updateCheckRun',
           ]));
+          expect(replay.executor.length).toBeGreaterThan(0);
+          expect(replay.http).toEqual(expect.arrayContaining([
+            expect.objectContaining({ boundary: 'tavily' }),
+          ]));
+          expect(replay.completeness.complete).toBe(true);
           if (storyline.outcome === 'fixed') {
             expect(replay.github.map(({ method }) => method)).toContain('createPullRequest');
             expect(replay.repository.map(({ method }) => method)).toContain('publishFix');
@@ -839,4 +859,8 @@ describe('recorded GitHub API orchestration E2E', () => {
       }
     },
   );
+});
+
+afterAll(async () => {
+  await rm(CHECKOUT_DIR, { recursive: true, force: true });
 });
