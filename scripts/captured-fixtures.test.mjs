@@ -4,23 +4,15 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 
+import { publicGitHubUrl } from './evidence-contract.mjs';
 import {
-  SHA256_PATTERN,
-  SHA_PATTERN,
-  publicGitHubUrl,
-} from './evidence-contract.mjs';
+  completedReplayBoundaries,
+  parseCapturedFixturesManifest,
+  parseReplayBundle,
+} from './replay-contract.mjs';
 
 const ACTION_CAPTURE_ROOT = 'packages/action/src/__fixtures__/captured';
-const MAX_CAPTURE_BYTES = 16 * 1_024 * 1_024;
-const RUN_ID_PATTERN = /^[1-9]\d*$/u;
 const SECRET_PATTERN = /Bearer\s+\S+|\bnb-[A-Za-z0-9]{8,}|\bghp_|\bgithub_pat_|\bsk-[A-Za-z0-9]{8,}/u;
-const BOUNDARIES = new Set([
-  'github', 'nebius', 'tavily', 'contree', 'repository', 'executor',
-]);
-const KINDS = new Set([
-  'ci-failure', 'ci-success', 'provider-capture', 'tavily-capture',
-  'sandbox-capture', 'dogfood-gave-up',
-]);
 const DOGFOOD_0829_RUNS = [
   '33238860852', '33240572371', '33241358531', '33242204485',
   '33243759945', '33244884596', '33246383946', '33247360873',
@@ -60,65 +52,43 @@ function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-function isoUtc(value, label) {
-  assert.equal(typeof value, 'string', `${label} must be a string`);
-  assert.equal(new Date(value).toISOString(), value, `${label} must be canonical UTC`);
-}
-
 async function fixture(runId) {
   const path = join(ACTION_CAPTURE_ROOT, runId, 'bundle.json');
   const bytes = await readFile(path);
-  assert.ok(bytes.byteLength <= MAX_CAPTURE_BYTES, `${path} exceeds 16 MiB`);
-  return { path, bytes, bundle: JSON.parse(bytes) };
+  return { path, bytes, bundle: parseReplayBundle(bytes) };
 }
 
 test('captured fixture manifest binds 26 unique real bundles to hashes and sources', async () => {
   const manifestPath = join(ACTION_CAPTURE_ROOT, 'manifest.json');
   const manifestBytes = await readFile(manifestPath);
   assert.doesNotMatch(manifestBytes.toString('utf8'), SECRET_PATTERN);
-  const manifest = JSON.parse(manifestBytes);
-  assert.equal(manifest.schemaVersion, 'sutura-captured-fixtures-v1');
+  const manifest = parseCapturedFixturesManifest(manifestBytes);
   assert.equal(manifest.entries.length, 26);
-  assert.equal(new Set(manifest.entries.map(({ workflowRunId }) => workflowRunId)).size, 26);
 
   const listed = new Set();
   for (const [index, entry] of manifest.entries.entries()) {
     const label = `manifest.entries[${index}]`;
-    assert.match(entry.workflowRunId, RUN_ID_PATTERN, `${label}.workflowRunId`);
-    assert.match(entry.targetRunId, RUN_ID_PATTERN, `${label}.targetRunId`);
     if (entry.suturaRunId !== undefined) {
-      assert.match(entry.suturaRunId, RUN_ID_PATTERN, `${label}.suturaRunId`);
       assert.notEqual(entry.suturaRunId, entry.targetRunId, `${label} run roles must stay distinct`);
     }
-    assert.ok(KINDS.has(entry.kind), `${label}.kind is invalid`);
-    assert.match(entry.headSha, SHA_PATTERN, `${label}.headSha`);
-    assert.match(entry.bundleSha256, SHA256_PATTERN, `${label}.bundleSha256`);
-    isoUtc(entry.capturedAt, `${label}.capturedAt`);
     if (entry.capturedBy === 'workflow') {
       assert.equal(
         publicGitHubUrl(entry.source, `${label}.source`),
         `https://github.com/juan294/sutura/actions/runs/${entry.workflowRunId}`,
       );
-    } else {
-      assert.equal(entry.capturedBy, 'local');
-      assert.match(entry.source, SHA_PATTERN, `${label}.source must be a capture commit SHA`);
     }
-    assert.equal(typeof entry.notes, 'string');
-    assert.ok(entry.boundaries.length > 0, `${label}.boundaries must not be empty`);
     assert.equal(new Set(entry.boundaries).size, entry.boundaries.length);
-    assert.ok(entry.boundaries.every((boundary) => BOUNDARIES.has(boundary)));
 
     const captured = await fixture(entry.workflowRunId);
     assert.equal(sha256(captured.bytes), entry.bundleSha256, `${captured.path} hash drift`);
     assert.doesNotMatch(captured.bytes.toString('utf8'), SECRET_PATTERN);
-    assert.equal(captured.bundle.schemaVersion, 'sutura-replay-v1');
     assert.equal(captured.bundle.runId, entry.targetRunId);
     assert.equal(captured.bundle.repo, 'juan294/sutura');
     assert.equal(captured.bundle.capturedAt, entry.capturedAt);
     assert.equal(captured.bundle.completeness.complete, false);
     assert.ok(captured.bundle.github.length > 0);
     assert.deepEqual(
-      [...new Set(['github', ...captured.bundle.http.map(({ boundary }) => boundary)])].sort(),
+      [...completedReplayBoundaries(captured.bundle)].sort(),
       entry.boundaries,
     );
     listed.add(`${entry.workflowRunId}/bundle.json`);
@@ -154,8 +124,8 @@ test('historical logs retain exact ANSI and hook-timeout evidence', async () => 
 });
 
 test('boundary tests name captured fixtures when their authorized boundary is ready', async () => {
-  const manifest = JSON.parse(
-    await readFile(join(ACTION_CAPTURE_ROOT, 'manifest.json'), 'utf8'),
+  const manifest = parseCapturedFixturesManifest(
+    await readFile(join(ACTION_CAPTURE_ROOT, 'manifest.json')),
   );
   const capturedBoundaries = new Set(
     manifest.entries.flatMap(({ boundaries }) => boundaries),

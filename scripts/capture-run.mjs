@@ -8,6 +8,12 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
+import {
+  completedReplayBoundaries,
+  parseCapturedFixturesManifest,
+  parseCompleteReplayArtifact,
+} from './replay-contract.mjs';
+
 const execFileAsync = promisify(execFile);
 const REPOSITORY = 'juan294/sutura';
 const MANIFEST_SCHEMA = 'sutura-captured-fixtures-v1';
@@ -184,7 +190,11 @@ async function artifactReplayBundle(api, suturaRunId, targetRunId, loadArtifact)
   );
   if (artifacts.length === 0) return undefined;
   if (artifacts.length !== 1) throw new Error(`Sutura run has multiple ${expected} artifacts`);
-  return loadArtifact(api, artifacts[0]);
+  const bundle = parseCompleteReplayArtifact(await loadArtifact(api, artifacts[0]));
+  if (bundle.runId !== targetRunId) {
+    throw new Error('Replay artifact runId differs from the target run id');
+  }
+  return bundle;
 }
 
 async function defaultArtifactLoader(api, artifact) {
@@ -204,7 +214,7 @@ async function defaultArtifactLoader(api, artifact) {
     const { stdout } = await execFileAsync('unzip', ['-p', zip, candidates[0]], {
       encoding: 'utf8', maxBuffer: MAX_COMMAND_BYTES,
     });
-    return JSON.parse(stdout);
+    return stdout;
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -216,9 +226,11 @@ function sha256(bytes) {
 
 async function readManifest(path) {
   try {
-    return JSON.parse(await readFile(path, 'utf8'));
+    return parseCapturedFixturesManifest(await readFile(path));
   } catch (error) {
-    if (error?.code === 'ENOENT') return { schemaVersion: MANIFEST_SCHEMA, entries: [] };
+    if (error?.code === 'ENOENT') {
+      return parseCapturedFixturesManifest({ schemaVersion: MANIFEST_SCHEMA, entries: [] });
+    }
     throw error;
   }
 }
@@ -277,6 +289,10 @@ export async function captureRun({
       );
     }
     const unique = [...new Set(candidates.map(({ number }) => number))];
+    if (workflowRun.event === 'pull_request' &&
+      (unique.length !== 1 || !Number.isSafeInteger(unique[0]) || (unique[0] ?? 0) <= 0)) {
+      throw new Error('Could not resolve one pull request for the failing SHA');
+    }
     if (unique.length === 1 && Number.isSafeInteger(unique[0])) {
       const rawPull = await api(`repos/${REPOSITORY}/pulls/${unique[0]}`);
       const pull = record('getPullRequest', [unique[0]], mapPullRequest(rawPull));
@@ -311,8 +327,14 @@ export async function captureRun({
   }
 
   const artifactBundle = await artifactReplayBundle(api, suturaRunId, targetRunId, loadArtifact);
-  const http = Array.isArray(artifactBundle?.http) ? artifactBundle.http : [];
-  const capturedHttpBoundaries = new Set(http.map(({ boundary }) => boundary));
+  const http = artifactBundle?.http ?? [];
+  const artifactBoundaries = artifactBundle
+    ? completedReplayBoundaries(artifactBundle)
+    : new Set();
+  const capturedHttpBoundaries = new Set(
+    [...artifactBoundaries].filter((boundary) =>
+      boundary === 'nebius' || boundary === 'tavily' || boundary === 'contree'),
+  );
   const pendingBoundaries = [
     'contree', 'executor', 'nebius', 'repository', 'tavily',
   ].filter((boundary) => !capturedHttpBoundaries.has(boundary));
@@ -359,9 +381,6 @@ export async function captureRun({
   };
   const manifestPath = join(outDir, 'manifest.json');
   const manifest = await readManifest(manifestPath);
-  if (manifest.schemaVersion !== MANIFEST_SCHEMA || !Array.isArray(manifest.entries)) {
-    throw new Error('Captured fixture manifest has an unknown schema');
-  }
   manifest.entries = manifest.entries
     .filter(({ workflowRunId: existing }) => existing !== workflowRunId)
     .concat(entry)

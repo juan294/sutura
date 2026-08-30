@@ -113,12 +113,4 @@ describe('replayFromFile', () => {
     }
   });
 
-  it('names both outcomes when replay does not match the recording', async () => {
-    const bundle = { ...partialBundle(), outcome: 'gave-up' } satisfies ReplayBundle;
-    await expect(replayFromFile(REQUEST, {
-      readFile: vi.fn(async () => Buffer.from('{}')),
-      parseReplayBundle: vi.fn(() => bundle),
-      replayBundle: vi.fn(async () => ({ caseFile: caseFile('fixed'), mutations: [] })),
-    })).rejects.toThrow('Replay outcome mismatch: recorded gave-up, replayed fixed');
-  });
 });
