@@ -201,7 +201,7 @@ describe('Super repair provider-contract canary', () => {
     )).rejects.toThrow(/reasoning-token details/u);
   });
 
-  it('rejects a non-canonical replacement through the earlier candidate guard', async () => {
+  it('rejects a non-canonical arithmetic replacement', async () => {
     const fetch = vi.fn().mockResolvedValue(response(JSON.stringify({
       replacement: FIXED_SOURCE.replace('left + right', 'right + left'),
     })));
@@ -210,6 +210,18 @@ describe('Super repair provider-contract canary', () => {
       { apiKey: 'test-key' },
       { fetch },
     )).rejects.toThrow(/provider contract canary failed/u);
+  });
+
+  it.each([
+    ['CRLF line endings', FIXED_SOURCE.replaceAll('\n', '\r\n')],
+    ['a missing final newline', FIXED_SOURCE.trimEnd()],
+  ])('rejects a normalized diff with %s', async (_label, replacement) => {
+    const fetch = vi.fn().mockResolvedValue(response(JSON.stringify({ replacement })));
+
+    await expect(runSuperRepairProviderContractCanary(
+      { apiKey: 'test-key' },
+      { fetch },
+    )).rejects.toThrow(/non-canonical arithmetic replacement/u);
   });
 
   it.each([

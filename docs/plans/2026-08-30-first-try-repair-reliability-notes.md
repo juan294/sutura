@@ -27,7 +27,7 @@
 
 ## Phase 3b exit evidence
 
-- Interim checklist: `packages/core/src/guards-3b.test.ts` derives 132 current throw sites across the ten Phase 3b source files and binds the exact `file:line` list to its focused test suite. The Phase 3c scanner and `@vitest/coverage-v8` are not present on base `5d94e0a`, so Phase 3c must replace this interim checklist with statement-to-line `guards:verify` evidence.
+- Interim inventory: `packages/core/src/guards-3b.test.ts` derives 120 canonical `throw new` guards across the ten Phase 3b source files. It does not claim reachability. The merged Phase 3c scanner and `@vitest/coverage-v8` replace this inventory with statement-to-line `guards:verify` evidence.
 - Focused guard suites: 205 passed across Nebius, JSON extraction, token factory, routing, cost, provider canary, Tavily, ConTree, memory executor, live diagnostics, and the interim checklist.
 - Core suite: passed.
 - Captured fixture contracts: 25 passed.
