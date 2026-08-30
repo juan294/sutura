@@ -89,3 +89,62 @@
 - Found: Pull-request publication, attempt-comment updates, and terminal check completion occur after report preparation.
 - Chose: Upload one best-effort replay bundle only after all outcome mutations and check completion, including the unexpected-failure path.
 - Why: The uploaded bundle contains the final requested mutations without changing the product outcome if capture or upload fails.
+
+## Phase 3c exit evidence
+
+- The TypeScript-AST scanner derives guard locations from `throw new`,
+  `process.exit(...)`, and `core.setFailed(...)`. It excludes tests, test
+  support, rethrows, and an explicitly marked `guards-verify: not-a-guard`.
+- Batch-branch scan counts at base `5d94e0a` were 78 Action and orchestration
+  guards, 121 provider guards, and 234 Phase 3c guards. The one proven
+  unreachable Phase 3c guard was deleted, so the final Phase 3c scope is
+  `guards: 233/233`.
+- The exact Phase 3c checklist is generated on every run with
+  `pnpm run guards:verify -- --scope phase-3c --scan-only --list`; the scoped
+  coverage gate verifies the same derived set with
+  `pnpm run guards:verify -- --scope phase-3c`.
+- The final scoped coverage run completed in 18.29 seconds: Core 884 passed
+  and 8 skipped; Action 85 passed. This is below the 90-second limit.
+- The original eight uncovered locations closed as follows:
+  - `packages/action/src/main.ts`: missing ConTree configuration, malformed
+    `GITHUB_RUN_ID`, and terminal `setFailed` use the side-effect-free
+    `runAction` dependency seam.
+  - `packages/core/src/replay/canonical-json.ts`: a Symbol reaches the
+    non-JSON-serializable terminal.
+  - `packages/core/src/replay/replay-fetch.ts`: non-replayable binary evidence
+    is rejected.
+  - `packages/core/src/replay/validate.ts`: an unknown recorded-body shape is
+    rejected.
+  - `packages/core/src/runtime/python.ts`: an empty checkout reaches the
+    missing-lock terminal.
+  - `packages/core/src/engine/triage.ts`: the post-loop throw was deleted as
+    structurally unreachable.
+- The dogfood-16 runtime fixture is bound to target run `33268037618` and exact
+  head `7488afea0c123f3ef84354301c6a1d90e4f9cfb0`. Its `.sutura.json` and three
+  directory listings came from that local Git object. Tests use both the
+  configured runtime and captured path evidence.
+- Additional notable inputs cover a second reservation with `modelTurns: 1`,
+  a 65,537-byte diff, runtime directory replacement and realpath escape,
+  Python file replacement and UTF-16 input, and each missing Ultra reply
+  field.
+- Scanner tests, focused Core and Action tests, release contracts, typecheck,
+  and lint passed. The committed Action entry point calls `runAction`, while
+  importing `main.ts` in tests has no side effect.
+
+### Phase 3c structurally unreachable guard
+
+- Deleted: `packages/core/src/engine/triage.ts` post-loop throw, formerly line
+  81.
+- Proof: each iteration appends exactly `min(2, N - exitCodes.length)` results.
+  When the final batch reaches `N`, `evaluateFlakeConfidence(exitCodes, N)` is
+  at its maximum and cannot return `continue`; the function returns the
+  completed verdict inside the loop.
+
+### Phase 3c batch deviation
+
+- The plan's final `guards: N/N` is an integration criterion because Phases
+  3a, 3b, and 3c use separate batch branches.
+- This branch therefore runs the same dynamic scanner and coverage mapper with
+  `--scope phase-3c`. After integration, the unscoped CI command re-derives
+  and verifies the combined total. No count is hard-coded in the scanner or
+  CI workflow.

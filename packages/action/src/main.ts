@@ -13,6 +13,8 @@ import {
   recordingExecutor,
   recordingNebiusFetch,
   recordingTavilyFetch,
+  type Config,
+  type ConfigEnvironment,
   type OrchestrationContext,
 } from '@sutura/core';
 
@@ -20,23 +22,42 @@ import { GitHubAdapter } from './github.js';
 import { reportOutcome } from './acceptance.js';
 import { runtimeEvidence } from './evidence.js';
 import { withFailureSafeCheck } from './failure-safe.js';
-import { mapActionInputs } from './input.js';
+import { mapActionInputs, type ActionConfiguration } from './input.js';
 import { createGitHubApi } from './octokit.js';
 import { GitRepository } from './repository.js';
 import { recordingGitHubApi } from './replay-github.js';
 import { recordingRepositoryPort } from './replay-repository.js';
 
-export async function runAction(): Promise<void> {
+export interface RunActionDependencies {
+  readAction(): ActionConfiguration;
+  loadConfiguration(environment: ConfigEnvironment): Config;
+  repository(): { owner: string; repo: string };
+  environment: Readonly<Record<string, string | undefined>>;
+  setFailed(message: string): void;
+}
+
+const DEFAULT_DEPENDENCIES: RunActionDependencies = {
+  readAction: () => mapActionInputs((name) => core.getInput(name)),
+  loadConfiguration: loadConfig,
+  repository: () => github.context.repo,
+  environment: process.env,
+  setFailed: (message) => core.setFailed(message),
+};
+
+export async function runAction(
+  overrides: Partial<RunActionDependencies> = {},
+): Promise<void> {
+  const dependencies = { ...DEFAULT_DEPENDENCIES, ...overrides };
   let requireFixed = false;
   try {
-    const action = mapActionInputs((name) => core.getInput(name));
+    const action = dependencies.readAction();
     requireFixed = action.requireFixed;
-    const config = loadConfig(action.environment);
+    const config = dependencies.loadConfiguration(action.environment);
     if (!config.contreeToken || !config.contreeProject) {
       throw new Error('ConTree token and project are required by the GitHub Action');
     }
-    const { owner, repo } = github.context.repo;
-    const actionRunId = process.env.GITHUB_RUN_ID;
+    const { owner, repo } = dependencies.repository();
+    const actionRunId = dependencies.environment.GITHUB_RUN_ID;
     if (!actionRunId || !/^[1-9]\d*$/.test(actionRunId)) {
       throw new Error('GITHUB_RUN_ID must be a positive decimal id');
     }
@@ -55,7 +76,7 @@ export async function runAction(): Promise<void> {
       ? new ReplayRecorder(
           action.runId,
           `${owner}/${repo}`,
-          process.env.GITHUB_SHA ?? '',
+          dependencies.environment.GITHUB_SHA ?? '',
           {
             ...orchestrationOptions,
             models: config.models,
@@ -94,7 +115,9 @@ export async function runAction(): Promise<void> {
     );
     const baseRepository = new GitRepository({
       token: action.githubToken,
-      ...(process.env.RUNNER_TEMP ? { workspaceRoot: process.env.RUNNER_TEMP } : {}),
+      ...(dependencies.environment.RUNNER_TEMP
+        ? { workspaceRoot: dependencies.environment.RUNNER_TEMP }
+        : {}),
     });
     const repository = recorder
       ? recordingRepositoryPort(baseRepository, recorder)
@@ -139,8 +162,6 @@ export async function runAction(): Promise<void> {
       reportOutcome('already-attempted', requireFixed, core);
       return;
     }
-    core.setFailed(error instanceof Error ? error.message : String(error));
+    dependencies.setFailed(error instanceof Error ? error.message : String(error));
   }
 }
-
-void runAction();

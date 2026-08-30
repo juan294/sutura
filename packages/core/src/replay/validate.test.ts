@@ -142,6 +142,20 @@ describe('parseReplayBundle', () => {
     expect(() => parseReplayBundle(value)).toThrow(/truncated/iu);
   });
 
+  it('rejects an unknown recorded-body shape', () => {
+    const value = clone(PARTIAL);
+    value.http = [{
+      boundary: 'nebius', sequence: 1,
+      request: {
+        method: 'POST', url: 'https://example.test', headers: {},
+        body: { unexpected: true } as never,
+      },
+      response: { status: 200, headers: {}, body: '{}' },
+      latencyMs: 0,
+    }];
+    expect(() => parseReplayBundle(value)).toThrow(/must be a recorded body/u);
+  });
+
   it('verifies raw body base64, byte count, and SHA-256', () => {
     const validBytes = Buffer.from('{"ok":true}', 'utf8');
     const valid: RawBody = {

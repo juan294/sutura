@@ -78,5 +78,6 @@ export async function triage(
       return completedTriageVerdict(exitCodes, N);
     }
   }
-  throw new Error('progressive triage ended without a terminal decision');
+  // The final full batch always makes evaluateFlakeConfidence terminal.
+  return completedTriageVerdict(exitCodes, N);
 }

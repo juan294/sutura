@@ -1,8 +1,22 @@
 import { constants } from 'node:fs';
+import type { Stats } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 
 import type { DependencyPreparation, RuntimeAdapter, RuntimeEvidence } from './types.js';
+
+export interface PythonDependencyFileSystem {
+  lstat(path: string): Promise<Stats>;
+  open(path: string, flags: number): Promise<FileHandle>;
+  realpath(path: string): Promise<string>;
+}
+
+const PYTHON_DEPENDENCY_FILE_SYSTEM: PythonDependencyFileSystem = {
+  lstat: async (path) => lstat(path),
+  open: async (path, flags) => open(path, flags),
+  realpath: async (path) => realpath(path),
+};
 
 export const PYTHON_IMAGE_REF = 'ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a';
 const MAX_DEPENDENCY_FILE_BYTES = 1024 * 1024;
@@ -19,11 +33,15 @@ function inside(root: string, path: string): boolean {
   return path === root || path.startsWith(`${root}${sep}`);
 }
 
-async function optionalBoundedFile(root: string, name: string): Promise<string | null> {
+async function optionalBoundedFile(
+  root: string,
+  name: string,
+  fileSystem: PythonDependencyFileSystem,
+): Promise<string | null> {
   const requested = resolve(root, name);
   let metadata;
   try {
-    metadata = await lstat(requested);
+    metadata = await fileSystem.lstat(requested);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw new PythonDependencyError(`Could not inspect Python dependency input: ${name}`);
@@ -32,9 +50,9 @@ async function optionalBoundedFile(root: string, name: string): Promise<string |
   if (!metadata.isFile() || metadata.size > MAX_DEPENDENCY_FILE_BYTES) {
     throw new PythonDependencyError(`Python dependency input must be a bounded regular file: ${name}`);
   }
-  const canonical = await realpath(requested);
+  const canonical = await fileSystem.realpath(requested);
   if (!inside(root, canonical)) throw new PythonDependencyError(`Python dependency input escapes the repository: ${name}`);
-  const handle = await open(canonical, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const handle = await fileSystem.open(canonical, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const current = await handle.stat();
     if (!current.isFile() || current.size !== metadata.size || current.size > MAX_DEPENDENCY_FILE_BYTES) {
@@ -92,13 +110,17 @@ function validateRequirements(content: string): void {
   }
 }
 
-export async function validatePythonDependencyInputs(caseDir: string): Promise<DependencyPreparation> {
-  const root = await realpath(caseDir);
+export async function validatePythonDependencyInputs(
+  caseDir: string,
+  overrides: Partial<PythonDependencyFileSystem> = {},
+): Promise<DependencyPreparation> {
+  const fileSystem = { ...PYTHON_DEPENDENCY_FILE_SYSTEM, ...overrides };
+  const root = await fileSystem.realpath(caseDir);
   const [pyproject, uvLock, requirements, poetryLock] = await Promise.all([
-    optionalBoundedFile(root, 'pyproject.toml'),
-    optionalBoundedFile(root, 'uv.lock'),
-    optionalBoundedFile(root, 'requirements.txt'),
-    optionalBoundedFile(root, 'poetry.lock'),
+    optionalBoundedFile(root, 'pyproject.toml', fileSystem),
+    optionalBoundedFile(root, 'uv.lock', fileSystem),
+    optionalBoundedFile(root, 'requirements.txt', fileSystem),
+    optionalBoundedFile(root, 'poetry.lock', fileSystem),
   ]);
   if (pyproject !== null) rejectUnsafePyproject(pyproject);
   if (poetryLock !== null) throw new PythonDependencyError('poetry.lock preparation is unsupported; use uv.lock');

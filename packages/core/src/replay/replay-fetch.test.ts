@@ -61,4 +61,19 @@ describe('replayFetch', () => {
       method: 'POST', headers: {}, body: '{"a":1,"b":2}',
     })).rejects.toThrow(/exhausted/u);
   });
+
+  it('rejects response evidence without replayable bytes', async () => {
+    const recorded = bundle();
+    const response = recorded.http[0]!.response;
+    if (response === undefined || 'transportError' in response) throw new Error('test bundle response is missing');
+    response.body = {
+      binary: true,
+      bytes: 13,
+      sha256: '0'.repeat(64),
+    };
+    const fetch = replayFetch(recorded, 'nebius');
+    await expect(fetch('https://example.test/chat', {
+      method: 'POST', headers: {}, body: '{"a":1,"b":2}',
+    })).rejects.toThrow(/replayable text or raw bytes/u);
+  });
 });

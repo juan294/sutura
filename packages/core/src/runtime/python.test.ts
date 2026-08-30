@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -156,5 +156,34 @@ describe('PYTHON_RUNTIME', () => {
     const root = await fixture({ 'real.lock': 'version=1\n', 'pyproject.toml': '[project]\nname="safe"\n' });
     await symlink('real.lock', join(root, 'uv.lock'));
     await expect(validatePythonDependencyInputs(root)).rejects.toThrow(/symbolic link/iu);
+  });
+
+  it('rejects a dependency input replaced between metadata validation and read', async () => {
+    const root = await fixture({
+      'pyproject.toml': '[project]\nname="safe"\n',
+      'uv.lock': 'version=1\n',
+    });
+    let replaced = false;
+    await expect(validatePythonDependencyInputs(root, {
+      async lstat(path) {
+        const metadata = await lstat(path);
+        if (!replaced && String(path).endsWith('pyproject.toml')) {
+          replaced = true;
+          await writeFile(path, '[project]\nname="replaced-with-a-longer-name"\n');
+        }
+        return metadata;
+      },
+    })).rejects.toThrow(/changed during validation/u);
+  });
+
+  it('rejects UTF-16 dependency input', async () => {
+    const root = await fixture({});
+    await writeFile(join(root, 'requirements.txt'), Buffer.from([0xff, 0xfe, 0x61, 0x00]));
+    await expect(validatePythonDependencyInputs(root)).rejects.toThrow(/not bounded UTF-8 text/u);
+  });
+
+  it('rejects a Python repository without a dependency lock input', async () => {
+    const root = await fixture({});
+    await expect(validatePythonDependencyInputs(root)).rejects.toThrow(/lock input is missing/u);
   });
 });
