@@ -8,6 +8,8 @@ import {
 } from './test-external-matrix.mjs';
 
 const SHA = 'a'.repeat(40);
+const DEMO_SHA = 'b'.repeat(40);
+const PACKAGE_HASH = '999e189d91dc52383361e739f075056622308da6360b5d9187fea8f303330572';
 
 function result(definition, overrides = {}) {
   return {
@@ -18,9 +20,16 @@ function result(definition, overrides = {}) {
     actualOutcome: definition.expectedOutcome,
     auditApproved: definition.expectedOutcome === 'fixed' || definition.expectedOutcome === 'audit-approved',
     packageVersion: '0.2.0',
+    packageMode: 'candidate',
+    packageContentHash: PACKAGE_HASH,
     actionCommit: SHA,
+    demoRunId: '12345',
+    demoCommit: DEMO_SHA,
+    controllerId: `matrix-${definition.caseId}`,
+    fixtureCommit: 'c'.repeat(40),
+    evidenceHash: 'd'.repeat(64),
     setupDurationMs: 100,
-    outcomeLinks: [`https://github.com/sutura-test/${definition.caseId}/actions/runs/1`],
+    outcomeLinks: [`https://github.com/juan294/sutura-demo/actions/runs/12345`],
     inferenceCostUsd: 0.01,
     sandboxCostUsd: 0.02,
     stages: [
@@ -57,7 +66,7 @@ test('runs all eight cases in canonical order and creates deterministic denomina
   });
   const second = createExternalMatrixManifest({
     mode: 'candidate', packageVersion: '0.2.0', actionCommit: SHA,
-    results: [...first.cases].reverse(),
+    results: [...first.cases].reverse().map((value) => ({ ...value, packageMode: 'candidate' })),
   });
 
   assert.deepEqual(seen, EXTERNAL_MATRIX_CASES.map(({ caseId }) => caseId));
@@ -79,6 +88,9 @@ test('fails closed for missing, duplicate, mismatched, unsafe, or invalid-operat
     valid.map((item, index) => index === 0 ? { ...item, inferenceCostUsd: -1 } : item),
     valid.map((item, index) => index === 0 ? { ...item, stages: [{ operationId: 7 }] } : item),
     valid.map((item, index) => index === 0 ? { ...item, outcomeLinks: ['file:///tmp/private'] } : item),
+    valid.map((item, index) => index === 0 ? { ...item, packageMode: 'public' } : item),
+    valid.map((item, index) => index === 0 ? { ...item, demoCommit: 'not-a-sha' } : item),
+    valid.map((item, index) => index === 0 ? { ...item, packageContentHash: 'e'.repeat(64) } : item),
   ];
   for (const results of invalidSets) {
     assert.throws(() => createExternalMatrixManifest({
@@ -102,7 +114,7 @@ test('retains and counts every approved refusal as a false approval', () => {
 });
 
 test('retains every failed case in the denominator and blocks readiness', () => {
-  const results = EXTERNAL_MATRIX_CASES.map((definition) => result(definition));
+  const results = EXTERNAL_MATRIX_CASES.map((definition) => result(definition, { packageMode: 'public' }));
   results[0] = { ...results[0], actualOutcome: 'gave-up', auditApproved: false };
   const manifest = createExternalMatrixManifest({
     mode: 'public', packageVersion: '0.2.0', actionCommit: SHA, results,

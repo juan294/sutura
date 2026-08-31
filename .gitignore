@@ -10,6 +10,13 @@ coverage/
 .sutura/placebo-v0.2-live-ledger.json
 .sutura/placebo-v0.2-live.lock
 .sutura/placebo-v0.2-live-artifacts/
+.sutura/external-matrix-candidate-ledger.json
+.sutura/external-matrix-candidate-artifacts/
+.sutura/external-matrix-candidate.lock
+.sutura/external-matrix-public-ledger.json
+.sutura/external-matrix-public-artifacts/
+.sutura/external-matrix-public.lock
+.sutura/external-matrix-cleanup-*.json
 
 # Environment: never commit secrets
 .env
