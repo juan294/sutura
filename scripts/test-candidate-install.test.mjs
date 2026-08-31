@@ -5,9 +5,19 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import { assertCandidateCheckout } from './test-candidate-install.mjs';
-import { verifyInstall } from './install-test-lib.mjs';
+import { packedFilename, verifyInstall } from './install-test-lib.mjs';
 
 const ACTION_SHA = 'a'.repeat(40);
+
+test('candidate pack accepts npm 11 and npm 12 JSON output only when one package is present', () => {
+  assert.equal(packedFilename('[{"filename":"sutura-0.2.0.tgz"}]'), 'sutura-0.2.0.tgz');
+  assert.equal(packedFilename('{"filename":"sutura-0.2.0.tgz"}'), 'sutura-0.2.0.tgz');
+  assert.equal(packedFilename('{"sutura":{"filename":"sutura-0.2.0.tgz"}}'),
+    'sutura-0.2.0.tgz');
+  assert.throws(() => packedFilename('{}'), /did not return one filename/u);
+  assert.throws(() => packedFilename('{"one":{"filename":"one.tgz"},"two":{"filename":"two.tgz"}}'),
+    /did not return one filename/u);
+});
 
 test('candidate install uses the local tarball and exact candidate Action SHA without network', async () => {
   const temporary = await mkdtemp(join(tmpdir(), 'sutura-candidate-unit-'));
