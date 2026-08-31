@@ -20,6 +20,7 @@ const ARTIFACT_ROOT = '.sutura/dogfood-artifacts';
 const FIXTURE_ROOT = 'packages/placebo/corpus/repair-dogfood-arithmetic';
 const OUTCOMES = new Set(['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop']);
 const MAX_JSON_BYTES = 1024 * 1024;
+export const MAX_PHASE_5_SPEND_USD = 14;
 const SUTURA_CHECK_NAME = 'Sutura repair audit';
 const PROVIDER_CANARY_REPLACEMENT = [
   'export function add(left: number, right: number): number {',
@@ -90,6 +91,17 @@ export function dogfoodLedger(entries) {
     entries,
     resultHash: contentHash(entries),
   };
+}
+
+export function dogfoodLedgerCostSummary(entries) {
+  let spentMicroUsd = 0;
+  let maximumAttemptUsd = 0;
+  for (const entry of entries) {
+    const attemptUsd = entry.sandboxUsd + entry.inferenceUsd;
+    spentMicroUsd = Math.round(spentMicroUsd + attemptUsd * 1_000_000);
+    maximumAttemptUsd = Math.max(maximumAttemptUsd, attemptUsd);
+  }
+  return { spentMicroUsd, maximumAttemptUsd };
 }
 
 export function renderDogfoodLedger(ledger) {
@@ -639,7 +651,9 @@ export async function runDogfoodStreak(options, inputDependencies = {}) {
   const sha = exactSha(options.sha, 'Dogfood candidate');
   const capUsd = nonnegativeUsd(options.capUsd, 'Dogfood cap');
   const initialReserveUsd = nonnegativeUsd(options.initialReserveUsd ?? 1.5, 'Dogfood initial reserve');
-  if (capUsd > 10) throw new Error('Dogfood cap must not exceed USD 10');
+  if (capUsd > MAX_PHASE_5_SPEND_USD) {
+    throw new Error(`Dogfood cap must not exceed USD ${MAX_PHASE_5_SPEND_USD}`);
+  }
   if (initialReserveUsd < 1.5) throw new Error('Dogfood initial reserve must be at least USD 1.50');
   const dependencies = createDogfoodDependencies(inputDependencies);
   return dependencies.withStreakLock(async () => {
@@ -656,10 +670,9 @@ export async function runDogfoodStreak(options, inputDependencies = {}) {
       existingFixed.unshift(entry);
     }
     if (existingFixed.length > 10) throw new Error('Dogfood ledger has more than ten trailing fixed attempts');
-    let spent = existingFixed.reduce((sum, entry) =>
-      Math.round((sum + entry.sandboxUsd + entry.inferenceUsd) * 1_000_000) / 1_000_000, 0);
-    let observedMaximum = existingFixed.reduce((maximum, entry) =>
-      Math.max(maximum, entry.sandboxUsd + entry.inferenceUsd), 0);
+    const costSummary = dogfoodLedgerCostSummary(initialLedger.entries);
+    let spent = costSummary.spentMicroUsd / 1_000_000;
+    let observedMaximum = costSummary.maximumAttemptUsd;
     let reserve = existingFixed.length > 0 ? observedMaximum : initialReserveUsd;
     const entries = [];
     for (let index = 0; index < 10 - existingFixed.length; index += 1) {
@@ -674,7 +687,7 @@ export async function runDogfoodStreak(options, inputDependencies = {}) {
       if (entry.outcome !== 'fixed') break;
     }
     const streakEntries = [...existingFixed, ...entries];
-    dependencies.stdout.write(`Dogfood streak: ${streakEntries.filter(({ outcome }) => outcome === 'fixed').length}/10; cost USD=${spent.toFixed(4)}\n`);
+    dependencies.stdout.write(`Dogfood streak: ${streakEntries.filter(({ outcome }) => outcome === 'fixed').length}/10; total Phase 5 cost USD=${spent.toFixed(4)}\n`);
     if (streakEntries.length === 10 && streakEntries.every(({ outcome }) => outcome === 'fixed')) {
       const ledger = validateDogfoodLedger(await dependencies.readLedger());
       await atomicWrite(resolve(ROOT, CANONICAL_LEDGER), `${JSON.stringify(ledger, null, 2)}\n`);

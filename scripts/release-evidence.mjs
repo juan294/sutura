@@ -12,13 +12,18 @@ import {
   publicGitHubUrl,
   SHA256_PATTERN,
 } from './evidence-contract.mjs';
-import { validateDogfoodLedger } from './dogfood.mjs';
+import {
+  dogfoodLedgerCostSummary,
+  MAX_PHASE_5_SPEND_USD,
+  validateDogfoodLedger,
+} from './dogfood.mjs';
 
 export const RELEASE_EVIDENCE_IDS = Object.freeze([
   'benchmark', 'candidate-matrix', 'demo', 'devpost', 'dogfood', 'feedback',
   'github-release', 'local-gate', 'marketplace', 'npm', 'public-matrix',
 ]);
 const STATUSES = new Set(['passed', 'failed', 'skipped', 'pending']);
+const MAX_PHASE_5_SPEND_MICRO_USD = MAX_PHASE_5_SPEND_USD * 1_000_000;
 
 function githubApiDefault(endpoint, binary = false) {
   return execFileSync('gh', ['api', '-X', 'GET', endpoint], {
@@ -186,28 +191,27 @@ export function verifyDogfoodStreak(ledger, releaseCommit, options = {}) {
     : options.actionPackagesTreeHash ?? execFileSync(
       'git', ['rev-parse', `${actionSha}:packages`], { encoding: 'utf8' },
     ).trim();
-  const totalMicroUsd = trailing.reduce((sum, entry) => sum + Math.round(
-    ((Number.isFinite(entry?.sandboxUsd) ? entry.sandboxUsd : Number.NaN) +
-    (Number.isFinite(entry?.inferenceUsd) ? entry.inferenceUsd : Number.NaN)) * 1_000_000,
-  ), 0);
+  const phaseTotalMicroUsd = dogfoodLedgerCostSummary(validatedLedger.entries).spentMicroUsd;
   const distinct = (field) => new Set(trailing.map((entry) => entry?.[field])).size === 10;
   const passed = trailing.length === 10 && actionSha !== undefined &&
-    actionPackagesTreeHash === packagesTreeHash && totalMicroUsd <= 10_000_000 &&
+    actionPackagesTreeHash === packagesTreeHash &&
+    phaseTotalMicroUsd <= MAX_PHASE_5_SPEND_MICRO_USD &&
     distinct('ciRunId') && distinct('suturaRunId') && distinct('dogfoodSha') && distinct('prUrl') &&
     trailing.every((entry) => entry?.outcome === 'fixed' &&
       entry.actionSha === actionSha && entry.packagesTreeHash === packagesTreeHash &&
       typeof entry.prUrl === 'string');
-  const ledgerBytes = options.ledgerBytes ?? Buffer.from(`${JSON.stringify(validatedLedger, null, 2)}\n`);
+  const evidence = passed ? [{
+    reference: 'docs/demo/dogfood-ledger.json',
+    contentHash: createHash('sha256').update(options.ledgerBytes ??
+      Buffer.from(`${JSON.stringify(validatedLedger, null, 2)}\n`)).digest('hex'),
+    candidate,
+  }] : [];
   return {
     id: 'dogfood',
     required: true,
     status: passed ? 'passed' : 'pending',
     candidate,
-    evidence: passed ? [{
-      reference: 'docs/demo/dogfood-ledger.json',
-      contentHash: createHash('sha256').update(ledgerBytes).digest('hex'),
-      candidate,
-    }] : [],
+    evidence,
     ...(passed ? {} : { authorizationGate: 'live-dogfood-streak' }),
   };
 }

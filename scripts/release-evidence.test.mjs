@@ -107,6 +107,30 @@ test('dogfood evidence requires 10 trailing fixed entries on one matching packag
     candidate: SHA,
   });
   assert.match(passed.evidence[0].contentHash, /^[a-f0-9]{64}$/u);
+  const priorCandidates = Array.from({ length: 3 }, (_, index) => entry(1, {
+    actionSha: String(index + 1).repeat(40),
+    ciRunId: String(7000 + index),
+    suturaRunId: String(8000 + index),
+    dogfoodSha: (300 + index).toString(16).padStart(40, '0'),
+    outcome: 'gave-up',
+    sandboxUsd: 0.3,
+    inferenceUsd: 0.2,
+    prUrl: undefined,
+  }));
+  assert.equal(verifyDogfoodStreak(ledger([
+    ...priorCandidates,
+    ...Array.from({ length: 10 }, (_, index) => entry(index + 1)),
+  ]), SHA, {
+    packagesTreeHash: tree,
+    actionPackagesTreeHash: tree,
+  }).status, 'passed');
+  assert.equal(verifyDogfoodStreak(ledger([
+    ...priorCandidates.map((value) => ({ ...value, sandboxUsd: 3.1 })),
+    ...Array.from({ length: 10 }, (_, index) => entry(index + 1)),
+  ]), SHA, {
+    packagesTreeHash: tree,
+    actionPackagesTreeHash: tree,
+  }).status, 'pending');
   assert.equal(verifyDogfoodStreak(ledger(Array.from({ length: 10 }, (_, index) =>
     entry(index + 1, index === 4 ? { packagesTreeHash: 'c'.repeat(40) } : {}))), SHA, {
     packagesTreeHash: tree,
