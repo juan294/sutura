@@ -19,3 +19,23 @@ Found: GitHub workflow dispatch accepts a branch or tag ref, not a raw commit SH
 Chose: Dispatch the protected `develop` ref, add `controller-sha` as an exact input, require `GITHUB_SHA` to equal that input, and check out the controller again at the same exact SHA.
 
 Why: This keeps the controller identity exact while using GitHub's supported dispatch interface. The local gate already requires `origin/develop` to equal the controller SHA before dispatch.
+
+## Phase 3: Exact demo identity
+
+Plan said: The demo workflow accepts package mode, case ID, Action SHA, and controller ID.
+
+Found: Those inputs do not bind a run to the trusted demo commit that contains the materializer and evidence collector. A mutable default branch could therefore change after the local gate.
+
+Chose: Add `demo-sha`, dispatch the protected `main` ref, require `GITHUB_SHA` to equal the input, and make the local controller reject any remote `main` mismatch.
+
+Why: Every external result must bind to the exact reviewed demo controller as well as the exact Sutura Action.
+
+## Phase 3: Check-run permission
+
+Plan said: Repair cases may use only `actions: write`, `contents: write`, and `pull-requests: write`.
+
+Found: The released Sutura Action creates and completes a SHA-bound check run. Its canonical workflow requires `checks: write`; without it, the external run cannot produce the required check evidence.
+
+Chose: Add `checks: write` only to the repair-case job. Audit cases remain `contents: read`, and neither job receives identity-token or issue permissions.
+
+Why: This is the minimum permission set that can execute the released Action contract and preserve direct check-run evidence.

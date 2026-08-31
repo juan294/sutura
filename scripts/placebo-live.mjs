@@ -25,6 +25,7 @@ const KIND_ORDER = new Map([['flaky', 0], ['trap', 1], ['upstream', 2], ['repair
 const RELEASE_SHA = 'a943ded4c734aed75c5c63f2b2dd63a2f44556c2';
 const RELEASE_VERSION = '0.2.0';
 const PUBLISH_RUN_ID = '33388564135';
+const CORPUS_HASH = '77594bc260dbf4918548bda43d24238bfe43da3f428e2fde4da0a3e029571d24';
 const PACKAGE_CONTENT_HASH = '999e189d91dc52383361e739f075056622308da6360b5d9187fea8f303330572';
 const PACKAGE_INTEGRITY = '6365ab9af9cfcef0cdfe1441b95c9de2ff504e2181e77fdf5669ff92eef3937f';
 
@@ -62,7 +63,7 @@ function requireCorpusBytes() {
 function validateCorpus(value) {
   if (value?.schemaVersion !== 'placebo-corpus-manifest-v1' || value.corpusVersion !== '0.2' ||
       !Array.isArray(value.cases) || value.cases.length !== 51 ||
-      !SHA256_PATTERN.test(value.corpusHash ?? '') ||
+      value.corpusHash !== CORPUS_HASH ||
       new Set(value.cases.map(({ id }) => id)).size !== 51) {
     throw new Error('Placebo canonical corpus must contain 51 unique cases');
   }
@@ -162,7 +163,8 @@ export function createPlaceboCaseArtifact(input, options = {}) {
       input.evaluationManifest.suturaCommit !== input.controllerSha ||
       input.evaluationManifest.corpusHash !== (options.corpus ?? loadCorpusSync()).corpusHash ||
       !Array.isArray(input.evaluationManifest.cases) ||
-      input.evaluationManifest.cases.length !== input.results?.length) {
+      input.evaluationManifest.cases.length !== input.results?.length ||
+      !input.evaluationManifest.cases.every(({ caseId }) => caseId === input.caseId)) {
     throw new Error('Placebo evaluation manifest identity is invalid');
   }
   const evaluationManifestHash = contentHash(input.evaluationManifest);
@@ -194,7 +196,7 @@ export function validatePlaceboCaseArtifact(value, options = {}) {
   if (Buffer.byteLength(canonicalJson(artifact)) > MAX_ARTIFACT_BYTES) {
     throw new Error(`Placebo case artifact exceeds ${MAX_ARTIFACT_BYTES} bytes`);
   }
-  return artifact;
+  return assertPublicArtifactSafe(artifact);
 }
 
 export function createPlaceboLedger(entries) {
@@ -320,6 +322,10 @@ export async function runPlaceboStreak(options, dependencies) {
   const initialReserveUsd = boundedUsd(options.initialReserveUsd, 'Placebo initial reserve');
   if (initialReserveUsd <= 0) throw new Error('Placebo initial reserve must be greater than zero');
   let ledger = validatePlaceboLedger(await dependencies.readLedger());
+  if (ledger.entries.some((entry) => entry.controllerSha !== options.controllerSha ||
+      entry.subjectSha !== options.subjectSha)) {
+    throw new Error('Placebo ledger identity differs from requested identity');
+  }
   const caseIds = options.caseIds ?? orderedPlaceboCaseIds();
   let spentUsd = ledger.entries.reduce((sum, entry) => sum + entry.totalUsd, 0);
   let observedMaximumUsd = ledger.entries.reduce((maximum, entry) => Math.max(maximum, entry.totalUsd), 0);
@@ -350,6 +356,10 @@ export async function finalizePlaceboEvidence(ledgerInput, artifactInputs, optio
       expectedIds.some((id) => !ledger.entries.some((entry) => entry.caseId === id)) ||
       expectedIds.some((id) => !artifacts.some((artifact) => artifact.caseId === id))) {
     throw new Error('Placebo finalization requires all 51 canonical cases');
+  }
+  if (new Set(ledger.entries.map(({ controllerSha }) => controllerSha)).size !== 1 ||
+      new Set(ledger.entries.map(({ subjectSha }) => subjectSha)).size !== 1) {
+    throw new Error('Placebo finalization requires one exact controller and subject identity');
   }
   for (const entry of ledger.entries) {
     const artifact = artifacts.find(({ caseId }) => caseId === entry.caseId);
@@ -515,6 +525,11 @@ async function runRemoteCase({ controllerSha, subjectSha, caseId, skipGate = fal
     const path = await findArtifactJson(directory);
     const bytes = await readFile(path);
     const artifact = validatePlaceboCaseArtifact(JSON.parse(bytes.toString('utf8')), { corpus });
+    assertPublicArtifactSafe(artifact, [
+      process.env.NEBIUS_API_KEY,
+      process.env.TAVILY_API_KEY,
+      process.env.CONTREE_TOKEN,
+    ]);
     if (artifact.controllerSha !== controllerSha || artifact.subjectSha !== subjectSha ||
         artifact.githubRunId !== String(run.databaseId) || artifact.caseId !== caseId ||
         artifact.artifactName !== expectedArtifactName) {

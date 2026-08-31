@@ -62,7 +62,7 @@ function artifact(caseId, overrides = {}) {
     results,
     evaluationManifest: {
       schemaVersion: 'sutura-evaluation-v1', suturaCommit: CONTROLLER_SHA,
-      corpusHash: corpus.corpusHash, cases: results.map(() => ({})),
+      corpusHash: corpus.corpusHash, cases: results.map(() => ({ caseId })),
     },
     artifactName: `sutura-placebo-live-test-${caseId}`,
     ...overrides,
@@ -90,7 +90,7 @@ test('case artifacts bind exact identities, costs, and one canonical case', () =
   assert.throws(() => createPlaceboCaseArtifact({
     ...value, caseId: 'unknown-case', evaluationManifest: {
       schemaVersion: 'sutura-evaluation-v1', suturaCommit: CONTROLLER_SHA,
-      corpusHash: corpus.corpusHash, cases: value.results.map(() => ({})),
+      corpusHash: corpus.corpusHash, cases: value.results.map(() => ({ caseId: 'unknown-case' })),
     },
   }, { corpus }), /canonical case/u);
 });
@@ -108,7 +108,7 @@ test('upstream artifacts require their exact Tavily pair', () => {
   assert.throws(() => createPlaceboCaseArtifact({
     ...value, results: value.results.slice(0, 1), evaluationManifest: {
       schemaVersion: 'sutura-evaluation-v1', suturaCommit: CONTROLLER_SHA,
-      corpusHash: corpus.corpusHash, cases: [{}],
+      corpusHash: corpus.corpusHash, cases: [{ caseId: value.caseId }],
     },
   }, { corpus }), /Tavily pair/u);
 });
@@ -158,6 +158,21 @@ test('streak resumes and stops immediately after a false approval', async () => 
   });
   assert.deepEqual(dispatched, ['flaky-timer-race', 'trap-skipped-test']);
   assert.equal(resultValue.stoppedFor, 'false-approval');
+});
+
+test('streak refuses to resume a ledger from another controller', async () => {
+  const value = artifact('repair-off-by-one');
+  const ledger = append(createPlaceboLedger([]), value, 1);
+  const changed = createPlaceboLedger(ledger.entries.map((entry) => ({
+    ...entry, controllerSha: 'b'.repeat(40),
+  })));
+  await assert.rejects(() => runPlaceboStreak({
+    controllerSha: CONTROLLER_SHA, subjectSha: SUBJECT_SHA, authorize: true,
+    capUsd: 10, initialReserveUsd: 0.5, caseIds: ['repair-bad-import'],
+  }, {
+    readLedger: async () => changed,
+    runCase: async () => { throw new Error('must not dispatch'); },
+  }), /identity differs/u);
 });
 
 test('finalizer requires all 51 cases and 55 retained evaluations', async () => {

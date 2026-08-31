@@ -42,14 +42,14 @@ jobs:
           [[ "$CONTROLLER_ID" =~ ^[A-Za-z0-9-]{1,64}$ ]]
 
       - name: Check out exact controller
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.controller-sha }}
           path: controller
           persist-credentials: false
 
       - name: Check out exact subject
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: juan294/sutura
           ref: ${{ inputs.subject-sha }}

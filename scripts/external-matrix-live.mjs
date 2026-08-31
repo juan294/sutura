@@ -65,7 +65,7 @@ function artifactBase(input, options) {
   }
   for (const pullRequest of base.cleanupPullRequests ?? []) {
     const url = new URL(publicGitHubUrl(pullRequest, `${base.caseId} cleanup pull request`));
-    if (!/^\/juan294\/sutura-demo\/pull\/[1-9]\d*$/u.test(url.pathname)) {
+    if (!/^\/juan294\/sutura-demo\/pull\/[1-9]\d*$/u.test(url.pathname) || url.search || url.hash) {
       throw new Error(`${base.caseId} cleanup pull request is invalid`);
     }
   }
@@ -131,6 +131,10 @@ export function validateExternalMatrixLedger(value) {
     if (typeof entry.controllerId !== 'string' || !/^[A-Za-z0-9-]{1,64}$/u.test(entry.controllerId)) {
       throw new Error(`External matrix ledger entry ${index + 1} controller is invalid`);
     }
+    if (entry.cleanupBranch !== undefined &&
+        entry.cleanupBranch !== `matrix/${entry.controllerId}/${entry.caseId}`) {
+      throw new Error(`External matrix ledger entry ${index + 1} cleanup branch is not controller-owned`);
+    }
     if (entry.cleanupPullRequests !== undefined && (!Array.isArray(entry.cleanupPullRequests) ||
         entry.cleanupPullRequests.length > 2 ||
         new Set(entry.cleanupPullRequests).size !== entry.cleanupPullRequests.length)) {
@@ -138,7 +142,8 @@ export function validateExternalMatrixLedger(value) {
     }
     for (const pullRequest of entry.cleanupPullRequests ?? []) {
       const pullRequestUrl = new URL(publicGitHubUrl(pullRequest, 'External matrix cleanup pull request'));
-      if (!/^\/juan294\/sutura-demo\/pull\/[1-9]\d*$/u.test(pullRequestUrl.pathname)) {
+      if (!/^\/juan294\/sutura-demo\/pull\/[1-9]\d*$/u.test(pullRequestUrl.pathname) ||
+          pullRequestUrl.search || pullRequestUrl.hash) {
         throw new Error(`External matrix ledger entry ${index + 1} cleanup pull request is invalid`);
       }
     }
@@ -259,18 +264,9 @@ export function externalMatrixCleanupTargets(ledgerInput) {
   const branches = new Set();
   const pullRequests = new Set();
   for (const entry of ledger.entries) {
-    if (entry.cleanupBranch !== undefined) {
-      if (entry.cleanupBranch !== `matrix/${entry.controllerId}/${entry.caseId}`) {
-        throw new Error(`${entry.caseId} cleanup branch is not controller-owned`);
-      }
-      branches.add(entry.cleanupBranch);
-    }
+    if (entry.cleanupBranch !== undefined) branches.add(entry.cleanupBranch);
     for (const pullRequest of entry.cleanupPullRequests ?? []) {
-      const url = new URL(publicGitHubUrl(pullRequest, `${entry.caseId} cleanup pull request`));
-      if (!/^\/juan294\/sutura-demo\/pull\/[1-9]\d*$/u.test(url.pathname)) {
-        throw new Error(`${entry.caseId} cleanup pull request is invalid`);
-      }
-      pullRequests.add(url.toString());
+      pullRequests.add(pullRequest);
     }
   }
   return { branches: [...branches].sort(), pullRequests: [...pullRequests].sort() };
@@ -278,6 +274,7 @@ export function externalMatrixCleanupTargets(ledgerInput) {
 
 export async function cleanupExternalMatrixLive(ledgerInput, dependencies) {
   const targets = externalMatrixCleanupTargets(ledgerInput);
+  const branches = new Set(targets.branches);
   const deletedBranches = [];
   const closedPullRequests = [];
   for (const pullRequest of targets.pullRequests) {
@@ -288,10 +285,10 @@ export async function cleanupExternalMatrixLive(ledgerInput, dependencies) {
     }
     if (typeof details.headRefName === 'string' &&
         (/^sutura\/fix-[1-9]\d{0,19}$/u.test(details.headRefName) || targets.branches.includes(details.headRefName))) {
-      targets.branches.push(details.headRefName);
+      branches.add(details.headRefName);
     }
   }
-  for (const branch of [...new Set(targets.branches)].sort()) {
+  for (const branch of [...branches].sort()) {
     if (!/^matrix\/[A-Za-z0-9-]{1,64}\/[A-Za-z0-9-]{1,64}$/u.test(branch) &&
         !/^sutura\/fix-[1-9]\d{0,19}$/u.test(branch)) {
       throw new Error(`Refusing to delete non-controller branch: ${branch}`);
@@ -319,6 +316,7 @@ function pathsForMode(selectedMode) {
     ledger: resolve(ROOT, `.sutura/external-matrix-${selectedMode}-ledger.json`),
     artifacts: resolve(ROOT, `.sutura/external-matrix-${selectedMode}-artifacts`),
     lock: resolve(ROOT, `.sutura/external-matrix-${selectedMode}.lock`),
+    cleanup: resolve(ROOT, `.sutura/external-matrix-cleanup-${selectedMode}.json`),
   };
 }
 
@@ -474,7 +472,10 @@ async function branchExistsDefault(branch) {
   try {
     await command('gh', ['api', `repos/${DEMO_REPOSITORY}/git/ref/heads/${branch}`]);
     return true;
-  } catch { return false; }
+  } catch (error) {
+    if (String(error?.stderr ?? '').includes('HTTP 404')) return false;
+    throw error;
+  }
 }
 
 async function deleteBranchDefault(branch) {
@@ -491,10 +492,21 @@ function valueAfter(args, flag) {
 export async function main(args = process.argv.slice(2)) {
   const commandName = args[0];
   const selectedMode = mode(valueAfter(args, '--mode'));
+  const paths = pathsForMode(selectedMode);
+  if (commandName === 'cleanup') {
+    if (!args.includes('--authorize')) throw new Error('External matrix cleanup requires literal --authorize');
+    const report = await cleanupExternalMatrixLive(await readLedgerDefault(selectedMode), {
+      readPullRequest: readPullRequestDefault,
+      closePullRequest: closePullRequestDefault,
+      branchExists: branchExistsDefault,
+      deleteBranch: deleteBranchDefault,
+    });
+    await atomicWrite(paths.cleanup, `${canonicalJson(report)}\n`);
+    return report;
+  }
   const controllerSha = valueAfter(args, '--controller-sha');
   const actionSha = valueAfter(args, '--action-sha');
   const demoSha = valueAfter(args, '--demo-sha');
-  const paths = pathsForMode(selectedMode);
   const identity = { mode: selectedMode, controllerSha, actionSha, demoSha };
   if (commandName === 'gate') return gateExternalMatrixLive(identity);
   if (commandName === 'run') {
@@ -528,25 +540,6 @@ export async function main(args = process.argv.slice(2)) {
     });
     await writeFile(valueAfter(args, '--output'), `${canonicalJson(manifest)}\n`, { encoding: 'utf8', flag: 'wx' });
     return manifest;
-  }
-  if (commandName === 'cleanup') {
-    if (!args.includes('--authorize')) throw new Error('External matrix cleanup requires literal --authorize');
-    exactSha(controllerSha, 'External matrix controller');
-    exactSha(actionSha, 'External matrix Action');
-    exactSha(demoSha, 'External matrix demo commit');
-    const ledger = await readLedgerDefault(selectedMode);
-    if (ledger.entries.some((entry) => entry.controllerSha !== controllerSha ||
-        entry.actionSha !== actionSha || entry.demoCommit !== demoSha)) {
-      throw new Error('External matrix cleanup identity differs from the ledger');
-    }
-    const report = await cleanupExternalMatrixLive(ledger, {
-      readPullRequest: readPullRequestDefault,
-      closePullRequest: closePullRequestDefault,
-      branchExists: branchExistsDefault,
-      deleteBranch: deleteBranchDefault,
-    });
-    await writeFile(valueAfter(args, '--output'), `${canonicalJson(report)}\n`, { encoding: 'utf8', flag: 'wx' });
-    return report;
   }
   throw new Error('Usage: external-matrix-live.mjs gate|run|streak|finalize|cleanup with exact identities');
 }
