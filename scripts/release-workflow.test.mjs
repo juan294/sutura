@@ -91,4 +91,18 @@ test('versioned release evidence requirements name every authorization gate', as
     'live-provider-benchmark', 'live-dogfood-streak', 'release-publication',
     'public-demo-enable', 'devpost-update',
   ]);
+  assert.deepEqual(requirements.ownerPhaseByEvidenceId, {
+    benchmark: 0,
+    'candidate-matrix': 0,
+    demo: 1,
+    devpost: 7,
+    dogfood: 0,
+    feedback: 5,
+    'github-release': 0,
+    'local-gate': 0,
+    marketplace: 4,
+    npm: 0,
+    'public-matrix': 0,
+  });
+  assert.equal(Object.keys(requirements.ownerPhaseByEvidenceId).length, 11);
 });

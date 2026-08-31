@@ -110,11 +110,59 @@ export function renderDogfoodLedger(ledger) {
     `Result hash: \`${ledger.resultHash}\``, '',
   ];
   if (ledger.entries.length === 0) return `${lines.join('\n')}\nNo live streak attempts are recorded.\n`;
+  const trailing = ledger.entries.slice(-10);
+  if (trailing.length === 10 && trailing.every((entry) =>
+    entry.outcome === 'fixed' && entry.actionSha === trailing[0]?.actionSha)) {
+    lines.push(`Trailing fixed streak Action: \`${trailing[0].actionSha}\``, '');
+  }
   lines.push('| Attempt | CI run | Sutura run | Outcome | Cost USD |', '| ---: | ---: | ---: | --- | ---: |');
   for (const entry of ledger.entries) {
     lines.push(`| ${entry.attempt} | ${entry.ciRunId} | ${entry.suturaRunId} | ${entry.outcome} | ${(entry.sandboxUsd + entry.inferenceUsd).toFixed(4)} |`);
   }
   return `${lines.join('\n')}\n`;
+}
+
+export function renderDogfoodExecutableEquivalence(value) {
+  const streakActionSha = exactSha(value.streakActionSha, 'Dogfood streak Action');
+  const releaseCommit = exactSha(value.releaseCommit, 'Dogfood release commit');
+  if (!SHA256_PATTERN.test(value.executableFingerprint ?? '')) {
+    throw new Error('Dogfood executable fingerprint is invalid');
+  }
+  if (!Number.isSafeInteger(value.fixedAttempts) || value.fixedAttempts < 1 ||
+      !Number.isFinite(value.totalUsd) || value.totalUsd < 0 ||
+      !Array.isArray(value.paths) || value.paths.length === 0 ||
+      !Array.isArray(value.widerDifferences)) {
+    throw new Error('Dogfood executable equivalence input is invalid');
+  }
+  const boundedPath = (path) => typeof path === 'string' && /^[A-Za-z0-9._/-]{1,200}$/u.test(path) &&
+    !path.includes('..');
+  if (![...value.paths, ...value.widerDifferences].every(boundedPath)) {
+    throw new Error('Dogfood executable equivalence path is invalid');
+  }
+  return [
+    '# Sutura v0.2.0 dogfood executable equivalence',
+    '',
+    `Ten consecutive live repairs ran at \`${streakActionSha}\`.`,
+    '',
+    `The v0.2.0 release commit is \`${releaseCommit}\`. Its Action metadata and executable bundle have the same Git-object fingerprint as the streak Action.`,
+    '',
+    `No dogfood run executed at \`${releaseCommit}\`.`,
+    '',
+    `Fixed attempts: ${value.fixedAttempts}`,
+    '',
+    `Total live spend: USD ${value.totalUsd.toFixed(6)}`,
+    '',
+    `Executable fingerprint: \`${value.executableFingerprint}\``,
+    '',
+    'Executed paths:',
+    '',
+    ...value.paths.map((path) => `- \`${path}\``),
+    '',
+    'The wider package tree differs only in these CLI setup and test files:',
+    '',
+    ...value.widerDifferences.map((path) => `- \`${path}\``),
+    '',
+  ].join('\n');
 }
 
 async function command(command, args, options = {}) {

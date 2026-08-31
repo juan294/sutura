@@ -8,7 +8,9 @@ import test from 'node:test';
 import { contentHash } from './evidence-contract.mjs';
 
 import {
+  ACTION_EXECUTABLE_PATHS,
   analyzeReleaseEvidence,
+  actionExecutableFingerprint,
   assertReleaseReady,
   createGitHubEvidenceVerifier,
   main,
@@ -16,6 +18,21 @@ import {
 } from './release-evidence.mjs';
 
 const SHA = 'c'.repeat(40);
+const ACTION_SHA = 'a'.repeat(40);
+const ACTION_BLOBS = Object.fromEntries(ACTION_EXECUTABLE_PATHS.map((path, index) => [
+  path, (index + 1).toString(16).repeat(40),
+]));
+
+function equivalentActionOptions(tree = 'b'.repeat(40), overrides = {}) {
+  return {
+    actionPackagesTreeHash: tree,
+    gitObjectId: (commit, path) => {
+      assert.ok(commit === ACTION_SHA || commit === SHA);
+      return ACTION_BLOBS[path];
+    },
+    ...overrides,
+  };
+}
 
 function remoteEvidence(index) {
   const runId = String(1000 + index);
@@ -70,7 +87,7 @@ test('records real authorization gates as pending and cannot declare release rea
   assert.throws(() => assertReleaseReady(report), /not ready/u);
 });
 
-test('dogfood evidence requires 10 trailing fixed entries on one matching packages tree', async () => {
+test('dogfood evidence requires 10 trailing fixed entries and exact Action executable equivalence', async () => {
   const tree = 'b'.repeat(40);
   const entry = (index, overrides = {}) => ({
     attempt: index,
@@ -79,7 +96,7 @@ test('dogfood evidence requires 10 trailing fixed entries on one matching packag
     prUrl: `https://github.com/juan294/sutura/pull/${index}`,
     dogfoodSha: index.toString(16).padStart(40, '0'),
     outcome: 'fixed',
-    actionSha: 'a'.repeat(40),
+    actionSha: ACTION_SHA,
     packagesTreeHash: tree,
     sandboxUsd: 0.2,
     inferenceUsd: 0.3,
@@ -93,14 +110,18 @@ test('dogfood evidence requires 10 trailing fixed entries on one matching packag
     resultHash: contentHash(entries),
   });
   assert.equal(verifyDogfoodStreak(ledger(Array.from({ length: 9 }, (_, index) => entry(index + 1))), SHA, {
-    packagesTreeHash: tree,
-    actionPackagesTreeHash: tree,
+    ...equivalentActionOptions(tree),
   }).status, 'pending');
   const passed = verifyDogfoodStreak(ledger(Array.from({ length: 10 }, (_, index) => entry(index + 1))), SHA, {
-    packagesTreeHash: tree,
-    actionPackagesTreeHash: tree,
+    ...equivalentActionOptions(tree),
   });
   assert.equal(passed.status, 'passed');
+  assert.deepEqual(passed.equivalence, {
+    streakActionSha: ACTION_SHA,
+    releaseCommit: SHA,
+    executableFingerprint: actionExecutableFingerprint(ACTION_SHA, equivalentActionOptions(tree)),
+    paths: ACTION_EXECUTABLE_PATHS,
+  });
   assert.deepEqual(passed.evidence[0], {
     reference: 'docs/demo/dogfood-ledger.json',
     contentHash: passed.evidence[0].contentHash,
@@ -121,20 +142,17 @@ test('dogfood evidence requires 10 trailing fixed entries on one matching packag
     ...priorCandidates,
     ...Array.from({ length: 10 }, (_, index) => entry(index + 1)),
   ]), SHA, {
-    packagesTreeHash: tree,
-    actionPackagesTreeHash: tree,
+    ...equivalentActionOptions(tree),
   }).status, 'passed');
   assert.equal(verifyDogfoodStreak(ledger([
     ...priorCandidates.map((value) => ({ ...value, sandboxUsd: 3.1 })),
     ...Array.from({ length: 10 }, (_, index) => entry(index + 1)),
   ]), SHA, {
-    packagesTreeHash: tree,
-    actionPackagesTreeHash: tree,
+    ...equivalentActionOptions(tree),
   }).status, 'pending');
   assert.equal(verifyDogfoodStreak(ledger(Array.from({ length: 10 }, (_, index) =>
     entry(index + 1, index === 4 ? { packagesTreeHash: 'c'.repeat(40) } : {}))), SHA, {
-    packagesTreeHash: tree,
-    actionPackagesTreeHash: tree,
+    ...equivalentActionOptions(tree),
   }).status, 'pending');
   const splitCandidates = [
     ...Array.from({ length: 5 }, (_, index) => entry(index + 1, {
@@ -152,8 +170,13 @@ test('dogfood evidence requires 10 trailing fixed entries on one matching packag
     })),
   ];
   assert.equal(verifyDogfoodStreak(ledger(splitCandidates), SHA, {
-    packagesTreeHash: tree,
-    actionPackagesTreeHash: tree,
+    ...equivalentActionOptions(tree),
+  }).status, 'pending');
+
+  assert.equal(verifyDogfoodStreak(ledger(Array.from({ length: 10 }, (_, index) => entry(index + 1))), SHA, {
+    ...equivalentActionOptions(tree),
+    gitObjectId: (commit, path) => commit === SHA && path === 'packages/action/dist/index.cjs'
+      ? 'f'.repeat(40) : ACTION_BLOBS[path],
   }).status, 'pending');
 
   const directory = await mkdtemp(join(tmpdir(), 'sutura-dogfood-status-'));
@@ -162,8 +185,7 @@ test('dogfood evidence requires 10 trailing fixed entries on one matching packag
     await writeFile(path, JSON.stringify(ledger([])));
     let output = '';
     const result = await main(['dogfood-status', '--ledger', path, '--candidate', SHA], {
-      packagesTreeHash: tree,
-      actionPackagesTreeHash: tree,
+      ...equivalentActionOptions(tree),
       stdout: { write: (value) => { output += value; } },
     });
     assert.equal(result.status, 'pending');
@@ -171,6 +193,43 @@ test('dogfood evidence requires 10 trailing fixed entries on one matching packag
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('Action executable fingerprint is deterministic and rejects missing Git objects', () => {
+  const first = actionExecutableFingerprint(ACTION_SHA, equivalentActionOptions());
+  const second = actionExecutableFingerprint(ACTION_SHA, {
+    gitObjectId: (commit, path) => {
+      assert.equal(commit, ACTION_SHA);
+      return ACTION_BLOBS[path];
+    },
+  });
+  assert.match(first, /^[a-f0-9]{64}$/u);
+  assert.equal(first, second);
+  assert.throws(() => actionExecutableFingerprint(ACTION_SHA, {
+    gitObjectId: () => 'missing',
+  }), /Git object/u);
+});
+
+test('release evidence permits only bounded passed dogfood equivalence metadata', () => {
+  const value = evidence();
+  const dogfood = value.checks.find(({ id }) => id === 'dogfood');
+  dogfood.status = 'passed';
+  dogfood.authorizationGate = undefined;
+  dogfood.evidence = [remoteEvidence(9)];
+  dogfood.equivalence = {
+    streakActionSha: ACTION_SHA,
+    releaseCommit: SHA,
+    executableFingerprint: 'f'.repeat(64),
+    paths: ACTION_EXECUTABLE_PATHS,
+  };
+  const report = analyze(value);
+  assert.deepEqual(report.checks.find(({ id }) => id === 'dogfood').equivalence, dogfood.equivalence);
+
+  value.checks.find(({ id }) => id === 'local-gate').equivalence = dogfood.equivalence;
+  assert.throws(() => analyze(value), /equivalence metadata/u);
+  delete value.checks.find(({ id }) => id === 'local-gate').equivalence;
+  dogfood.equivalence = { ...dogfood.equivalence, paths: ['packages/action/dist/index.cjs'] };
+  assert.throws(() => analyze(value), /equivalence metadata/u);
 });
 
 test('requires at least one pass, complete required evidence, and one exact candidate', () => {

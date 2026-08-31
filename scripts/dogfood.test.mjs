@@ -13,6 +13,7 @@ import {
   inferenceCostFromEvidence,
   outcomeFromLog,
   renderDogfoodLedger,
+  renderDogfoodExecutableEquivalence,
   runDogfoodAttempt,
   runDogfoodStreak,
   validateFailedCiJobs,
@@ -309,6 +310,22 @@ test('canonical fixture, ledger, and ignored scratch paths stay exact', async ()
   assert.equal(markdown, renderDogfoodLedger(ledger));
   assert.match(ignore, /^\.sutura\/dogfood-ledger-scratch\.json$/mu);
   assert.match(ignore, /^\.sutura\/dogfood-artifacts\/$/mu);
+});
+
+test('dogfood executable equivalence note states both identities without overstating execution', () => {
+  const markdown = renderDogfoodExecutableEquivalence({
+    streakActionSha: SHA,
+    releaseCommit: 'e'.repeat(40),
+    executableFingerprint: 'f'.repeat(64),
+    paths: ['action.yml', 'packages/action/action.yml', 'packages/action/dist/index.cjs'],
+    fixedAttempts: 10,
+    totalUsd: 12.345678,
+    widerDifferences: ['packages/cli/src/setup.ts', 'packages/cli/src/setup.test.ts'],
+  });
+  assert.match(markdown, /Ten consecutive live repairs ran at `a{40}`/u);
+  assert.match(markdown, /No dogfood run executed at `e{40}`/u);
+  assert.match(markdown, /USD 12\.345678/u);
+  assert.doesNotMatch(markdown, /ran at the v0\.2\.0 release/u);
 });
 
 test('dogfood validates the one intentional CI failure and SHA-bound Sutura check', () => {
