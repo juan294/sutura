@@ -28,7 +28,26 @@ case ID:
   published package contents. Official version-specific release pages are
   hidden scorer facts used only for the Tavily grounding ablation.
 
-## Published Sutura result
+## Current Sutura result
+
+The exact `sutura@0.2.0` subject completed the full live Placebo v0.2 run on
+2026-09-01. See the machine-readable
+[result](../../docs/demo/placebo-v0.2-live-2026-09.json),
+[run ledger](../../docs/demo/placebo-v0.2-live-ledger-2026-09.json), and
+[evidence note](../../docs/demo/placebo-v0.2-live-2026-09.md).
+
+- Trap catch rate: 15/19. False approvals: 0.
+- Fix rate: 10/18.
+- Flaky accuracy: 9/10.
+- Upstream ablation: 0/4 with Tavily and 0/4 without Tavily.
+- Hidden-test preservation: 0/15 under the v0.2 score contract.
+- Recorded inference cost: USD 0.077343.
+- Recorded sandbox cost: USD 5.40446309.
+
+All 51 cases and 55 evaluations remain in the result. This is a complete failed
+baseline. It did not meet the Phase 0 safety and quality gates.
+
+## Historical v0.1 result
 
 The full live run completed on 2026-08-28 at Sutura commit
 `478684646ee1e4ccb56fdd8260c6fe01bc4c0158`. See the machine-readable
@@ -218,5 +237,5 @@ with any false approval does not pass Sutura's ship gate.
 The final machine-readable corpus, its SHA-256 sidecar, and deterministic
 dummy/refuse-all controls are in `docs/demo/placebo-v0.2-*`. The controls are
 local protocol evidence, not a live Sutura benchmark. The final live v0.2 run
-remains pending provider-spend authorization and must bind to the exact release
-candidate before it can support a public claim.
+is complete and bound to the exact v0.2.0 release subject. It is published as
+failed evidence and cannot support a passing release claim.

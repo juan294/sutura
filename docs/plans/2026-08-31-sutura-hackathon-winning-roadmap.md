@@ -14,11 +14,11 @@ Submission deadline: 2026-10-30 at 10:00 PDT
 
 Planned submission date: 2026-10-29
 
-Current phase: Phase 0 - Close the v0.2 evidence gap
+Current phase: Phase 0 - Blocked by v0.2.0 evidence defects
 
 Detailed plan: `docs/plans/2026-08-31-sutura-phase-0-evidence-baseline.md`
 
-Next action: Implement Phase 1 of the detailed Phase 0 plan. Do not start paid provider work or remote mutation until its exact scope and spend cap receive explicit authorization.
+Next action: Review and authorize Phase 1 of `docs/plans/2026-09-01-sutura-v0.2.1-evidence-remediation.md`. Do not start a new paid run, release, or remote mutation until its exact candidate and authority are recorded.
 
 ## Purpose
 
@@ -127,7 +127,7 @@ The manifest is a tracking and consistency check. It does not replace direct pro
 
 | Phase | Dates | Outcome | Dependency | Status |
 | ---: | --- | --- | --- | --- |
-| 0 | Sep 1-5 | Complete and reconcile v0.2 evidence | None | Active |
+| 0 | Sep 1-5 | Complete and reconcile v0.2 evidence | None | Blocked |
 | 1 | Sep 6-14 | Public Sutura Case Lab | Phase 0 evidence model | Not started |
 | 2 | Sep 15-21 | Counterfactual patch proof | Case Lab result model | Not started |
 | 3 | Sep 22-Oct 5 | Sutura Arena and Data Lab experiment | Phases 0 and 2 | Not started |
@@ -147,18 +147,23 @@ Objective: Establish one honest current baseline before adding new product claim
 
 ### Work
 
-- [ ] Audit the eleven required evidence records against current public state.
-- [ ] Bind already valid npm, GitHub release, dogfood, local gate, and release records to their exact commits and URLs.
-- [ ] Prove the dogfood Action executable and metadata are identical between the streak commit and v0.2.0. Do not repeat the ten-run streak when exact executable equivalence passes.
-- [ ] Add resumable, content-hashed controllers for the live benchmark and external matrices before provider spending.
-- [ ] Run the complete live Placebo v0.2 benchmark under an authorized spend cap.
-- [ ] Report JavaScript, TypeScript, and Python results separately and together.
-- [ ] Retain all repair failures, refusals, flakes, upstream outcomes, costs, latency, and sandbox operations.
-- [ ] Run the candidate eight-case external matrix with real sandbox operation identifiers.
-- [ ] Run the public eight-case matrix against only public artifacts.
-- [ ] Verify the provider contract and ConTree isolation contract used by the benchmark.
-- [ ] Update README claims from v0.1 to v0.2 only after the live result is complete.
-- [ ] If public v0.2.0 has a product defect, create a patch-release plan. Do not rewrite evidence or silently substitute an unreleased commit.
+- [x] Audit the eleven required evidence records against current public state.
+- [x] Bind valid npm, GitHub release, dogfood, local gate, and release records to exact commits and URLs.
+- [x] Prove dogfood Action executable and metadata equivalence without repeating the ten-run streak.
+- [x] Add resumable, content-hashed controllers before provider spending.
+- [x] Run all 51 live Placebo v0.2 cases and retain all 55 evaluations.
+- [x] Report JavaScript, TypeScript, and Python results separately and together.
+- [x] Retain all repair failures, refusals, flakes, upstream outcomes, costs, latency, and sandbox operations.
+- [x] Run all eight candidate external matrix cases with real sandbox operation identifiers where required.
+- [x] Run all eight public external matrix cases against public artifacts.
+- [x] Verify the provider contract and observe the ConTree Python image contract failure.
+- [x] Update README claims from v0.1 to the measured v0.2 baseline.
+- [x] Create the v0.2.1 patch-release plan without rewriting v0.2.0 evidence.
+
+Phase 0 remains blocked because the benchmark hidden-test gate failed, the
+candidate matrix passed 6/8, and the public matrix passed 5/8. All three had
+zero false approvals. The exact failed baseline is indexed in
+`docs/demo/sutura-v0.2.0-phase-0-evidence.md`.
 
 ### Exit gate
 
@@ -470,10 +475,10 @@ Update this table only when the direct evidence exists. Link the evidence and re
 
 | Evidence | State | Required by | Evidence |
 | --- | --- | --- | --- |
-| v0.2 live benchmark | Not started | Phase 0 | `docs/demo/placebo-v0.2-local.md` records local controls only |
-| Candidate external matrix | Not started | Phase 0 | No accepted live matrix recorded |
-| Public external matrix | Not started | Phase 0 and Phase 6 | No accepted public matrix recorded |
-| Dogfood streak | Active | Phase 0 | Ten consecutive fixed attempts at `a99e23199a80ae6ee51fe1680afb74188416160c`; v0.2.0 executable-equivalence proof pending |
+| v0.2 live benchmark | Failed | Phase 0 | Complete 51-case, 55-evaluation result in `docs/demo/placebo-v0.2-live-2026-09.json`; zero false approvals; required gates missed |
+| Candidate external matrix | Failed | Phase 0 | 6/8, zero false approvals; `docs/demo/sutura-v0.2.0-candidate-matrix.json` |
+| Public external matrix | Failed | Phase 0 and Phase 6 | 5/8, zero false approvals; `docs/demo/sutura-v0.2.0-public-matrix.json` |
+| Dogfood streak | Passed | Phase 0 | Ten consecutive fixed attempts; executable equivalence recorded in `docs/demo/dogfood-v0.2.0-executable-equivalence.md` |
 | npm v0.2.0 | Passed | Baseline | `sutura@0.2.0` |
 | GitHub release v0.2.0 | Passed | Baseline | Release commit `a943ded4c734aed75c5c63f2b2dd63a2f44556c2` |
 | Case Lab | Not started | Phase 1 | Current demo is stale and collaborator-only |

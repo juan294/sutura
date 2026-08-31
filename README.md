@@ -81,6 +81,28 @@ dated. Catch-rate claims use the form “refused X/X placebos in Placebo vN.”
 Fix rate includes every failed case ID, and flaky accuracy states the corpus
 sample size. The internal ship gate is zero false approvals.
 
+On 2026-09-01, the exact v0.2.0 subject
+`a943ded4c734aed75c5c63f2b2dd63a2f44556c2` completed all 51 Placebo v0.2
+cases and 55 evaluations. The [machine-readable result](docs/demo/placebo-v0.2-live-2026-09.json),
+[run ledger](docs/demo/placebo-v0.2-live-ledger-2026-09.json), and
+[evidence note](docs/demo/placebo-v0.2-live-2026-09.md) retain every failure.
+
+- Sutura refused 15/19 traps with zero false approvals.
+- It fixed 10/18 repairable cases.
+- It identified 9/10 flaky cases without patching them.
+- It fixed 0/4 upstream cases with Tavily and 0/4 without Tavily.
+- Hidden-test preservation was 0/15 under the v0.2 score contract: 14 checks
+  were not run and one deceptive candidate failed its hidden check and was
+  rejected.
+- Recorded inference cost was USD 0.077343 and recorded sandbox cost was USD
+  5.40446309 across the complete evaluation.
+
+This is a complete failed baseline, not passing release evidence. The candidate
+matrix passed 6/8 and the public matrix passed 5/8, both with zero false
+approvals. The immutable v0.2.0 Python image digest is unavailable, so Python
+execution currently stops before repair. The v0.2.1 remediation plan is
+[tracked here](docs/plans/2026-09-01-sutura-v0.2.1-evidence-remediation.md).
+
 On 2026-08-28, Sutura commit `478684646ee1e4ccb56fdd8260c6fe01bc4c0158`
 completed the full live Placebo v0.1 run. The machine-readable
 [result](docs/demo/placebo-v0.1-2026-08-28.json) and its
@@ -271,7 +293,9 @@ Unverified Super model overrides fail closed.
 The versioned [release evidence requirements](docs/demo/sutura-v0.2.0-release-evidence-requirements.json)
 define the eleven required records, including dogfood plus separate candidate and public
 matrices. Live benchmark, dogfood, publication, public demo, and Devpost evidence
-remain pending their separate authorization gates.
+use separate authorization gates. The v0.2.0 benchmark and matrices are now
+terminal but failed their complete readiness gates; later evidence remains
+pending with its roadmap owner.
 
 ### Evaluation Lab
 

@@ -4,9 +4,17 @@
 
 Plan said: Hidden-test preservation would be 15/15, repair rate would exceed 6/10, flaky accuracy would be 10/10, and all four Tavily-enabled upstream cases would be fixed.
 
-Found: The complete exact-release run retained 51 cases and 55 evaluations with zero false approvals and zero budget exhaustions. It measured 10/18 verified repairs, 9/10 correct flaky classifications, 15/19 explicit trap refusals, 0/4 Tavily-enabled upstream fixes, and hidden verification of 0/15. Four Python repairs, three Python traps, and the Python flaky case stopped as infrastructure outcomes because the immutable v0.2.0 CLI subject does not expose the newer Python runtime path. Fourteen hidden checks were not run because the released outcome had no selected candidate; one trap candidate ran and failed its hidden check as expected.
+Found: The complete exact-release run retained 51 cases and 55 evaluations with zero false approvals and zero budget exhaustions. It measured 10/18 verified repairs, 9/10 correct flaky classifications, 15/19 explicit trap refusals, 0/4 Tavily-enabled upstream fixes, and hidden verification of 0/15. Four Python repairs, three Python traps, and the Python flaky case stopped as infrastructure outcomes because the immutable v0.2.0 Python image digest returned HTTP 404 during ConTree import. Fourteen hidden checks were not run because the released outcome had no selected candidate; one trap candidate ran and failed its hidden check as expected.
 
 Why it matters: The result is an honest complete baseline and missed quality targets stay in the denominator, but it does not satisfy the plan's strict 15/15 hidden-test safety wording. The current score also counts only a passing hidden check as preserved, while a deceptive trap candidate is expected to fail its hidden check and be rejected. Phase 0 must not be marked `Accepted` until that contract conflict and the v0.2.0 safety result are resolved. No result was edited or rerun to improve the score.
+
+## Phase 4: Candidate and public matrix results
+
+Plan said: Both matrices would complete 8/8 with zero false approvals, and each terminal workflow would upload its normal result artifact.
+
+Found: Candidate mode retained 8/8 cases, passed 6/8, and had zero false approvals. Public mode retained 8/8, passed 5/8, and had zero false approvals. `repository-policy-refusal` ended as safe `gave-up` in both modes. Python repair reproduced the unavailable image in both modes. One public audit-only run received an invalid diagnosis response. The early-failure paths did not upload normal case artifacts, so exact evidence was recovered from run logs, replay artifacts, checks, PRs, fixture identities, and ConTree operation IDs without rerunning or changing a result.
+
+Why it matters: The matrices are complete failed baselines, not passing release gates. The workflow also needs a normal terminal artifact for early infrastructure and provider failures. The v0.2.1 remediation plan addresses both product behavior and evidence recovery before any new paid run.
 
 ## Phase 2: Canonical benchmark case set
 
