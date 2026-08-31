@@ -14,9 +14,16 @@ function exactSha(value, label) {
   return value.toLowerCase();
 }
 
-function packedFilename(output) {
+export function packedFilename(output) {
   const parsed = JSON.parse(output);
-  const record = Array.isArray(parsed) ? parsed[0] : parsed;
+  const records = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === 'object' && typeof parsed.filename === 'string'
+      ? [parsed]
+      : parsed && typeof parsed === 'object'
+        ? Object.values(parsed)
+        : [];
+  const record = records.length === 1 ? records[0] : undefined;
   if (!record || typeof record.filename !== 'string' || record.filename.length === 0) {
     throw new Error('npm pack did not return one filename');
   }
