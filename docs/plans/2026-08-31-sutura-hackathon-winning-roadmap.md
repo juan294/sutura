@@ -16,7 +16,9 @@ Planned submission date: 2026-10-29
 
 Current phase: Phase 0 - Close the v0.2 evidence gap
 
-Next action: Create the detailed Phase 0 execution plan. Do not start paid provider work until its spend cap receives explicit authorization.
+Detailed plan: `docs/plans/2026-08-31-sutura-phase-0-evidence-baseline.md`
+
+Next action: Implement Phase 1 of the detailed Phase 0 plan. Do not start paid provider work or remote mutation until its exact scope and spend cap receive explicit authorization.
 
 ## Purpose
 
@@ -70,13 +72,14 @@ These scores are internal planning estimates. They are not official scores and d
 - [x] Adaptive ConTree beam search exists.
 - [x] Network-disabled untrusted stages and repository policy exist.
 - [x] Progressive flake classification, GitHub Checks, audit-only mode, ATIF export, and local evaluation records exist.
-- [x] Ten consecutive live dogfood repairs completed with independent full CI.
+- [x] Ten consecutive live dogfood repairs completed with independent full CI at Action commit `a99e23199a80ae6ee51fe1680afb74188416160c`.
 
 ### Not yet accepted as hackathon evidence
 
 - [ ] Complete live Placebo v0.2 benchmark.
 - [ ] Candidate eight-case external matrix.
 - [ ] Public eight-case external matrix.
+- [ ] Dogfood executable-equivalence proof between `a99e23199a80ae6ee51fe1680afb74188416160c` and the v0.2.0 release commit.
 - [ ] Current public demo that a signed-out non-collaborator can use.
 - [ ] Demo pinned to the exact submitted release.
 - [ ] Real sanitized Data Lab import and batch experiment.
@@ -146,6 +149,8 @@ Objective: Establish one honest current baseline before adding new product claim
 
 - [ ] Audit the eleven required evidence records against current public state.
 - [ ] Bind already valid npm, GitHub release, dogfood, local gate, and release records to their exact commits and URLs.
+- [ ] Prove the dogfood Action executable and metadata are identical between the streak commit and v0.2.0. Do not repeat the ten-run streak when exact executable equivalence passes.
+- [ ] Add resumable, content-hashed controllers for the live benchmark and external matrices before provider spending.
 - [ ] Run the complete live Placebo v0.2 benchmark under an authorized spend cap.
 - [ ] Report JavaScript, TypeScript, and Python results separately and together.
 - [ ] Retain all repair failures, refusals, flakes, upstream outcomes, costs, latency, and sandbox operations.
@@ -159,7 +164,7 @@ Objective: Establish one honest current baseline before adding new product claim
 
 - The live benchmark has a versioned manifest, exact release identity, result hash, complete denominator, cost, latency, and public-safe report.
 - Both eight-case matrices are complete with zero false approvals.
-- Every existing evidence record has one of three explicit states: `passed`, `failed`, or `not-applicable`. No required record is hidden behind `pending` without a named next action.
+- Phase 0-owned records have an explicit terminal result. Later `demo`, `devpost`, `feedback`, and `marketplace` records remain `pending` with their owning roadmap phase and next action.
 - README claims match the measured result.
 
 ### Evidence destinations
@@ -468,7 +473,7 @@ Update this table only when the direct evidence exists. Link the evidence and re
 | v0.2 live benchmark | Not started | Phase 0 | `docs/demo/placebo-v0.2-local.md` records local controls only |
 | Candidate external matrix | Not started | Phase 0 | No accepted live matrix recorded |
 | Public external matrix | Not started | Phase 0 and Phase 6 | No accepted public matrix recorded |
-| Dogfood streak | Passed | Baseline | `docs/demo/dogfood-ledger.md`, ten consecutive fixed attempts |
+| Dogfood streak | Active | Phase 0 | Ten consecutive fixed attempts at `a99e23199a80ae6ee51fe1680afb74188416160c`; v0.2.0 executable-equivalence proof pending |
 | npm v0.2.0 | Passed | Baseline | `sutura@0.2.0` |
 | GitHub release v0.2.0 | Passed | Baseline | Release commit `a943ded4c734aed75c5c63f2b2dd63a2f44556c2` |
 | Case Lab | Not started | Phase 1 | Current demo is stale and collaborator-only |
