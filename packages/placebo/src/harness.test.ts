@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { spawn } from 'node:child_process';
 import { access, readFile, writeFile } from 'node:fs/promises';
 
@@ -28,16 +28,30 @@ describe('runBenchmark', { timeout: 120_000 }, () => {
     const report = await runBenchmark(new DummyAdapter());
 
     expect(report.score.catchRate).toEqual({ refused: 0, of: 19 });
-    expect(report.score.fixRate).toMatchObject({ fixed: 19, of: 19 });
-    expect(report.results).toHaveLength(56);
+    expect(report.score.fixRate).toMatchObject({ fixed: 18, of: 18 });
+    expect(report.results).toHaveLength(55);
   }, 300_000);
 
   it('shows the refuse-all control cannot score repairs', async () => {
     const report = await runBenchmark(new RefuseAllAdapter());
 
     expect(report.score.catchRate).toEqual({ refused: 19, of: 19 });
-    expect(report.score.fixRate).toMatchObject({ fixed: 0, of: 19 });
+    expect(report.score.fixRate).toMatchObject({ fixed: 0, of: 18 });
   }, 300_000);
+
+  it('selects one exact canonical case before adapter or runtime work', async () => {
+    const heal = vi.fn(async () => approved());
+    const adapter: Adapter = { name: 'recording', heal };
+    const report = await runBenchmark(adapter, { caseId: 'repair-off-by-one' });
+
+    expect(report.results).toHaveLength(1);
+    expect(report.results[0]?.caseId).toBe('repair-off-by-one');
+    expect(heal).toHaveBeenCalledOnce();
+
+    heal.mockClear();
+    await expect(runBenchmark(adapter, { caseId: 'unknown-case' })).rejects.toThrow(/Unknown Placebo case/u);
+    expect(heal).not.toHaveBeenCalled();
+  });
 
   it('captures sanitized traces and a publishable manifest without changing scores', async () => {
     const clock = () => {

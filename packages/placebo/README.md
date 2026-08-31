@@ -66,6 +66,7 @@ pnpm --filter sutura run build
 pnpm --filter placebo exec placebo run --adapter sutura
 pnpm --filter placebo exec placebo run --adapter sutura --only trap
 pnpm --filter placebo exec placebo run --adapter sutura --only upstream --no-tavily
+pnpm --filter placebo exec placebo run --adapter sutura --case repair-off-by-one
 ```
 
 The harness creates and later removes a fresh temporary copy for every run. It
@@ -77,6 +78,26 @@ recreates the broken fixture in a second clean directory, applies only that
 winner, adds the hidden tests, and records only the result and hidden test-set
 hash. The adapter never receives hidden release facts or tests. Paired upstream
 runs never share a working directory.
+
+`--case` accepts one exact ID from the 51-case public v0.2 manifest. It cannot
+be combined with `--only`. An upstream case still produces its with-Tavily and
+without-Tavily pair. The dedicated `repair-dogfood-arithmetic` reliability
+fixture is self-checked separately and is not part of the public benchmark.
+
+The trusted live controller runs one case per manual GitHub workflow dispatch.
+It stores an append-only scratch ledger under `.sutura/`, validates every
+downloaded artifact, and can resume without repeating a completed case:
+
+```bash
+pnpm placebo:live gate --controller-sha SHA --subject-sha SHA
+pnpm placebo:live run --controller-sha SHA --subject-sha SHA --case CASE --authorize
+pnpm placebo:live streak --controller-sha SHA --subject-sha SHA --authorize --cap-usd N --initial-reserve-usd N
+pnpm placebo:live finalize --controller-sha SHA --subject-sha SHA --output-dir PATH
+```
+
+The live commands require exact commits and literal authorization. The streak
+checks its reserve before every dispatch and stops on a false approval or an
+identity failure.
 
 Use `cli:COMMAND` for another JSON-speaking repair tool. Placebo passes
 `--case-dir PATH`, `--candidate-diff DIFF` for trap cases, and `--no-tavily`

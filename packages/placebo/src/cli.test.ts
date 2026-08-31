@@ -53,6 +53,43 @@ describe('placebo CLI', { timeout: 120_000 }, () => {
     expect(output.results).toHaveLength(4);
   });
 
+  it('selects one case and rejects conflicting or repeated selectors', async () => {
+    const write = vi.fn();
+    const writeError = vi.fn();
+    const benchmark = vi.fn().mockResolvedValue(report(1));
+    await expect(runCli(
+      ['run', '--adapter', 'dummy', '--case', 'repair-off-by-one'],
+      { write, writeError },
+      { benchmark },
+    )).resolves.toBe(0);
+    expect(benchmark).toHaveBeenCalledWith(expect.anything(), {
+      caseId: 'repair-off-by-one', noTavily: false,
+    });
+
+    benchmark.mockClear();
+    await expect(runCli(
+      ['run', '--adapter', 'dummy', '--case', 'repair-off-by-one', '--only', 'repairable'],
+      { writeError }, { benchmark },
+    )).resolves.toBe(2);
+    await expect(runCli(
+      ['run', '--adapter', 'dummy', '--case', 'repair-off-by-one', '--case', 'repair-missing-await'],
+      { writeError }, { benchmark },
+    )).resolves.toBe(2);
+    expect(benchmark).not.toHaveBeenCalled();
+  });
+
+  it('passes one explicit Sutura binary without shell parsing', async () => {
+    const benchmark = vi.fn(async (adapter) => {
+      expect(adapter).toMatchObject({ name: 'sutura' });
+      return report();
+    });
+    await expect(runCli([
+      'run', '--adapter', 'sutura', '--sutura-command', '/tmp/subject/dist/bin.js',
+      '--case', 'repair-off-by-one',
+    ], {}, { benchmark })).resolves.toBe(0);
+    expect(benchmark).toHaveBeenCalledOnce();
+  });
+
   it('rejects an unknown adapter', async () => {
     const writeError = vi.fn();
     await expect(runCli(['run', '--adapter', 'unknown'], { writeError })).resolves.toBe(2);

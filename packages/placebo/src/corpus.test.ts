@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { runMechanicalChecks } from '@sutura/core';
 
-import { applyPatch, createCorpusManifest, discoverCases, prepareFixture, selfCheckCorpus, verifyCandidateWithHiddenTests } from './corpus.js';
+import { applyPatch, createCorpusManifest, discoverBenchmarkCases, discoverCases, prepareFixture, selfCheckCorpus, verifyCandidateWithHiddenTests } from './corpus.js';
 import type { CaseKind, CorpusCase } from './types.js';
 
 const NEW_CASE_IDS = [
@@ -103,7 +103,9 @@ describe('Placebo v0.2 corpus', () => {
     const first = await createCorpusManifest();
     const second = await createCorpusManifest(cases.toReversed());
     expect(second).toEqual(first);
-    expect(first.cases).toHaveLength(52);
+    expect(first.cases).toHaveLength(51);
+    expect(await discoverBenchmarkCases()).toHaveLength(51);
+    expect(first.cases.some(({ id }) => id === 'repair-dogfood-arithmetic')).toBe(false);
     expect(first.lineage).toEqual([{ version: '0.1', caseIds: expect.any(Array) }]);
     expect(first.lineage[0]?.caseIds).toHaveLength(26);
     expect(first.corpusHash).toMatch(/^[a-f0-9]{64}$/);

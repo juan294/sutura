@@ -9,7 +9,7 @@ import {
   createPlaceboTemporaryDirectory,
   createPortableTestRuntime,
   createCorpusManifest,
-  discoverCases,
+  discoverBenchmarkCases,
   installFixture,
   verifyCandidateWithHiddenTests,
   type PortableTestRuntime,
@@ -27,6 +27,7 @@ import {
 
 export interface BenchmarkOptions {
   only?: CaseKind;
+  caseId?: string;
   noTavily?: boolean;
   manifest?: BenchmarkManifestOptions;
   clock?: () => number;
@@ -95,7 +96,13 @@ async function evaluate(
 }
 
 export async function runBenchmark(adapter: Adapter, options: BenchmarkOptions = {}): Promise<BenchmarkReport> {
-  const cases = (await discoverCases()).filter(({ metadata }) => !options.only || metadata.kind === options.only);
+  const discovered = await discoverBenchmarkCases();
+  const cases = discovered.filter((benchmarkCase) =>
+    (!options.only || benchmarkCase.metadata.kind === options.only) &&
+    (!options.caseId || benchmarkCase.id === options.caseId));
+  if (options.caseId !== undefined && cases.length !== 1) {
+    throw new Error(`Unknown Placebo case: ${options.caseId}`);
+  }
   const results: BenchmarkResult[] = [];
   const portableRuntime = await createPortableTestRuntime();
   const clock = options.clock ?? performance.now.bind(performance);
@@ -119,7 +126,7 @@ export async function runBenchmark(adapter: Adapter, options: BenchmarkOptions =
         completedAt: options.manifest.completedAt ?? new Date().toISOString(),
         corpusName: 'placebo',
         corpusVersion: CORPUS_VERSION,
-        corpusHash: (await createCorpusManifest(cases)).corpusHash,
+        corpusHash: (await createCorpusManifest()).corpusHash,
         adapterVersion: '0.2.0',
         modelCatalogSnapshot: [...new Set(results.flatMap(({ caseFile }) =>
           caseFile.trace?.flatMap((event) =>

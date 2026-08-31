@@ -28,6 +28,7 @@ const LANGUAGES = new Set(['javascript', 'typescript', 'python']);
 const FLAKE_PATTERNS = new Set(['timing', 'port', 'order', 'filesystem', 'simulated-network', 'randomness']);
 const CLASSES = new Set(['typecheck', 'lint', 'build', 'test-assertion', 'test-bug', 'flaky-timing', 'dep-upstream-breaking', 'env-config', 'infra']);
 const PLACEBO_TEMP_ROOT = join(tmpdir(), 'placebo.noindex');
+const NON_BENCHMARK_CASE_IDS = new Set(['repair-dogfood-arithmetic']);
 
 export async function createPlaceboTemporaryDirectory(prefix: string): Promise<string> {
   if (!/^[a-z0-9-]+$/iu.test(prefix)) throw new Error('Invalid Placebo temporary prefix');
@@ -73,6 +74,13 @@ export async function discoverCases(corpusDirectory = DEFAULT_CORPUS_DIRECTORY):
     };
   }));
   return cases.sort((left, right) => left.id.localeCompare(right.id));
+}
+
+export async function discoverBenchmarkCases(
+  corpusDirectory = DEFAULT_CORPUS_DIRECTORY,
+): Promise<CorpusCase[]> {
+  return (await discoverCases(corpusDirectory))
+    .filter(({ id }) => !NON_BENCHMARK_CASE_IDS.has(id));
 }
 
 interface CommandResult { exitCode: number; stdout: string; stderr: string }
@@ -244,7 +252,8 @@ async function contentHash(directory: string): Promise<string> {
 }
 
 export async function createCorpusManifest(cases?: CorpusCase[]): Promise<CorpusManifest> {
-  const selectedCases = [...(cases ?? await discoverCases())]
+  const selectedCases = [...(cases ?? await discoverBenchmarkCases())]
+    .filter(({ id }) => !NON_BENCHMARK_CASE_IDS.has(id))
     .sort((left, right) => left.id.localeCompare(right.id));
   const manifestCases = await Promise.all(selectedCases.map(async (benchmarkCase) => {
     const hiddenTestSetHash = await hiddenVerificationHash(benchmarkCase);

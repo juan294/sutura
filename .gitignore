@@ -7,6 +7,9 @@ coverage/
 .sutura/dogfood-artifacts/
 .sutura/dogfood-ledger.lock
 .sutura/dogfood-streak.lock
+.sutura/placebo-v0.2-live-ledger.json
+.sutura/placebo-v0.2-live.lock
+.sutura/placebo-v0.2-live-artifacts/
 
 # Environment: never commit secrets
 .env

@@ -80,6 +80,19 @@ test('release candidate workflow is local-only and requires an exact commit', as
   assert.doesNotMatch(workflow, /npm publish|git push|release create/u);
 });
 
+test('Placebo live workflow is manual, read-only, exact, and case-bounded', async () => {
+  const workflow = await text('.github/workflows/placebo-live-case.yml');
+  assert.match(workflow, /workflow_dispatch/u);
+  assert.match(workflow, /timeout-minutes: 30/u);
+  assert.match(workflow, /permissions:\n  contents: read/u);
+  assert.match(workflow, /ref: \$\{\{ inputs\.controller-sha \}\}/u);
+  assert.match(workflow, /ref: \$\{\{ inputs\.subject-sha \}\}/u);
+  assert.match(workflow, /test "\$GITHUB_SHA" = "\$CONTROLLER_SHA"/u);
+  assert.match(workflow, /--sutura-command "\$GITHUB_WORKSPACE\/subject\/packages\/cli\/dist\/bin\.js" --case "\$CASE_ID"/u);
+  assert.match(workflow, /actions\/upload-artifact@v7/u);
+  assert.doesNotMatch(workflow, /pull-requests: write|issues: write|id-token: write/u);
+});
+
 test('versioned release evidence requirements name every authorization gate', async () => {
   const requirements = JSON.parse(await text('docs/demo/sutura-v0.2.0-release-evidence-requirements.json'));
   assert.equal(requirements.releaseVersion, '0.2.0');

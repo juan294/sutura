@@ -34,10 +34,15 @@ function valueAfter(args: string[], flag: string): string | undefined {
   return index === -1 ? undefined : args[index + 1];
 }
 
-function adapterFrom(name: string | undefined): Adapter | undefined {
+function valuesAfter(args: string[], flag: string): string[] {
+  return args.flatMap((value, index) => value === flag && args[index + 1] !== undefined
+    ? [args[index + 1]!] : []);
+}
+
+function adapterFrom(name: string | undefined, suturaCommand?: string): Adapter | undefined {
   if (name === 'dummy') return new DummyAdapter();
   if (name === 'refuse-all') return new RefuseAllAdapter();
-  if (name === 'sutura') return new SuturaAdapter();
+  if (name === 'sutura') return new SuturaAdapter(suturaCommand ? { command: suturaCommand } : {});
   if (name?.startsWith('cli:') && name.length > 4) return new CliAdapter({ command: name.slice(4) });
   return undefined;
 }
@@ -50,14 +55,21 @@ export async function runCli(
   const write = io.write ?? ((value: string) => process.stdout.write(value));
   const writeError = io.writeError ?? ((value: string) => process.stderr.write(value));
   if (args[0] !== 'run') {
-    writeError('Usage: placebo run --adapter <dummy|refuse-all|sutura|cli:command> [--only kind] [--no-tavily] [--manifest-output file] [--force]\n');
+    writeError('Usage: placebo run --adapter <dummy|refuse-all|sutura|cli:command> [--only kind | --case id] [--no-tavily] [--manifest-output file] [--force]\n');
     return 2;
   }
 
   const adapterName = valueAfter(args, '--adapter');
-  const adapter = adapterFrom(adapterName);
+  const suturaCommand = valueAfter(args, '--sutura-command');
+  const adapter = adapterFrom(adapterName, suturaCommand);
   const only = valueAfter(args, '--only');
-  if (!adapter || (only !== undefined && !KINDS.has(only as CaseKind))) {
+  const caseValues = valuesAfter(args, '--case');
+  const caseId = caseValues[0];
+  if (!adapter || (only !== undefined && !KINDS.has(only as CaseKind)) ||
+      caseValues.length > 1 || (only !== undefined && caseId !== undefined) ||
+      (args.includes('--sutura-command') && (adapterName !== 'sutura' || suturaCommand === undefined ||
+        suturaCommand.startsWith('--') || suturaCommand.length > 1_024 || /[\r\n\0]/u.test(suturaCommand))) ||
+      (args.includes('--case') && (caseId === undefined || !/^[a-z0-9-]{1,100}$/u.test(caseId)))) {
     writeError(`Invalid adapter or kind: ${adapterName ?? '(missing)'} ${only ?? ''}\n`);
     return 2;
   }
@@ -90,6 +102,7 @@ export async function runCli(
 
   const report = await (dependencies.benchmark ?? runBenchmark)(adapter, {
     ...(only ? { only: only as CaseKind } : {}),
+    ...(caseId ? { caseId } : {}),
     noTavily: args.includes('--no-tavily'),
     ...(manifestOptions === undefined ? {} : { manifest: manifestOptions }),
   });

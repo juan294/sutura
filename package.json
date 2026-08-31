@@ -17,11 +17,12 @@
   "scripts": {
     "canary:provider-contract": "pnpm --filter @sutura/core build && node scripts/provider-contract-canary.mjs",
     "dogfood": "pnpm --filter @sutura/core build && node scripts/dogfood.mjs",
+    "placebo:live": "node scripts/placebo-live.mjs",
     "test": "pnpm -r test",
     "test:package": "node scripts/test-package.mjs",
     "test:candidate-install": "node scripts/test-candidate-install.mjs",
     "test:public-install": "node scripts/test-public-install.mjs",
-    "test:release-contracts": "pnpm --filter @sutura/core build && node --test scripts/capture-run.test.mjs scripts/captured-fixtures.test.mjs scripts/dogfood.test.mjs scripts/guards-verify.test.mjs scripts/pre-push.test.mjs scripts/provider-contract-canary.test.mjs scripts/release-workflow.test.mjs scripts/release-evidence.test.mjs scripts/test-candidate-install.test.mjs scripts/test-external-matrix.test.mjs scripts/test-public-install.test.mjs",
+    "test:release-contracts": "pnpm --filter @sutura/core build && node --test scripts/capture-run.test.mjs scripts/captured-fixtures.test.mjs scripts/dogfood.test.mjs scripts/guards-verify.test.mjs scripts/placebo-live.test.mjs scripts/pre-push.test.mjs scripts/provider-contract-canary.test.mjs scripts/release-workflow.test.mjs scripts/release-evidence.test.mjs scripts/test-candidate-install.test.mjs scripts/test-external-matrix.test.mjs scripts/test-public-install.test.mjs",
     "test:capture-run": "pnpm --filter @sutura/core build && node --test scripts/capture-run.test.mjs",
     "test:captured-fixtures": "pnpm --filter @sutura/core build && node --test scripts/capture-run.test.mjs scripts/captured-fixtures.test.mjs",
     "test:readme": "node --test scripts/verify-readme-setup.test.mjs",
