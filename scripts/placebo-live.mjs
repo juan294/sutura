@@ -157,6 +157,10 @@ function artifactBase(input, options = {}) {
 }
 
 export function createPlaceboCaseArtifact(input, options = {}) {
+  const expectedEvaluationCaseIds = (input.results ?? []).map((result) =>
+    `${input.caseId}:${result.tavilyEnabled ? 'with-tavily' : 'without-tavily'}`).sort();
+  const actualEvaluationCaseIds = Array.isArray(input.evaluationManifest?.cases)
+    ? input.evaluationManifest.cases.map(({ caseId }) => caseId).sort() : [];
   if (input.evaluationManifest === null || typeof input.evaluationManifest !== 'object' ||
       Array.isArray(input.evaluationManifest) ||
       input.evaluationManifest.schemaVersion !== 'sutura-evaluation-v1' ||
@@ -164,7 +168,7 @@ export function createPlaceboCaseArtifact(input, options = {}) {
       input.evaluationManifest.corpusHash !== (options.corpus ?? loadCorpusSync()).corpusHash ||
       !Array.isArray(input.evaluationManifest.cases) ||
       input.evaluationManifest.cases.length !== input.results?.length ||
-      !input.evaluationManifest.cases.every(({ caseId }) => caseId === input.caseId)) {
+      JSON.stringify(actualEvaluationCaseIds) !== JSON.stringify(expectedEvaluationCaseIds)) {
     throw new Error('Placebo evaluation manifest identity is invalid');
   }
   const evaluationManifestHash = contentHash(input.evaluationManifest);

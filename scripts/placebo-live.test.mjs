@@ -62,7 +62,9 @@ function artifact(caseId, overrides = {}) {
     results,
     evaluationManifest: {
       schemaVersion: 'sutura-evaluation-v1', suturaCommit: CONTROLLER_SHA,
-      corpusHash: corpus.corpusHash, cases: results.map(() => ({ caseId })),
+      corpusHash: corpus.corpusHash, cases: results.map(({ tavilyEnabled }) => ({
+        caseId: `${caseId}:${tavilyEnabled ? 'with-tavily' : 'without-tavily'}`,
+      })),
     },
     artifactName: `sutura-placebo-live-test-${caseId}`,
     ...overrides,
@@ -90,7 +92,9 @@ test('case artifacts bind exact identities, costs, and one canonical case', () =
   assert.throws(() => createPlaceboCaseArtifact({
     ...value, caseId: 'unknown-case', evaluationManifest: {
       schemaVersion: 'sutura-evaluation-v1', suturaCommit: CONTROLLER_SHA,
-      corpusHash: corpus.corpusHash, cases: value.results.map(() => ({ caseId: 'unknown-case' })),
+      corpusHash: corpus.corpusHash, cases: value.results.map(({ tavilyEnabled }) => ({
+        caseId: `unknown-case:${tavilyEnabled ? 'with-tavily' : 'without-tavily'}`,
+      })),
     },
   }, { corpus }), /canonical case/u);
 });
@@ -108,7 +112,8 @@ test('upstream artifacts require their exact Tavily pair', () => {
   assert.throws(() => createPlaceboCaseArtifact({
     ...value, results: value.results.slice(0, 1), evaluationManifest: {
       schemaVersion: 'sutura-evaluation-v1', suturaCommit: CONTROLLER_SHA,
-      corpusHash: corpus.corpusHash, cases: [{ caseId: value.caseId }],
+      corpusHash: corpus.corpusHash,
+      cases: [{ caseId: `${value.caseId}:with-tavily` }],
     },
   }, { corpus }), /Tavily pair/u);
 });
