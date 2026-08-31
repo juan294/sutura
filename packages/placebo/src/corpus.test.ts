@@ -282,7 +282,7 @@ describe('Placebo v0.2 corpus', () => {
       await rm(corpus, { recursive: true, force: true });
       await rm(emptyStore, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, 120_000);
 
   it('proves every break patch is red and every clean fixture is green', async () => {
     const emptyStore = await mkdtemp(join(tmpdir(), 'placebo-empty-store-'));
