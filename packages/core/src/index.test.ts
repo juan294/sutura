@@ -7,11 +7,13 @@ import {
   ContreeExecutor,
   InMemoryExecutor,
   OrchestrationError,
+  ExternalTextError,
   SUTURA_SANDBOX_ENV,
   TavilyClient,
   VERSION,
   adjudicate,
   audit,
+  auditOnly,
   checkAssertionDrop,
   checkDeletedTests,
   checkLoosenedTypes,
@@ -24,9 +26,11 @@ import {
   ground,
   orchestrate,
   prepareRepair,
-  race,
   renderCaseFile,
+  renderAuditCaseFile,
+  renderAuditMarkdown,
   renderComment,
+  redactExternalText,
   runMechanicalChecks,
   selectWinner,
   triage,
@@ -48,18 +52,23 @@ import type {
   RunMetrics,
   RunOptions,
   RunResult,
+  SnapshotMode,
+  SnapshotOptions,
+  SnapshotProfile,
   TaxonomyEntry,
 } from '@sutura/core';
 
 describe('@sutura/core entry point', () => {
-  it('retains the scaffold version export', () => {
-    expect(VERSION).toBe('0.1.1');
+  it('exports the release version', () => {
+    expect(VERSION).toBe('0.2.0');
   });
 
   it('exports executor implementations and types from the package root', () => {
     expect(ContreeExecutor).toBeTypeOf('function');
     expect(ContreeError).toBeTypeOf('function');
     expect(InMemoryExecutor).toBeTypeOf('function');
+    expect(ExternalTextError).toBeTypeOf('function');
+    expect(redactExternalText).toBeTypeOf('function');
 
     expectTypeOf<ContreeExecutorConfig>().toBeObject();
     expectTypeOf<Executor>().toBeObject();
@@ -70,6 +79,9 @@ describe('@sutura/core entry point', () => {
     expectTypeOf<RunMetrics>().toBeObject();
     expectTypeOf<RunOptions>().toBeObject();
     expectTypeOf<RunResult>().toBeObject();
+    expectTypeOf<SnapshotMode>().toBeString();
+    expectTypeOf<SnapshotOptions>().toBeObject();
+    expectTypeOf<SnapshotProfile>().toBeString();
   });
 
   it('exports the diagnosis and grounding API from the package root', () => {
@@ -85,7 +97,6 @@ describe('@sutura/core entry point', () => {
     expect(triage).toBeTypeOf('function');
     expect(generateCandidates).toBeTypeOf('function');
     expect(prepareRepair).toBeTypeOf('function');
-    expect(race).toBeTypeOf('function');
     expect(selectWinner).toBeTypeOf('function');
     expect(vetPatch).toBeTypeOf('function');
     expectTypeOf<PatchVerdict>().toBeObject();
@@ -95,11 +106,14 @@ describe('@sutura/core entry point', () => {
   it('exports both surgical report renderers from the package root', () => {
     expect(renderComment).toBeTypeOf('function');
     expect(renderCaseFile).toBeTypeOf('function');
+    expect(renderAuditMarkdown).toBeTypeOf('function');
+    expect(renderAuditCaseFile).toBeTypeOf('function');
   });
 
   it('exports the adversarial audit API from the package root', () => {
     expect(ADVERSARIAL_AUDIT_PROMPT).toContain('Default to refusal');
     expect(audit).toBeTypeOf('function');
+    expect(auditOnly).toBeTypeOf('function');
     expect(adjudicate).toBeTypeOf('function');
     expect(runMechanicalChecks).toBeTypeOf('function');
     expect(checkDeletedTests).toBeTypeOf('function');

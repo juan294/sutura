@@ -20,11 +20,14 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm run test:release-contracts
       - run: pnpm run test:readme
       - run: pnpm run verify:readme-setup
       - run: pnpm --filter placebo run smoke:offline
       - run: pnpm run typecheck
       - run: pnpm run lint
-      - run: pnpm run test
       - run: pnpm run build
+      - run: node scripts/verify-bundle.mjs
       - run: pnpm run test:package
+      - run: pnpm run test
+      - run: pnpm run guards:verify

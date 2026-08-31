@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.2.0] - 2026-08-31
+
+### Added
+
+- Add a bounded repair agent with adaptive checkpoint search, exact source targeting, automatic patch verification, and an independent final audit.
+- Add deterministic model routing, progressive flake triage, model-specific Nebius Token Factory contracts, and an exact-SHA provider canary.
+- Add verified Python repair support with locked dependency preparation and network-disabled execution.
+- Expand Placebo v0.2 with JavaScript and Python repair, flake, upstream-release, and adversarial policy cases.
+- Add deterministic replay capture, offline orchestration, sanitized ATIF exports, GitHub Checks, and reduced-assurance audit-only mode.
+- Add candidate and public package verification, external release matrices, fail-closed release evidence, and the canonical 10/10 live repair ledger.
+
+### Fixed
+
+- Make live repairs controller-owned, bounded by exact source ranges, and automatically verified before acceptance.
+- Correct provider thinking controls, tool-call handling, zero-reasoning usage handling, and null tool-call compatibility.
+- Fail closed on incomplete, malformed, drifting, or lossy replay evidence.
+- Preserve trusted workspace paths, fixture bytes, Git environments, and repair completion limits.
+- Make Sutura's own workflow fail unless the product outcome is `fixed`.
+
+### Changed
+
+- Resolve the `v0.2.0` Action tag to an immutable commit during setup and verify the pin with `doctor`.
+- Replace fixed candidate races with adaptive repair search and explicit branch, operation, time, inference, tool, and diff budgets.
+- Make Sutura workflow rows describe whether repair was requested, unnecessary, or not triggered.
+- Strengthen local, pre-push, exact-SHA CI, package-install, guard-coverage, and release-publication contracts.
+
 ## 0.1.1 - 2026-08-28
 
 - Use a unique GitHub Marketplace name for the public Action.

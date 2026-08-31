@@ -11,13 +11,38 @@ import {
   normalizeUnifiedDiffHunks,
   parseUnifiedDiff,
 } from '../diff/unified.js';
-import { SNAPSHOT_CWD, type Executor, type ImageId } from '../executor/types.js';
+import {
+  SNAPSHOT_CWD,
+  type Executor,
+  type ImageId,
+  type RunResult,
+} from '../executor/types.js';
 import { extractJson } from '../llm/json.js';
 import type { TierLlm } from '../llm/types.js';
+import {
+  assertExternalEditableText,
+  redactExternalJsonValue,
+  redactExternalMessages,
+} from '../security/external-text.js';
 import { triage } from './triage.js';
 import { shellQuote } from './shell.js';
 
 const DEFAULT_RACE_CANDIDATES = 3;
+export const SUPER_REPAIR_MAX_TOKENS = 16_384;
+export const REPAIR_FULL_REPLACEMENT_MAX_CODE_POINTS = 1_000;
+
+export const REPAIR_PROPOSAL_LIMITS = Object.freeze({
+  edits: 8,
+  pathCodePoints: 240,
+  replacementCodePoints: REPAIR_FULL_REPLACEMENT_MAX_CODE_POINTS,
+});
+export const REPAIR_PROPOSAL_FIELDS = Object.freeze({
+  replacement: 'replacement',
+} as const);
+export const REPAIR_EDIT_FIELDS = Object.freeze({
+  path: 'path', startLine: 'startLine', endLine: 'endLine', replacement: 'new',
+} as const);
+const REPAIR_EDIT_FIELD_NAMES = new Set<string>(Object.values(REPAIR_EDIT_FIELDS));
 
 export type RepairLlm = TierLlm<'super'>;
 
@@ -37,6 +62,7 @@ export interface RepairSourceExcerpt {
   startLine: number;
   content: string;
   truncated: boolean;
+  boundaryComplete?: boolean;
 }
 
 export interface RepairSourceContext {
@@ -214,6 +240,29 @@ function changedRegionDiff(path: string, startLine: number, oldText: string, new
   ].join('\n');
 }
 
+interface PositionedRepairEdit {
+  start: number;
+  end: number;
+  replacement: string;
+}
+
+function positionedEditsDiff(
+  path: string,
+  excerpt: RepairSourceExcerpt,
+  edits: readonly PositionedRepairEdit[],
+  overlapMessage: string,
+): string {
+  const positioned = [...edits].sort((left, right) => left.start - right.start);
+  if (positioned.some((edit, index) => index > 0 && edit.start < positioned[index - 1]!.end)) {
+    throw new Error(overlapMessage);
+  }
+  let revised = excerpt.content;
+  for (const edit of positioned.toReversed()) {
+    revised = `${revised.slice(0, edit.start)}${edit.replacement}${revised.slice(edit.end)}`;
+  }
+  return changedRegionDiff(path, excerpt.startLine, excerpt.content, revised);
+}
+
 function editsDiff(
   editsValue: unknown,
   candidateIndex: number,
@@ -239,19 +288,145 @@ function editsDiff(
       );
     }
     const original = excerpt.content;
-    const positioned = pathEdits.map((edit) => ({
+    return positionedEditsDiff(path, excerpt, pathEdits.map((edit) => ({
       ...edit,
       start: original.indexOf(edit.old),
       end: original.indexOf(edit.old) + edit.old.length,
-    })).sort((left, right) => left.start - right.start);
-    if (positioned.some((edit, index) => index > 0 && edit.start < positioned[index - 1]!.end)) {
-      throw new Error(`candidate ${candidateIndex + 1} edits for ${path} must not overlap`);
+    })), `candidate ${candidateIndex + 1} edits for ${path} must not overlap`);
+  }).join('\n')}\n`;
+}
+
+export function structuredEditsDiff(
+  edits: unknown,
+  sourceContext: RepairSourceContext,
+): string {
+  return editsDiff(edits, 0, sourceContext);
+}
+
+interface AnchoredRepairEdit {
+  path: string;
+  startLine: number;
+  endLine: number;
+  replacement: string;
+}
+
+function anchoredEditValue(value: unknown, editIndex: number): AnchoredRepairEdit {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`repair edit ${editIndex + 1} must be an object`);
+  }
+  const edit = value as Record<string, unknown>;
+  const path = edit[REPAIR_EDIT_FIELDS.path];
+  const startLine = edit[REPAIR_EDIT_FIELDS.startLine];
+  const endLine = edit[REPAIR_EDIT_FIELDS.endLine];
+  const replacement = edit[REPAIR_EDIT_FIELDS.replacement];
+  if (
+    Object.keys(edit).some((key) => !REPAIR_EDIT_FIELD_NAMES.has(key)) ||
+    typeof path !== 'string' || !/\S/u.test(path) ||
+    [...path].length > REPAIR_PROPOSAL_LIMITS.pathCodePoints ||
+    !Number.isSafeInteger(startLine) || Number(startLine) < 1 ||
+    !Number.isSafeInteger(endLine) || Number(endLine) < Number(startLine) ||
+    typeof replacement !== 'string' ||
+    [...replacement].length > REPAIR_PROPOSAL_LIMITS.replacementCodePoints
+  ) throw new Error(`repair edit ${editIndex + 1} does not match the anchored line schema`);
+  return {
+    path,
+    startLine: Number(startLine),
+    endLine: Number(endLine),
+    replacement,
+  };
+}
+
+function lineSpans(content: string): Array<{ start: number; end: number }> {
+  const spans: Array<{ start: number; end: number }> = [];
+  let start = 0;
+  for (let index = 0; index < content.length; index += 1) {
+    if (content[index] !== '\n') continue;
+    spans.push({ start, end: index + 1 });
+    start = index + 1;
+  }
+  if (start < content.length) spans.push({ start, end: content.length });
+  return spans;
+}
+
+export interface RepairSourceLine {
+  line: number;
+  text: string;
+  start: number;
+  end: number;
+}
+
+export function indexRepairSourceLines(excerpt: RepairSourceExcerpt): RepairSourceLine[] {
+  if (!Number.isSafeInteger(excerpt.startLine) || excerpt.startLine < 1) {
+    throw new RangeError(`repair source ${excerpt.path} must use a safe positive start line`);
+  }
+  const spans = lineSpans(excerpt.content);
+  if (spans.length > 0 && spans.length - 1 > Number.MAX_SAFE_INTEGER - excerpt.startLine) {
+    throw new RangeError(`repair source ${excerpt.path} line range exceeds safe integers`);
+  }
+  return spans.map(({ start, end }, index) => ({
+    line: excerpt.startLine + index,
+    text: excerpt.content.slice(start, end).replace(/\r?\n$/u, ''),
+    start,
+    end,
+  }));
+}
+
+function replacementWithSourceEnding(
+  source: string,
+  oldText: string,
+  replacement: string,
+): string {
+  if (!replacement) return '';
+  const sourceEnding = source.includes('\r\n') ? '\r\n' : '\n';
+  const rangeEnding = oldText.endsWith('\r\n') ? '\r\n' : oldText.endsWith('\n') ? '\n' : '';
+  const normalized = replacement.replace(/\r\n|\r|\n/gu, sourceEnding);
+  if (rangeEnding && !normalized.endsWith(sourceEnding)) return `${normalized}${sourceEnding}`;
+  if (!rangeEnding && /(?:\r\n|\r|\n)$/u.test(normalized)) {
+    return normalized.replace(/(?:\r\n|\r|\n)$/u, '');
+  }
+  return normalized;
+}
+
+export function anchoredEditsDiff(
+  editsValue: unknown,
+  sourceContext: RepairSourceContext,
+): string {
+  if (
+    !Array.isArray(editsValue) ||
+    editsValue.length === 0 ||
+    editsValue.length > REPAIR_PROPOSAL_LIMITS.edits
+  ) {
+    throw new Error(`repair proposal must have from 1 to ${REPAIR_PROPOSAL_LIMITS.edits} anchored edits`);
+  }
+  const edits = editsValue.map(anchoredEditValue);
+  const paths = [...new Set(edits.map(({ path }) => path))];
+  return `${paths.map((path) => {
+    const pathEdits = edits.filter((edit) => edit.path === path);
+    let selected: { excerpt: RepairSourceExcerpt; spans: Array<{ start: number; end: number }> } | undefined;
+    for (const excerpt of sourceContext.sources) {
+      if (excerpt.path !== path) continue;
+      const spans = lineSpans(excerpt.content);
+      const finalLine = spans.length === 0 ? undefined : excerpt.startLine + spans.length - 1;
+      if (pathEdits.every(({ startLine, endLine }) =>
+        finalLine !== undefined && startLine >= excerpt.startLine && endLine <= finalLine,
+      )) {
+        selected = { excerpt, spans };
+        break;
+      }
     }
-    let revised = original;
-    for (const edit of positioned.toReversed()) {
-      revised = `${revised.slice(0, edit.start)}${edit.replacement}${revised.slice(edit.end)}`;
-    }
-    return changedRegionDiff(path, excerpt.startLine, original, revised);
+    if (!selected) throw new Error(`repair edits must use line ranges inside supplied source ${path}`);
+    const { excerpt, spans } = selected;
+    return positionedEditsDiff(path, excerpt, pathEdits.map((edit) => {
+      const start = spans[edit.startLine - excerpt.startLine]?.start;
+      const end = spans[edit.endLine - excerpt.startLine]?.end;
+      if (start === undefined || end === undefined) {
+        throw new Error(`repair edit range is outside supplied source ${path}`);
+      }
+      const oldText = excerpt.content.slice(start, end);
+      const replacement = replacementWithSourceEnding(excerpt.content, oldText, edit.replacement);
+      if (replacement === oldText) throw new Error(`repair edit for ${path} must change its line range`);
+      return { start, end, replacement };
+    }), `repair edits for ${path} must not overlap`);
   }).join('\n')}\n`;
 }
 
@@ -365,21 +540,29 @@ export async function generateCandidates(
   sourceContext: RepairSourceContext = { sources: [] },
 ): Promise<Candidate[]> {
   positiveCount(K, 'K');
-  const messages = [
+  for (const source of sourceContext.sources) {
+    assertExternalEditableText(source.content);
+  }
+  const messages = redactExternalMessages([
     {
       role: 'system' as const,
       content: generationPrompt(K, sourceContext.sources.length > 0),
     },
     {
       role: 'user' as const,
-      content: JSON.stringify({ diagnosis, sourceContext }),
+      content: JSON.stringify(redactExternalJsonValue({ diagnosis, sourceContext })),
     },
-  ];
+  ]);
   const options = {
-    maxTokens: 16_384,
+    maxTokens: SUPER_REPAIR_MAX_TOKENS,
     temperature: 1,
     reasoningEffort: 'low' as const,
     responseFormat: { type: 'json_object' as const },
+    routing: {
+      failureClass: diagnosis.class,
+      diagnosisConfidence: diagnosis.confidence,
+      remainingInferenceBudgetUsd: Number.MAX_SAFE_INTEGER,
+    },
   };
   const reply = await llm.chat('super', messages, options);
   const result = await extractJson(
@@ -388,13 +571,13 @@ export async function generateCandidates(
     async (repairPrompt) =>
       llm.chat(
         'super',
-        [
+        redactExternalMessages([
           ...messages,
           ...(reply.text.trim()
             ? [{ role: 'assistant' as const, content: reply.text }]
             : []),
-          { role: 'user', content: repairPrompt },
-        ],
+          { role: 'user' as const, content: repairPrompt },
+        ]),
         options,
       ),
   );
@@ -436,6 +619,7 @@ export async function race(
   failingImage: ImageId,
   candidates: readonly Candidate[],
   failingCmd: string,
+  observe?: (result: RunResult, attempt: number) => string,
 ): Promise<RaceResult[]> {
   if (candidates.length > MAX_RACE_CANDIDATES) {
     throw new RangeError(
@@ -453,6 +637,7 @@ export async function race(
   return runs.map((run, index) => ({
     candidate: candidates[index] as Candidate,
     imageId: run.imageId,
+    nodeId: observe?.(run, index + 1) ?? `candidate-${index + 1}`,
     exitCode: run.exitCode,
     held: run.exitCode === 0,
   }));

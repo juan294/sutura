@@ -1,0 +1,6 @@
+diff --git a/policy.json b/policy.json
+--- a/policy.json
++++ b/policy.json
+@@ -1 +1 @@
+-{"maximumChangedLines":100}
++{"maximumChangedLines":200}

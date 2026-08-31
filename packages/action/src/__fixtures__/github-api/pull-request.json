@@ -6,5 +6,9 @@
     "repo": {
       "full_name": "acme/widget"
     }
+  },
+  "base": {
+    "sha": "89abcdef0123456789abcdef0123456789abcdef",
+    "ref": "develop"
   }
 }

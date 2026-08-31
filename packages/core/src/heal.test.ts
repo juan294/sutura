@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -7,15 +8,26 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { AuditVerdict, Candidate, CostLedger, Diagnosis } from './domain.js';
+import { DEFAULT_MODELS, MAX_STAGE_EVIDENCE_ENTRIES } from './config.js';
 import { InMemoryExecutor, type InMemoryRunResult } from './executor/memory.js';
 import {
+  buildSandboxRepositoryInitializationCommandForTest,
   healCase,
+  repairVerificationCommand,
+  StageLedger,
+  tracedLlm,
   sandboxExecutableCommand,
+  sandboxPreparationCommand,
   sandboxTargetCommand,
   SUTURA_SANDBOX_ENV,
   type HealCaseContext,
 } from './heal.js';
-import type { TierLlm } from './llm/types.js';
+import type { ChatMessage, TierLlm } from './llm/types.js';
+import { DEFAULT_MODEL_PRICES } from './llm/cost.js';
+import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
+import { parseRepositoryPolicy } from './policy/schema.js';
+import { repairProposalReply } from './testing/repair-proposal.test-helper.js';
+import { TraceRecorder } from './trace/recorder.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'placebo', 'corpus');
 const HONEST_DIFF = [
@@ -26,6 +38,13 @@ const HONEST_DIFF = [
   '-export function pageCount(items, size) { return Math.floor(items / size) + 1; }',
   '+export function pageCount(items, size) { return Math.ceil(items / size); }',
 ].join('\n') + '\n';
+const HONEST_REPLACEMENT = 'export function pageCount(items, size) { return Math.ceil(items / size); }\n';
+
+const WRONG_REPLACEMENT_DIFF = HONEST_DIFF.replace(
+  '+export function pageCount(items, size) { return Math.ceil(items / size); }',
+  '+export function pageCount(items, size) { return Math.round(items / size); }',
+);
+const WRONG_REPLACEMENT = 'export function pageCount(items, size) { return Math.round(items / size); }\n';
 
 const UPSTREAM_DIFF = [
   'diff --git a/app.cjs b/app.cjs',
@@ -37,6 +56,17 @@ const UPSTREAM_DIFF = [
   "+const fetchClient = require('node-fetch');",
   "+exports.fetchName = () => fetchClient('data:Juan').then((response) => response.text());",
 ].join('\n') + '\n';
+const UPSTREAM_REPLACEMENT = [
+  "const fetchClient = require('node-fetch');",
+  "exports.fetchName = () => fetchClient('data:Juan').then((response) => response.text());",
+].join('\n') + '\n';
+
+function candidateReplacement(candidate: Candidate): string {
+  if (candidate.diff === HONEST_DIFF) return HONEST_REPLACEMENT;
+  if (candidate.diff === WRONG_REPLACEMENT_DIFF) return WRONG_REPLACEMENT;
+  if (candidate.diff === UPSTREAM_DIFF) return UPSTREAM_REPLACEMENT;
+  throw new Error(`No explicit replacement fixture for ${candidate.id}`);
+}
 
 function result(exitCode: number, stderr = exitCode === 0 ? '' : 'case.test.js: assertion failed'): InMemoryRunResult {
   return { exitCode, stdout: exitCode === 0 ? 'Tests passed' : '', stderr, truncated: false, metrics: {} };
@@ -63,14 +93,20 @@ function scriptedLlm(
 ): { llm: TierLlm<'nano' | 'super' | 'ultra'>; chat: ReturnType<typeof vi.fn> } {
   const chat = vi.fn(async (tier: 'nano' | 'super' | 'ultra') => {
     if (tier === 'nano') return { text: JSON.stringify(diagnosis(failureClass)) };
-    if (tier === 'super') return { text: JSON.stringify({ candidates }) };
+    if (tier === 'super') return repairProposalReply(candidates[0]!, candidateReplacement(candidates[0]!));
     const verdict: Pick<AuditVerdict, 'approved' | 'reasoning'> = {
       approved: auditApproved,
       reasoning: auditApproved ? 'The source repair holds.' : 'REFUSED: wrong cause.',
     };
     return { text: JSON.stringify(verdict) };
   });
-  return { llm: { chat }, chat };
+  const modelQuote = (tier: 'nano' | 'super' | 'ultra') => ({
+    role: tier,
+    modelId: DEFAULT_MODELS[tier],
+    price: DEFAULT_MODEL_PRICES[tier],
+    profileId: DEFAULT_ROUTING_PROFILE_ID,
+  });
+  return { llm: { chat, modelQuote }, chat };
 }
 
 function context(
@@ -80,14 +116,18 @@ function context(
   extra: Partial<HealCaseContext> = {},
 ): { ctx: HealCaseContext; executor: InMemoryExecutor; chat: ReturnType<typeof vi.fn> } {
   let scenarioIndex = 0;
-  const executor = new InMemoryExecutor((command) =>
-    command.includes('corepack pnpm install --frozen-lockfile')
-      ? result(0)
-      : result(exits[scenarioIndex++] ?? 1),
-  );
   const repairCandidates = caseId.startsWith('upstream-')
     ? [{ id: 'repair', rationale: 'rename the source binding', diff: UPSTREAM_DIFF }]
     : undefined;
+  const repairDiff = repairCandidates?.[0]?.diff ?? HONEST_DIFF;
+  const executor = new InMemoryExecutor((command) =>
+    command.includes('git apply - && git diff')
+      ? { ...result(0), stdout: repairDiff }
+      : command.includes('corepack pnpm install --frozen-lockfile') ||
+        command.includes('git init --quiet')
+      ? result(0)
+      : result(exits[scenarioIndex++] ?? 1),
+  );
   const { llm, chat } = scriptedLlm(failureClass, repairCandidates);
   return {
     executor,
@@ -120,17 +160,453 @@ function context(
 }
 
 describe('healCase', () => {
+  it('bounds public stage evidence entries', () => {
+    const stageLedger = new StageLedger();
+    for (let attempt = 1; attempt <= MAX_STAGE_EVIDENCE_ENTRIES; attempt += 1) {
+      stageLedger.record({ stage: 'triage', attempt, network: 'disabled' });
+    }
+
+    expect(() => stageLedger.record({
+      stage: 'triage',
+      attempt: MAX_STAGE_EVIDENCE_ENTRIES + 1,
+      network: 'disabled',
+    })).toThrow('Stage evidence exceeds the bounded entry count');
+  });
+
+  it('fails closed when model routing has no quote', () => {
+    const value = context('repair-off-by-one', [1, 1, 1, 1, 1], 'test-assertion');
+    const llm = tracedLlm({ chat: value.ctx.llm.chat }, new TraceRecorder('quote-guard'));
+
+    expect(() => llm.modelQuote?.('nano', [])).toThrow('Model routing quote is unavailable');
+  });
+
+  it.each([
+    ['run id', { runId: '' }],
+    ['repository', { repo: '' }],
+    ['case directory', { caseDir: '' }],
+  ])('requires a non-empty %s', async (_case, override) => {
+    const value = context('repair-off-by-one', [], 'test-assertion');
+
+    await expect(healCase({ ...value.ctx, ...override })).rejects.toThrow(
+      'runId, repo, and caseDir must be non-empty',
+    );
+  });
+
+  it('requires a non-empty failure command', async () => {
+    const value = context('repair-off-by-one', [], 'test-assertion');
+
+    await expect(healCase({ ...value.ctx, failureCommand: ' ' })).rejects.toThrow(
+      'failureCommand must be non-empty',
+    );
+  });
+
+  it('rejects a configured runtime that conflicts with repository policy', async () => {
+    const value = context('repair-off-by-one', [], 'test-assertion', {
+      runtimeId: 'python',
+      policy: parseRepositoryPolicy(JSON.stringify({ version: 1, runtime: 'node' })),
+    });
+
+    await expect(healCase(value.ctx)).rejects.toThrow(
+      'Configured runtime conflicts with repository policy runtime',
+    );
+    expect(value.executor.calls).toEqual([]);
+  });
+
+  it('uses raceK only as a direct-call compatibility width when search settings are absent', async () => {
+    const legacy = context('repair-off-by-one', [1, 1, 1, 1, 1, 0, 0], 'test-assertion');
+    const legacyCase = await healCase(legacy.ctx);
+    expect(legacy.chat.mock.calls.filter(([tier]) => tier === 'super')).toHaveLength(1);
+    expect(legacyCase.search?.[0]).toMatchObject({ nodeId: 'search-001', terminalReason: 'passed' });
+
+    const adaptive = context('repair-off-by-one', [1, 1, 1, 1, 1, 0, 0, 1], 'test-assertion', {
+      search: { initialBranches: 2, beamWidth: 1, maximumDepth: 1, maximumTotalBranches: 2 },
+    });
+    const adaptiveCase = await healCase(adaptive.ctx);
+    expect(adaptiveCase.search?.[0]).toMatchObject({ nodeId: 'search-001' });
+    expect(adaptive.executor.calls.some((call) =>
+      call.kind === 'run' && call.opts?.operationId?.startsWith('search-'),
+    )).toBe(true);
+    expect(adaptiveCase.stages.some((entry) =>
+      entry.operationId?.startsWith('search-') &&
+      entry.operationTerminal === 'succeeded' &&
+      entry.cancellationRequested === false,
+    )).toBe(true);
+  });
+
+  it('replays live run 3: shared budgets admit multiple complete initial repair branches', async () => {
+    const value = context('repair-off-by-one', [1, 1, 1, 1, 1, 0, 0, 0, 0, 0], 'test-assertion', {
+      search: { initialBranches: 4, beamWidth: 2, maximumDepth: 4, maximumTotalBranches: 12 },
+    });
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('fixed');
+    expect(caseFile.search?.map(({ nodeId }) => nodeId)).toEqual([
+      'search-001', 'search-002', 'search-003', 'search-004',
+    ]);
+  });
+
+  it('schedules every admitted target even when the configured initial width is smaller', async () => {
+    const value = context(
+      'repair-off-by-one',
+      [1, 1, 1, 1, 1, 0, 0],
+      'test-assertion',
+      { search: { initialBranches: 4, beamWidth: 1, maximumDepth: 1, maximumTotalBranches: 5 } },
+    );
+    let scenarioIndex = 0;
+    value.ctx.executor = new InMemoryExecutor((command) =>
+      command.includes('git apply - && git diff')
+        ? { ...result(0), stdout: HONEST_DIFF }
+        : command.includes('corepack pnpm install --frozen-lockfile') ||
+          command.includes('git init --quiet')
+          ? result(0)
+          : result([1, 1, 1, 1, 1, 0, 0][scenarioIndex++] ?? 1),
+    { operationLimit: 1 });
+    const distractors = Array.from({ length: 4 }, (_unused, index) => ({
+      path: `src/distractor-${index + 1}.ts`, startLine: 1,
+      content: `export const distractor${index + 1} = ${index + 1};\n`, truncated: false,
+    }));
+    value.ctx.readSourceContext = async () => ({
+      sources: [
+        ...distractors,
+        { path: 'page-count.js', startLine: 1, content: [
+          'export function pageCount(items, size) { return Math.floor(items / size) + 1; }',
+          '',
+        ].join('\n'), truncated: false },
+      ],
+    });
+    const selectedTargets: string[] = [];
+    value.ctx.llm = {
+      chat: vi.fn(async (
+        tier: 'nano' | 'super' | 'ultra',
+        messages: readonly ChatMessage[],
+      ) => {
+        if (tier === 'nano') return { text: JSON.stringify(diagnosis('test-assertion')) };
+        if (tier === 'ultra') {
+          return { text: JSON.stringify({ approved: true, reasoning: 'The repair holds.' }) };
+        }
+        const user = messages.find(({ role }) => role === 'user');
+        const request = JSON.parse(user?.content ?? '{}') as {
+          selectedTarget: { path: string };
+          sources: Array<{ path: string; lines: Array<{ text: string }> }>;
+        };
+        selectedTargets.push(request.selectedTarget.path);
+        const selected = request.sources.find(({ path }) => path === request.selectedTarget.path)!;
+        const replacement = request.selectedTarget.path === 'page-count.js'
+          ? HONEST_REPLACEMENT
+          : `${selected.lines.map(({ text }) => text).join('\n')}\n`;
+        return repairProposalReply(
+          { id: request.selectedTarget.path, rationale: 'Repair the assigned target.', diff: HONEST_DIFF },
+          replacement,
+        );
+      }),
+      modelQuote: (tier) => ({
+        role: tier, modelId: DEFAULT_MODELS[tier], price: DEFAULT_MODEL_PRICES[tier],
+        profileId: DEFAULT_ROUTING_PROFILE_ID,
+      }),
+    };
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('fixed');
+    expect(selectedTargets).toEqual([
+      'src/distractor-1.ts', 'src/distractor-2.ts', 'src/distractor-3.ts',
+      'src/distractor-4.ts', 'page-count.js',
+    ]);
+  });
+
+  it('fails closed before Super when the branch budget cannot cover every source target', async () => {
+    const value = context(
+      'repair-off-by-one',
+      [1, 1, 1, 1, 1, 1],
+      'test-assertion',
+      { search: { initialBranches: 4, beamWidth: 1, maximumDepth: 1, maximumTotalBranches: 4 } },
+    );
+    value.ctx.readSourceContext = async () => ({
+      sources: Array.from({ length: 5 }, (_unused, index) => ({
+        path: `src/target-${index + 1}.ts`, startLine: 1,
+        content: `export const target${index + 1} = ${index + 1};\n`, truncated: false,
+      })),
+    });
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(value.chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
+    expect(caseFile.stages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: 'search',
+        note: 'Only 4 of 5 controller-owned repair targets fit the configured budgets',
+      }),
+    ]));
+  });
+
+  it('replays live run 12: one completion limit stops the remaining repair branches', async () => {
+    let scenarioIndex = 0;
+    const executor = new InMemoryExecutor((command) => {
+      if (
+        command.includes('corepack pnpm install --frozen-lockfile') ||
+        command.includes('git init --quiet')
+      ) return result(0);
+      return result([1, 1, 1, 1, 1][scenarioIndex++] ?? 1);
+    }, { operationLimit: 1 });
+    const value = context('repair-off-by-one', [], 'test-assertion', {
+      executor,
+      search: { initialBranches: 4, beamWidth: 2, maximumDepth: 4, maximumTotalBranches: 12 },
+    });
+    value.ctx.executor = executor;
+    value.chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
+      if (tier === 'nano') return { text: JSON.stringify(diagnosis('test-assertion')) };
+      if (tier === 'super') return { text: '{"id":"truncated"', finishReason: 'length' as const };
+      return { text: JSON.stringify({ approved: true, reasoning: 'unused' }) };
+    });
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(value.chat.mock.calls.filter(([tier]) => tier === 'super')).toHaveLength(1);
+    expect(caseFile.search).toEqual([
+      expect.objectContaining({ nodeId: 'search-001', terminalReason: 'completion-limit' }),
+    ]);
+    expect(executor.calls.filter((call) =>
+      call.kind === 'run' && call.cmd.includes('git apply'),
+    )).toHaveLength(0);
+  });
+
+  it.each([
+    ['tool calls', { toolCalls: 2 }],
+    ['inference cost', { inferenceCostUsd: 0.01 }],
+  ] as const)('admits no expansion when only partial %s capacity fits the controller path', async (_label, repairBudgets) => {
+    const value = context('repair-off-by-one', [1, 1, 1, 1, 1], 'test-assertion', {
+      repairBudgets,
+    });
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(caseFile.search).toEqual([]);
+    expect(value.chat.mock.calls.filter(([tier]) => tier === 'super')).toHaveLength(0);
+    expect(value.executor.calls.filter((call) =>
+      call.kind === 'run' && call.cmd.includes('git apply'),
+    )).toHaveLength(0);
+    expect(caseFile.stages).toContainEqual(expect.objectContaining({
+      note: 'No complete controller-owned repair attempt fits the configured budgets',
+    }));
+  });
+
+  it('admits no expansion when ConTree has no operation capacity', async () => {
+    let scenarioIndex = 0;
+    const executor = new InMemoryExecutor((command) => {
+      if (
+        command.includes('corepack pnpm install --frozen-lockfile') ||
+        command.includes('git init --quiet')
+      ) return result(0);
+      return result([1, 1, 1, 1, 1][scenarioIndex++] ?? 1);
+    }, { operationLimit: 0 });
+    const value = context('repair-off-by-one', [], 'test-assertion', { executor });
+    value.ctx.executor = executor;
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(caseFile.search).toEqual([]);
+    expect(value.chat.mock.calls.filter(([tier]) => tier === 'super')).toHaveLength(0);
+  });
+
+  it('uses the routed worst-case repair quote for inference admission', async () => {
+    const value = context('repair-off-by-one', [1, 1, 1, 1, 1], 'test-assertion');
+    value.ctx.llm = {
+      ...value.ctx.llm,
+      modelQuote: (tier) => tier === 'super'
+        ? {
+            role: tier, modelId: 'expensive-super', price: { input: 100, output: 100 },
+            profileId: DEFAULT_ROUTING_PROFILE_ID,
+          }
+        : {
+            role: tier, modelId: DEFAULT_MODELS[tier], price: DEFAULT_MODEL_PRICES[tier],
+            profileId: DEFAULT_ROUTING_PROFILE_ID,
+          },
+    };
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(caseFile.search).toEqual([]);
+    expect(value.chat.mock.calls.filter(([tier]) => tier === 'super')).toHaveLength(0);
+  });
+
+  it('replaces a failed first-depth proposal from the clean baseline with bounded feedback', async () => {
+    let applyCount = 0;
+    let ordinaryTestCount = 0;
+    let awaitingCandidateTest = false;
+    const executor = new InMemoryExecutor((command) => {
+      if (
+        command.includes('corepack pnpm install --frozen-lockfile') ||
+        command.includes('git init --quiet')
+      ) return result(0);
+      if (command.includes('git apply - && git diff')) {
+        applyCount += 1;
+        awaitingCandidateTest = true;
+        return { ...result(0), stdout: applyCount === 1 ? WRONG_REPLACEMENT_DIFF : HONEST_DIFF };
+      }
+      if (awaitingCandidateTest) {
+        awaitingCandidateTest = false;
+        return applyCount === 1
+          ? result(1, 'still failing after rounded division')
+          : result(0);
+      }
+      ordinaryTestCount += 1;
+      return ordinaryTestCount <= 5 ? result(1) : result(0);
+    });
+    let superCall = 0;
+    const chat = vi.fn(async (
+      tier: 'nano' | 'super' | 'ultra',
+      messages: readonly { role: string; content?: string | null }[],
+    ) => {
+      if (tier === 'nano') return { text: JSON.stringify(diagnosis('test-assertion')) };
+      if (tier === 'super') {
+        superCall += 1;
+        if (superCall === 2) {
+          const request = JSON.parse(messages.find(({ role }) => role === 'user')?.content ?? '{}') as {
+            previousAttempt?: { candidateDiff: string; testOutput: string; errorFingerprint: string };
+          };
+          expect(request.previousAttempt).toEqual({
+            candidateDiff: WRONG_REPLACEMENT_DIFF,
+            testOutput: expect.stringContaining('still failing after rounded division'),
+            errorFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u),
+          });
+        }
+        const candidate = superCall === 1
+          ? { id: 'rounded', rationale: 'Round the division result.', diff: WRONG_REPLACEMENT_DIFF }
+          : { id: 'ceiling', rationale: 'Use ceiling division.', diff: HONEST_DIFF };
+        return repairProposalReply(candidate, candidateReplacement(candidate));
+      }
+      return { text: JSON.stringify({ approved: true, reasoning: 'The ceiling repair holds.' }) };
+    });
+    const base = context('repair-off-by-one', [], 'test-assertion', {
+      executor,
+      search: { initialBranches: 1, beamWidth: 1, maximumDepth: 2, maximumTotalBranches: 2 },
+    });
+    base.ctx.executor = executor;
+    base.ctx.llm = {
+      chat,
+      modelQuote: (tier) => ({
+        role: tier, modelId: DEFAULT_MODELS[tier], price: DEFAULT_MODEL_PRICES[tier],
+        profileId: DEFAULT_ROUTING_PROFILE_ID,
+      }),
+    };
+
+    const caseFile = await healCase(base.ctx);
+
+    expect(caseFile.outcome).toBe('fixed');
+    expect(caseFile.search).toEqual([
+      expect.objectContaining({ nodeId: 'search-001', depth: 1 }),
+      expect.objectContaining({ nodeId: 'search-002', depth: 2, parentNodeId: 'search-001', terminalReason: 'passed' }),
+    ]);
+    expect(caseFile.race[0]?.candidate).toMatchObject({
+      id: expect.stringMatching(/^repair-[a-f0-9]{12}$/u), diff: HONEST_DIFF,
+    });
+    expect(caseFile.selectedCandidate).toEqual({
+      id: caseFile.race[0]?.candidate.id,
+      diffHash: createHash('sha256').update(HONEST_DIFF).digest('hex'),
+    });
+    const applyParents = executor.calls.flatMap((call) =>
+      call.kind === 'run' && call.cmd.includes('git apply - && git diff')
+        ? [call.parent]
+        : [],
+    );
+    expect(applyParents).toHaveLength(2);
+    expect(new Set(applyParents).size).toBe(1);
+    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super', 'super', 'ultra']);
+    expect(JSON.stringify(caseFile.trace)).not.toContain('Math.round');
+  });
+
+  it('refuses the first adaptive expansion when the current provider snapshot has no capacity', async () => {
+    const value = context('repair-off-by-one', [1, 1, 1, 1, 1, 1], 'test-assertion', {
+      search: { initialBranches: 4, beamWidth: 2, maximumDepth: 4, maximumTotalBranches: 12 },
+    });
+    value.ctx.llm = {
+      ...value.ctx.llm,
+      capacitySnapshot: () => ({
+        remainingRequests: 0, remainingTokens: 1000,
+        resetRequestsSec: 1, resetTokensSec: 1,
+        dynamicRequestScale: null, dynamicTokenScale: null,
+        windowUsageRequests: null, windowUsageTokens: null,
+        retryAfterSec: null, requestId: 'capacity-zero',
+      }),
+    };
+    const caseFile = await healCase(value.ctx);
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(value.chat.mock.calls.filter(([tier]) => tier === 'super')).toHaveLength(0);
+    expect(caseFile.search).toEqual([]);
+  });
+  it.each([
+    [{ elapsedTimeSec: 12, maxRssKb: 120 }, 'fixed'],
+    [{ elapsedTimeSec: 12.1, maxRssKb: 120 }, 'refused'],
+    [{ maxRssKb: 120 }, 'refused'],
+  ] as const)(
+    'runs required commands on baseline and audited candidate with paired metrics: %j',
+    async (candidateMetrics, outcome) => {
+      const { ctx } = context(
+        'repair-off-by-one',
+        [],
+        'test-assertion',
+      );
+      let scenarioIndex = 0;
+      let policyCommandRuns = 0;
+      const ordinaryExits = [1, 1, 1, 1, 1, 0, 0];
+      const executor = new InMemoryExecutor((command) => {
+        if (command.includes('git apply - && git diff')) {
+          return { ...result(0), stdout: HONEST_DIFF };
+        }
+        if (
+          command.includes('corepack pnpm install --frozen-lockfile') ||
+          command.includes('git init --quiet')
+        ) return result(0);
+        if (command.includes('policy-check')) {
+          policyCommandRuns += 1;
+          return {
+            ...result(policyCommandRuns === 1 ? 1 : 0),
+            metrics: policyCommandRuns === 1
+              ? { elapsedTimeSec: 10, maxRssKb: 100 }
+              : { ...candidateMetrics },
+          };
+        }
+        return result(ordinaryExits[scenarioIndex++] ?? 1);
+      });
+      ctx.executor = executor;
+      ctx.policy = parseRepositoryPolicy(JSON.stringify({
+        version: 1,
+        allowedPaths: ['**'],
+        requiredCommands: ['pnpm run policy-check'],
+        resourceLimits: { elapsedTimePercent: 20, maxRssPercent: 20 },
+      }));
+
+      const caseFile = await healCase(ctx);
+
+      expect(caseFile.outcome).toBe(outcome);
+      expect(policyCommandRuns).toBe(2);
+      expect(caseFile.audit?.checks).toContainEqual(expect.objectContaining({
+        name: 'policy-resource-limit',
+        passed: outcome === 'fixed',
+      }));
+      expect(caseFile.stages.filter(({ note }) => note?.includes('Required command')))
+        .toHaveLength(2);
+    },
+  );
+
   it('repairs a real Placebo fixture after one snapshot and one pre-inference reproduction', async () => {
     const { ctx, executor, chat } = context(
       'repair-off-by-one',
-      [1, 1, 1, 1, 1, 1, 0, 0],
+      [1, 1, 1, 1, 1, 0, 0],
       'test-assertion',
     );
 
     const caseFile = await healCase(ctx);
 
     expect(caseFile.outcome).toBe('fixed');
-    expect(executor.calls.filter(({ kind }) => kind === 'snapshot')).toHaveLength(1);
+    expect(caseFile.runtime).toBe('node');
+    expect(executor.calls.filter(({ kind }) => kind === 'snapshot')).toHaveLength(2);
     expect(executor.calls.find((call) => call.kind === 'run')).toMatchObject({
       kind: 'run',
       cmd: expect.stringContaining('corepack pnpm install --frozen-lockfile'),
@@ -139,6 +615,27 @@ describe('healCase', () => {
       call.kind !== 'run' || call.opts?.env === SUTURA_SANDBOX_ENV,
     )).toBe(true);
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super', 'ultra']);
+    expect(caseFile.trace?.map(({ type }) => type)).toEqual(expect.arrayContaining([
+      'run-start',
+      'model-request',
+      'model-response',
+      'tool-request',
+      'tool-result',
+      'sandbox-operation',
+      'search-decision',
+      'candidate-submitted',
+      'audit-result',
+      'run-finish',
+    ]));
+    expect(caseFile.trace?.at(0)).toMatchObject({ sequence: 1, timestampMs: 0, type: 'run-start' });
+    expect(caseFile.trace?.at(-1)).toMatchObject({ type: 'run-finish', outcome: 'fixed' });
+    const serializedTrace = JSON.stringify(caseFile.trace);
+    expect(serializedTrace).not.toContain('export function pageCount');
+    expect(serializedTrace).not.toContain('-export function');
+    expect(caseFile.trace?.find(({ type }) => type === 'model-request')).toMatchObject({
+      promptHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      promptExcerpt: expect.any(String),
+    });
   });
 
   it('labels the real Placebo flaky fixture without generating a patch', async () => {
@@ -150,6 +647,7 @@ describe('healCase', () => {
 
     await expect(healCase(ctx)).resolves.toMatchObject({
       outcome: 'flaky-no-patch',
+      runtime: 'node',
       triage: { status: 'intermittent', reproduced: 2, of: 5 },
     });
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
@@ -159,7 +657,7 @@ describe('healCase', () => {
     const candidateDiff = await readFile(join(ROOT, 'trap-skipped-test', 'fake-fix.diff'), 'utf8');
     const { ctx, executor, chat } = context(
       'trap-skipped-test',
-      [1, 1, 1, 1, 1, 1, 0],
+      [1, 1, 1, 1, 1, 0],
       'test-assertion',
       { candidateDiff },
     );
@@ -167,6 +665,7 @@ describe('healCase', () => {
     const caseFile = await healCase(ctx);
 
     expect(caseFile.outcome).toBe('refused');
+    expect(caseFile.runtime).toBe('node');
     expect(caseFile.audit?.approved).toBe(false);
     expect(caseFile.audit?.checks).toContainEqual(expect.objectContaining({ name: 'skipped-test', passed: false }));
     expect(executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(7);
@@ -180,7 +679,7 @@ describe('healCase', () => {
     );
     const { ctx, executor, chat } = context(
       'trap-pass-with-no-tests',
-      [1, 1, 1, 1, 1, 1],
+      [1, 1, 1, 1, 1],
       'test-assertion',
       { candidateDiff },
     );
@@ -206,7 +705,7 @@ describe('healCase', () => {
     }]);
     const { ctx } = context(
       'upstream-parser-release',
-      [1, 1, 1, 1, 1, 1, 0, 0],
+      [1, 1, 1, 1, 1, 0, 0],
       'dep-upstream-breaking',
       { tavily: { search } },
     );
@@ -227,6 +726,7 @@ describe('healCase', () => {
 
     await expect(healCase(ctx)).resolves.toMatchObject({
       outcome: 'gave-up',
+      runtime: 'node',
       diagnosis: {
         class: 'dep-upstream-breaking',
         grounding: { skipped: true, reason: 'disabled', citations: [] },
@@ -237,22 +737,30 @@ describe('healCase', () => {
   });
 
   it('stops before paid inference when the clean sandbox does not reproduce', async () => {
-    const { ctx, chat } = context('repair-off-by-one', [0], 'test-assertion');
+    const { ctx, chat } = context('python-repair-missing-await', [0, 0], 'test-assertion', {
+      runtimeId: 'python',
+      failureCommand: 'pytest -q',
+    });
 
     await expect(healCase(ctx)).resolves.toMatchObject({
       outcome: 'infra-stop',
+      runtime: 'python',
       triage: { status: 'not-run', reproduced: 0, of: 0 },
     });
     expect(chat).not.toHaveBeenCalled();
   });
 
   it('stops before reproduction and paid inference when sandbox preparation fails', async () => {
-    const { ctx, chat } = context('repair-off-by-one', [1], 'test-assertion');
+    const { ctx, chat } = context('python-repair-missing-await', [1], 'test-assertion', {
+      runtimeId: 'python',
+      failureCommand: 'pytest -q',
+    });
     const executor = new InMemoryExecutor(() => result(1, 'pnpm install failed'));
     ctx.executor = executor;
 
     await expect(healCase(ctx)).resolves.toMatchObject({
       outcome: 'infra-stop',
+      runtime: 'python',
       diagnosis: {
         class: 'infra',
         signals: ['sandbox-preparation:failed'],
@@ -263,7 +771,18 @@ describe('healCase', () => {
     expect(chat).not.toHaveBeenCalled();
   });
 
-  it('reproduces an observed dependency-install command without preinstalling', async () => {
+  it('does not let an explicit Python selector replace the verified image digest', async () => {
+    const { ctx, executor } = context('python-repair-missing-await', [], 'test-assertion', {
+      runtimeId: 'python',
+      failureCommand: 'pytest -q',
+      imageRef: 'python:latest',
+    });
+
+    await expect(healCase(ctx)).rejects.toThrow('Python runtime image must use the verified exact digest');
+    expect(executor.calls).toEqual([]);
+  });
+
+  it('reproduces an observed dependency-install command from manifest-only preparation', async () => {
     const { ctx, chat } = context('repair-off-by-one', [0], 'infra', {
       failureCommand: 'pnpm install --frozen-lockfile',
     });
@@ -274,19 +793,74 @@ describe('healCase', () => {
     const commands = ctx.executor instanceof InMemoryExecutor
       ? ctx.executor.calls.filter((call) => call.kind === 'run').map(({ cmd }) => cmd)
       : [];
-    expect(commands).toHaveLength(1);
-    expect(commands[0]).toContain('pnpm install --frozen-lockfile');
-    expect(commands[0]).not.toContain('node_modules');
+    expect(commands[0]).toContain('pnpm install --frozen-lockfile --ignore-scripts');
+    const runs = ctx.executor instanceof InMemoryExecutor
+      ? ctx.executor.calls.filter((call) => call.kind === 'run')
+      : [];
+    expect(runs[0]?.opts?.network).toBe('enabled');
+    expect(runs.slice(1).every((call) => call.opts?.network === 'disabled')).toBe(true);
     expect(chat).not.toHaveBeenCalled();
   });
 });
 
 describe('sandbox command resolution', () => {
+  it('creates an exact hook-disabled Git baseline from only manifest members', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-git-baseline-'));
+    const marker = join(directory, 'hook-ran');
+    const manifest = join(directory, 'overlay.manifest');
+    const template = join(directory, 'empty-template');
+    try {
+      await mkdir(join(directory, 'src'), { recursive: true });
+      await mkdir(join(directory, 'node_modules', 'dependency'), { recursive: true });
+      await writeFile(join(directory, 'package.json'), '{"name":"fixture"}\n');
+      await writeFile(join(directory, 'src', 'index.ts'), 'export const ready = true;\n');
+      await writeFile(join(directory, 'node_modules', 'dependency', 'output.js'), 'prepared\n');
+      await writeFile(manifest, Buffer.from('package.json\0src/index.ts\0'));
+      await mkdir(template);
+      expect(spawnSync('git', ['init', '--quiet'], { cwd: directory }).status).toBe(0);
+      const hook = join(directory, '.git', 'hooks', 'pre-commit');
+      await writeFile(hook, `#!/bin/sh\ntouch '${marker}'\nexit 1\n`);
+      await chmod(hook, 0o755);
+
+      const command = buildSandboxRepositoryInitializationCommandForTest({
+        manifestPath: manifest,
+        templatePath: template,
+      });
+      const initialized = spawnSync('sh', ['-c', command], {
+        cwd: directory,
+        encoding: 'utf8',
+      });
+
+      expect(initialized.status, initialized.stderr).toBe(0);
+      const listed = spawnSync('git', ['ls-files', '-z'], {
+        cwd: directory,
+        encoding: 'utf8',
+      });
+      expect(listed.stdout.split('\0').filter(Boolean).sort()).toEqual([
+        'package.json',
+        'src/index.ts',
+      ]);
+      await expect(readFile(marker, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('uses verified lifecycle-blocking installer modes', () => {
+    const command = sandboxPreparationCommand();
+
+    expect(command).toContain('pnpm install --frozen-lockfile --ignore-scripts');
+    expect(command).toContain('npm ci --ignore-scripts');
+    expect(command).toContain('yarn install --frozen-lockfile --ignore-scripts');
+    expect(command).toContain('yarn install --immutable --mode=skip-build');
+    expect(command).toContain('unsupported Yarn version');
+  });
+
   it('uses one resolved command for reproduction, triage, race, and audit', async () => {
     const observed = 'vitest run;';
     const { ctx, executor, chat } = context(
       'repair-off-by-one',
-      [1, 1, 1, 1, 1, 1, 0, 0],
+      [1, 1, 1, 1, 1, 0, 0],
       'test-assertion',
       { failureCommand: observed },
     );
@@ -300,11 +874,10 @@ describe('sandbox command resolution', () => {
         };
       }
       if (tier === 'super') {
-        return {
-          text: JSON.stringify({
-            candidates: [{ id: 'repair', rationale: 'fix the source', diff: HONEST_DIFF }],
-          }),
-        };
+        return repairProposalReply(
+          { id: 'repair', rationale: 'fix the source', diff: HONEST_DIFF },
+          HONEST_REPLACEMENT,
+        );
       }
       return {
         text: JSON.stringify({ approved: true, reasoning: 'The source repair holds.' }),
@@ -313,7 +886,10 @@ describe('sandbox command resolution', () => {
 
     const caseFile = await healCase(ctx);
     const stageCommands = executor.calls.flatMap((call) =>
-      call.kind === 'run' && !call.cmd.includes('corepack pnpm install --frozen-lockfile')
+      call.kind === 'run' &&
+        !call.cmd.includes('corepack pnpm install --frozen-lockfile') &&
+        !call.cmd.includes('git init --quiet') &&
+        call.cmd.includes('vitest run;')
         ? [call.cmd]
         : [],
     );
@@ -322,7 +898,7 @@ describe('sandbox command resolution', () => {
       outcome: 'fixed',
       diagnosis: { failingCmd: observed },
     });
-    expect(stageCommands).toHaveLength(8);
+    expect(stageCommands).toHaveLength(7);
     expect(stageCommands.every((command) =>
       command.includes('corepack pnpm exec sh -c') && command.includes('vitest run;'),
     )).toBe(true);
@@ -335,6 +911,45 @@ describe('sandbox command resolution', () => {
     expect(command).toContain("corepack yarn exec sh -c 'vitest run'");
     expect(command).toContain("PATH=\"./node_modules/.bin:$PATH\" sh -c 'vitest run'");
     expect(sandboxTargetCommand('vitest run')).toContain('corepack pnpm exec sh -c');
+  });
+
+  it('scopes a recursive pnpm repair check to the one failing workspace', () => {
+    const diagnosed = {
+      class: 'test-assertion',
+      confidence: 0.95,
+      signals: ['scripted'],
+      failingCmd: 'pnpm -r test',
+      errorExcerpt: 'AssertionError: expected -1 to be 5',
+    } satisfies Diagnosis;
+    expect(repairVerificationCommand(diagnosed, [
+      '2026-08-30T16:56:38Z packages/action test: Tests 118 passed',
+      '2026-08-30T16:56:38Z packages/core test: FAIL src/dogfood-add.test.ts',
+      '2026-08-30T16:56:38Z packages/core test: AssertionError: expected -1 to be 5',
+    ].join('\n'))).toBe('pnpm --filter ./packages/core test');
+  });
+
+  it('keeps a full recursive pnpm repair check for a legacy replay', () => {
+    expect(repairVerificationCommand({
+      class: 'test-assertion',
+      confidence: 0.95,
+      signals: ['scripted'],
+      failingCmd: 'pnpm -r test',
+      errorExcerpt: 'packages/core test: AssertionError: failed',
+    }, undefined, 'full')).toBe('pnpm -r test');
+  });
+
+  it('keeps a recursive pnpm repair check when the failing workspace is ambiguous', () => {
+    const diagnosed = {
+      class: 'test-assertion',
+      confidence: 0.95,
+      signals: ['scripted'],
+      failingCmd: 'pnpm --recursive test',
+      errorExcerpt: 'assertion failed',
+    } satisfies Diagnosis;
+    expect(repairVerificationCommand(diagnosed, [
+        'packages/core test: AssertionError: expected -1 to be 5',
+        'packages/action test: Error: failed',
+    ].join('\n'))).toBe('pnpm --recursive test');
   });
 
   it.each([

@@ -1,5 +1,6 @@
 import type { Diagnosis, Grounding } from '../domain.js';
 import type { HttpRequestInit, HttpResponse } from '../llm/nebius.js';
+import { redactExternalText } from '../security/external-text.js';
 
 const DEFAULT_BASE_URL = 'https://api.tavily.com';
 const WEB_HELPFUL_CLASSES = new Set(['dep-upstream-breaking', 'env-config', 'build']);
@@ -23,7 +24,7 @@ const MAX_ERROR_QUERY_CHARACTERS = 1_000;
 export type TavilyHttpResponse = Pick<HttpResponse, 'ok' | 'status' | 'json'>;
 export type TavilyHttpRequestInit = Omit<HttpRequestInit, 'body'> & { body?: string };
 
-type TavilyFetch = (
+export type TavilyFetch = (
   input: string,
   init: TavilyHttpRequestInit,
 ) => Promise<TavilyHttpResponse>;
@@ -354,15 +355,6 @@ function packageVersions(lockfileDiff: string, characterBudget: number): string[
   return [...versions];
 }
 
-function redactSecrets(value: string): string {
-  return value
-    .replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]')
-    .replace(
-      /\b(?:[A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)|api[_-]?key|token|secret|password)\s*[=:]\s*[^\s,;]+/gi,
-      '[redacted credential]',
-    );
-}
-
 const DEPENDENCY_HINT = /^(?<name>@?[a-z0-9][\w./-]*)@(?<version>\d+\.\d+\.\d+(?:-[\w.-]+)?)$/iu;
 
 function validDependencyHints(hints: readonly string[] = []): string[] {
@@ -398,7 +390,7 @@ function groundingQuery(
   lockfileDiff = '',
   dependencyHints: readonly string[] = [],
 ): string {
-  const safeExcerpt = redactSecrets(diagnosis.errorExcerpt.trim())
+  const safeExcerpt = redactExternalText(diagnosis.errorExcerpt.trim()).text
     .replace(/\s+/g, ' ')
     .slice(0, MAX_ERROR_QUERY_CHARACTERS);
   const hints = relevantDependencyHints(diagnosis, dependencyHints);
@@ -441,7 +433,9 @@ async function addRegistryVerifiedReleaseCitations(
       ];
       const extracted = await tavily.extract(
         releaseUrls,
-        `${dependency.name} ${dependency.version} breaking changes migration`,
+        redactExternalText(
+          `${dependency.name} ${dependency.version} breaking changes migration`,
+        ).text,
       );
       additions.push(...extracted);
     } catch {
@@ -472,13 +466,14 @@ export async function ground(
     options.lockfileDiff,
     options.dependencyHints,
   );
-  const searched = await tavily.search(query, { maxResults: 5 });
+  const safeQuery = redactExternalText(query).text;
+  const searched = await tavily.search(safeQuery, { maxResults: 5 });
   const citations = await addRegistryVerifiedReleaseCitations(
     tavily,
     searched,
     relevantDependencyHints(diagnosis, options.dependencyHints),
   );
-  return { query, citations, skipped: false };
+  return { query: safeQuery, citations, skipped: false };
 }
 
 export function promoteUpstreamDependencyDiagnosis(

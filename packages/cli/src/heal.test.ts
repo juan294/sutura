@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 
 import {
   InMemoryExecutor,
+  DEFAULT_MODELS,
+  DEFAULT_MODEL_PRICES,
+  DEFAULT_ROUTING_PROFILE_ID,
   SUTURA_SANDBOX_ENV,
   type Candidate,
   type Diagnosis,
@@ -14,8 +17,10 @@ import {
 } from '@sutura/core';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { HealArguments } from './args.js';
+import type { AuditArguments, HealArguments } from './args.js';
 import {
+  auditRuntimeFromEnvironment,
+  auditWithRuntime,
   CliConfigError,
   healWithRuntime,
   readDependencyHints,
@@ -43,6 +48,13 @@ const UPSTREAM_DIFF = [
   "+  .then((response) => response.text());",
 ].join('\n');
 
+function auditRequest(directory: string): AuditArguments {
+  return {
+    command: 'audit', caseDir: directory, candidateDiff: join(directory, 'candidate.diff'),
+    beforeLog: join(directory, 'before.log'), afterLog: join(directory, 'after.log'), format: 'json',
+  };
+}
+
 function request(caseId: string, candidateDiff?: string, tavilyEnabled = true): HealArguments {
   return {
     command: 'heal',
@@ -55,6 +67,13 @@ function request(caseId: string, candidateDiff?: string, tavilyEnabled = true): 
 
 function runResult(exitCode: number, error = 'case.test.js: assertion failed'): InMemoryRunResult {
   return { exitCode, stdout: exitCode === 0 ? 'passed' : '', stderr: exitCode === 0 ? '' : error, truncated: false, metrics: {} };
+}
+
+function proposalFor(candidate: Candidate): object {
+  const replacement = candidate.diff === UPSTREAM_DIFF
+    ? "exports.fetchName = () => import('node-fetch').then(({default: fetch}) => fetch('data:Juan'))\n  .then((response) => response.text());\n"
+    : 'export function pageCount(items, size) { return Math.ceil(items / size); }\n';
+  return { replacement };
 }
 
 function runtime(
@@ -70,7 +89,13 @@ function runtime(
 } {
   let scenarioIndex = 0;
   const executor = new InMemoryExecutor((command) => {
-    if (command.includes('install --frozen-lockfile')) return runResult(0);
+    if (command.includes('git apply - && git diff')) {
+      return { ...runResult(0), stdout: candidate.diff };
+    }
+    if (
+      command.includes('install --frozen-lockfile') ||
+      command.includes('git init --quiet')
+    ) return runResult(0);
     const index = scenarioIndex++;
     return runResult(exits[index] ?? 1, index === 0 ? reproductionError : 'case.test.js: assertion failed');
   });
@@ -81,7 +106,9 @@ function runtime(
         failingCmd: 'pnpm test', errorExcerpt: reproductionError,
       }) };
     }
-    if (tier === 'super') return { text: JSON.stringify({ candidates: [candidate] }) };
+    if (tier === 'super') {
+      return { text: JSON.stringify(proposalFor(candidate)), usd: 0.001 };
+    }
     return { text: JSON.stringify({ approved: true, reasoning: 'The source repair holds.' }) };
   });
   return {
@@ -89,7 +116,15 @@ function runtime(
     chat,
     value: {
       executor,
-      llm: { chat },
+      llm: {
+        chat,
+        modelQuote: (tier) => ({
+          role: tier,
+          modelId: DEFAULT_MODELS[tier],
+          price: DEFAULT_MODEL_PRICES[tier],
+          profileId: DEFAULT_ROUTING_PROFILE_ID,
+        }),
+      },
       cost: { entries: [], totalUsd: () => 0 },
       triageN: 5,
       raceK: 1,
@@ -107,7 +142,7 @@ describe('healWithRuntime Placebo integration', () => {
         'export function pageCount(items, size) { return Math.floor(items / size) + 1; }\n',
       );
       const scripted = runtime(
-        [1, 1, 1, 1, 1, 1, 0, 0],
+        [1, 1, 1, 1, 1, 0, 0],
         'test-assertion',
         undefined,
         undefined,
@@ -122,7 +157,7 @@ describe('healWithRuntime Placebo integration', () => {
       expect(result.outcome).toBe('fixed');
       const superCall = scripted.chat.mock.calls.find(([tier]) => tier === 'super');
       expect(JSON.stringify(superCall)).toContain('page-count.js');
-      expect(scripted.executor.calls.filter(({ kind }) => kind === 'snapshot')).toHaveLength(1);
+      expect(scripted.executor.calls.filter(({ kind }) => kind === 'snapshot')).toHaveLength(2);
       expect(scripted.executor.calls.filter(({ kind }) => kind === 'run').every((call) =>
         call.kind !== 'run' || call.opts?.env === SUTURA_SANDBOX_ENV,
       )).toBe(true);
@@ -142,7 +177,7 @@ describe('healWithRuntime Placebo integration', () => {
 
   it('refuses a real trap at the vet gate without racing the known greenwash', async () => {
     const diff = await readFile(join(CORPUS, 'trap-skipped-test', 'fake-fix.diff'), 'utf8');
-    const scripted = runtime([1, 1, 1, 1, 1, 1], 'test-assertion');
+    const scripted = runtime([1, 1, 1, 1, 1], 'test-assertion');
     const result = await healWithRuntime(request('trap-skipped-test', diff), scripted.value);
     expect(result).toMatchObject({ outcome: 'refused', audit: { approved: false } });
     expect(scripted.executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(7);
@@ -159,7 +194,7 @@ describe('healWithRuntime Placebo integration', () => {
       }];
     });
     const scripted = runtime(
-      [1, 1, 1, 1, 1, 1, 0, 0],
+      [1, 1, 1, 1, 1, 0, 0],
       'dep-upstream-breaking',
       { id: 'esm', rationale: 'load ESM dynamically', diff: UPSTREAM_DIFF },
       { search },
@@ -172,6 +207,82 @@ describe('healWithRuntime Placebo integration', () => {
 });
 
 describe('CLI runtime configuration and source boundaries', () => {
+  it('constructs audit-only runtime with only NEBIUS_API_KEY', () => {
+    expect(auditRuntimeFromEnvironment({ NEBIUS_API_KEY: 'test-key' })).toMatchObject({
+      llm: expect.any(Object), cost: expect.any(Object),
+    });
+  });
+
+  it('audits bounded local evidence without an executor', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-audit-'));
+    const chat = vi.fn(async (tier: ModelTier) => ({ text: tier === 'ultra'
+      ? '{"approved":true,"reasoning":"source repair is consistent"}'
+      : '{"class":"test-assertion","confidence":0.9,"signals":["assertion"],"failingCmd":"pnpm test","errorExcerpt":"assertion"}' }));
+    try {
+      await writeFile(join(directory, 'candidate.diff'), REPAIR_DIFF);
+      await writeFile(join(directory, 'before.log'), 'Run pnpm test\nAssertionError\nProcess completed with exit code 1.');
+      await writeFile(join(directory, 'after.log'), 'Run pnpm test\npassed\nProcess completed with exit code 0.');
+      const result = await auditWithRuntime(auditRequest(directory), {
+        llm: { chat }, cost: { entries: [], totalUsd: () => 0 },
+      });
+      expect(result).toMatchObject({ assurance: 'reduced', outcome: 'audit-approved' });
+      expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'nano', 'ultra']);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['symlink', 'oversized', 'binary'] as const)(
+    'rejects %s audit evidence before model calls',
+    async (scenario) => {
+      const directory = await mkdtemp(join(tmpdir(), 'sutura-audit-boundary-'));
+      const outside = join(directory, 'outside.log');
+      const chat = vi.fn();
+      try {
+        await writeFile(join(directory, 'candidate.diff'), REPAIR_DIFF);
+        await writeFile(outside, 'Run pnpm test\nProcess completed with exit code 1.');
+        if (scenario === 'symlink') await symlink(outside, join(directory, 'before.log'));
+        else if (scenario === 'oversized') await writeFile(join(directory, 'before.log'), 'x'.repeat(20_001));
+        else await writeFile(join(directory, 'before.log'), Buffer.from([82, 117, 110, 0, 120]));
+        await writeFile(join(directory, 'after.log'), 'Run pnpm test\nProcess completed with exit code 0.');
+        await expect(auditWithRuntime(auditRequest(directory), {
+          llm: { chat }, cost: { entries: [], totalUsd: () => 0 },
+        })).rejects.toThrow(/audit evidence/iu);
+        expect(chat).not.toHaveBeenCalled();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each(['invalid', 'symlink'] as const)(
+    'stops a %s repository policy before provider or sandbox calls',
+    async (scenario) => {
+      const directory = await mkdtemp(join(tmpdir(), 'sutura-policy-boundary-'));
+      const outside = join(directory, 'outside-policy.json');
+      const scripted = runtime([], 'test-assertion');
+      try {
+        await writeFile(outside, '{"version":2}');
+        if (scenario === 'symlink') {
+          await symlink(outside, join(directory, '.sutura.json'));
+        } else {
+          await writeFile(join(directory, '.sutura.json'), '{"version":2}');
+        }
+
+        await expect(healWithRuntime({
+          ...request('repair-off-by-one'),
+          caseDir: directory,
+        }, scripted.value)).rejects.toThrow(
+          scenario === 'symlink' ? /must not be a symlink/iu : /unsupported policy version/iu,
+        );
+        expect(scripted.executor.calls).toEqual([]);
+        expect(scripted.chat).not.toHaveBeenCalled();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   it('reads exact dependency versions from bounded local and file manifests', async () => {
     const fixture = join(CORPUS, 'upstream-formatter-release', 'fixture');
     await expect(readDependencyHints(fixture)).resolves.toEqual(expect.arrayContaining([
@@ -236,6 +347,25 @@ describe('CLI runtime configuration and source boundaries', () => {
     })).not.toThrow();
   });
 
+  it('selects adaptive search defaults for the CLI runtime', () => {
+    const value = runtimeFromEnvironment(request('repair-off-by-one', undefined, false), {
+      NEBIUS_API_KEY: 'nebius', CONTREE_TOKEN: 'token', CONTREE_PROJECT: 'project',
+    });
+    expect(value.search).toEqual({
+      initialBranches: 4, beamWidth: 2, maximumDepth: 4, maximumTotalBranches: 12,
+    });
+  });
+
+  it.each(['node', 'python'] as const)('passes explicit %s selection without accepting an image reference', (selected) => {
+    const value = runtimeFromEnvironment({
+      ...request('repair-off-by-one', undefined, false), runtime: selected,
+    }, {
+      NEBIUS_API_KEY: 'nebius', CONTREE_TOKEN: 'token', CONTREE_PROJECT: 'project',
+    });
+    expect(value.runtimeId).toBe(selected);
+    expect(value.imageRef).toBeUndefined();
+  });
+
   it('reads bounded source files but excludes dependencies and secret-shaped paths', async () => {
     const fixture = join(CORPUS, 'repair-off-by-one', 'fixture');
     const context = await readLocalSourceContext(
@@ -245,6 +375,24 @@ describe('CLI runtime configuration and source boundaries', () => {
     );
     expect(context.sources.map(({ path }) => path)).toContain('page-count.js');
     expect(context.sources.every(({ path }) => !path.includes('node_modules') && !path.startsWith('.env'))).toBe(true);
+  });
+
+  it('uses Python manifest fallbacks after runtime selection', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-python-source-fallback-'));
+    try {
+      await writeFile(join(directory, 'pyproject.toml'), '[project]\nname = "fixture"\n');
+      await writeFile(join(directory, 'uv.lock'), 'version = 1\n');
+      const context = await readLocalSourceContext(
+        directory,
+        'Run python -m pytest\nImportError: dependency failed',
+        { class: 'dep-upstream-breaking', confidence: 1, signals: [], failingCmd: 'python -m pytest', errorExcerpt: 'failed' },
+        undefined,
+        'python',
+      );
+      expect(context.sources.map(({ path }) => path)).toEqual(['pyproject.toml', 'uv.lock']);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('centers a bounded source window on a far observed line', async () => {
@@ -260,9 +408,11 @@ describe('CLI runtime configuration and source boundaries', () => {
         'Run pnpm test\nsrc/far.ts:250: failure',
         { class: 'test-assertion', confidence: 1, signals: [], failingCmd: 'pnpm test', errorExcerpt: 'failed' },
       );
-      expect(context.sources[0]).toMatchObject({ path: 'src/far.ts', startLine: 190, truncated: true });
+      expect(context.sources[0]).toMatchObject({ path: 'src/far.ts', truncated: true });
+      expect(context.sources[0]!.startLine).toBeLessThanOrEqual(250);
       expect(context.sources[0]?.content).toContain('line250');
       expect(context.sources[0]?.content).not.toContain('line1 =');
+      expect(context.sources[0]?.content.endsWith('\n')).toBe(true);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

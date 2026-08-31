@@ -1,0 +1,41 @@
+{
+  "assurance": "reduced",
+  "outcome": "audit-approved",
+  "diagnosis": {
+    "before": {
+      "class": "test-assertion",
+      "confidence": 0.91,
+      "signals": ["assertion mismatch"],
+      "failingCmd": "pnpm test",
+      "errorExcerpt": "src/add.test.ts:4: expected 1 to be 2"
+    },
+    "after": {
+      "class": "test-assertion",
+      "confidence": 0.49,
+      "signals": ["supplied passing evidence"],
+      "failingCmd": "pnpm test",
+      "errorExcerpt": "Tests passed"
+    }
+  },
+  "policy": {
+    "baseRef": "local",
+    "baseSha": "local",
+    "policySha": "default"
+  },
+  "audit": {
+    "approved": true,
+    "checks": [
+      { "name": "paired-evidence", "passed": true, "evidence": "pnpm test: exit 1 -> 0" },
+      { "name": "policy-patch", "passed": true, "evidence": "Built-in and repository patch rules passed" },
+      { "name": "llm-adjudication", "passed": true, "evidence": "The supplied patch matches the diagnosed assertion failure." }
+    ],
+    "reasoning": "The supplied patch matches the diagnosed assertion failure."
+  },
+  "cost": {
+    "entries": [
+      { "role": "nano", "model": "scripted-nano", "inTok": 120, "outTok": 35, "reasoningTok": 0, "usd": 0.000015 },
+      { "role": "nano", "model": "scripted-nano", "inTok": 80, "outTok": 30, "reasoningTok": 0, "usd": 0.000012 },
+      { "role": "ultra", "model": "scripted-ultra", "inTok": 400, "outTok": 80, "reasoningTok": 0, "usd": 0.00064 }
+    ]
+  }
+}

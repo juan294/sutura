@@ -3,13 +3,30 @@
 import { execFile, spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, symlink, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join, relative } from 'node:path';
 import { promisify } from 'node:util';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ContreeError, ContreeExecutor } from './contree.js';
+import {
+  capturedDogfoodReplayBundle,
+  successfulCapturedHttp,
+} from '../__fixtures__/captured/live-dogfood-replay.test-helper.js';
+import {
+  ContreeError,
+  ContreeExecutor,
+  buildSnapshotCommandForTest,
+} from './contree.js';
+
+const REPOSITORY_OVERLAY = {
+  profile: 'repository',
+  mode: 'overlay',
+} as const;
+
+const DEPENDENCY_REPLACE = {
+  profile: 'dependency-inputs',
+  mode: 'replace',
+} as const;
 
 const execFileAsync = promisify(execFile);
 
@@ -17,6 +34,24 @@ async function fixture(name: string): Promise<unknown> {
   return JSON.parse(
     await readFile(new URL(`./__fixtures__/${name}`, import.meta.url), 'utf8'),
   );
+}
+
+async function capturedImportImageExchanges(): Promise<Array<{
+  request: { method: string; url: string };
+  response: { status: number; headers: Record<string, string>; body: string };
+}>> {
+  const bundle = await capturedDogfoodReplayBundle();
+  return successfulCapturedHttp(bundle, 'contree')
+    .filter(({ sequence }) => sequence <= 16)
+    .map(({ request, response }) => {
+      if (typeof response.status !== 'number' || typeof response.body !== 'string') {
+        throw new Error('Captured ConTree response body is unavailable');
+      }
+      return {
+        request,
+        response: { status: response.status, headers: response.headers ?? {}, body: response.body },
+      };
+    });
 }
 
 function jsonResponse(
@@ -98,6 +133,123 @@ afterEach(() => {
 });
 
 describe('ContreeExecutor', () => {
+  it('accepts the captured workflow 33321172589 image-import operation shapes', async () => {
+    const exchanges = await capturedImportImageExchanges();
+    let index = 0;
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const exchange = exchanges[index++];
+      if (!exchange) throw new Error('Captured ConTree exchanges are exhausted');
+      expect(String(input)).toBe(exchange.request.url);
+      expect(init?.method ?? 'GET').toBe(exchange.request.method);
+      return new Response(exchange.response.body, {
+        status: exchange.response.status,
+        headers: exchange.response.headers,
+      });
+    });
+    const executor = new ContreeExecutor(config(fetch, {
+      pollIntervalMs: 0,
+      operationTimeoutMs: 5_000,
+    }));
+
+    await expect(executor.importImage('node:22')).resolves.toBe(
+      'd507f8b4-bfc3-3d23-9f96-f310bff17c9b',
+    );
+    expect(index).toBe(exchanges.length);
+  });
+
+  it.each([
+    ['token', { token: ' ' }, /token is required/u],
+    ['project', { project: ' ' }, /project is required/u],
+    ['zero maxOps', { maxOps: 0 }, /positive integer/u],
+    ['fractional maxOps', { maxOps: 1.5 }, /positive integer/u],
+  ])('rejects invalid synthetic configuration: %s', (_label, override, message) => {
+    expect(() => new ContreeExecutor(config(vi.fn<typeof globalThis.fetch>(), override)))
+      .toThrow(message);
+  });
+
+  it('rejects a duplicate caller operation ID', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+      if (init?.method === 'POST') {
+        return jsonResponse({}, 201, { Location: '/sandboxes/v1/operations/one' });
+      }
+      await gate;
+      return jsonResponse(await fixture('operation-success.json'));
+    });
+    const executor = new ContreeExecutor(config(fetch));
+    const first = executor.run('parent', 'first', { operationId: 'duplicate' });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+    await expect(executor.run('parent', 'second', { operationId: 'duplicate' }))
+      .rejects.toThrow(/operation ID already exists/u);
+    release();
+    await first;
+  });
+
+  it.each([
+    ['missing metadata result', { status: 'SUCCESS', result_image_uuid: 'image' }, /metadata\.result/u],
+    ['missing image', {
+      status: 'SUCCESS', metadata: { result: { state: { exit_code: 0 } } },
+    }, /result image uuid/u],
+    ['missing exit code', {
+      status: 'SUCCESS', result_image_uuid: 'image', metadata: { result: { state: {} } },
+    }, /exit code/u],
+    ['invalid stdout value', {
+      status: 'SUCCESS', result_image_uuid: 'image', metadata: { result: {
+        state: { exit_code: 0 }, stdout: { value: 1, encoding: 'ascii' },
+      } },
+    }, /stdout value/u],
+    ['unsupported stdout encoding', {
+      status: 'SUCCESS', result_image_uuid: 'image', metadata: { result: {
+        state: { exit_code: 0 }, stdout: { value: 'x', encoding: 'utf16' },
+      } },
+    }, /stdout has unsupported encoding/u],
+    ['invalid stderr value', {
+      status: 'SUCCESS', result_image_uuid: 'image', metadata: { result: {
+        state: { exit_code: 0 }, stderr: { value: 1, encoding: 'ascii' },
+      } },
+    }, /stderr value/u],
+    ['unsupported stderr encoding', {
+      status: 'SUCCESS', result_image_uuid: 'image', metadata: { result: {
+        state: { exit_code: 0 }, stderr: { value: 'x', encoding: 'utf16' },
+      } },
+    }, /stderr has unsupported encoding/u],
+  ] as const)('rejects synthetic operation shape: %s', async (_label, operation, message) => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({}, 201, {
+        Location: '/sandboxes/v1/operations/shape',
+      }))
+      .mockResolvedValueOnce(jsonResponse(operation));
+    await expect(new ContreeExecutor(config(fetch)).run('parent', 'true'))
+      .rejects.toThrow(message);
+  });
+
+  it('rejects missing and cross-origin operation locations', async () => {
+    const missing = new ContreeExecutor(config(
+      vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({}, 201)),
+    ));
+    await expect(missing.run('parent', 'true')).rejects.toThrow(/Location header/u);
+
+    const foreign = new ContreeExecutor(config(
+      vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({}, 201, {
+        Location: 'https://attacker.example/operations/one',
+      })),
+    ));
+    await expect(foreign.run('parent', 'true')).rejects.toThrow(/configured origin/u);
+  });
+
+  it.each(['FAILED', 'CANCELLED'] as const)(
+    'rejects a terminal %s operation with bounded detail',
+    async (status) => {
+      const fetch = vi.fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(jsonResponse({}, 201, {
+          Location: '/sandboxes/v1/operations/terminal',
+        }))
+        .mockResolvedValueOnce(jsonResponse({ status, error: 'synthetic detail' }));
+      await expect(new ContreeExecutor(config(fetch)).run('parent', 'true'))
+        .rejects.toThrow(new RegExp(`${status}: synthetic detail`, 'u'));
+    },
+  );
   it('maps run options to the documented request and decodes the result fixture', async () => {
     const pending = await fixture('operation-pending.json');
     const success = await fixture('operation-success.json');
@@ -141,7 +293,7 @@ describe('ContreeExecutor', () => {
       env: { GREETING: 'hello' },
       timeout: 15,
       cwd: '/repo',
-      networking: { enabled: true },
+      networking: { enabled: false },
     });
     expect(result).toEqual({
       imageId: 'image-child',
@@ -156,6 +308,26 @@ describe('ContreeExecutor', () => {
         systemCpuTimeSec: 0.1,
         userCpuTimeSec: 0.2,
       },
+    });
+  });
+
+  it('enables networking only when the caller selects the explicit policy', async () => {
+    const success = await fixture('operation-success.json');
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ uuid: 'operation-1' }, 201, {
+          Location: '/sandboxes/v1/operations/operation-1',
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse(success));
+
+    await new ContreeExecutor(config(fetch)).run('parent', 'install', {
+      network: 'enabled',
+    });
+
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      networking: { enabled: true },
     });
   });
 
@@ -446,6 +618,94 @@ describe('ContreeExecutor', () => {
     expect(requestBodies.every(({ cwd }) => cwd === '/workspace')).toBe(true);
   });
 
+  it('exposes cancellation by stable caller ID and resolves a completion race once', async () => {
+    let cancelled = false;
+    const pending = await fixture('operation-pending.json');
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+      if (init?.method === 'POST') {
+        return jsonResponse({ uuid: 'operation-1' }, 201, { Location: '/sandboxes/v1/operations/operation-1' });
+      }
+      if (init?.method === 'DELETE') {
+        cancelled = true;
+        return new Response(null, { status: 202 });
+      }
+      return cancelled ? jsonResponse({ status: 'CANCELLED' }) : jsonResponse(pending);
+    });
+    const executor = new ContreeExecutor(config(fetch, { maxOps: 2, pollIntervalMs: 0 }));
+    const run = executor.run('parent', 'slow', { operationId: 'search-001' });
+    await vi.waitFor(() => expect(fetch.mock.calls.some(([, init]) => init?.method === 'GET')).toBe(true));
+    expect(executor.operationCapacity()).toEqual({ limit: 2, active: 1, available: 1 });
+    await expect(executor.cancel('search-001')).resolves.toEqual({ operationId: 'search-001', requested: true });
+    await expect(run).rejects.toThrow(/cancelled/i);
+    await expect(executor.cancel('search-001')).resolves.toEqual({ operationId: 'search-001', requested: false, terminal: 'cancelled' });
+    expect(executor.completions).toEqual([{ operationId: 'search-001', terminal: 'cancelled', cancellationRequested: true }]);
+    expect(executor.operationCapacity()).toEqual({ limit: 2, active: 0, available: 2 });
+  });
+
+  it('does not fabricate cancellation state for an unknown operation', async () => {
+    const executor = new ContreeExecutor(config(vi.fn<typeof globalThis.fetch>()));
+    await expect(executor.cancel('missing')).resolves.toEqual({ operationId: 'missing', requested: false });
+    expect(executor.completions).toEqual([]);
+  });
+
+  it('does not record cancelled when the cancellation request fails', async () => {
+    const pending = await fixture('operation-pending.json');
+    const success = await fixture('operation-success.json');
+    let polls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+      if (init?.method === 'POST') {
+        return jsonResponse({ uuid: 'operation-1' }, 201, { Location: '/sandboxes/v1/operations/operation-1' });
+      }
+      if (init?.method === 'DELETE') return new Response('cannot cancel', { status: 500 });
+      polls += 1;
+      if (polls === 1) return jsonResponse(pending);
+      await gate;
+      return jsonResponse(success);
+    });
+    const executor = new ContreeExecutor(config(fetch, { pollIntervalMs: 0 }));
+    const run = executor.run('parent', 'slow', { operationId: 'search-001' });
+    await vi.waitFor(() => expect(polls).toBeGreaterThan(0));
+    await expect(executor.cancel('search-001')).rejects.toThrow(/HTTP 500/u);
+    expect(executor.completions).toEqual([]);
+    release();
+    await expect(run).resolves.toMatchObject({
+      operation: { operationId: 'search-001', terminal: 'succeeded', cancellationRequested: false },
+    });
+  });
+
+  it('cancels a queued operation without starting replacement provider work', async () => {
+    const success = await fixture('operation-success.json');
+    let posts = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+      if (init?.method === 'POST') {
+        posts += 1;
+        return jsonResponse({ uuid: `operation-${posts}` }, 201, {
+          Location: `/sandboxes/v1/operations/operation-${posts}`,
+        });
+      }
+      await gate;
+      return jsonResponse(success);
+    });
+    const executor = new ContreeExecutor(config(fetch, { maxOps: 1 }));
+    const first = executor.run('parent', 'first', { operationId: 'search-001' });
+    const queued = executor.run('parent', 'queued', { operationId: 'search-002' });
+    await vi.waitFor(() => expect(posts).toBe(1));
+    await expect(executor.cancel('search-002')).resolves.toEqual({
+      operationId: 'search-002', requested: true, terminal: 'cancelled',
+    });
+    release();
+    await expect(first).resolves.toMatchObject({ exitCode: 0 });
+    await expect(queued).rejects.toThrow(/cancelled before it started/u);
+    expect(posts).toBe(1);
+    expect(executor.completions.filter(({ operationId }) => operationId === 'search-002')).toEqual([
+      { operationId: 'search-002', terminal: 'cancelled', cancellationRequested: true },
+    ]);
+  });
+
   it('uploads the current safe worktree and replaces the destination snapshot', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sutura-snapshot-'));
     try {
@@ -458,8 +718,6 @@ describe('ContreeExecutor', () => {
       await writeFile(join(dir, 'ignored.txt'), 'ignore me');
       await writeFile(join(dir, '.env'), 'TOKEN=secret');
       await writeFile(join(dir, 'private.pem'), 'secret key');
-      await mkdir(join(dir, 'node_modules', 'unsafe'), { recursive: true });
-      await writeFile(join(dir, 'node_modules', 'unsafe', 'index.js'), 'secret');
       await execFileAsync('git', [
         '-C',
         dir,
@@ -470,7 +728,6 @@ describe('ContreeExecutor', () => {
         'deleted.txt',
         '.env',
         'private.pem',
-        'node_modules/unsafe/index.js',
       ]);
       await execFileAsync('git', ['-C', dir, 'commit', '--quiet', '-m', 'baseline']);
       await writeFile(join(dir, 'included.txt'), 'modified');
@@ -489,15 +746,16 @@ describe('ContreeExecutor', () => {
       const fetch = vi.fn<typeof globalThis.fetch>(async (url, init) => {
         if (String(url).endsWith('/files')) {
           expect(init?.body).toBeInstanceOf(ReadableStream);
-          uploaded = new Uint8Array(await new Response(init?.body).arrayBuffer());
+          const body = new Uint8Array(await new Response(init?.body).arrayBuffer());
+          uploaded ??= body;
           return jsonResponse({ uuid: 'file-uuid', sha256: 'abc', size: 123 }, 201);
         }
         if (String(url).endsWith('/instances')) {
           const body = JSON.parse(String(init?.body));
           expect(body).toMatchObject({
             image: 'base-image',
-            command:
-              "rm -rf /workspace && mkdir -p /workspace && tar -xf /tmp/sutura-snapshot.tar -C /workspace",
+            command: expect.stringMatching(/refuses symlink parent[\s\S]*tar -xf/),
+            networking: { enabled: false },
             files: {
               '/tmp/sutura-snapshot.tar': {
                 uuid: 'file-uuid',
@@ -507,6 +765,9 @@ describe('ContreeExecutor', () => {
               },
             },
           });
+          expect(body.command).toContain("if [ -L '/workspace' ]");
+          expect(body.command).toContain('refuses preparation path collision');
+          expect(body.command).not.toContain('rm -rf /workspace');
           return jsonResponse({ uuid: 'snapshot-operation' }, 201, {
             Location: '/sandboxes/v1/operations/snapshot-operation',
           });
@@ -528,7 +789,7 @@ describe('ContreeExecutor', () => {
       });
       const executor = new ContreeExecutor(config(fetch));
 
-      await expect(executor.snapshot(dir, 'base-image')).resolves.toBe(
+      await expect(executor.snapshot(dir, 'base-image', REPOSITORY_OVERLAY)).resolves.toBe(
         'snapshot-image',
       );
       expect(uploaded).toBeDefined();
@@ -563,10 +824,15 @@ describe('ContreeExecutor', () => {
     }
   });
 
-  it('uploads a bounded non-git Placebo directory with its portable runtime', async () => {
+  it('uploads only dependency manifests before network-enabled preparation', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sutura-contree-placebo-'));
     try {
       await writeFile(join(dir, 'package.json'), '{"scripts":{"test":"vitest run"}}\n');
+      await writeFile(join(dir, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n");
+      await mkdir(join(dir, 'packages', 'core'), { recursive: true });
+      await writeFile(join(dir, 'packages', 'core', 'package.json'), '{"name":"core"}\n');
+      await mkdir(join(dir, 'fixtures', 'untrusted'), { recursive: true });
+      await writeFile(join(dir, 'fixtures', 'untrusted', 'package.json'), '{"name":"fixture"}\n');
       await writeFile(join(dir, '.env'), 'TOKEN=never-upload\n');
       await mkdir(join(dir, 'node_modules', 'vitest'), { recursive: true });
       await writeFile(join(dir, 'node_modules', 'vitest', 'index.js'), 'export const test = true;\n');
@@ -574,7 +840,8 @@ describe('ContreeExecutor', () => {
       let uploaded: Uint8Array | undefined;
       const fetch = vi.fn<typeof globalThis.fetch>(async (url, init) => {
         if (String(url).endsWith('/files')) {
-          uploaded = new Uint8Array(await new Response(init?.body).arrayBuffer());
+          const body = new Uint8Array(await new Response(init?.body).arrayBuffer());
+          uploaded ??= body;
           return jsonResponse({ uuid: 'file-uuid' }, 201);
         }
         if (String(url).endsWith('/instances')) {
@@ -596,30 +863,40 @@ describe('ContreeExecutor', () => {
         });
       });
 
-      await expect(new ContreeExecutor(config(fetch)).snapshot(dir, 'base-image'))
+      await expect(new ContreeExecutor(config(fetch)).snapshot(
+        dir,
+        'base-image',
+        DEPENDENCY_REPLACE,
+      ))
         .resolves.toBe('snapshot-image');
       const entries = await listTar(uploaded ?? new Uint8Array());
       expect(entries).toContain('package.json');
-      expect(entries).toContain('node_modules/vitest/index.js');
+      expect(entries).toContain('pnpm-workspace.yaml');
+      expect(entries).toContain('packages/core/package.json');
+      expect(entries).not.toContain('fixtures/untrusted/package.json');
+      expect(entries).not.toContain('node_modules/vitest/index.js');
       expect(entries).not.toContain('.env');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  it('uploads the real vendored Placebo runtime with safe relative links intact', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'sutura-contree-real-placebo-'));
-    const runtimeArchive = fileURLToPath(new URL(
-      '../../../placebo/vendor/placebo-test-runtime-darwin-arm64-node_modules.tgz',
-      import.meta.url,
-    ));
+  it('uploads only the runtime-approved Python dependency inputs', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sutura-contree-python-inputs-'));
     try {
-      await execFileAsync('tar', ['-xzf', runtimeArchive, '-C', dir]);
-      await writeFile(join(dir, 'package.json'), '{"scripts":{"test":"vitest run"}}\n');
-      let uploadedBytes = 0;
+      await writeFile(join(dir, 'pyproject.toml'), '[project]\nname = "safe"\n');
+      await writeFile(join(dir, 'uv.lock'), 'version = 1\n');
+      await writeFile(join(dir, 'requirements-dev.txt'), 'unvalidated==1\n');
+      await writeFile(join(dir, 'package.json'), '{"name":"unvalidated"}\n');
+      await writeFile(join(dir, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n');
+      await writeFile(join(dir, 'pnpm-workspace.yaml'), 'packages: ["packages/*"]\n');
+      await writeFile(join(dir, 'unapproved.txt'), 'must not upload\n');
+
+      let uploaded: Uint8Array | undefined;
       const fetch = vi.fn<typeof globalThis.fetch>(async (url, init) => {
         if (String(url).endsWith('/files')) {
-          uploadedBytes = (await new Response(init?.body).arrayBuffer()).byteLength;
+          const body = new Uint8Array(await new Response(init?.body).arrayBuffer());
+          uploaded ??= body;
           return jsonResponse({ uuid: 'file-uuid' }, 201);
         }
         if (String(url).endsWith('/instances')) {
@@ -641,9 +918,85 @@ describe('ContreeExecutor', () => {
         });
       });
 
-      await expect(new ContreeExecutor(config(fetch)).snapshot(dir, 'base-image'))
-        .resolves.toBe('snapshot-image');
-      expect(uploadedBytes).toBeGreaterThan(1_000_000);
+      await expect(new ContreeExecutor(config(fetch)).snapshot(
+        dir,
+        'base-image',
+        {
+          ...DEPENDENCY_REPLACE,
+          includePaths: ['pyproject.toml', 'uv.lock'],
+        },
+      )).resolves.toBe('snapshot-image');
+
+      expect((await listTar(uploaded ?? new Uint8Array())).sort()).toEqual([
+        'pyproject.toml',
+        'uv.lock',
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects registry credentials before uploading dependency inputs', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sutura-contree-credentials-'));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    try {
+      await writeFile(
+        join(dir, 'package.json'),
+        '{"resolved":"https://token@example.test/package.tgz"}\n',
+      );
+
+      await expect(new ContreeExecutor(config(fetch)).snapshot(
+        dir,
+        'base-image',
+        DEPENDENCY_REPLACE,
+      )).rejects.toThrow(/embedded registry credentials/u);
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an ignored npmrc before uploading dependency inputs', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sutura-contree-npmrc-'));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    try {
+      await execFileAsync('git', ['init', '--quiet', dir]);
+      await writeFile(join(dir, '.gitignore'), '.npmrc\n');
+      await writeFile(join(dir, '.npmrc'), '//registry.example.test/:_authToken=secret\n');
+      await writeFile(join(dir, 'package.json'), '{"name":"fixture"}\n');
+
+      await expect(new ContreeExecutor(config(fetch)).snapshot(
+        dir,
+        'base-image',
+        DEPENDENCY_REPLACE,
+      )).rejects.toThrow(/repository \.npmrc credentials/u);
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects installed dependency paths from a repository overlay', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sutura-contree-real-placebo-'));
+    try {
+      await execFileAsync('git', ['init', '--quiet', dir]);
+      await mkdir(join(dir, 'node_modules', 'unsafe'), { recursive: true });
+      await writeFile(join(dir, 'node_modules', 'unsafe', 'index.js'), 'unsafe\n');
+      await execFileAsync('git', [
+        '-C',
+        dir,
+        'add',
+        '-f',
+        'node_modules/unsafe/index.js',
+      ]);
+      const fetch = vi.fn<typeof globalThis.fetch>();
+
+      await expect(new ContreeExecutor(config(fetch)).snapshot(
+        dir,
+        'base-image',
+        REPOSITORY_OVERLAY,
+      )).rejects.toThrow(/installed dependency path/u);
+      expect(fetch).not.toHaveBeenCalled();
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -665,9 +1018,9 @@ describe('ContreeExecutor', () => {
       await symlink(relative(linked, join(outside, 'source.js')), join(linked, 'source.js'));
 
       const executor = new ContreeExecutor(config(fetch));
-      await expect(executor.snapshot(oversized, 'base-image')).rejects.toThrow(/source bytes/);
-      await expect(executor.snapshot(gitOversized, 'base-image')).rejects.toThrow(/source bytes/);
-      await expect(executor.snapshot(linked, 'base-image')).rejects.toThrow(/escaping or sensitive symlink/);
+      await expect(executor.snapshot(oversized, 'base-image', REPOSITORY_OVERLAY)).rejects.toThrow(/source bytes/);
+      await expect(executor.snapshot(gitOversized, 'base-image', REPOSITORY_OVERLAY)).rejects.toThrow(/source bytes/);
+      await expect(executor.snapshot(linked, 'base-image', REPOSITORY_OVERLAY)).rejects.toThrow(/escaping or sensitive symlink/);
       expect(fetch).not.toHaveBeenCalled();
     } finally {
       await rm(oversized, { recursive: true, force: true });
@@ -695,10 +1048,10 @@ describe('ContreeExecutor', () => {
       await symlink('.env', join(sensitive, 'config.js'));
 
       const executor = new ContreeExecutor(config(fetch));
-      await expect(executor.snapshot(absolute, 'base-image')).rejects.toThrow(/absolute symlink/);
-      await expect(executor.snapshot(dangling, 'base-image')).rejects.toThrow(/dangling or cyclic symlink/);
-      await expect(executor.snapshot(cyclic, 'base-image')).rejects.toThrow(/dangling or cyclic symlink/);
-      await expect(executor.snapshot(sensitive, 'base-image')).rejects.toThrow(/escaping or sensitive symlink/);
+      await expect(executor.snapshot(absolute, 'base-image', REPOSITORY_OVERLAY)).rejects.toThrow(/absolute symlink/);
+      await expect(executor.snapshot(dangling, 'base-image', REPOSITORY_OVERLAY)).rejects.toThrow(/dangling or cyclic symlink/);
+      await expect(executor.snapshot(cyclic, 'base-image', REPOSITORY_OVERLAY)).rejects.toThrow(/dangling or cyclic symlink/);
+      await expect(executor.snapshot(sensitive, 'base-image', REPOSITORY_OVERLAY)).rejects.toThrow(/escaping or sensitive symlink/);
       expect(fetch).not.toHaveBeenCalled();
     } finally {
       await rm(absolute, { recursive: true, force: true });
@@ -708,4 +1061,217 @@ describe('ContreeExecutor', () => {
       await rm(outside, { recursive: true, force: true });
     }
   });
+
+  it('rejects tracked escaping and dependency-input symlinks before upload', async () => {
+    const repository = await mkdtemp(join(tmpdir(), 'sutura-contree-git-link-'));
+    const dependency = await mkdtemp(join(tmpdir(), 'sutura-contree-dep-link-'));
+    const outside = await mkdtemp(join(tmpdir(), 'sutura-contree-git-outside-'));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    try {
+      await writeFile(join(outside, 'outside.js'), 'secret\n');
+      await execFileAsync('git', ['init', '--quiet', repository]);
+      await symlink(relative(repository, join(outside, 'outside.js')), join(repository, 'source.js'));
+      await execFileAsync('git', ['-C', repository, 'add', 'source.js']);
+
+      await execFileAsync('git', ['init', '--quiet', dependency]);
+      await writeFile(join(dependency, 'package.json'), '{"name":"root"}\n');
+      await writeFile(join(dependency, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n");
+      await mkdir(join(dependency, 'packages', 'core'), { recursive: true });
+      await symlink('../../package.json', join(dependency, 'packages', 'core', 'package.json'));
+      await execFileAsync('git', ['-C', dependency, 'add', '.']);
+
+      const executor = new ContreeExecutor(config(fetch));
+      await expect(executor.snapshot(repository, 'base', REPOSITORY_OVERLAY))
+        .rejects.toThrow(/escaping or sensitive symlink/u);
+      await expect(executor.snapshot(dependency, 'base', DEPENDENCY_REPLACE))
+        .rejects.toThrow(/dependency snapshot refuses symlink/u);
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      await rm(repository, { recursive: true, force: true });
+      await rm(dependency, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('rejects unknown snapshot profiles and invalid profile-mode pairs before upload', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const executor = new ContreeExecutor(config(fetch));
+
+    await expect(executor.snapshot('.', 'base', {
+      profile: 'unknown',
+      mode: 'replace',
+    } as never)).rejects.toThrow(/snapshot profile/u);
+    await expect(executor.snapshot('.', 'base', {
+      profile: 'repository',
+      mode: 'replace',
+    })).rejects.toThrow(/snapshot profile.*mode/u);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid approved dependency path sets before filesystem access', async () => {
+    const executor = new ContreeExecutor(config(vi.fn<typeof globalThis.fetch>()));
+    const invalidSets = [
+      [],
+      ['package.json', 'package.json'],
+      Array.from({ length: 17 }, (_, index) => `file-${index}.json`),
+    ];
+    for (const includePaths of invalidSets) {
+      await expect(executor.snapshot('.', 'base', {
+        ...DEPENDENCY_REPLACE,
+        includePaths,
+      })).rejects.toThrow(/approved path set is invalid/u);
+    }
+    await expect(executor.snapshot('.', 'base', {
+      ...DEPENDENCY_REPLACE,
+      includePaths: ['../package.json'],
+    })).rejects.toThrow(/unsafe archive path/u);
+  });
+
+  it('rejects unapproved and non-regular approved dependency inputs', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sutura-contree-approved-'));
+    const executor = new ContreeExecutor(config(vi.fn<typeof globalThis.fetch>()));
+    try {
+      await writeFile(join(dir, 'source.ts'), 'export {}\n');
+      await mkdir(join(dir, 'package.json'));
+      await expect(executor.snapshot(dir, 'base', {
+        ...DEPENDENCY_REPLACE,
+        includePaths: ['source.ts'],
+      })).rejects.toThrow(/unapproved input kind/u);
+      await expect(executor.snapshot(dir, 'base', {
+        ...DEPENDENCY_REPLACE,
+        includePaths: ['package.json'],
+      })).rejects.toThrow(/requires a regular file/u);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects invalid, oversized, and unsafe workspace controls', async () => {
+    const invalid = await mkdtemp(join(tmpdir(), 'sutura-contree-invalid-workspace-'));
+    const oversized = await mkdtemp(join(tmpdir(), 'sutura-contree-large-workspace-'));
+    const unsafe = await mkdtemp(join(tmpdir(), 'sutura-contree-unsafe-workspace-'));
+    const executor = new ContreeExecutor(config(vi.fn<typeof globalThis.fetch>()));
+    try {
+      await writeFile(join(invalid, 'package.json'), '{');
+      await expect(executor.snapshot(invalid, 'base', DEPENDENCY_REPLACE))
+        .rejects.toThrow(/invalid package\.json/u);
+
+      await writeFile(join(oversized, 'package.json'), '{}');
+      await writeFile(join(oversized, 'pnpm-workspace.yaml'), 'x'.repeat(1_048_577));
+      await expect(executor.snapshot(oversized, 'base', DEPENDENCY_REPLACE))
+        .rejects.toThrow(/workspace file is too large/u);
+
+      await writeFile(join(unsafe, 'package.json'), JSON.stringify({ workspaces: ['../outside'] }));
+      await expect(executor.snapshot(unsafe, 'base', DEPENDENCY_REPLACE))
+        .rejects.toThrow(/unsafe workspace pattern/u);
+    } finally {
+      await rm(invalid, { recursive: true, force: true });
+      await rm(oversized, { recursive: true, force: true });
+      await rm(unsafe, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects .npmrc in repository snapshots for git and non-git paths', async () => {
+    const tracked = await mkdtemp(join(tmpdir(), 'sutura-contree-tracked-npmrc-'));
+    const plain = await mkdtemp(join(tmpdir(), 'sutura-contree-plain-npmrc-'));
+    const executor = new ContreeExecutor(config(vi.fn<typeof globalThis.fetch>()));
+    try {
+      await execFileAsync('git', ['init', '--quiet', tracked]);
+      await writeFile(join(tracked, '.npmrc'), '_authToken=secret\n');
+      await execFileAsync('git', ['-C', tracked, 'add', '-f', '.npmrc']);
+      await writeFile(join(plain, '.npmrc'), '_authToken=secret\n');
+      await expect(executor.snapshot(tracked, 'base', REPOSITORY_OVERLAY))
+        .rejects.toThrow(/repository \.npmrc credentials/u);
+      await expect(executor.snapshot(plain, 'base', REPOSITORY_OVERLAY))
+        .rejects.toThrow(/repository \.npmrc credentials/u);
+    } finally {
+      await rm(tracked, { recursive: true, force: true });
+      await rm(plain, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('repository overlay shell contract', () => {
+  async function overlayFixture(): Promise<{
+    root: string;
+    archive: string;
+    manifest: string;
+    dependencyManifest: string;
+  }> {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-overlay-contract-'));
+    const root = join(directory, 'workspace');
+    const source = join(directory, 'source');
+    const archive = join(directory, 'overlay.tar');
+    const manifest = join(directory, 'overlay.manifest');
+    const dependencyManifest = join(directory, 'dependency.manifest');
+    await mkdir(join(root, 'node_modules', 'dependency'), { recursive: true });
+    await mkdir(join(source, 'src'), { recursive: true });
+    await writeFile(join(root, 'package.json'), '{"name":"old"}\n');
+    await writeFile(join(root, 'node_modules', 'dependency', 'output.js'), 'prepared\n');
+    await writeFile(join(source, 'package.json'), '{"name":"new"}\n');
+    await writeFile(join(source, 'src', 'index.ts'), 'export const ready = true;\n');
+    await execFileAsync('tar', ['-cf', archive, 'package.json', 'src/index.ts'], {
+      cwd: source,
+    });
+    await writeFile(manifest, Buffer.from('package.json\0src/index.ts\0'));
+    await writeFile(dependencyManifest, Buffer.from('package.json\0'));
+    return { root, archive, manifest, dependencyManifest };
+  }
+
+  function overlayCommand(paths: Awaited<ReturnType<typeof overlayFixture>>): string {
+    return buildSnapshotCommandForTest(REPOSITORY_OVERLAY, {
+      cwd: paths.root,
+      snapshotPath: paths.archive,
+      manifestPath: paths.manifest,
+      dependencyManifestPath: paths.dependencyManifest,
+    });
+  }
+
+  it('preserves prepared dependencies while applying a valid source overlay', async () => {
+    const fixture = await overlayFixture();
+    try {
+      await execFileAsync('sh', ['-c', overlayCommand(fixture)]);
+
+      expect(await readFile(join(fixture.root, 'package.json'), 'utf8'))
+        .toBe('{"name":"new"}\n');
+      expect(await readFile(join(fixture.root, 'src', 'index.ts'), 'utf8'))
+        .toBe('export const ready = true;\n');
+      expect(await readFile(
+        join(fixture.root, 'node_modules', 'dependency', 'output.js'),
+        'utf8',
+      )).toBe('prepared\n');
+    } finally {
+      await rm(dirname(fixture.root), { recursive: true, force: true });
+    }
+  });
+
+  it.each(['symlink-parent', 'symlink-destination', 'collision'] as const)(
+    'refuses %s before archive extraction',
+    async (scenario) => {
+      const fixture = await overlayFixture();
+      const outside = join(dirname(fixture.root), 'outside');
+      await mkdir(outside);
+      if (scenario === 'symlink-parent') {
+        await symlink(outside, join(fixture.root, 'src'));
+      } else {
+        await mkdir(join(fixture.root, 'src'));
+        if (scenario === 'symlink-destination') {
+          await writeFile(join(outside, 'index.ts'), 'outside\n');
+          await symlink(join(outside, 'index.ts'), join(fixture.root, 'src', 'index.ts'));
+        } else {
+          await writeFile(join(fixture.root, 'src', 'index.ts'), 'prepared collision\n');
+        }
+      }
+      try {
+        const error = await execFileAsync('sh', ['-c', overlayCommand(fixture)])
+          .catch((cause: unknown) => cause) as { stderr?: string };
+
+        expect(error.stderr).toMatch(/refuses (?:symlink|preparation path collision)/u);
+        expect(await readFile(join(fixture.root, 'package.json'), 'utf8'))
+          .toBe('{"name":"old"}\n');
+      } finally {
+        await rm(dirname(fixture.root), { recursive: true, force: true });
+      }
+    },
+  );
 });

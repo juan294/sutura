@@ -4,31 +4,43 @@ import { basename, resolve, sep } from 'node:path';
 
 import {
   ContreeExecutor,
-  DEFAULT_MODEL_PRICES,
-  NebiusClient,
+  auditOnly,
   TavilyClient,
+  createTokenFactoryClient,
   healCase,
   isSensitiveRepositoryPath,
   loadConfig,
+  loadRepositoryPolicy,
+  MAX_POLICY_BYTES,
   readRepairSourceContext,
+  selectBoundedSourceWindow,
+  SourceWindowError,
+  detectRuntimeAtPath,
   type CaseFile,
+  type AuditFile,
   type ConfigEnvironment,
   type CostLedger,
   type Diagnosis,
   type Executor,
   type HealLlm,
+  type AuditOnlyLlm,
   type RepairSourceContext,
+  type RepairBudgetLimits,
+  type SearchLimits,
   type RepositorySourceExcerpt,
+  type RepositoryPolicy,
   type SourceReadLimits,
   type SourceReference,
   type TavilySearch,
+  type RuntimeId,
 } from '@sutura/core';
 
-import type { HealArguments } from './args.js';
+import type { AuditArguments, HealArguments } from './args.js';
 
-const NEBIUS_BASE_URL = 'https://api.tokenfactory.nebius.com/v1/';
 const MAX_SOURCE_SCAN_BYTES = 1024 * 1024;
 const MAX_MANIFEST_BYTES = 128 * 1024;
+export const MAX_AUDIT_LOG_BYTES = 20_000;
+export const MAX_AUDIT_DIFF_BYTES = 1024 * 1024;
 const PACKAGE_NAME = /^@?[a-z0-9][\w./-]*$/iu;
 const PACKAGE_VERSION = /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/u;
 
@@ -38,8 +50,16 @@ export interface HealRuntime {
   cost: CostLedger;
   triageN: number;
   raceK: number;
+  repairBudgets?: RepairBudgetLimits;
+  search?: SearchLimits;
   tavily?: TavilySearch;
   imageRef?: string;
+  runtimeId?: RuntimeId;
+}
+
+export interface AuditRuntime {
+  llm: AuditOnlyLlm;
+  cost: CostLedger;
 }
 
 export class CliConfigError extends Error {
@@ -84,67 +104,54 @@ async function readLineWindow(
   path: string,
   targetLine: number | undefined,
   limits: Readonly<SourceReadLimits>,
-): Promise<{ startLine: number; content: string; truncated: boolean }> {
-  const halfWindow = Math.floor(limits.maxLinesPerFile / 2);
-  const startLine = targetLine === undefined ? 1 : Math.max(1, targetLine - halfWindow);
-  const endLine = startLine + limits.maxLinesPerFile - 1;
+): Promise<{
+  startLine: number;
+  content: string;
+  truncated: boolean;
+  boundaryComplete: true;
+}> {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   const chunks: Buffer[] = [];
-  let keptBytes = 0;
   let scannedBytes = 0;
-  let line = 1;
-  let position = 0;
-  let stoppedAtLimit = false;
+  let fileSize = 0;
   try {
+    fileSize = (await handle.stat()).size;
+    const desiredEndLine = Math.max(targetLine ?? 1, 1) +
+      Math.ceil(limits.maxLinesPerFile / 2);
+    const scanLimit = Math.min(
+      MAX_SOURCE_SCAN_BYTES,
+      limits.maxBytesPerFile * limits.maxLinesPerFile * 4,
+      fileSize,
+    );
+    let newlineCount = 0;
     const buffer = Buffer.alloc(4_096);
-    while (
-      line <= endLine &&
-      scannedBytes < MAX_SOURCE_SCAN_BYTES &&
-      (line < startLine || keptBytes <= limits.maxBytesPerFile)
-    ) {
-      const available = Math.min(buffer.length, MAX_SOURCE_SCAN_BYTES - scannedBytes);
-      const { bytesRead } = await handle.read(buffer, 0, available, position);
+    while (scannedBytes < scanLimit && newlineCount < desiredEndLine) {
+      const available = Math.min(buffer.length, scanLimit - scannedBytes);
+      const { bytesRead } = await handle.read(buffer, 0, available, scannedBytes);
       if (bytesRead === 0) break;
-      position += bytesRead;
+      const chunk = Buffer.from(buffer.subarray(0, bytesRead));
+      chunks.push(chunk);
       scannedBytes += bytesRead;
-      let segmentStart = 0;
-      for (let index = 0; index < bytesRead; index += 1) {
-        if (buffer[index] !== 10) continue;
-        if (line >= startLine && line <= endLine && keptBytes <= limits.maxBytesPerFile) {
-          const segment = buffer.subarray(segmentStart, index + 1);
-          const remaining = limits.maxBytesPerFile + 1 - keptBytes;
-          if (remaining > 0) {
-            const kept = segment.subarray(0, remaining);
-            chunks.push(Buffer.from(kept));
-            keptBytes += kept.length;
-          }
-        }
-        line += 1;
-        segmentStart = index + 1;
-        if (line > endLine) break;
-      }
-      if (line >= startLine && line <= endLine && segmentStart < bytesRead && keptBytes <= limits.maxBytesPerFile) {
-        const segment = buffer.subarray(segmentStart, bytesRead);
-        const remaining = limits.maxBytesPerFile + 1 - keptBytes;
-        if (remaining > 0) {
-          const kept = segment.subarray(0, remaining);
-          chunks.push(Buffer.from(kept));
-          keptBytes += kept.length;
-        }
-      }
+      for (const byte of chunk) if (byte === 0x0a) newlineCount += 1;
     }
-    stoppedAtLimit = scannedBytes === MAX_SOURCE_SCAN_BYTES || line > endLine || keptBytes > limits.maxBytesPerFile;
   } finally {
     await handle.close();
   }
-  if (line < startLine) throw new CliConfigError('Referenced source line exceeds the bounded scan limit');
-  const decoded = Buffer.concat(chunks).subarray(0, limits.maxBytesPerFile).toString('utf8');
-  const content = decoded.slice(0, limits.maxCharactersPerFile);
-  return {
-    startLine,
-    content,
-    truncated: stoppedAtLimit || decoded.length > limits.maxCharactersPerFile,
-  };
+
+  try {
+    return selectBoundedSourceWindow({
+      scanned: Buffer.concat(chunks).toString('utf8'),
+      scannedBytes,
+      fileSize,
+      ...(targetLine === undefined ? {} : { requestedLine: targetLine }),
+      limits,
+    });
+  } catch (error) {
+    if (error instanceof SourceWindowError) {
+      throw new CliConfigError('Referenced source line exceeds the bounded scan limit');
+    }
+    throw error;
+  }
 }
 
 async function readBoundedSource(
@@ -175,6 +182,8 @@ export async function readLocalSourceContext(
   caseDir: string,
   log: string,
   _diagnosis: Diagnosis,
+  policy?: RepositoryPolicy,
+  runtimeId: RuntimeId = 'node',
 ): Promise<RepairSourceContext> {
   const root = await realpath(caseDir);
   return readRepairSourceContext(
@@ -194,7 +203,43 @@ export async function readLocalSourceContext(
     root,
     log,
     _diagnosis,
+    policy,
+    runtimeId,
   );
+}
+
+async function readLocalPolicy(caseDir: string): Promise<string | null> {
+  const policyPath = resolve(caseDir, '.sutura.json');
+  let metadata;
+  try {
+    metadata = await lstat(policyPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+  if (metadata.isSymbolicLink()) {
+    throw new CliConfigError('Repository policy must not be a symlink');
+  }
+  const canonical = await realpath(policyPath);
+  if (!isInside(caseDir, canonical)) {
+    throw new CliConfigError('Repository policy escapes the case directory');
+  }
+  const handle = await open(canonical, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const file = await handle.stat();
+    if (!file.isFile()) throw new CliConfigError('Repository policy must be a file');
+    if (file.size > MAX_POLICY_BYTES) {
+      throw new CliConfigError(`Repository policy exceeds ${MAX_POLICY_BYTES} bytes`);
+    }
+    const bytes = Buffer.alloc(file.size + 1);
+    const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
+    if (bytesRead !== file.size || bytesRead > MAX_POLICY_BYTES) {
+      throw new CliConfigError('Repository policy changed during bounded read');
+    }
+    return bytes.subarray(0, bytesRead).toString('utf8');
+  } finally {
+    await handle.close();
+  }
 }
 
 async function canonicalCaseDirectory(caseDir: string): Promise<string> {
@@ -202,6 +247,33 @@ async function canonicalCaseDirectory(caseDir: string): Promise<string> {
   const metadata = await stat(canonical);
   if (!metadata.isDirectory()) throw new CliConfigError('--case-dir must name a directory');
   return canonical;
+}
+
+async function readAuditEvidence(path: string, maximumBytes: number): Promise<string> {
+  const metadata = await lstat(path).catch(() => null);
+  if (!metadata?.isFile() || metadata.isSymbolicLink()) {
+    throw new CliConfigError('Audit evidence must be a regular non-symlink file');
+  }
+  if (metadata.size > maximumBytes) {
+    throw new CliConfigError(`Audit evidence exceeds ${maximumBytes} bytes`);
+  }
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const current = await handle.stat();
+    if (!current.isFile() || current.size !== metadata.size || current.size > maximumBytes) {
+      throw new CliConfigError('Audit evidence changed during bounded read');
+    }
+    const bytes = Buffer.alloc(current.size + 1);
+    const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
+    if (bytesRead !== current.size || bytesRead > maximumBytes) {
+      throw new CliConfigError('Audit evidence changed during bounded read');
+    }
+    const content = bytes.subarray(0, bytesRead);
+    if (content.includes(0)) throw new CliConfigError('Audit evidence must be UTF-8 text');
+    return content.toString('utf8');
+  } finally {
+    await handle.close();
+  }
 }
 
 async function readJsonObject(path: string): Promise<Record<string, unknown> | null> {
@@ -268,6 +340,7 @@ export async function healWithRuntime(
   runtime: HealRuntime,
 ): Promise<CaseFile> {
   const caseDir = await canonicalCaseDirectory(request.caseDir);
+  const loadedPolicy = loadRepositoryPolicy(await readLocalPolicy(caseDir));
   const dependencyHints = await readDependencyHints(caseDir);
   const caseName = basename(caseDir).replace(/[^A-Za-z0-9_.-]+/gu, '-') || 'case';
   return healCase({
@@ -279,29 +352,69 @@ export async function healWithRuntime(
     cost: runtime.cost,
     triageN: runtime.triageN,
     raceK: runtime.raceK,
-    readSourceContext: (log, diagnosis) => readLocalSourceContext(caseDir, log, diagnosis),
+    ...(runtime.repairBudgets === undefined ? {} : { repairBudgets: runtime.repairBudgets }),
+    ...(runtime.search === undefined ? {} : { search: runtime.search }),
+    readSourceContext: (log, diagnosis, selectedRuntime) => readLocalSourceContext(
+      caseDir,
+      log,
+      diagnosis,
+      loadedPolicy.policy,
+      selectedRuntime?.id ?? 'node',
+    ),
+    policy: loadedPolicy.policy,
+    policyEvidence: {
+      baseRef: 'local',
+      baseSha: 'local',
+      policySha: loadedPolicy.sha,
+    },
     ...(runtime.tavily ? { tavily: runtime.tavily } : {}),
     ...(runtime.imageRef ? { imageRef: runtime.imageRef } : {}),
+    ...(runtime.runtimeId ? { runtimeId: runtime.runtimeId } : {}),
     ...(dependencyHints.length === 0 ? {} : { dependencyHints }),
     ...(request.candidateDiff === undefined ? {} : { candidateDiff: request.candidateDiff }),
   });
+}
+
+export async function detectLocalRuntimeId(
+  caseDirectory: string,
+  configuredRuntime?: RuntimeId,
+): Promise<RuntimeId> {
+  const caseDir = await canonicalCaseDirectory(caseDirectory);
+  const loadedPolicy = loadRepositoryPolicy(await readLocalPolicy(caseDir));
+  if (
+    configuredRuntime !== undefined &&
+    loadedPolicy.policy.runtime !== undefined &&
+    configuredRuntime !== loadedPolicy.policy.runtime
+  ) {
+    throw new CliConfigError('Configured runtime conflicts with repository policy runtime');
+  }
+  return (await detectRuntimeAtPath(
+    caseDir,
+    'pnpm test',
+    configuredRuntime ?? loadedPolicy.policy.runtime,
+  )).id;
 }
 
 export function runtimeFromEnvironment(
   request: HealArguments,
   environment: ConfigEnvironment = process.env,
 ): HealRuntime {
-  const config = loadConfig(environment);
+  const config = loadConfig({
+    ...environment,
+    ...(request.routingProfile === undefined
+      ? {}
+      : { SUTURA_ROUTING_PROFILE: request.routingProfile }),
+    ...(request.runtime === undefined ? {} : { SUTURA_RUNTIME: request.runtime }),
+  });
   if (!config.contreeToken) throw new CliConfigError('CONTREE_TOKEN is required');
   if (!config.contreeProject) throw new CliConfigError('CONTREE_PROJECT is required');
   if (request.tavilyEnabled && !config.tavilyApiKey) {
     throw new CliConfigError('TAVILY_API_KEY is required unless --no-tavily is set');
   }
-  const llm = new NebiusClient({
+  const llm = createTokenFactoryClient({
     apiKey: config.nebiusApiKey,
-    baseUrl: NEBIUS_BASE_URL,
     models: config.models,
-    prices: DEFAULT_MODEL_PRICES,
+    routingProfileId: config.routingProfileId,
   });
   return {
     executor: new ContreeExecutor({
@@ -313,10 +426,51 @@ export function runtimeFromEnvironment(
     cost: llm.ledger,
     triageN: config.triageN,
     raceK: config.raceK,
+    repairBudgets: config.repairBudgets,
+    search: config.search,
+    ...(config.runtimeId === undefined ? {} : { runtimeId: config.runtimeId }),
     ...(request.tavilyEnabled ? { tavily: new TavilyClient(config.tavilyApiKey) } : {}),
   };
 }
 
 export async function healFromEnvironment(request: HealArguments): Promise<CaseFile> {
   return healWithRuntime(request, runtimeFromEnvironment(request));
+}
+
+export async function auditWithRuntime(
+  request: AuditArguments,
+  runtime: AuditRuntime,
+): Promise<AuditFile> {
+  const caseDir = await canonicalCaseDirectory(request.caseDir);
+  const loadedPolicy = loadRepositoryPolicy(await readLocalPolicy(caseDir));
+  const [candidateDiff, beforeLog, afterLog] = await Promise.all([
+    readAuditEvidence(request.candidateDiff, Math.min(MAX_AUDIT_DIFF_BYTES, loadedPolicy.policy.maxDiffBytes)),
+    readAuditEvidence(request.beforeLog, MAX_AUDIT_LOG_BYTES),
+    readAuditEvidence(request.afterLog, MAX_AUDIT_LOG_BYTES),
+  ]);
+  return auditOnly({
+    llm: runtime.llm,
+    cost: runtime.cost,
+    candidateDiff,
+    beforeLog,
+    afterLog,
+    policy: loadedPolicy.policy,
+    policyEvidence: { baseRef: 'local', baseSha: 'local', policySha: loadedPolicy.sha },
+  });
+}
+
+export function auditRuntimeFromEnvironment(
+  environment: ConfigEnvironment = process.env,
+): AuditRuntime {
+  const config = loadConfig(environment);
+  const llm = createTokenFactoryClient({
+    apiKey: config.nebiusApiKey,
+    models: config.models,
+    routingProfileId: config.routingProfileId,
+  });
+  return { llm, cost: llm.ledger };
+}
+
+export async function auditFromEnvironment(request: AuditArguments): Promise<AuditFile> {
+  return auditWithRuntime(request, auditRuntimeFromEnvironment());
 }

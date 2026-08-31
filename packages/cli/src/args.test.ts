@@ -8,32 +8,75 @@ describe('parseArgs', () => {
   it('parses the Placebo-compatible heal contract', () => {
     expect(parseArgs([
       'heal', '--case-dir', '/tmp/case', '--format', 'json',
-      '--candidate-diff', 'diff --git a/a.js b/a.js\n', '--no-tavily',
+      '--candidate-diff', 'diff --git a/a.js b/a.js\n',
+      '--routing-profile', 'production-baseline-v1', '--no-tavily',
+      '--runtime', 'python',
     ])).toEqual({
       command: 'heal',
       caseDir: '/tmp/case',
       format: 'json',
       candidateDiff: 'diff --git a/a.js b/a.js\n',
+      routingProfile: 'production-baseline-v1',
+      runtime: 'python',
       tavilyEnabled: false,
     });
   });
 
   it('parses external repository setup options', () => {
     expect(parseArgs([
-      'init', '--workflow', 'CI', '--repo', 'octo/example', '--force', '--no-tavily',
+      'init', '--workflow', 'CI', '--repo', 'octo/example', '--action-sha', 'a'.repeat(40),
+      '--force', '--no-tavily',
     ])).toEqual({
       command: 'init',
       workflow: 'CI',
       repository: 'octo/example',
+      actionSha: 'a'.repeat(40),
       force: true,
       tavilyEnabled: false,
     });
   });
 
   it('parses repository diagnosis options', () => {
-    expect(parseArgs(['doctor', '--repo', 'octo/example'])).toEqual({
+    expect(parseArgs(['doctor', '--repo', 'octo/example', '--action-sha', 'b'.repeat(40)])).toEqual({
       command: 'doctor',
       repository: 'octo/example',
+      actionSha: 'b'.repeat(40),
+    });
+  });
+
+  it('parses reduced-assurance audit inputs as file paths', () => {
+    expect(parseArgs([
+      'audit', '--case-dir', '/tmp/case', '--candidate-diff', '/tmp/fix.diff',
+      '--before-log', '/tmp/before.log', '--after-log', '/tmp/after.log', '--format', 'json',
+    ])).toEqual({
+      command: 'audit', caseDir: '/tmp/case', candidateDiff: '/tmp/fix.diff',
+      beforeLog: '/tmp/before.log', afterLog: '/tmp/after.log', format: 'json',
+    });
+  });
+
+  it('parses replay bundle and runtime options', () => {
+    expect(parseArgs([
+      'replay', '--bundle', '/tmp/replay.json', '--format', 'json', '--runtime', 'python',
+    ])).toEqual({
+      command: 'replay', bundle: '/tmp/replay.json', format: 'json', runtime: 'python',
+    });
+    expect(parseArgs([
+      'replay', '--bundle', '/tmp/replay.json', '--format', 'json', '--runtime', 'auto',
+    ])).toEqual({
+      command: 'replay', bundle: '/tmp/replay.json', format: 'json',
+    });
+  });
+
+  it('parses evaluation validation and export commands', () => {
+    expect(parseArgs(['eval', 'validate', '--manifest', '/tmp/manifest.json'])).toEqual({
+      command: 'eval-validate', manifest: '/tmp/manifest.json',
+    });
+    expect(parseArgs([
+      'eval', 'export', '--manifest', '/tmp/manifest.json', '--format', 'atif',
+      '--output', '/tmp/trajectory.atif.json', '--force',
+    ])).toEqual({
+      command: 'eval-export', manifest: '/tmp/manifest.json', format: 'atif',
+      output: '/tmp/trajectory.atif.json', force: true,
     });
   });
 
@@ -61,9 +104,25 @@ describe('parseArgs', () => {
     ['heal', '--case-dir', '/tmp/case', '--format', 'json', '--unknown'],
     ['heal', '--case-dir', '/tmp/a', '--case-dir', '/tmp/b', '--format', 'json'],
     ['heal', '--case-dir', '/tmp/a', '--format', 'json', '--candidate-diff', ''],
+    ['heal', '--case-dir', '/tmp/a', '--format', 'json', '--runtime', 'ruby'],
     ['init', '--repo', 'invalid'],
     ['init', '--workflow', 'CI', '--workflow', 'Tests'],
+    ['init', '--action-sha', 'main'],
     ['doctor', '--unknown'],
+    ['doctor', '--action-sha', 'abc'],
+    ['audit'],
+    ['audit', '--case-dir', '/tmp/case', '--candidate-diff', '/tmp/fix.diff', '--before-log', '/tmp/before.log', '--after-log', '/tmp/after.log', '--format', 'text'],
+    ['audit', '--case-dir', '/tmp/case', '--candidate-diff', '/tmp/fix.diff', '--before-log', '/tmp/before.log', '--before-log', '/tmp/again.log', '--after-log', '/tmp/after.log', '--format', 'json'],
+    ['replay', '--format', 'json'],
+    ['replay', '--bundle', '/tmp/replay.json', '--format', 'json', '--unknown'],
+    ['replay', '--bundle', '/tmp/replay.json', '--bundle', '/tmp/other.json', '--format', 'json'],
+    ['replay', '--bundle', '/tmp/replay.json', '--format', 'text'],
+    ['replay', '--bundle', '/tmp/replay.json', '--format', 'json', '--runtime', 'ruby'],
+    ['eval'],
+    ['eval', 'validate'],
+    ['eval', 'validate', '--manifest', '/tmp/a', '--force'],
+    ['eval', 'export', '--manifest', '/tmp/a', '--format', 'array', '--output', '/tmp/o'],
+    ['eval', 'export', '--manifest', '/tmp/a', '--format', 'atif'],
   ];
 
   it.each(invalidArguments.map((args) => [args] as const))('rejects malformed arguments: %j', (args) => {

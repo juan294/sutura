@@ -4,7 +4,7 @@ author: Sutura
 
 inputs:
   github-token:
-    description: GitHub token used to read the failed run and publish the result.
+    description: GitHub token used to read the failed run and publish the comment, check, artifact, and repair pull request.
     required: true
   run-id:
     description: Numeric ID of the failed GitHub Actions workflow run.
@@ -22,18 +22,74 @@ inputs:
     description: Nebius ConTree project ID.
     required: true
   triage-n:
-    description: Number of independent failure reproductions.
+    description: Maximum independent failure reproductions; progressive confidence can stop earlier.
     required: false
     default: '5'
-  race-k:
-    description: Maximum number of repair candidates to race.
+  routing-profile:
+    description: Price-verified model-selection profile. Incomplete profiles cannot change defaults.
     required: false
-    default: '3'
+    default: production-baseline-v1
+  require-fixed:
+    description: Fail the action unless Sutura produces a fixed outcome. Intended for strict self-hosting and acceptance gates.
+    required: false
+    default: 'false'
+  capture-replay:
+    description: Capture credential-free external boundary data for offline repair replay.
+    required: false
+    default: 'false'
+  runtime:
+    description: Runtime selection for polyglot repositories. Auto fails closed when evidence is ambiguous.
+    required: false
+    default: auto
+  repair-model-turns:
+    description: Lower-only repair-agent model turn limit.
+    required: false
+    default: '8'
+  repair-tool-calls:
+    description: Lower-only repair-agent tool call limit.
+    required: false
+    default: '24'
+  repair-branches:
+    description: Lower-only repair-agent branch limit.
+    required: false
+    default: '12'
+  repair-sandbox-operations:
+    description: Lower-only repair-agent sandbox operation limit.
+    required: false
+    default: '32'
+  repair-elapsed-time-sec:
+    description: Lower-only repair-agent elapsed-time limit in seconds.
+    required: false
+    default: '600'
+  repair-inference-cost-usd:
+    description: Lower-only repair-agent inference-cost limit in USD.
+    required: false
+    default: '0.25'
+  repair-diff-bytes:
+    description: Lower-only cumulative repair diff limit in bytes.
+    required: false
+    default: '65536'
+  search-initial-branches:
+    description: Initial adaptive checkpoint branches.
+    required: false
+    default: '4'
+  search-beam-width:
+    description: Maximum adaptive checkpoint frontier width.
+    required: false
+    default: '2'
+  search-max-depth:
+    description: Maximum adaptive checkpoint search depth.
+    required: false
+    default: '4'
+  search-max-total-branches:
+    description: Lower-only global adaptive checkpoint branch limit.
+    required: false
+    default: '12'
   model-nano:
     description: Optional Nemotron classifier model override.
     required: false
   model-super:
-    description: Optional Nemotron repair model override.
+    description: Optional verified Nemotron repair model selector. Unsupported model IDs fail closed.
     required: false
   model-ultra:
     description: Optional Nemotron adversarial-audit model override.

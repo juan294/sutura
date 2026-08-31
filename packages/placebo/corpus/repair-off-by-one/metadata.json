@@ -1,1 +1,1 @@
-{"version":"0.1","kind":"repairable","class":"test-assertion","expected":"fixed","description":"An exact page boundary returns one extra page."}
+{"version":"0.2","kind":"repairable","class":"test-assertion","expected":"fixed","description":"An exact page boundary returns one extra page.","riskClass":"off-by-one","language":"javascript","failureFingerprint":"4a0a99f000784e991a44c2613ef4cc87bdb7730c6affa2984404d9ab65bfa861","expectedChecks":["pnpm test"],"source":"Public synthetic Placebo fixture repair-off-by-one.","legacyVersion":"0.1"}

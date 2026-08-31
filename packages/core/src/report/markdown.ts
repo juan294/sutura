@@ -1,5 +1,6 @@
 import type { CaseFile } from '../domain.js';
 import {
+  aggregateStageEvidence,
   diffSummary,
   escapeHtml,
   escapeMarkdown,
@@ -9,7 +10,7 @@ import {
   outcomeLabel,
   raceNote,
   safeWebUrl,
-  stageForModel,
+  stageForRole,
   triageSentence,
 } from './format.js';
 
@@ -56,6 +57,18 @@ function renderProcedure(caseFile: CaseFile): string[] {
   if (caseFile.race.length === 0) {
     lines.push('| — | No candidates were produced | NO | Repair cycle stopped |');
   }
+  if (caseFile.search && caseFile.search.length > 0) {
+    lines.push(
+      '',
+      '**Adaptive checkpoint lineage**',
+      '',
+      '| Node | Parent | Depth | Test | Policy | Terminal |',
+      '| --- | --- | ---: | ---: | :---: | --- |',
+      ...caseFile.search.map((node) =>
+        `| ${escapeMarkdown(node.nodeId)} | ${escapeMarkdown(node.parentNodeId ?? 'baseline')} | ${node.depth} | ${node.testExitCode} | ${node.policyValid ? 'PASS' : 'FAIL'} | ${escapeMarkdown(node.terminalReason ?? 'frontier')} |`,
+      ),
+    );
+  }
   return lines;
 }
 
@@ -82,6 +95,7 @@ function renderPathology(caseFile: CaseFile): string[] {
 }
 
 function renderDischarge(caseFile: CaseFile): string[] {
+  const totals = aggregateStageEvidence(caseFile);
   return [
     '### Discharge',
     '',
@@ -90,12 +104,18 @@ function renderDischarge(caseFile: CaseFile): string[] {
     `**Human merge check:** ${escapeMarkdown(mergeGuidance(caseFile))}`,
     '',
     `**Inference cost: ${formatUsd(caseFile.cost.totalUsd())}**`,
+    '',
+    `**Sandbox cost: ${formatUsd(totals.sandboxCostUsd)}** · operations ${totals.operationCount} · elapsed ${totals.elapsedTimeSec.toFixed(3)} s · CPU ${totals.cpuTimeSec.toFixed(3)} s · peak RSS ${totals.maxRssKb.toLocaleString('en-US')} KB`,
+    '',
+    `**Policy:** base <code>${escapeHtml(caseFile.policy.baseRef)}</code> at <code>${escapeHtml(caseFile.policy.baseSha)}</code> · policy <code>${escapeHtml(caseFile.policy.policySha)}</code>`,
+    '',
+    `**Runtime:** <code>${escapeHtml(caseFile.runtime)}</code>`,
   ];
 }
 
 function renderFooter(caseFile: CaseFile, artifactUrl?: string): string[] {
   const models = caseFile.cost.entries.map(
-    (entry, index) => `${stageForModel(entry.model, index)}: <code>${escapeHtml(entry.model)}</code>`,
+    (entry) => `${stageForRole(entry.role)} (${entry.role}): <code>${escapeHtml(entry.model)}</code>`,
   );
   const artifactLink = artifactUrl ? safeWebUrl(artifactUrl) : undefined;
   return [
@@ -131,10 +151,10 @@ export function renderComment(caseFile: CaseFile, artifactUrl?: string): string 
       ...renderProcedure(caseFile),
       '',
       ...renderPathology(caseFile),
-      '',
-      ...renderDischarge(caseFile),
     );
   }
+
+  sections.push('', ...renderDischarge(caseFile));
 
   sections.push('', ...renderFooter(caseFile, artifactUrl));
   return sections.join('\n') + '\n';

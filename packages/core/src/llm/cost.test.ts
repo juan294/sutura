@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_MODEL_PRICES, Ledger } from './cost.js';
+import { calculateModelCostUsd, DEFAULT_MODEL_PRICES, Ledger } from './cost.js';
 
 describe('Ledger', () => {
   it('ships the verified per-million-token prices for each model tier', () => {
@@ -14,7 +14,7 @@ describe('Ledger', () => {
   it('prices normal and reasoning output tokens to exactly six decimals', () => {
     const ledger = new Ledger(DEFAULT_MODEL_PRICES);
 
-    const entry = ledger.add('nano', {
+    const entry = ledger.add('nano', 'nvidia/nano', {
       inTok: 1_000,
       outTok: 2_000,
       reasoningTok: 3_000,
@@ -23,7 +23,8 @@ describe('Ledger', () => {
     expect(entry.usd).toBe(0.00126);
     expect(ledger.entries).toEqual([
       {
-        model: 'nano',
+        role: 'nano',
+        model: 'nvidia/nano',
         inTok: 1_000,
         outTok: 2_000,
         reasoningTok: 3_000,
@@ -36,8 +37,8 @@ describe('Ledger', () => {
   it('keeps an exact six-decimal running total across tiers', () => {
     const ledger = new Ledger(DEFAULT_MODEL_PRICES);
 
-    ledger.add('super', { inTok: 2_000, outTok: 1_000, reasoningTok: 0 });
-    ledger.add('ultra', { inTok: 1_000, outTok: 2_000, reasoningTok: 1_000 });
+    ledger.add('super', 'nvidia/super', { inTok: 2_000, outTok: 1_000, reasoningTok: 0 });
+    ledger.add('ultra', 'nvidia/ultra', { inTok: 1_000, outTok: 2_000, reasoningTok: 1_000 });
 
     expect(ledger.totalUsd()).toBe(0.0115);
   });
@@ -46,7 +47,26 @@ describe('Ledger', () => {
     const ledger = new Ledger(DEFAULT_MODEL_PRICES);
 
     expect(() =>
-      ledger.add('unknown', { inTok: 1, outTok: 1, reasoningTok: 0 }),
-    ).toThrow(/No token prices configured for model: unknown/);
+      ledger.add('unknown' as 'nano', 'unknown', { inTok: 1, outTok: 1, reasoningTok: 0 }),
+    ).toThrow(/No token prices configured for role: unknown/);
+  });
+
+  it.each([
+    ['inTok', { inTok: -1, outTok: 0, reasoningTok: 0 }],
+    ['outTok', { inTok: 0, outTok: 1.5, reasoningTok: 0 }],
+    ['reasoningTok', { inTok: 0, outTok: 0, reasoningTok: Number.MAX_SAFE_INTEGER + 1 }],
+  ])('rejects invalid %s usage', (field, usage) => {
+    expect(() => calculateModelCostUsd(DEFAULT_MODEL_PRICES.nano, usage))
+      .toThrow(`${field} must be a non-negative safe integer`);
+  });
+
+  it.each([
+    { input: -1, output: 1 },
+    { input: Number.NaN, output: 1 },
+    { input: 1, output: -1 },
+    { input: 1, output: Infinity },
+  ])('rejects invalid model prices: %j', (price) => {
+    expect(() => calculateModelCostUsd(price, { inTok: 1, outTok: 1, reasoningTok: 0 }))
+      .toThrow(/non-negative and finite/u);
   });
 });

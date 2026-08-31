@@ -2,21 +2,28 @@
 
 import { spawn } from 'node:child_process';
 import { createReadStream } from 'node:fs';
-import { lstat, mkdtemp, readdir, readlink, realpath, rm, stat } from 'node:fs/promises';
+import { lstat, mkdtemp, readdir, readFile, readlink, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
 
 import pLimit, { type LimitFunction } from 'p-limit';
 
+import { shellQuote } from '../engine/shell.js';
 import { isSensitiveRepositoryPath } from '../security/repository-path.js';
 import {
   SNAPSHOT_CWD,
   type Executor,
+  type CancellationResult,
   type ImageId,
+  type OperationCapacity,
+  type OperationCompletion,
+  type OperationTerminal,
   type RunMetrics,
   type RunOptions,
   type RunResult,
+  type SnapshotOptions,
+  type SnapshotProfile,
 } from './types.js';
 
 const DEFAULT_BASE_URL = 'https://api.tokenfactory.nebius.com/sandboxes/v1/';
@@ -26,6 +33,10 @@ const MAX_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_OPERATION_TIMEOUT_MS = 10 * 60 * 1_000;
 const DEFAULT_CANCEL_TIMEOUT_MS = 5_000;
 const SNAPSHOT_PATH = '/tmp/sutura-snapshot.tar';
+const SNAPSHOT_MANIFEST_PATH = '/tmp/sutura-repository-overlay.manifest';
+const DEPENDENCY_MANIFEST_PATH = '/tmp/sutura-dependency-inputs.manifest';
+const MAX_DEPENDENCY_CONTROL_BYTES = 1 * 1_024 * 1_024;
+const MAX_DEPENDENCY_INPUT_FILE_BYTES = 32 * 1_024 * 1_024;
 const MAX_PROCESS_STDERR_BYTES = 64 * 1_024;
 const MAX_SNAPSHOT_FILES = 10_000;
 const MAX_SNAPSHOT_SOURCE_BYTES = 256 * 1_024 * 1_024;
@@ -74,7 +85,7 @@ interface SpawnBody {
   image: ImageId;
   command: string;
   shell: true;
-  networking: { enabled: true };
+  networking: { enabled: boolean };
   env?: Readonly<Record<string, string>>;
   timeout?: number;
   cwd?: string;
@@ -107,12 +118,20 @@ export class ContreeError extends Error {
 }
 
 export class ContreeExecutor implements Executor {
+  readonly completions: OperationCompletion[] = [];
   private readonly baseUrl: URL;
   private readonly fetch: typeof globalThis.fetch;
   private readonly instanceLimit: LimitFunction;
   private readonly pollIntervalMs: number;
   private readonly operationTimeoutMs: number;
   private readonly cancelTimeoutMs: number;
+  private readonly operationLimit: number;
+  private readonly operations = new Map<string, {
+    operationUrl?: string;
+    cancellationRequested: boolean;
+    started: boolean;
+    terminal?: OperationTerminal;
+  }>();
 
   constructor(private readonly config: ContreeExecutorConfig) {
     if (!config.token.trim()) throw new ContreeError('ConTree token is required');
@@ -128,6 +147,7 @@ export class ContreeExecutor implements Executor {
     this.baseUrl = new URL(ensureTrailingSlash(config.baseUrl ?? DEFAULT_BASE_URL));
     this.fetch = config.fetch ?? globalThis.fetch;
     this.instanceLimit = pLimit(maxOps);
+    this.operationLimit = maxOps;
     this.pollIntervalMs = config.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.operationTimeoutMs =
       config.operationTimeoutMs ?? DEFAULT_OPERATION_TIMEOUT_MS;
@@ -144,9 +164,15 @@ export class ContreeExecutor implements Executor {
     return operationImageId(operation);
   }
 
-  async snapshot(dir: string, base: ImageId): Promise<ImageId> {
-    const archive = await createSnapshotArchive(dir);
+  async snapshot(
+    dir: string,
+    base: ImageId,
+    options: SnapshotOptions,
+  ): Promise<ImageId> {
+    assertSnapshotOptions(options);
+    const archive = await createSnapshotArchive(dir, options);
     let fileId: string;
+    let manifestFileId: string | undefined;
     try {
       const body = Readable.toWeb(createReadStream(archive.path));
       const upload = await this.requestJson<FileUploadResponse>('files', {
@@ -156,6 +182,14 @@ export class ContreeExecutor implements Executor {
         duplex: 'half',
       } as RequestInit & { duplex: 'half' });
       fileId = requiredString(upload.uuid, 'file upload uuid');
+      const manifestBody = Readable.toWeb(createReadStream(archive.manifestPath));
+      const manifestUpload = await this.requestJson<FileUploadResponse>('files', {
+        method: 'POST',
+        headers: this.headers('application/octet-stream'),
+        body: manifestBody,
+        duplex: 'half',
+      } as RequestInit & { duplex: 'half' });
+      manifestFileId = requiredString(manifestUpload.uuid, 'manifest upload uuid');
     } finally {
       await archive.cleanup();
     }
@@ -163,11 +197,9 @@ export class ContreeExecutor implements Executor {
     const result = await this.instanceLimit(() =>
       this.spawn({
         image: base,
-        command:
-          `rm -rf ${SNAPSHOT_CWD} && mkdir -p ${SNAPSHOT_CWD} && ` +
-          `tar -xf ${SNAPSHOT_PATH} -C ${SNAPSHOT_CWD}`,
+        command: snapshotCommand(options),
         shell: true,
-        networking: { enabled: true },
+        networking: { enabled: false },
         files: {
           [SNAPSHOT_PATH]: {
             uuid: fileId,
@@ -175,6 +207,18 @@ export class ContreeExecutor implements Executor {
             gid: 0,
             mode: '0600',
           },
+          ...(manifestFileId
+            ? {
+                [options.profile === 'repository'
+                  ? SNAPSHOT_MANIFEST_PATH
+                  : DEPENDENCY_MANIFEST_PATH]: {
+                  uuid: manifestFileId,
+                  uid: 0,
+                  gid: 0,
+                  mode: '0600',
+                },
+              }
+            : {}),
         },
       }),
     );
@@ -195,13 +239,20 @@ export class ContreeExecutor implements Executor {
       image: parent,
       command: cmd,
       shell: true,
-      networking: { enabled: true },
+      networking: { enabled: opts.network === 'enabled' },
     };
     if (opts.env !== undefined) body.env = opts.env;
     if (opts.timeoutSec !== undefined) body.timeout = opts.timeoutSec;
     if (opts.cwd !== undefined) body.cwd = opts.cwd;
 
-    return this.instanceLimit(() => this.spawn(body));
+    const operationId = opts.operationId;
+    if (operationId && this.operations.has(operationId)) {
+      throw new ContreeError(`ConTree operation ID already exists: ${operationId}`);
+    }
+    if (operationId) {
+      this.operations.set(operationId, { cancellationRequested: false, started: false });
+    }
+    return this.instanceLimit(() => this.spawn(body, operationId));
   }
 
   async runMany(
@@ -212,13 +263,68 @@ export class ContreeExecutor implements Executor {
     return Promise.all(cmds.map((cmd) => this.run(parent, cmd, opts)));
   }
 
-  private async spawn(body: SpawnBody): Promise<RunResult> {
+  operationCapacity(): OperationCapacity {
+    const active = this.instanceLimit.activeCount + this.instanceLimit.pendingCount;
+    return { limit: this.operationLimit, active, available: Math.max(0, this.operationLimit - active) };
+  }
+
+  async cancel(operationId: string): Promise<CancellationResult> {
+    const operation = this.operations.get(operationId);
+    if (!operation || operation.terminal) {
+      return {
+        operationId,
+        requested: false,
+        ...(operation?.terminal === undefined ? {} : { terminal: operation.terminal }),
+      };
+    }
+    if (operation.cancellationRequested) return { operationId, requested: false };
+    operation.cancellationRequested = true;
+    if (!operation.started) {
+      operation.terminal = 'cancelled';
+      this.completions.push({ operationId, terminal: 'cancelled', cancellationRequested: true });
+      return { operationId, requested: true, terminal: 'cancelled' };
+    }
+    try {
+      if (operation.operationUrl) await this.cancelRemote(operation.operationUrl);
+    } catch (error) {
+      operation.cancellationRequested = false;
+      throw error;
+    }
+    return { operationId, requested: true };
+  }
+
+  private async spawn(body: SpawnBody, operationId?: string): Promise<RunResult> {
+    const tracked = operationId === undefined ? undefined : this.operations.get(operationId);
+    if (tracked?.terminal === 'cancelled') {
+      throw new ContreeError(`ConTree operation ${operationId} was cancelled before it started`);
+    }
+    if (tracked) tracked.started = true;
     const response = await this.request('instances', {
       method: 'POST',
       headers: this.jsonHeaders(),
       body: JSON.stringify(body),
     });
-    const operation = await this.poll(this.operationLocation(response));
+    const operationUrl = this.resolveOperationLocation(this.operationLocation(response));
+    if (tracked) tracked.operationUrl = operationUrl;
+    if (tracked?.cancellationRequested) {
+      try {
+        await this.cancelRemote(operationUrl);
+      } catch {
+        tracked.cancellationRequested = false;
+      }
+    }
+    let operation: OperationResponse;
+    try {
+      operation = await this.poll(operationUrl);
+    } catch (error) {
+      if (tracked && operationId && !tracked.terminal) {
+        tracked.terminal = error instanceof ContreeError && /ended with CANCELLED/u.test(error.message)
+          ? 'cancelled'
+          : 'failed';
+        this.completions.push({ operationId, terminal: tracked.terminal, cancellationRequested: tracked.cancellationRequested });
+      }
+      throw error;
+    }
     const result = operation.metadata?.result;
     if (!result) {
       throw new ContreeError(
@@ -226,7 +332,7 @@ export class ContreeExecutor implements Executor {
       );
     }
 
-    return {
+    const runResult = {
       imageId: operationImageId(operation),
       exitCode: requiredNumber(result.state?.exit_code, 'exit code'),
       stdout: decodeStream(result.stdout, 'stdout'),
@@ -235,6 +341,13 @@ export class ContreeExecutor implements Executor {
         result.stdout?.truncated === true || result.stderr?.truncated === true,
       metrics: mapMetrics(result.resources),
     };
+    if (tracked && operationId) {
+      tracked.terminal = runResult.exitCode === 0 ? 'succeeded' : 'failed';
+      const completion = { operationId, terminal: tracked.terminal, cancellationRequested: tracked.cancellationRequested } satisfies OperationCompletion;
+      this.completions.push(completion);
+      return { ...runResult, operation: completion };
+    }
+    return runResult;
   }
 
   private async poll(location: string): Promise<OperationResponse> {
@@ -277,7 +390,7 @@ export class ContreeExecutor implements Executor {
     return this.throwOperationTimeout(operationUrl);
   }
 
-  private async cancel(operationUrl: string): Promise<void> {
+  private async cancelRemote(operationUrl: string): Promise<void> {
     await this.withTimeout(this.cancelTimeoutMs, async (signal) => {
       const response = await this.fetch(operationUrl, {
         method: 'DELETE',
@@ -293,7 +406,7 @@ export class ContreeExecutor implements Executor {
   private async throwOperationTimeout(operationUrl: string): Promise<never> {
     let cancellation = '';
     try {
-      await this.cancel(operationUrl);
+      await this.cancelRemote(operationUrl);
     } catch (error) {
       cancellation = `; cancellation attempt failed: ${errorMessage(error)}`;
     }
@@ -506,8 +619,242 @@ function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-async function listNonGitFiles(dir: string): Promise<string[]> {
+function assertSnapshotOptions(options: SnapshotOptions): void {
+  if (
+    options.profile !== 'dependency-inputs' &&
+    options.profile !== 'repository'
+  ) {
+    throw new ContreeError('ConTree snapshot profile is unknown');
+  }
+  const validPair =
+    (options.profile === 'dependency-inputs' && options.mode === 'replace') ||
+    (options.profile === 'repository' && options.mode === 'overlay');
+  if (!validPair) {
+    throw new ContreeError('ConTree snapshot profile and mode are incompatible');
+  }
+  if (options.includePaths !== undefined) {
+    if (
+      options.profile !== 'dependency-inputs' ||
+      !Array.isArray(options.includePaths) ||
+      options.includePaths.length === 0 ||
+      options.includePaths.length > 16 ||
+      new Set(options.includePaths).size !== options.includePaths.length
+    ) {
+      throw new ContreeError('ConTree snapshot approved path set is invalid');
+    }
+    for (const path of options.includePaths) validateSnapshotPath(path);
+  }
+}
+
+interface SnapshotCommandPaths {
+  cwd: string;
+  snapshotPath: string;
+  manifestPath: string;
+  dependencyManifestPath: string;
+}
+
+const DEFAULT_SNAPSHOT_COMMAND_PATHS: SnapshotCommandPaths = {
+  cwd: SNAPSHOT_CWD,
+  snapshotPath: SNAPSHOT_PATH,
+  manifestPath: SNAPSHOT_MANIFEST_PATH,
+  dependencyManifestPath: DEPENDENCY_MANIFEST_PATH,
+};
+
+function snapshotCommand(
+  options: SnapshotOptions,
+  paths: SnapshotCommandPaths = DEFAULT_SNAPSHOT_COMMAND_PATHS,
+): string {
+  if (options.mode === 'replace') {
+    return `rm -rf ${shellQuote(paths.cwd)} && mkdir -p ${shellQuote(paths.cwd)} && tar -xf ${shellQuote(paths.snapshotPath)} -C ${shellQuote(paths.cwd)}`;
+  }
+  const validateMember = [
+    'sutura_root="$1"',
+    'sutura_dependency_manifest="$2"',
+    'sutura_member="$3"',
+    'sutura_destination="$sutura_root/$sutura_member"',
+    'sutura_parent="$(dirname "$sutura_destination")"',
+    'while [ "$sutura_parent" != "$sutura_root" ]; do if [ -L "$sutura_parent" ]; then echo "ConTree snapshot refuses symlink parent: $sutura_parent" >&2; exit 65; fi; sutura_parent="$(dirname "$sutura_parent")"; done',
+    'if [ -L "$sutura_destination" ]; then echo "ConTree snapshot refuses symlink destination: $sutura_destination" >&2; exit 65; fi',
+    'if [ -e "$sutura_destination" ] && ! tr \'\\000\' \'\\n\' < "$sutura_dependency_manifest" | grep -Fqx -- "$sutura_member"; then echo "ConTree snapshot refuses preparation path collision: $sutura_member" >&2; exit 65; fi',
+  ].join('; ');
+  return [
+    `if [ -L ${shellQuote(paths.cwd)} ]; then echo "ConTree snapshot refuses symlink parent: ${paths.cwd}" >&2; exit 65; fi`,
+    `mkdir -p ${shellQuote(paths.cwd)}`,
+    `xargs -0 -n 1 sh -c ${shellQuote(validateMember)} sh ${shellQuote(paths.cwd)} ${shellQuote(paths.dependencyManifestPath)} < ${shellQuote(paths.manifestPath)}`,
+    `tar -xf ${shellQuote(paths.snapshotPath)} -C ${shellQuote(paths.cwd)}`,
+  ].join(' && ');
+}
+
+export function buildSnapshotCommandForTest(
+  options: SnapshotOptions,
+  paths: SnapshotCommandPaths,
+): string {
+  return snapshotCommand(options, paths);
+}
+
+function isInstalledDependencyPath(path: string): boolean {
+  const segments = path.split('/');
+  return (
+    segments.includes('node_modules') ||
+    segments.includes('.pnpm') ||
+    path === '.pnp.cjs' ||
+    path === '.pnp.loader.mjs' ||
+    path.startsWith('.yarn/cache/') ||
+    path.startsWith('.yarn/unplugged/') ||
+    path.startsWith('.yarn/install-state.gz')
+  );
+}
+
+function isDependencyInputPath(
+  path: string,
+  workspacePatterns: readonly string[],
+): boolean {
+  const segments = path.split('/');
+  const basename = segments.at(-1) ?? '';
+  if (segments.some((segment) => ['node_modules', '.git', 'dist', 'build', '.next'].includes(segment))) {
+    return false;
+  }
+  if (path === 'package.json') return true;
+  if (segments.length === 1 && [
+    'pyproject.toml',
+    'uv.lock',
+    'poetry.lock',
+    'requirements.txt',
+    'requirements-dev.txt',
+  ].includes(basename)) return true;
+  if (basename === 'package.json') {
+    const packageDir = path.slice(0, -'/package.json'.length);
+    return workspacePatterns.some((pattern) => workspacePatternMatches(pattern, packageDir));
+  }
+  return segments.length === 1 && [
+    'package-lock.json',
+    'npm-shrinkwrap.json',
+    'pnpm-lock.yaml',
+    'pnpm-workspace.yaml',
+    'yarn.lock',
+    '.yarnrc.yml',
+  ].includes(basename);
+}
+
+function workspacePatternMatches(pattern: string, directory: string): boolean {
+  if (
+    !pattern ||
+    pattern.startsWith('/') ||
+    pattern.includes('\\') ||
+    pattern.startsWith('!') ||
+    /[{}[\]]/u.test(pattern) ||
+    pattern.split('/').some(
+      (segment) =>
+        segment === '..' ||
+        (segment.includes('*') && segment !== '*' && segment !== '**'),
+    )
+  ) {
+    throw new ContreeError(`ConTree dependency snapshot refuses unsafe workspace pattern: ${pattern}`);
+  }
+  const expression = pattern
+    .split('/')
+    .map((segment) => {
+      if (segment === '**') return '.+';
+      if (segment === '*') return '[^/]+';
+      return segment.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+    })
+    .join('/');
+  return new RegExp(`^${expression}$`, 'u').test(directory);
+}
+
+async function dependencyWorkspacePatterns(dir: string): Promise<string[]> {
+  const patterns: string[] = [];
+  try {
+    const packageMetadata = await stat(join(dir, 'package.json'));
+    if (packageMetadata.size > MAX_DEPENDENCY_CONTROL_BYTES) {
+      throw new ContreeError('ConTree dependency snapshot package.json is too large');
+    }
+    const packageJson = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as {
+      workspaces?: unknown;
+    };
+    const workspaces = Array.isArray(packageJson.workspaces)
+      ? packageJson.workspaces
+      : typeof packageJson.workspaces === 'object' && packageJson.workspaces !== null
+        ? (packageJson.workspaces as { packages?: unknown }).packages
+        : [];
+    if (Array.isArray(workspaces)) {
+      patterns.push(...workspaces.filter((value): value is string => typeof value === 'string'));
+    }
+  } catch (error) {
+    if (!(error instanceof SyntaxError) && (error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error;
+    }
+    if (error instanceof SyntaxError) {
+      throw new ContreeError('ConTree dependency snapshot refuses invalid package.json');
+    }
+  }
+  try {
+    const workspaceMetadata = await stat(join(dir, 'pnpm-workspace.yaml'));
+    if (workspaceMetadata.size > MAX_DEPENDENCY_CONTROL_BYTES) {
+      throw new ContreeError('ConTree dependency snapshot workspace file is too large');
+    }
+    const workspace = await readFile(join(dir, 'pnpm-workspace.yaml'), 'utf8');
+    let packagesIndent: number | undefined;
+    for (const line of workspace.split(/\r?\n/u)) {
+      const packages = /^(?<indent>\s*)packages:\s*(?:#.*)?$/u.exec(line);
+      if (packages?.groups?.indent !== undefined) {
+        packagesIndent = packages.groups.indent.length;
+        continue;
+      }
+      if (packagesIndent === undefined) continue;
+      const indentation = /^\s*/u.exec(line)?.[0].length ?? 0;
+      if (line.trim() && indentation <= packagesIndent) {
+        packagesIndent = undefined;
+        continue;
+      }
+      const match = /^\s*-\s*['"]?(?<pattern>[^'"#]+?)['"]?\s*(?:#.*)?$/u.exec(line);
+      if (match?.groups?.pattern) patterns.push(match.groups.pattern.trim());
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  const unique = [...new Set(patterns)];
+  for (const pattern of unique) workspacePatternMatches(pattern, '');
+  return unique;
+}
+
+function validateSnapshotPath(path: string): void {
+  if (
+    path.length === 0 ||
+    path.startsWith('/') ||
+    path.includes('\\') ||
+    /[\0\r\n]/u.test(path) ||
+    path.split('/').some((segment) => !segment || segment === '.' || segment === '..')
+  ) {
+    throw new ContreeError(`ConTree snapshot refuses unsafe archive path: ${path}`);
+  }
+}
+
+function includeSnapshotPath(
+  path: string,
+  profile: SnapshotProfile,
+  workspacePatterns: readonly string[],
+): boolean {
+  validateSnapshotPath(path);
+  if (profile === 'repository') {
+    if (isInstalledDependencyPath(path)) {
+      throw new ContreeError(
+        `ConTree repository overlay refuses installed dependency path: ${path}`,
+      );
+    }
+    return !isSensitiveRepositoryPath(path);
+  }
+  return isDependencyInputPath(path, workspacePatterns);
+}
+
+async function listNonGitFiles(
+  dir: string,
+  profile: SnapshotProfile,
+): Promise<string[]> {
   const root = await realpath(dir);
+  const workspacePatterns = profile === 'dependency-inputs'
+    ? await dependencyWorkspacePatterns(root)
+    : [];
   const files: string[] = [];
   const directories = [''];
   let directoryIndex = 0;
@@ -518,10 +865,24 @@ async function listNonGitFiles(dir: string): Promise<string[]> {
     const entries = await readdir(join(root, directory), { withFileTypes: true });
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
       const path = directory ? `${directory}/${entry.name}` : entry.name;
+      validateSnapshotPath(path);
+      if (entry.name.toLowerCase() === '.npmrc') {
+        throw new ContreeError(
+          'ConTree dependency preparation refuses repository .npmrc credentials',
+        );
+      }
+      if (isInstalledDependencyPath(path)) {
+        continue;
+      }
       if (isSensitiveRepositoryPath(path, { includeDependencies: true })) continue;
       const absolute = join(root, path);
       const metadata = await lstat(absolute);
       if (metadata.isSymbolicLink()) {
+        if (profile === 'dependency-inputs') {
+          throw new ContreeError(
+            `ConTree dependency snapshot refuses symlink: ${path}`,
+          );
+        }
         const link = await readlink(absolute);
         if (isAbsolute(link)) {
           throw new ContreeError(
@@ -568,10 +929,11 @@ async function listNonGitFiles(dir: string): Promise<string[]> {
             `ConTree snapshot exceeds ${MAX_SNAPSHOT_FILES} files`,
           );
         }
-        files.push(path);
+        if (includeSnapshotPath(path, profile, workspacePatterns)) files.push(path);
       } else if (metadata.isDirectory()) {
         directories.push(path);
       } else if (metadata.isFile()) {
+        if (!includeSnapshotPath(path, profile, workspacePatterns)) continue;
         if (files.length >= MAX_SNAPSHOT_FILES) {
           throw new ContreeError(
             `ConTree snapshot exceeds ${MAX_SNAPSHOT_FILES} files`,
@@ -594,7 +956,14 @@ async function listNonGitFiles(dir: string): Promise<string[]> {
   return files;
 }
 
-async function listSnapshotFiles(dir: string): Promise<string[]> {
+async function listSnapshotFiles(
+  dir: string,
+  profile: SnapshotProfile,
+): Promise<string[]> {
+  if (profile === 'dependency-inputs') await assertNoNpmrc(dir);
+  const workspacePatterns = profile === 'dependency-inputs'
+    ? await dependencyWorkspacePatterns(dir)
+    : [];
   try {
     const listed = await runProcess('git', [
       '-C',
@@ -614,28 +983,59 @@ async function listSnapshotFiles(dir: string): Promise<string[]> {
     const deletedPaths = new Set(
       deleted.stdout.toString('utf8').split('\0').filter(Boolean),
     );
-    const files = listed.stdout
+    const listedFiles = listed.stdout
       .toString('utf8')
       .split('\0')
-      .filter(
-        (path) =>
-          path.length > 0 &&
-          !deletedPaths.has(path) &&
-          !isSensitiveRepositoryPath(path),
+      .filter((path) => path.length > 0 && !deletedPaths.has(path));
+    if (listedFiles.some((path) => path.split('/').at(-1)?.toLowerCase() === '.npmrc')) {
+      throw new ContreeError(
+        'ConTree dependency preparation refuses repository .npmrc credentials',
       );
-    await validateSnapshotFiles(dir, files);
+    }
+    const files = listedFiles.filter((path) =>
+      includeSnapshotPath(path, profile, workspacePatterns));
+    await validateSnapshotFiles(dir, files, profile);
     return files;
   } catch (error) {
     if (error instanceof Error && /not a git repository/iu.test(error.message)) {
-      return listNonGitFiles(dir);
+      return listNonGitFiles(dir, profile);
     }
     throw error;
   }
 }
 
+async function listApprovedDependencyFiles(
+  dir: string,
+  approvedPaths: readonly string[],
+): Promise<string[]> {
+  const root = await realpath(dir);
+  const files = [...approvedPaths].sort();
+  for (const path of files) {
+    validateSnapshotPath(path);
+    if (!isDependencyInputPath(path, [])) {
+      throw new ContreeError(`ConTree dependency snapshot refuses unapproved input kind: ${path}`);
+    }
+    const absolute = join(root, path);
+    const metadata = await lstat(absolute);
+    if (metadata.isSymbolicLink()) {
+      throw new ContreeError(`ConTree dependency snapshot refuses symlink: ${path}`);
+    }
+    const canonical = await realpath(absolute);
+    if (canonical !== root && !canonical.startsWith(`${root}${sep}`)) {
+      throw new ContreeError(`ConTree dependency snapshot refuses escaping path: ${path}`);
+    }
+    if (!metadata.isFile()) {
+      throw new ContreeError(`ConTree dependency snapshot requires a regular file: ${path}`);
+    }
+  }
+  await validateSnapshotFiles(root, files, 'dependency-inputs');
+  return files;
+}
+
 async function validateSnapshotFiles(
   dir: string,
   files: readonly string[],
+  profile: SnapshotProfile,
 ): Promise<void> {
   if (files.length > MAX_SNAPSHOT_FILES) {
     throw new ContreeError(
@@ -643,8 +1043,33 @@ async function validateSnapshotFiles(
     );
   }
   let sourceBytes = 0;
+  const root = await realpath(dir);
   for (const path of files) {
     const metadata = await lstat(join(dir, path));
+    if (metadata.isSymbolicLink()) {
+      if (profile === 'dependency-inputs') {
+        throw new ContreeError(`ConTree dependency snapshot refuses symlink: ${path}`);
+      }
+      const link = await readlink(join(root, path));
+      if (isAbsolute(link)) {
+        throw new ContreeError(`ConTree snapshot refuses absolute symlink: ${path}`);
+      }
+      let target: string;
+      try {
+        target = await realpath(join(root, path));
+      } catch {
+        throw new ContreeError(`ConTree snapshot refuses dangling or cyclic symlink: ${path}`);
+      }
+      const targetPath = relative(root, target).split(sep).join('/');
+      if (
+        targetPath === '..' ||
+        targetPath.startsWith('../') ||
+        isSensitiveRepositoryPath(targetPath, { includeDependencies: true })
+      ) {
+        throw new ContreeError(`ConTree snapshot refuses escaping or sensitive symlink: ${path}`);
+      }
+      continue;
+    }
     if (!metadata.isFile()) continue;
     sourceBytes += metadata.size;
     if (sourceBytes > MAX_SNAPSHOT_SOURCE_BYTES) {
@@ -657,15 +1082,26 @@ async function validateSnapshotFiles(
 
 interface SnapshotArchive {
   path: string;
+  manifestPath: string;
   cleanup(): Promise<void>;
 }
 
-async function createSnapshotArchive(dir: string): Promise<SnapshotArchive> {
-  const files = await listSnapshotFiles(dir);
+async function createSnapshotArchive(
+  dir: string,
+  options: SnapshotOptions,
+): Promise<SnapshotArchive> {
+  const files = options.includePaths === undefined
+    ? await listSnapshotFiles(dir, options.profile)
+    : await listApprovedDependencyFiles(dir, options.includePaths);
+  if (options.profile === 'dependency-inputs') {
+    await rejectRegistryCredentials(dir, files);
+  }
   const input = Buffer.from(files.map((path) => `${path}\0`).join(''));
   const archiveDir = await mkdtemp(join(tmpdir(), 'sutura-contree-'));
   const archivePath = join(archiveDir, 'snapshot.tar');
+  const manifestPath = join(archiveDir, 'manifest.bin');
   try {
+    await writeFile(manifestPath, input);
     await runProcess(
       'tar',
       ['-cf', archivePath, '--no-recursion', '--null', '-T', '-'],
@@ -681,11 +1117,57 @@ async function createSnapshotArchive(dir: string): Promise<SnapshotArchive> {
     }
     return {
       path: archivePath,
+      manifestPath,
       cleanup: () => rm(archiveDir, { recursive: true, force: true }),
     };
   } catch (error) {
     await rm(archiveDir, { recursive: true, force: true });
     throw error;
+  }
+}
+
+async function assertNoNpmrc(dir: string): Promise<void> {
+  const root = await realpath(dir);
+  const directories = [''];
+  for (let index = 0; index < directories.length; index += 1) {
+    const directory = directories[index] as string;
+    const entries = await readdir(join(root, directory), { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.toLowerCase() === '.npmrc') {
+        throw new ContreeError(
+          'ConTree dependency preparation refuses repository .npmrc credentials',
+        );
+      }
+      if (
+        entry.isDirectory() &&
+        !['.git', 'node_modules', '.pnpm', 'dist', 'build', '.next'].includes(entry.name)
+      ) {
+        directories.push(directory ? `${directory}/${entry.name}` : entry.name);
+      }
+    }
+  }
+}
+
+async function rejectRegistryCredentials(
+  dir: string,
+  files: readonly string[],
+): Promise<void> {
+  for (const path of files) {
+    const metadata = await stat(join(dir, path));
+    if (metadata.size > MAX_DEPENDENCY_INPUT_FILE_BYTES) {
+      throw new ContreeError(
+        `ConTree dependency preparation refuses oversized input file: ${path}`,
+      );
+    }
+    const content = await readFile(join(dir, path), 'utf8');
+    if (
+      /https?:\/\/[^/\s@]+@/iu.test(content) ||
+      /(?:npmAuthToken|npmAuthIdent|_authToken)\s*[:=]/iu.test(content)
+    ) {
+      throw new ContreeError(
+        `ConTree dependency preparation refuses embedded registry credentials in ${path}`,
+      );
+    }
   }
 }
 

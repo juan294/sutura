@@ -24,6 +24,7 @@ function winner(diff: string): RaceResult {
   return {
     candidate: { id: 'candidate-a', rationale: 'repair source import', diff },
     imageId: 'winner-image',
+    nodeId: 'node-001',
     exitCode: 0,
     held: true,
   };
@@ -239,6 +240,24 @@ describe('audit', () => {
 });
 
 describe('adjudicate', () => {
+  it('redacts non-editable audit context and the model reply on retry', async () => {
+    const { llm, chat } = llmReplies(
+      'invalid {"token":"echoed-secret"}',
+      JSON.stringify({ approved: false, reasoning: 'The candidate is unsafe.' }),
+    );
+
+    await adjudicate(llm, {
+      diagnosis: { ...DIAGNOSIS, errorExcerpt: 'PASSWORD=input-secret' },
+      diff: await fixture('honest-fix'),
+      beforeLog: 'Authorization: Bearer before-secret',
+      afterLog: 'after',
+    });
+
+    const outbound = JSON.stringify(chat.mock.calls.map((call) => call[1]));
+    expect(outbound).not.toMatch(/input-secret|before-secret|echoed-secret/u);
+    expect(outbound).toContain('[redacted credential]');
+  });
+
   it('accepts one repaired JSON response and does not make a third call', async () => {
     const { llm, chat } = llmReplies(
       'not json',

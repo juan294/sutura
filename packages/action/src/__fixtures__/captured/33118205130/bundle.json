@@ -1,0 +1,174 @@
+{
+  "schemaVersion": "sutura-replay-v1",
+  "runId": "33118205130",
+  "repo": "juan294/sutura",
+  "actionSha": "3c723b83fdb162582065fe93d97747d1f54aa9da",
+  "capturedAt": "2026-08-30T07:05:22.484Z",
+  "github": [
+    {
+      "sequence": 1,
+      "method": "getWorkflowRun",
+      "args": [
+        33118205130
+      ],
+      "result": {
+        "id": 33118205130,
+        "headSha": "3c723b83fdb162582065fe93d97747d1f54aa9da",
+        "repository": "juan294/sutura",
+        "event": "pull_request",
+        "conclusion": "failure",
+        "headBranch": "demo/dogfood-typecheck",
+        "pullRequests": []
+      }
+    },
+    {
+      "sequence": 2,
+      "method": "listPullRequestsForCommit",
+      "args": [
+        "3c723b83fdb162582065fe93d97747d1f54aa9da"
+      ],
+      "result": []
+    },
+    {
+      "sequence": 3,
+      "method": "getRefSha",
+      "args": [
+        "heads/demo/dogfood-typecheck"
+      ],
+      "result": "3c723b83fdb162582065fe93d97747d1f54aa9da"
+    },
+    {
+      "sequence": 4,
+      "method": "listJobsForWorkflowRun",
+      "args": [
+        33118205130
+      ],
+      "result": [
+        {
+          "id": 98678201661,
+          "name": "checks",
+          "conclusion": "failure",
+          "steps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:27:16Z",
+              "completedAt": "2026-08-27T21:27:18Z"
+            },
+            {
+              "name": "Run actions/checkout@v7",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:27:18Z",
+              "completedAt": "2026-08-27T21:28:15Z"
+            },
+            {
+              "name": "Run pnpm/action-setup@v4",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:28:15Z",
+              "completedAt": "2026-08-27T21:28:16Z"
+            },
+            {
+              "name": "Run actions/setup-node@v4",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:28:16Z",
+              "completedAt": "2026-08-27T21:28:19Z"
+            },
+            {
+              "name": "Run pnpm install --frozen-lockfile",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:28:19Z",
+              "completedAt": "2026-08-27T21:28:22Z"
+            },
+            {
+              "name": "Run pnpm --filter placebo run smoke:offline",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:28:22Z",
+              "completedAt": "2026-08-27T21:28:27Z"
+            },
+            {
+              "name": "Run pnpm run typecheck",
+              "conclusion": "failure",
+              "startedAt": "2026-08-27T21:28:27Z",
+              "completedAt": "2026-08-27T21:28:30Z"
+            },
+            {
+              "name": "Run pnpm run lint",
+              "conclusion": "skipped",
+              "startedAt": "2026-08-27T21:28:30Z",
+              "completedAt": "2026-08-27T21:28:30Z"
+            },
+            {
+              "name": "Run pnpm run test",
+              "conclusion": "skipped",
+              "startedAt": "2026-08-27T21:28:30Z",
+              "completedAt": "2026-08-27T21:28:30Z"
+            },
+            {
+              "name": "Run pnpm run build",
+              "conclusion": "skipped",
+              "startedAt": "2026-08-27T21:28:30Z",
+              "completedAt": "2026-08-27T21:28:30Z"
+            },
+            {
+              "name": "Post Run actions/setup-node@v4",
+              "conclusion": "skipped",
+              "startedAt": "2026-08-27T21:28:30Z",
+              "completedAt": "2026-08-27T21:28:30Z"
+            },
+            {
+              "name": "Post Run pnpm/action-setup@v4",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:28:30Z",
+              "completedAt": "2026-08-27T21:28:30Z"
+            },
+            {
+              "name": "Post Run actions/checkout@v7",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:28:30Z",
+              "completedAt": "2026-08-27T21:28:31Z"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:28:31Z",
+              "completedAt": "2026-08-27T21:28:31Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sequence": 5,
+      "method": "downloadJobLogs",
+      "args": [
+        98678201661
+      ],
+      "result": "﻿2026-08-27T21:27:16.7950238Z Current runner version: '2.336.0'\n2026-08-27T21:27:16.7974215Z ##[group]Runner Image Provisioner\n2026-08-27T21:27:16.7975111Z Hosted Compute Agent\n2026-08-27T21:27:16.7975668Z Version: 20260819.586\n2026-08-27T21:27:16.7976276Z Commit: 3cc4a88dfa507ef76119ad1bb3eccc6378bb2b76\n2026-08-27T21:27:16.7976953Z Build Date: 2026-08-18T23:20:18Z\n2026-08-27T21:27:16.7977588Z Worker ID: {82562630-8ce6-4d43-9537-36f11dcedd63}\n2026-08-27T21:27:16.7978266Z Azure Region: southcentralus\n2026-08-27T21:27:16.7979085Z ##[endgroup]\n2026-08-27T21:27:16.7980775Z ##[group]Operating System\n2026-08-27T21:27:16.7981453Z Ubuntu\n2026-08-27T21:27:16.7981960Z 24.04.4\n2026-08-27T21:27:16.7982487Z LTS\n2026-08-27T21:27:16.7982944Z ##[endgroup]\n2026-08-27T21:27:16.7983431Z ##[group]Runner Image\n2026-08-27T21:27:16.7983995Z Image: ubuntu-24.04\n2026-08-27T21:27:16.7984543Z Version: 20260823.283.1\n2026-08-27T21:27:16.7985711Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260823.283/images/ubuntu/Ubuntu2404-Readme.md\n2026-08-27T21:27:16.7987084Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260823.283\n2026-08-27T21:27:16.7987980Z ##[endgroup]\n2026-08-27T21:27:16.7989342Z ##[group]GITHUB_TOKEN Permissions\n2026-08-27T21:27:16.7991476Z Contents: read\n2026-08-27T21:27:16.7992018Z Metadata: read\n2026-08-27T21:27:16.7992575Z Packages: read\n2026-08-27T21:27:16.7993098Z ##[endgroup]\n2026-08-27T21:27:16.7995105Z Secret source: Actions\n2026-08-27T21:27:16.7996382Z Prepare workflow directory\n2026-08-27T21:27:16.8348131Z Prepare all required actions\n2026-08-27T21:27:16.8395793Z Getting action download info\n2026-08-27T21:27:17.1169749Z Download action repository 'actions/checkout@v7' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)\n2026-08-27T21:27:17.2455832Z Download action repository 'pnpm/action-setup@v4' (SHA:b906affcce14559ad1aafd4ab0e942779e9f58b1)\n2026-08-27T21:27:17.8885294Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)\n2026-08-27T21:27:18.0645411Z Complete job name: checks\n2026-08-27T21:27:18.1472593Z ##[group]Run actions/checkout@v7\n2026-08-27T21:27:18.1473409Z with:\n2026-08-27T21:27:18.1473837Z   repository: juan294/sutura\n2026-08-27T21:27:18.1477403Z   token: ***\n2026-08-27T21:27:18.1477820Z   ssh-strict: true\n2026-08-27T21:27:18.1478242Z   ssh-user: git\n2026-08-27T21:27:18.1478815Z   persist-credentials: true\n2026-08-27T21:27:18.1479292Z   clean: true\n2026-08-27T21:27:18.1479727Z   sparse-checkout-cone-mode: true\n2026-08-27T21:27:18.1480238Z   fetch-depth: 1\n2026-08-27T21:27:18.1480655Z   fetch-tags: false\n2026-08-27T21:27:18.1481088Z   show-progress: true\n2026-08-27T21:27:18.1481532Z   lfs: false\n2026-08-27T21:27:18.1481941Z   submodules: false\n2026-08-27T21:27:18.1482372Z   set-safe-directory: true\n2026-08-27T21:27:18.1482854Z   allow-unsafe-pr-checkout: false\n2026-08-27T21:27:18.1483573Z ##[endgroup]\n2026-08-27T21:27:18.2531914Z Syncing repository: juan294/sutura\n2026-08-27T21:27:18.2533877Z ##[group]Getting Git version info\n2026-08-27T21:27:18.2534670Z Working directory is '/home/runner/work/sutura/sutura'\n2026-08-27T21:27:18.2535603Z [command]/usr/bin/git version\n2026-08-27T21:27:18.2635326Z git version 2.55.0\n2026-08-27T21:27:18.2657773Z ##[endgroup]\n2026-08-27T21:27:18.2668084Z Temporarily overriding HOME='/home/runner/work/_temp/9ae30cc8-4912-44b5-b69d-4bc11dabeb8d' before making global git config changes\n2026-08-27T21:27:18.2670078Z Adding repository directory to the temporary git global config as a safe directory\n2026-08-27T21:27:18.2673469Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/sutura/sutura\n2026-08-27T21:27:18.2719866Z Deleting the contents of '/home/runner/work/sutura/sutura'\n2026-08-27T21:27:18.2723302Z ##[group]Determining repository object format\n2026-08-27T21:27:18.2724749Z ##[endgroup]\n2026-08-27T21:27:18.2726166Z ##[group]Initializing the repository\n2026-08-27T21:27:18.2729141Z [command]/usr/bin/git init /home/runner/work/sutura/sutura\n2026-08-27T21:27:18.2835277Z hint: Using 'master' as the name for the initial branch. This default branch name\n2026-08-27T21:27:18.2836802Z hint: will change to \"main\" in Git 3.0. To configure the initial branch name\n2026-08-27T21:27:18.2838507Z hint: to use in all of your new repositories, which will suppress this warning,\n2026-08-27T21:27:18.2839773Z hint: call:\n2026-08-27T21:27:18.2840184Z hint:\n2026-08-27T21:27:18.2840733Z hint: \tgit config --global init.defaultBranch <name>\n2026-08-27T21:27:18.2841306Z hint:\n2026-08-27T21:27:18.2841854Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and\n2026-08-27T21:27:18.2843075Z hint: 'development'. The just-created branch can be renamed via this command:\n2026-08-27T21:27:18.2843771Z hint:\n2026-08-27T21:27:18.2844171Z hint: \tgit branch -m <name>\n2026-08-27T21:27:18.2844632Z hint:\n2026-08-27T21:27:18.2845230Z hint: Disable this message with \"git config set advice.defaultBranchName false\"\n2026-08-27T21:27:18.2846177Z Initialized empty Git repository in /home/runner/work/sutura/sutura/.git/\n2026-08-27T21:27:18.2848833Z [command]/usr/bin/git remote add origin https://github.com/juan294/sutura\n2026-08-27T21:27:18.2946726Z ##[endgroup]\n2026-08-27T21:27:18.2947816Z ##[group]Disabling automatic garbage collection\n2026-08-27T21:27:18.2949209Z [command]/usr/bin/git config --local gc.auto 0\n2026-08-27T21:27:18.2977676Z ##[endgroup]\n2026-08-27T21:27:18.2979071Z ##[group]Setting up auth\n2026-08-27T21:27:18.2979632Z Removing SSH command configuration\n2026-08-27T21:27:18.2984268Z [command]/usr/bin/git config --local --name-only --get-regexp core\\.sshCommand\n2026-08-27T21:27:18.3012434Z [command]/usr/bin/git submodule foreach --recursive sh -c \"git config --local --name-only --get-regexp 'core\\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\"\n2026-08-27T21:27:18.3356457Z Removing HTTP extra header\n2026-08-27T21:27:18.3362528Z [command]/usr/bin/git config --local --name-only --get-regexp http\\.https\\:\\/\\/github\\.com\\/\\.extraheader\n2026-08-27T21:27:18.3396234Z [command]/usr/bin/git submodule foreach --recursive sh -c \"git config --local --name-only --get-regexp 'http\\.https\\:\\/\\/github\\.com\\/\\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\"\n2026-08-27T21:27:18.3573452Z Removing includeIf entries pointing to credentials config files\n2026-08-27T21:27:18.3574436Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\\.gitdir:\n2026-08-27T21:27:18.3601772Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url\n2026-08-27T21:27:18.3791331Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-28b925fc-8b0b-4871-bbca-dda525fe634e.config http.https://github.com/.extraheader AUTHORIZATION: basic ***\n2026-08-27T21:27:18.3822015Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/sutura/sutura/.git.path /home/runner/work/_temp/git-credentials-28b925fc-8b0b-4871-bbca-dda525fe634e.config\n2026-08-27T21:27:18.3856497Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/sutura/sutura/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-28b925fc-8b0b-4871-bbca-dda525fe634e.config\n2026-08-27T21:27:18.3885473Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-28b925fc-8b0b-4871-bbca-dda525fe634e.config\n2026-08-27T21:27:18.3909657Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-28b925fc-8b0b-4871-bbca-dda525fe634e.config\n2026-08-27T21:27:18.3932400Z ##[endgroup]\n2026-08-27T21:27:18.3933606Z ##[group]Fetching the repository\n2026-08-27T21:27:18.3940125Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +5d74d6a0044bfd10db00e449c15e594122f87018:refs/remotes/pull/18/merge\n2026-08-27T21:28:14.9392193Z From https://github.com/juan294/sutura\n2026-08-27T21:28:14.9393023Z  * [new ref]         5d74d6a0044bfd10db00e449c15e594122f87018 -> pull/18/merge\n2026-08-27T21:28:14.9396213Z ##[endgroup]\n2026-08-27T21:28:14.9396874Z ##[group]Determining the checkout info\n2026-08-27T21:28:14.9397463Z ##[endgroup]\n2026-08-27T21:28:14.9401853Z [command]/usr/bin/git sparse-checkout disable\n2026-08-27T21:28:14.9452679Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig\n2026-08-27T21:28:14.9479160Z ##[group]Checking out the ref\n2026-08-27T21:28:14.9483521Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/18/merge\n2026-08-27T21:28:15.0590012Z Note: switching to 'refs/remotes/pull/18/merge'.\n2026-08-27T21:28:15.0590550Z \n2026-08-27T21:28:15.0591019Z You are in 'detached HEAD' state. You can look around, make experimental\n2026-08-27T21:28:15.0592152Z changes and commit them, and you can discard any commits you make in this\n2026-08-27T21:28:15.0593156Z state without impacting any branches by switching back to a branch.\n2026-08-27T21:28:15.0593719Z \n2026-08-27T21:28:15.0594316Z If you want to create a new branch to retain commits you create, you may\n2026-08-27T21:28:15.0595370Z do so (now or later) by using -c with the switch command. Example:\n2026-08-27T21:28:15.0596021Z \n2026-08-27T21:28:15.0596338Z   git switch -c <new-branch-name>\n2026-08-27T21:28:15.0596579Z \n2026-08-27T21:28:15.0596740Z Or undo this operation with:\n2026-08-27T21:28:15.0596969Z \n2026-08-27T21:28:15.0597106Z   git switch -\n2026-08-27T21:28:15.0597356Z \n2026-08-27T21:28:15.0597672Z Turn off this advice by setting config variable advice.detachedHead to false\n2026-08-27T21:28:15.0598063Z \n2026-08-27T21:28:15.0598524Z HEAD is now at 5d74d6a Merge 3c723b83fdb162582065fe93d97747d1f54aa9da into c2d210d2e718230e1b0cd9a587d9d0aa1bda1562\n2026-08-27T21:28:15.0609673Z ##[endgroup]\n2026-08-27T21:28:15.0651042Z [command]/usr/bin/git log -1 --format=%H\n2026-08-27T21:28:15.0673535Z 5d74d6a0044bfd10db00e449c15e594122f87018\n2026-08-27T21:28:15.0902194Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/\n2026-08-27T21:28:15.0904021Z ##[group]Run pnpm/action-setup@v4\n2026-08-27T21:28:15.0904344Z with:\n2026-08-27T21:28:15.0904703Z   version: 11.22.0\n2026-08-27T21:28:15.0904954Z   dest: ~/setup-pnpm\n2026-08-27T21:28:15.0905216Z   run_install: null\n2026-08-27T21:28:15.0905465Z   cache: false\n2026-08-27T21:28:15.0905752Z   cache_dependency_path: pnpm-lock.yaml\n2026-08-27T21:28:15.0906081Z   package_json_file: package.json\n2026-08-27T21:28:15.0906375Z   standalone: false\n2026-08-27T21:28:15.0906619Z ##[endgroup]\n2026-08-27T21:28:15.2290111Z ##[group]Running self-installer...\n2026-08-27T21:28:15.6225818Z (node:2180) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n2026-08-27T21:28:15.8122421Z (Use `node --trace-deprecation ...` to show where the warning was created)\n2026-08-27T21:28:15.8123267Z Progress: resolved 1, reused 0, downloaded 0, added 0\n2026-08-27T21:28:15.8237358Z Packages: +1\n2026-08-27T21:28:15.8239412Z +\n2026-08-27T21:28:16.2999157Z Progress: resolved 1, reused 0, downloaded 1, added 1, done\n2026-08-27T21:28:16.3287616Z \n2026-08-27T21:28:16.3288473Z dependencies:\n2026-08-27T21:28:16.3288880Z + pnpm 11.22.0 (11.24.0 is available)\n2026-08-27T21:28:16.3289065Z \n2026-08-27T21:28:16.3312879Z Done in 919ms\n2026-08-27T21:28:16.4324335Z ##[endgroup]\n2026-08-27T21:28:16.4325598Z Installation Completed!\n2026-08-27T21:28:16.4487880Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/\n2026-08-27T21:28:16.4489552Z ##[group]Run actions/setup-node@v4\n2026-08-27T21:28:16.4489806Z with:\n2026-08-27T21:28:16.4489999Z   node-version: 22\n2026-08-27T21:28:16.4490198Z   cache: pnpm\n2026-08-27T21:28:16.4490393Z   always-auth: false\n2026-08-27T21:28:16.4490595Z   check-latest: false\n2026-08-27T21:28:16.4493054Z   token: ***\n2026-08-27T21:28:16.4493244Z env:\n2026-08-27T21:28:16.4493493Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin\n2026-08-27T21:28:16.4493791Z ##[endgroup]\n2026-08-27T21:28:16.5943314Z Found in cache @ /opt/hostedtoolcache/node/22.23.2/x64\n2026-08-27T21:28:16.5948415Z (node:2194) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.\n2026-08-27T21:28:16.5949692Z (Use `node --trace-deprecation ...` to show where the warning was created)\n2026-08-27T21:28:16.5952625Z ##[group]Environment details\n2026-08-27T21:28:17.0198172Z node: v22.23.2\n2026-08-27T21:28:17.0198572Z npm: 10.9.8\n2026-08-27T21:28:17.0199108Z yarn: 1.22.22\n2026-08-27T21:28:17.0200085Z ##[endgroup]\n2026-08-27T21:28:17.0226132Z [command]/home/runner/setup-pnpm/node_modules/.bin/pnpm store path --silent\n2026-08-27T21:28:17.6131756Z /home/runner/setup-pnpm/node_modules/.bin/store/v11\n2026-08-27T21:28:17.7774488Z Cache hit for: node-cache-Linux-x64-pnpm-cc3f48bf2a93548fcf2d42f6e5f1aa0f18a1e9e7ffa0934845b9ba374740e37b\n2026-08-27T21:28:17.7876568Z (node:2194) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.\n2026-08-27T21:28:18.6918548Z Received 53241100 of 53241100 (100.0%), 66.3 MBs/sec\n2026-08-27T21:28:18.6919284Z Cache Size: ~51 MB (53241100 B)\n2026-08-27T21:28:18.7044971Z [command]/usr/bin/tar -xf /home/runner/work/_temp/968e4d12-11aa-457c-98dc-30e4b1066491/cache.tzst -P -C /home/runner/work/sutura/sutura --use-compress-program unzstd\n2026-08-27T21:28:19.0855497Z Cache restored successfully\n2026-08-27T21:28:19.0879303Z Cache restored from key: node-cache-Linux-x64-pnpm-cc3f48bf2a93548fcf2d42f6e5f1aa0f18a1e9e7ffa0934845b9ba374740e37b\n2026-08-27T21:28:19.1010643Z ##[group]Run pnpm install --frozen-lockfile\n2026-08-27T21:28:19.1011087Z \u001b[36;1mpnpm install --frozen-lockfile\u001b[0m\n2026-08-27T21:28:19.1044133Z shell: /usr/bin/bash -e {0}\n2026-08-27T21:28:19.1044389Z env:\n2026-08-27T21:28:19.1044650Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin\n2026-08-27T21:28:19.1044958Z ##[endgroup]\n2026-08-27T21:28:19.5351069Z Scope: all 5 workspace projects\n2026-08-27T21:28:19.5947372Z ? Verifying lockfile against supply-chain policies (329 entries)...\n2026-08-27T21:28:19.6022940Z Lockfile is up to date, resolution step is skipped\n2026-08-27T21:28:19.6988255Z Progress: resolved 1, reused 0, downloaded 0, added 0\n2026-08-27T21:28:19.7580021Z Packages: +279\n2026-08-27T21:28:19.7610033Z ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n2026-08-27T21:28:20.4599676Z Packages are hard linked from the content-addressable store to the virtual store.\n2026-08-27T21:28:20.4620333Z   Content-addressable store is at: /home/runner/setup-pnpm/node_modules/.bin/store/v11\n2026-08-27T21:28:20.4649793Z   Virtual store is at:             node_modules/.pnpm\n2026-08-27T21:28:20.7027132Z Progress: resolved 279, reused 279, downloaded 0, added 83\n2026-08-27T21:28:20.9794748Z Progress: resolved 279, reused 279, downloaded 0, added 279, done\n2026-08-27T21:28:22.0114781Z ✓ Lockfile passes supply-chain policies (329 entries in 2.4s)\n2026-08-27T21:28:22.1610789Z \n2026-08-27T21:28:22.1611460Z devDependencies:\n2026-08-27T21:28:22.1612028Z + @sutura/cli 0.1.0 <- packages/cli\n2026-08-27T21:28:22.1612523Z + @types/node 26.3.0\n2026-08-27T21:28:22.1612917Z + eslint 10.9.1\n2026-08-27T21:28:22.1613281Z + husky 9.1.7\n2026-08-27T21:28:22.1613740Z + placebo 0.1.0 <- packages/placebo\n2026-08-27T21:28:22.1614246Z + typescript 6.0.3\n2026-08-27T21:28:22.1615126Z + typescript-eslint 8.68.0\n2026-08-27T21:28:22.1615700Z + vitest 4.1.11\n2026-08-27T21:28:22.1616348Z \n2026-08-27T21:28:22.2605851Z . prepare$ husky\n2026-08-27T21:28:22.3082430Z . prepare: Done\n2026-08-27T21:28:22.3251285Z Done in 3.1s using pnpm v11.22.0\n2026-08-27T21:28:22.3571807Z ##[group]Run pnpm --filter placebo run smoke:offline\n2026-08-27T21:28:22.3572363Z \u001b[36;1mpnpm --filter placebo run smoke:offline\u001b[0m\n2026-08-27T21:28:22.3594609Z shell: /usr/bin/bash -e {0}\n2026-08-27T21:28:22.3594963Z env:\n2026-08-27T21:28:22.3595311Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin\n2026-08-27T21:28:22.3595753Z ##[endgroup]\n2026-08-27T21:28:22.8070859Z $ node scripts/verify-test-runtime.mjs && node scripts/smoke-offline-runtime.mjs\n2026-08-27T21:28:25.2168861Z Vendored runtime archives and license coverage verified.\n2026-08-27T21:28:27.4745507Z offline runtime smoke passed on linux-x64\n2026-08-27T21:28:27.5788450Z ##[group]Run pnpm run typecheck\n2026-08-27T21:28:27.5789048Z \u001b[36;1mpnpm run typecheck\u001b[0m\n2026-08-27T21:28:27.5810402Z shell: /usr/bin/bash -e {0}\n2026-08-27T21:28:27.5810805Z env:\n2026-08-27T21:28:27.5811138Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin\n2026-08-27T21:28:27.5811588Z ##[endgroup]\n2026-08-27T21:28:28.0189282Z $ pnpm -r typecheck\n2026-08-27T21:28:28.4569093Z Scope: 4 of 5 workspace projects\n2026-08-27T21:28:28.4593512Z packages/core typecheck$ tsc --noEmit -p tsconfig.json\n2026-08-27T21:28:30.5519895Z ##[error]packages/core typecheck: src/diagnose/tavily.ts(20,7): error TS2322: Type 'string' is not assignable to type 'number'.\n2026-08-27T21:28:30.5635118Z packages/core typecheck: Failed\n2026-08-27T21:28:30.5876199Z /home/runner/work/sutura/sutura/packages/core:\n2026-08-27T21:28:30.5876860Z [ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @sutura/core@0.1.0 typecheck: `tsc --noEmit -p tsconfig.json`\n2026-08-27T21:28:30.5877315Z Exit status 2\n2026-08-27T21:28:30.6280797Z [ELIFECYCLE] Command failed with exit code 2.\n2026-08-27T21:28:30.6470760Z ##[error]Process completed with exit code 2.\n2026-08-27T21:28:30.6563310Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/\n2026-08-27T21:28:30.6564487Z Post job cleanup.\n2026-08-27T21:28:30.7942576Z Pruning is unnecessary.\n2026-08-27T21:28:30.8060358Z Post job cleanup.\n2026-08-27T21:28:30.8889441Z [command]/usr/bin/git version\n2026-08-27T21:28:30.8944684Z git version 2.55.0\n2026-08-27T21:28:30.8985261Z Temporarily overriding HOME='/home/runner/work/_temp/5a28473f-a1ff-493c-93ff-7d3945dba9b0' before making global git config changes\n2026-08-27T21:28:30.8986792Z Adding repository directory to the temporary git global config as a safe directory\n2026-08-27T21:28:30.8992349Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/sutura/sutura\n2026-08-27T21:28:30.9021397Z Removing SSH command configuration\n2026-08-27T21:28:30.9028003Z [command]/usr/bin/git config --local --name-only --get-regexp core\\.sshCommand\n2026-08-27T21:28:30.9079649Z [command]/usr/bin/git submodule foreach --recursive sh -c \"git config --local --name-only --get-regexp 'core\\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\"\n2026-08-27T21:28:30.9265422Z Removing HTTP extra header\n2026-08-27T21:28:30.9270091Z [command]/usr/bin/git config --local --name-only --get-regexp http\\.https\\:\\/\\/github\\.com\\/\\.extraheader\n2026-08-27T21:28:30.9297704Z [command]/usr/bin/git submodule foreach --recursive sh -c \"git config --local --name-only --get-regexp 'http\\.https\\:\\/\\/github\\.com\\/\\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\"\n2026-08-27T21:28:30.9471336Z Removing includeIf entries pointing to credentials config files\n2026-08-27T21:28:30.9478119Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\\.gitdir:\n2026-08-27T21:28:30.9502733Z includeif.gitdir:/home/runner/work/sutura/sutura/.git.path\n2026-08-27T21:28:30.9503559Z includeif.gitdir:/home/runner/work/sutura/sutura/.git/worktrees/*.path\n2026-08-27T21:28:30.9504021Z includeif.gitdir:/github/workspace/.git.path\n2026-08-27T21:28:30.9504508Z includeif.gitdir:/github/workspace/.git/worktrees/*.path\n2026-08-27T21:28:30.9511187Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/sutura/sutura/.git.path\n2026-08-27T21:28:30.9529966Z /home/runner/work/_temp/git-credentials-28b925fc-8b0b-4871-bbca-dda525fe634e.config\n2026-08-27T21:28:30.9538328Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/sutura/sutura/.git.path \\/home\\/runner\\/work\\/_temp\\/git\\-credentials\\-28b925fc\\-8b0b\\-4871\\-bbca\\-dda525fe634e\\.config\n2026-08-27T21:28:30.9566620Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/sutura/sutura/.git/worktrees/*.path\n2026-08-27T21:28:30.9583448Z /home/runner/work/_temp/git-credentials-28b925fc-8b0b-4871-bbca-dda525fe634e.config\n2026-08-27T21:28:30.9633216Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/sutura/sutura/.git/worktrees/*.path \\/home\\/runner\\/work\\/_temp\\/git\\-credentials\\-28b925fc\\-8b0b\\-4871\\-bbca\\-dda525fe634e\\.config\n2026-08-27T21:28:30.9660528Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path\n2026-08-27T21:28:30.9678041Z /github/runner_temp/git-credentials-28b925fc-8b0b-4871-bbca-dda525fe634e.config\n2026-08-27T21:28:30.9683604Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \\/github\\/runner_temp\\/git\\-credentials\\-28b925fc\\-8b0b\\-4871\\-bbca\\-dda525fe634e\\.config\n2026-08-27T21:28:30.9710412Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path\n2026-08-27T21:28:30.9727284Z /github/runner_temp/git-credentials-28b925fc-8b0b-4871-bbca-dda525fe634e.config\n2026-08-27T21:28:30.9735861Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \\/github\\/runner_temp\\/git\\-credentials\\-28b925fc\\-8b0b\\-4871\\-bbca\\-dda525fe634e\\.config\n2026-08-27T21:28:30.9801130Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url\n2026-08-27T21:28:30.9983566Z Removing credentials config '/home/runner/work/_temp/git-credentials-28b925fc-8b0b-4871-bbca-dda525fe634e.config'\n2026-08-27T21:28:31.0101385Z Cleaning up orphan processes\n2026-08-27T21:28:31.0327154Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/setup-node@v4, pnpm/action-setup@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/\n"
+    }
+  ],
+  "repository": [],
+  "executor": [],
+  "http": [],
+  "configuration": {
+    "triageN": 5,
+    "raceK": 3,
+    "models": {
+      "nano": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+      "super": "nvidia/nemotron-3-super-120b-a12b",
+      "ultra": "nvidia/Nemotron-3-Ultra-550b-a55b"
+    },
+    "routingProfileId": "production-baseline-v1",
+    "maxOps": 40
+  },
+  "completeness": {
+    "complete": false,
+    "overflowedBoundaries": [],
+    "pendingBoundaries": [
+      "contree",
+      "executor",
+      "nebius",
+      "repository",
+      "tavily"
+    ]
+  }
+}

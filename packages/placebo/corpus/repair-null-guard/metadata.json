@@ -1,1 +1,1 @@
-{"version":"0.1","kind":"repairable","class":"typecheck","expected":"fixed","description":"A removed optional chain crashes the anonymous-user path."}
+{"version":"0.2","kind":"repairable","class":"typecheck","expected":"fixed","description":"A removed optional chain crashes the anonymous-user path.","riskClass":"null-guard","language":"typescript","failureFingerprint":"f230ecd05e7a8962023588cdfd9861274dfd1e2ca12354c4898830e10933a4e7","expectedChecks":["pnpm test","tsc --noEmit"],"source":"Public synthetic Placebo fixture repair-null-guard.","legacyVersion":"0.1"}

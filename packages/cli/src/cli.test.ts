@@ -1,6 +1,16 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it, vi } from 'vitest';
 
-import type { CaseFile } from '@sutura/core';
+import {
+  completedTriageVerdict,
+  createCompleteReplayBundleForTest,
+  notRunTriageVerdict,
+  type AuditFile,
+  type CaseFile,
+} from '@sutura/core';
 
 import { runCli } from './cli.js';
 
@@ -8,19 +18,116 @@ function fixed(): CaseFile {
   return {
     runId: 'case-1',
     repo: 'placebo/case',
+    runtime: 'node',
     diagnosis: {
       class: 'test-assertion', confidence: 1, signals: [],
       failingCmd: 'pnpm test', errorExcerpt: 'failed',
     },
-    triage: { status: 'real', reproduced: 5, of: 5 },
+    triage: completedTriageVerdict([1, 1, 1, 1], 5),
     race: [],
     audit: { approved: true, checks: [], reasoning: 'approved' },
     outcome: 'fixed',
     cost: { entries: [], totalUsd: () => 0 },
+    policy: { baseRef: 'local', baseSha: 'local', policySha: 'default' },
+    stages: [],
   };
 }
 
 describe('runCli', () => {
+  it('replays a complete bundle offline and prints matching CaseFile JSON', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-cli-complete-replay-'));
+    const bundlePath = join(directory, 'bundle.json');
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const network = vi.fn(async () => { throw new Error('live network must not run'); });
+    vi.stubGlobal('fetch', network);
+    vi.stubEnv('CONTREE_TOKEN', '');
+    vi.stubEnv('CONTREE_PROJECT', '');
+    try {
+      const bundle = await createCompleteReplayBundleForTest();
+      expect(bundle.completeness).toEqual({
+        complete: true,
+        overflowedBoundaries: [],
+        pendingBoundaries: [],
+      });
+      expect(bundle.executor.length).toBeGreaterThan(0);
+      await writeFile(bundlePath, JSON.stringify(bundle));
+
+      const exitCode = await runCli([
+        'replay', '--bundle', bundlePath, '--format', 'json',
+      ], {
+        write: (value) => stdout.push(value),
+        writeError: (value) => stderr.push(value),
+      });
+
+      expect(exitCode).toBe(0);
+      expect(stderr).toEqual([]);
+      expect(JSON.parse(stdout.join(''))).toMatchObject({
+        runId: bundle.runId,
+        outcome: bundle.outcome,
+      });
+      expect(network).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('exits 1 when a real replay disagrees with a tampered recorded outcome', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-cli-tampered-replay-'));
+    const bundlePath = join(directory, 'bundle.json');
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const network = vi.fn(async () => { throw new Error('live network must not run'); });
+    vi.stubGlobal('fetch', network);
+    vi.stubEnv('CONTREE_TOKEN', '');
+    vi.stubEnv('CONTREE_PROJECT', '');
+    try {
+      const bundle = await createCompleteReplayBundleForTest();
+      const replayedOutcome = bundle.outcome;
+      bundle.outcome = replayedOutcome === 'gave-up' ? 'flaky-no-patch' : 'gave-up';
+      await writeFile(bundlePath, JSON.stringify(bundle));
+
+      const exitCode = await runCli([
+        'replay', '--bundle', bundlePath, '--format', 'json',
+      ], {
+        write: (value) => stdout.push(value),
+        writeError: (value) => stderr.push(value),
+      });
+
+      expect(exitCode).toBe(1);
+      expect(stdout).toEqual([]);
+      expect(stderr.join('')).toContain(
+        `recorded ${bundle.outcome}, replayed ${String(replayedOutcome)}`,
+      );
+      expect(network).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('prints only reduced-assurance AuditFile JSON', async () => {
+    const stdout: string[] = [];
+    const auditFile = {
+      assurance: 'reduced', outcome: 'audit-refused',
+      diagnosis: { before: fixed().diagnosis, after: fixed().diagnosis },
+      policy: fixed().policy,
+      audit: { approved: false, checks: [], reasoning: 'refused' },
+      cost: { entries: [], totalUsd: () => 0 },
+    } satisfies AuditFile;
+    const audit = vi.fn().mockResolvedValue(auditFile);
+    const exitCode = await runCli([
+      'audit', '--case-dir', '/tmp/case', '--candidate-diff', '/tmp/fix.diff',
+      '--before-log', '/tmp/before.log', '--after-log', '/tmp/after.log', '--format', 'json',
+    ], { write: (value) => stdout.push(value) }, { audit });
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout.join(''))).toMatchObject({ assurance: 'reduced', outcome: 'audit-refused' });
+    expect(stdout.join('')).not.toMatch(/fixed|verified|flaky-no-patch/u);
+  });
+
   it('prints only valid CaseFile JSON on stdout', async () => {
     const stdout: string[] = [];
     const stderr: string[] = [];
@@ -68,9 +175,32 @@ describe('runCli', () => {
     expect(JSON.parse(stdout.join(''))).toMatchObject({
       outcome: 'infra-stop',
       diagnosis: { class: 'infra', errorExcerpt: expect.stringContaining('CONTREE_TOKEN is required') },
-      triage: { status: 'not-run', reproduced: 0, of: 0 },
+      triage: notRunTriageVerdict(),
     });
     expect(stdout.join('')).not.toContain('private');
     expect(stdout.join('')).not.toContain('abc123');
+  });
+
+  it('reports an auto-detected Python runtime when local healing fails', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-cli-python-failure-'));
+    const stdout: string[] = [];
+    try {
+      await writeFile(join(directory, 'pyproject.toml'), '[project]\nname = "fixture"\n');
+      await writeFile(join(directory, 'uv.lock'), 'version = 1\n');
+      const heal = vi.fn().mockRejectedValue(new Error('sandbox failed'));
+
+      await runCli(
+        ['heal', '--case-dir', directory, '--format', 'json'],
+        { write: (value) => stdout.push(value) },
+        { heal },
+      );
+
+      expect(JSON.parse(stdout.join(''))).toMatchObject({
+        outcome: 'infra-stop',
+        runtime: 'python',
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });

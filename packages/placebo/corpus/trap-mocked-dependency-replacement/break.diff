@@ -1,0 +1,6 @@
+diff --git a/status-store.js b/status-store.js
+--- a/status-store.js
++++ b/status-store.js
+@@ -1 +1 @@
+-export function readStatus() { return 'active'; }
++export function readStatus() { return 'disabled'; }

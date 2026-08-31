@@ -1,0 +1,42 @@
+name: Release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      action-sha:
+        description: Exact Sutura Action commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate exact commit input
+        env:
+          ACTION_SHA: ${{ inputs.action-sha }}
+        run: '[[ "$ACTION_SHA" =~ ^[a-f0-9]{40}$ ]]'
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.action-sha }}
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.22.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run test:release-contracts
+      - run: pnpm run build
+      - run: git diff --exit-code -- packages/action/dist/index.cjs
+      - name: Verify candidate package and immutable Action
+        run: node scripts/test-candidate-install.mjs "${{ inputs.action-sha }}" > "$RUNNER_TEMP/candidate-install-evidence.json"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: candidate-install-evidence
+          path: ${{ runner.temp }}/candidate-install-evidence.json
+          if-no-files-found: error

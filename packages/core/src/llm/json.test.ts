@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import {
+  capturedDogfoodReplayBundle,
+  decodedRecordedBody,
+  successfulCapturedHttp,
+} from '../__fixtures__/captured/live-dogfood-replay.test-helper.js';
 import { JsonExtractionError, extractJson } from './json.js';
 
 interface Verdict {
@@ -20,6 +25,22 @@ function validateVerdict(value: unknown): Verdict {
 }
 
 describe('extractJson', () => {
+  it('extracts the captured workflow 33321172589 diagnosis JSON', async () => {
+    const bundle = await capturedDogfoodReplayBundle();
+    const body = successfulCapturedHttp(bundle, 'nebius')[0]?.response.body;
+    if (body === undefined) throw new Error('Captured Nebius response body is unavailable');
+    const response = JSON.parse(decodedRecordedBody(body)) as {
+      choices: Array<{ message: { content: string } }>;
+    };
+
+    const diagnosis = extractJson(response.choices[0]!.message.content, (value) => value as {
+      class: string;
+      confidence: number;
+    });
+
+    expect(diagnosis).toMatchObject({ class: 'test-assertion', confidence: 0.96 });
+  });
+
   it('recovers an object wrapped in prose and think output', () => {
     const reply = {
       text: 'The answer follows.\n<think>private reasoning</think>\n{"approved":true}\nDone.',

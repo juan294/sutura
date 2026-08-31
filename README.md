@@ -4,16 +4,17 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6)
 ![Node](https://img.shields.io/badge/Node-22%2B-339933)
+![Python](https://img.shields.io/badge/Python-3.13-3776AB)
 
 AI agents make CI pass. Sutura verifies the fix, filters flaky failures,
 rejects unsafe shortcuts, and opens an evidence-backed PR for human review.
 
-Sutura reproduces real failures in isolated sandboxes and races candidate
-repairs before the independent audit. It never auto-merges.
+Sutura reproduces real failures in isolated sandboxes and searches bounded
+repair checkpoints before the independent audit. It never auto-merges.
 
-Sutura is built for the Nebius x NVIDIA Global AI Hackathon. Try the public
-[judge demo](https://github.com/juan294/sutura-demo): run the break-me workflow
-and watch the repair pull request and surgical report arrive.
+Sutura is built for the Nebius x NVIDIA Global AI Hackathon. The public judge
+demo remains disabled until the release, provider-spend, and non-collaborator
+acceptance gates are authorized and pass against one exact release commit.
 
 ## How it works
 
@@ -22,12 +23,12 @@ flowchart LR
   A[Failed GitHub Actions run] --> B[Exact PR head SHA and failed-step log]
   B --> C[Nemotron Nano diagnosis]
   C --> D[ConTree dependency-prepared snapshot]
-  D -->|Branching use 1| E1[Triage reproduction 1]
-  D -->|Same image| E2[Triage reproduction N]
-  E1 --> F[Nemotron Super candidates]
+  D -->|Branching use 1| E1[Progressive triage batch 1]
+  D -->|Same image| E2[Next batch when evidence is mixed]
+  E1 --> F[Nemotron Super repair tools]
   E2 --> F
-  D -->|Branching use 2| G1[Candidate 1]
-  D -->|Same image| G2[Candidate K]
+  D -->|Branching use 2| G1[Initial checkpoint branches]
+  D -->|Same image| G2[Adaptive beam expansion]
   F --> G1
   F --> G2
   G1 --> H[Deterministic winner]
@@ -40,10 +41,19 @@ flowchart LR
 ```
 
 ConTree branching has three distinct jobs: independent triage reproductions,
-parallel candidate races from one immutable parent image, and a clean rerun of
-the selected patch for adversarial audit. A passing command is necessary, but
+adaptive repair checkpoint search from immutable parent images, and a clean
+rerun of the selected patch for adversarial audit. Search starts four branches,
+keeps the best two, and stops at depth four or 12 total branches by default.
+A passing command is necessary, but
 it is not enough. Sutura also rejects deleted or skipped tests, weakened
 assertions, relaxed compiler or linter settings, and similar green-wash fixes.
+
+Sutura detects Node and Python repositories from bounded manifests, source-path
+evidence, and the observed failing command. A polyglot repository must set
+`"runtime": "node"` or `"runtime": "python"` in `.sutura.json`; equal automatic
+evidence fails closed. The Python runtime is pinned by exact image digest. It
+accepts only `uv.lock` or exact hash-locked binary requirements, prepares them
+before source overlay, and runs all project commands without network access.
 
 Every run ends as `fixed`, `flaky-no-patch`, `refused`, `gave-up`, or
 `infra-stop`. The PR comment uses a surgical report with Diagnosis, Triage,
@@ -55,12 +65,13 @@ workflow artifact.
 | Service | Runtime role |
 | --- | --- |
 | NVIDIA Nemotron on Nebius Token Factory | Nano classifies the failure, Super proposes repairs, and Ultra audits evidence that static checks cannot judge. |
-| Nebius ConTree Sandboxes | Prepares dependencies once, snapshots the filesystem, and runs isolated triage, race, and audit branches. |
+| Nebius ConTree Sandboxes | Prepares dependencies once, snapshots the filesystem, and runs isolated triage, adaptive search, and audit branches. |
 | Tavily | Grounds upstream dependency diagnoses in release and migration sources. It is optional for non-upstream cases and for the benchmark ablation. |
 
 The report identifies the model calls that actually occurred. Cost is reported
-as **inference cost** from the token ledger. It is not presented as total
-operating cost.
+as **inference cost** from the token ledger. Each entry keeps the abstract
+Nano, Super, or Ultra role separate from the actual routed provider model ID.
+It is not presented as total operating cost.
 
 ## Evidence, with claims discipline
 
@@ -93,8 +104,28 @@ The public dogfood record starts with [PR #18](https://github.com/juan294/sutura
   only a same-repository pull request tied to the failed run and exact head SHA.
 - Repository secrets are not copied into ConTree. Sandbox commands receive only
   `CI=true` and `NODE_ENV=test`.
+- Dependency installation receives only declared package and workspace
+  manifests. It runs with networking enabled and lifecycle scripts disabled.
+  Sutura overlays source only after that stage, then disables networking for
+  reproduction, triage, adaptive repair search, and audit.
+- Python dependency preparation rejects missing locks, editable or local paths,
+  VCS and requirement includes, workspaces, source builds, and repository build
+  hooks before it enables network access.
 - Log-derived source reads are bounded, stay inside the checkout, reject
   sensitive paths, and do not follow symlinks.
+- The repair agent can use only six bounded tools. Source reads and literal
+  searches stay inside the network-disabled sandbox. Tests resolve trusted
+  command IDs, run on disposable children, and never advance the editable
+  image. Every cumulative patch passes built-in and repository policy checks.
+- Global repair limits default to 8 model turns, 24 tool calls, 12 branches, 32
+  sandbox operations, 600 seconds, $0.25 inference cost, and 65,536 diff bytes.
+  Action inputs can lower these limits but cannot raise the core maxima.
+- Adaptive search defaults to four initial branches, beam width two, depth four,
+  and 12 total branches. `SUTURA_MAX_OPS` remains a ConTree concurrency limit;
+  the separate sandbox-operation and branch budgets cap total work.
+- Sutura redacts known credential patterns before Token Factory and Tavily
+  requests. It refuses an editable source excerpt when redaction would change
+  that excerpt.
 - Sutura claims a run before spending inference or sandbox capacity, so a
   repeated delivery cannot create a second repair attempt.
 - The selected diff is rerun and audited before publication. Sutura never
@@ -102,6 +133,10 @@ The public dogfood record starts with [PR #18](https://github.com/juan294/sutura
 
 Treat every generated patch as untrusted until its audit and repository checks
 pass. Keep branch protection and human merge review enabled.
+
+Read the complete [data boundary and retention contract](docs/security/data-boundaries.md)
+and [private repository threat model](docs/security/private-repositories.md)
+before enabling Sutura on confidential source.
 
 ## Install Sutura
 
@@ -124,12 +159,17 @@ Set `NEBIUS_API_KEY`, `CONTREE_TOKEN`, `CONTREE_PROJECT`, and optional
 `TAVILY_API_KEY` in your environment. Then run these commands:
 
 ```bash
-npx sutura@latest init
-npx sutura@latest doctor
+npx sutura@0.2.0 init
+npx sutura@0.2.0 doctor
 ```
 
 The installer detects a single CI workflow. Use `--workflow <name>` when the
 repository has multiple workflows. Add `--no-tavily` when Tavily is unavailable.
+
+The installer resolves the `v0.2.0` Action tag and writes its immutable commit
+SHA into the generated workflow. `doctor` resolves the tag again and verifies
+the pin. Release-candidate testing can supply an exact commit with
+`--action-sha <40-character-commit>`; mutable refs are rejected.
 
 The generated workflow uses the repository's automatic GitHub token. It stores
 provider keys as GitHub secrets. It stores `CONTREE_PROJECT` as a repository
@@ -137,7 +177,7 @@ variable. Sutura does not proxy requests through maintainer infrastructure.
 
 Sutura handles failed and timed-out runs from pull requests, pushes, scheduled workflows, and manual dispatches.
 
-Pull request runs receive an evidence comment. Direct runs receive the same evidence as a commit comment.
+Pull request runs receive an evidence comment. Direct runs receive the same evidence as a commit comment. Both paths also update one GitHub Check on the exact failing SHA and link the comment and check to the same HTML artifact. Maintainers can require the Sutura check. A verified repair remains `neutral` because the repair pull request still needs human review.
 
 When Sutura verifies a repair, it opens a pull request against the failing branch. It never merges the repair.
 
@@ -162,20 +202,154 @@ Run the complete local gate before you open a pull request:
 | Lint | `pnpm run lint` |
 | Tests | `pnpm run test` |
 | Build | `pnpm run build` |
+| Release contracts | `pnpm run test:release-contracts` |
+| Candidate package | `pnpm run test:package` |
 
 Live tests are opt-in with `SUTURA_LIVE=1` and require the corresponding
 credentials. Normal tests use recorded fixtures and do not spend API credit.
 
+### Offline replay and fixture capture
+
+Replay a complete, credential-free bundle through the real orchestrator without
+network or provider access:
+
+```text
+sutura replay --bundle /tmp/sutura-replay-77001.json --format json
+```
+
+Partial historical bundles fail closed before provider or sandbox work. To
+capture the GitHub and raw failed-job-log boundary for a CI run, use the
+read-only capture script:
+
+```text
+node scripts/capture-run.mjs 33239848825 \
+  --sutura-run 33239910020 \
+  --out packages/action/src/__fixtures__/captured \
+  --kind ci-failure \
+  --notes "A3: bundle.test.ts hook timeout"
+pnpm run test:captured-fixtures
+```
+
+The script records `workflowRunId`, `targetRunId`, and optional `suturaRunId`
+as separate values, preserves ANSI escapes and raw log text, and binds each
+bundle to its exact capture source, head SHA, and SHA-256 in the manifest. When a
+historical branch moved or was deleted, the manifest says that `getRefSha` was
+derived from the immutable workflow-run `head_sha`; it does not claim a current
+branch response. Capture does not call a model, Tavily, or a sandbox.
+
+Dogfood runs are produced only through the guarded command. Check the exact
+candidate first:
+
+```text
+pnpm run dogfood gate --sha <40-hex-develop-sha>
+```
+
+The gate requires a clean tree, that exact SHA on `origin/develop`, green push
+CI, a successful SHA-bound provider canary artifact from the last 24 hours, and
+any regression required by the previous ledger entry. One authorized attempt
+uses the canonical arithmetic fixture and records its result in ignored scratch
+state:
+
+```text
+pnpm run dogfood run --sha <40-hex-develop-sha> --attempt 1
+```
+
+The live ten-run streak has a separate authorization flag and a hard total
+spend cap. It reserves USD 1.50 before attempt 1, then reserves the highest
+observed attempt cost before each later dispatch:
+
+```text
+pnpm run dogfood streak --sha <40-hex-develop-sha> --authorize --cap-usd 10
+```
+
+The provider canary uses the same request serializer, strict one-field JSON
+Schema, thinking-off control, 8,192-token envelope, Token Factory endpoint,
+and Super model as production. The manual `Provider contract canary` workflow
+runs it with read-only repository permissions and uploads SHA-bound evidence.
+Unverified Super model overrides fail closed.
+
+The versioned [release evidence requirements](docs/demo/sutura-v0.2.0-release-evidence-requirements.json)
+define the eleven required records, including dogfood plus separate candidate and public
+matrices. Live benchmark, dogfood, publication, public demo, and Devpost evidence
+remain pending their separate authorization gates.
+
+### Evaluation Lab
+
+Sutura records a versioned, bounded trace for model, tool, sandbox, search,
+candidate, and audit events. The recorder removes hidden reasoning, credentials,
+full source, provider URLs, and unbounded logs before storage. Stored traces
+retain bounded provider request IDs for investigation. Deterministic exports and
+manifest result hashes normalize request IDs and timing fields.
+
+Validate and export a captured manifest with the CLI:
+
+```text
+sutura eval validate --manifest /tmp/sutura-eval/manifest.json
+sutura eval export --manifest /tmp/sutura-eval/manifest.json --format atif --output /tmp/sutura-eval/trajectory.atif.json
+sutura eval export --manifest /tmp/sutura-eval/manifest.json --format jsonl --output /tmp/sutura-eval/data-lab.jsonl
+```
+
+An ATIF file contains one trajectory. A one-case manifest writes the requested
+path. A multi-case manifest writes stable indexed sibling files beside that
+path. Sutura validates the complete bounded manifest before it creates output,
+and it refuses any existing output unless `--force` is explicit.
+
+The committed [manifest](docs/demo/sutura-evaluation-manifest-v1.json) and
+[ATIF trajectory](docs/demo/sutura-trajectory-v1.atif.json) are sanitized
+examples. The trajectory passes `nat.atif.trajectory.Trajectory` from NVIDIA
+NeMo Agent Toolkit commit `23cd127dfba56994cd272f2771350d0ec13f3dd1`
+with `uv 0.12.7`:
+
+```text
+uv run --project packages/evaluation python packages/evaluation/scripts/validate-atif.py docs/demo/sutura-trajectory-v1.atif.json
+```
+
+Data Lab upload remains disabled. JSONL is a local, explicit export only. Sutura
+does not change the account Zero Data Retention setting.
+
 ## GitHub Action configuration
 
-The action needs `actions: read`, `contents: write`, and `pull-requests: write`.
+The action needs `actions: read`, `checks: write`, `contents: write`, and `pull-requests: write`.
 Configure `NEBIUS_API_KEY`, `CONTREE_TOKEN`, and optional `TAVILY_API_KEY` as
 repository secrets. Configure `CONTREE_PROJECT` as a repository variable. The
 checked-in [workflow](.github/workflows/sutura.yml) shows the complete wiring.
 Pin external use to an immutable release tag or commit SHA.
 
-Defaults are five triage reproductions and three repair candidates. Model IDs
-and those limits are configurable action inputs.
+The optional `require-fixed` Action input makes any outcome other than `fixed`
+fail the Action job. Sutura's own workflow enables it, so a green workflow can
+no longer hide a `gave-up` self-repair result. Generated customer workflows keep
+the default advisory behavior and publish the exact outcome through the Action
+output and GitHub Check.
+
+Runtime detection is automatic for single-runtime repositories. For local
+healing, `--runtime node` or `--runtime python` is an explicit override. The
+Action `runtime` input accepts `auto`, `node`, or `python`. Prefer the protected
+`.sutura.json` field for a persistent polyglot repository choice.
+
+### Reduced-assurance audit-only mode
+
+Audit a supplied diff and paired CI logs without ConTree:
+
+```text
+sutura audit \
+  --case-dir /tmp/sutura-audit/case \
+  --candidate-diff /tmp/sutura-audit/candidate.diff \
+  --before-log /tmp/sutura-audit/before.log \
+  --after-log /tmp/sutura-audit/after.log \
+  --format json
+```
+
+This command requires only `NEBIUS_API_KEY`. It never executes the patch, opens a branch or pull request, or reads remote state. Each log must contain exactly one allowlisted `Run <command>` line and one standard GitHub `Process completed with exit code N` marker. The command must match in both logs; the before result must fail and the after result must pass. The result is an `AuditFile` with `assurance: "reduced"`. It cannot claim that a patch is fixed or verified. See the [fully local sanitized example](docs/demo/sutura-audit-only-local-v1.json).
+
+The triage default is a maximum of five reproductions. Sutura runs them in
+batches of two and can stop after a strict sequential probability ratio test
+crosses a boundary. Mixed evidence uses the full maximum, and reports include
+the observed probability, a 95 percent Wilson interval, the stop reason, and
+the method version. Nano and Ultra model IDs, the selected price-verified
+routing profile, the triage maximum, and lower-only repair budgets are
+configurable Action inputs. The Super repair model stays locked to its exact
+verified provider contract. The shipped `production-baseline-v1` profile keeps
+the current models; partial or price-unverified ablations cannot change them.
 
 ## Placebo
 
@@ -185,6 +359,7 @@ Build and run the standalone benchmark from the repository checkout:
 pnpm --filter placebo run build
 pnpm --filter placebo exec placebo run --adapter sutura
 pnpm --filter placebo exec placebo run --adapter sutura --only upstream --no-tavily
+pnpm --filter placebo exec placebo run --adapter sutura --manifest-output /tmp/sutura-eval/manifest.json
 ```
 
 Placebo keeps unsuccessful cases in the denominator and emits the failed IDs.

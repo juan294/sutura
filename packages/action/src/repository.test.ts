@@ -4,7 +4,10 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { GitRepository } from './repository.js';
+import { MAX_POLICY_BYTES } from '@sutura/core';
+
+import { capturedJobLog } from './__fixtures__/captured/test-helper.js';
+import { GitRepository, readBoundedPolicyFile } from './repository.js';
 
 const created: string[] = [];
 
@@ -14,12 +17,90 @@ async function temporaryDirectory(): Promise<string> {
   return path;
 }
 
+function capturedSourcePath(): string {
+  const path = /packages\/core\/src\/[A-Za-z0-9_.-]+\.test\.ts/u.exec(
+    capturedJobLog('33268037618'),
+  )?.[0];
+  if (path === undefined) throw new Error('Captured dogfood-16 log has no source path');
+  return path;
+}
+
 afterEach(async () => {
   const { rm } = await import('node:fs/promises');
   await Promise.all(created.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
 describe('GitRepository.readSourceExcerpts', () => {
+  it('rejects invalid bounds before reading a captured source path', async () => {
+    const root = await temporaryDirectory();
+    const repository = new GitRepository({ token: 'test', workspaceRoot: root });
+
+    await expect(repository.readSourceExcerpts(
+      root,
+      [{ path: capturedSourcePath() }],
+      { maxFiles: 0, maxLinesPerFile: 10, maxCharactersPerFile: 100, maxBytesPerFile: 100 },
+    )).rejects.toThrow('maxFiles must be a positive integer');
+  });
+
+  it.each(['', '/absolute.ts', 'src//double.ts'])('rejects unsafe source path %j', async (path) => {
+    const root = await temporaryDirectory();
+    const repository = new GitRepository({ token: 'test', workspaceRoot: root });
+
+    await expect(repository.readSourceExcerpts(
+      root,
+      [{ path }],
+      { maxFiles: 1, maxLinesPerFile: 10, maxCharactersPerFile: 100, maxBytesPerFile: 100 },
+    )).rejects.toThrow('Unsafe source path');
+  });
+
+  it.each(['../secret.ts', '.git/config', 'node_modules/pkg/index.js'])(
+    'rejects forbidden source segment in %s',
+    async (path) => {
+      const root = await temporaryDirectory();
+      const repository = new GitRepository({ token: 'test', workspaceRoot: root });
+
+      await expect(repository.readSourceExcerpts(
+        root,
+        [{ path }],
+        { maxFiles: 1, maxLinesPerFile: 10, maxCharactersPerFile: 100, maxBytesPerFile: 100 },
+      )).rejects.toThrow('Unsafe source path');
+    },
+  );
+
+  it('rejects more captured source requests than the file limit', async () => {
+    const root = await temporaryDirectory();
+    const repository = new GitRepository({ token: 'test', workspaceRoot: root });
+
+    await expect(repository.readSourceExcerpts(
+      root,
+      [{ path: capturedSourcePath() }, { path: 'package.json' }],
+      { maxFiles: 1, maxLinesPerFile: 10, maxCharactersPerFile: 100, maxBytesPerFile: 100 },
+    )).rejects.toThrow('Source request exceeds the file limit');
+  });
+
+  it('rejects a checkout outside the configured workspace root', async () => {
+    const root = await temporaryDirectory();
+    const outside = await temporaryDirectory();
+    const repository = new GitRepository({ token: 'test', workspaceRoot: root });
+
+    await expect(repository.readSourceExcerpts(
+      outside,
+      [{ path: capturedSourcePath() }],
+      { maxFiles: 1, maxLinesPerFile: 10, maxCharactersPerFile: 100, maxBytesPerFile: 100 },
+    )).rejects.toThrow('Checkout is outside the configured workspace root');
+  });
+
+  it('rejects an unsafe line for a captured source path', async () => {
+    const root = await temporaryDirectory();
+    const repository = new GitRepository({ token: 'test', workspaceRoot: root });
+
+    await expect(repository.readSourceExcerpts(
+      root,
+      [{ path: capturedSourcePath(), line: 0 }],
+      { maxFiles: 1, maxLinesPerFile: 10, maxCharactersPerFile: 100, maxBytesPerFile: 100 },
+    )).rejects.toThrow('Unsafe source line');
+  });
+
   it('reads a bounded regular file and records truncation', async () => {
     const root = await temporaryDirectory();
     await mkdir(join(root, 'src'));
@@ -32,7 +113,10 @@ describe('GitRepository.readSourceExcerpts', () => {
       { maxFiles: 1, maxLinesPerFile: 2, maxCharactersPerFile: 100, maxBytesPerFile: 100 },
     );
 
-    expect(excerpts).toEqual([{ path: 'src/example.ts', startLine: 1, content: 'one\ntwo\n', truncated: true }]);
+    expect(excerpts).toEqual([{
+      path: 'src/example.ts', startLine: 1, content: 'one\ntwo\n',
+      truncated: true, boundaryComplete: true,
+    }]);
   });
 
   it('rejects traversal and every symlink component', async () => {
@@ -56,7 +140,7 @@ describe('GitRepository.readSourceExcerpts', () => {
 
   it('stops reading at byte and character limits', async () => {
     const root = await temporaryDirectory();
-    await writeFile(join(root, 'large.ts'), 'abcdefghijk');
+    await writeFile(join(root, 'large.ts'), 'abc\ndefghijk');
     const repository = new GitRepository({ token: 'test', workspaceRoot: root });
 
     const [excerpt] = await repository.readSourceExcerpts(
@@ -65,7 +149,7 @@ describe('GitRepository.readSourceExcerpts', () => {
       { maxFiles: 1, maxLinesPerFile: 10, maxCharactersPerFile: 5, maxBytesPerFile: 6 },
     );
 
-    expect(excerpt).toMatchObject({ content: 'abcde', truncated: true });
+    expect(excerpt).toMatchObject({ content: 'abc\n', truncated: true });
   });
 
   it('omits a safe missing output path and continues to a package fallback', async () => {
@@ -84,6 +168,7 @@ describe('GitRepository.readSourceExcerpts', () => {
       startLine: 1,
       content: '{"name":"fixture"}\n',
       truncated: false,
+      boundaryComplete: true,
     }]);
   });
 
@@ -134,6 +219,75 @@ describe('GitRepository.readSourceExcerpts', () => {
 });
 
 describe('GitRepository exact-SHA operations', () => {
+  it('requires a non-empty GitHub token', () => {
+    expect(() => new GitRepository({ token: ' ' })).toThrow('GitHub token is required');
+  });
+
+  it.each([
+    ['invalid repository', 'owner', 'a'.repeat(40), undefined, undefined],
+    ['invalid SHA', 'owner/repo', 'not-a-sha', undefined, undefined],
+    ['invalid head ref', 'owner/repo', 'a'.repeat(40), '../unsafe', undefined],
+    ['invalid PR number', 'owner/repo', 'a'.repeat(40), 'feature/safe', 0],
+  ] as const)('rejects %s before fetch', async (_case, repo, sha, headRef, prNumber) => {
+    const root = await temporaryDirectory();
+    const repository = new GitRepository({ token: 'test', workspaceRoot: root });
+
+    await expect(repository.checkoutHead(repo, sha, headRef, prNumber)).rejects.toThrow();
+  });
+
+  it('fails closed when no validated ref resolves to the exact SHA', async () => {
+    const root = await temporaryDirectory();
+    const repository = new GitRepository({
+      token: 'test',
+      workspaceRoot: root,
+      run: async (_command, args) => {
+        if (args.includes('fetch')) throw new Error('unadvertised');
+        return '';
+      },
+    });
+
+    await expect(repository.checkoutHead('owner/repo', 'a'.repeat(40))).rejects.toThrow(
+      'Could not fetch the exact failing SHA',
+    );
+  });
+
+  it.each(['regular', 'symlink'] as const)(
+    '%s policy is read only from the exact commit and symlinks fail closed',
+    async (kind) => {
+      const root = await temporaryDirectory();
+      const outside = join(root, 'outside-policy.json');
+      await writeFile(outside, '{"version":1}');
+      const sha = 'a'.repeat(40);
+      const calls: Array<readonly string[]> = [];
+      const repository = new GitRepository({
+        token: 'test',
+        workspaceRoot: root,
+        run: async (_command, args) => {
+          calls.push(args);
+          if (args.includes('init')) {
+            const checkoutDir = args.at(-1) as string;
+            if (kind === 'symlink') {
+              await symlink(outside, join(checkoutDir, '.sutura.json'));
+            } else {
+              await writeFile(join(checkoutDir, '.sutura.json'), '{"version":1}');
+            }
+          }
+          return args.includes('rev-parse') ? `${sha}\n` : '';
+        },
+      });
+
+      const read = repository.readPolicyAtSha('owner/repo', sha);
+
+      if (kind === 'symlink') {
+        await expect(read).rejects.toThrow(/policy must not be a symlink/iu);
+      } else {
+        await expect(read).resolves.toBe('{"version":1}');
+      }
+      expect(calls.some((args) => args.includes('fetch') && args.includes(sha)))
+        .toBe(true);
+    },
+  );
+
   it('fetches and checks out only the requested commit', async () => {
     const calls: Array<{ command: string; args: readonly string[] }> = [];
     const root = await temporaryDirectory();
@@ -191,4 +345,79 @@ describe('GitRepository exact-SHA operations', () => {
       message: 'fix: test',
     })).rejects.toThrow(/exact failing SHA/i);
   });
+
+  it('refuses an invalid fix branch before running Git', async () => {
+    const root = await temporaryDirectory();
+    const repository = new GitRepository({ token: 'test', workspaceRoot: root });
+
+    await expect(repository.publishFix({
+      branch: '../unsafe',
+      checkoutDir: root,
+      diff: 'diff --git a/a b/a\n',
+      headSha: 'a'.repeat(40),
+      message: 'fix: test',
+    })).rejects.toThrow('Fix branch or exact failing SHA is invalid');
+  });
+
+  it('refuses a fix commit whose parent is not the exact failing SHA', async () => {
+    const root = await temporaryDirectory();
+    const headSha = 'a'.repeat(40);
+    const repository = new GitRepository({
+      token: 'test',
+      workspaceRoot: root,
+      run: async (_command, args) => args.includes('HEAD^') ? `${'b'.repeat(40)}\n` : `${headSha}\n`,
+    });
+
+    await expect(repository.publishFix({
+      branch: 'sutura/fix-12',
+      checkoutDir: root,
+      diff: 'diff --git a/a b/a\n',
+      headSha,
+      message: 'fix: test',
+    })).rejects.toThrow('Fix commit is not based on the exact failing SHA');
+  });
+});
+
+describe('GitRepository policy bounds', () => {
+  it('rejects a policy that changes during its bounded read', async () => {
+    const handle = {
+      stat: async () => ({ isFile: () => true, size: 1 }),
+      read: async (buffer: Buffer) => {
+        buffer.write('xx');
+        return { bytesRead: 2, buffer };
+      },
+    };
+
+    await expect(readBoundedPolicyFile(handle as never)).rejects.toThrow(
+      'Repository policy changed during bounded read',
+    );
+  });
+
+  it.each(['directory', 'oversized'] as const)(
+    'rejects a captured checkout whose policy is %s',
+    async (kind) => {
+      const root = await temporaryDirectory();
+      const sha = 'a'.repeat(40);
+      const repository = new GitRepository({
+        token: 'test',
+        workspaceRoot: root,
+        run: async (_command, args) => {
+          if (args.includes('init')) {
+            const checkoutDir = args.at(-1) as string;
+            if (kind === 'directory') {
+              await mkdir(join(checkoutDir, '.sutura.json'));
+            } else {
+              await writeFile(join(checkoutDir, '.sutura.json'), 'x'.repeat(MAX_POLICY_BYTES + 1));
+            }
+            await writeFile(join(checkoutDir, 'captured-source-path.txt'), capturedSourcePath());
+          }
+          return args.includes('rev-parse') ? `${sha}\n` : '';
+        },
+      });
+
+      await expect(repository.readPolicyAtSha('owner/repo', sha)).rejects.toThrow(
+        kind === 'directory' ? 'Repository policy must be a file' : 'Repository policy exceeds',
+      );
+    },
+  );
 });

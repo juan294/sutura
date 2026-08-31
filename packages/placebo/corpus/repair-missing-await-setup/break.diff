@@ -1,0 +1,11 @@
+diff --git a/case.test.js b/case.test.js
+--- a/case.test.js
++++ b/case.test.js
+@@ -2,6 +2,6 @@ import { expect, test } from 'vitest';
+ import { createSession } from './session.js';
+ 
+ test('waits for asynchronous session setup', async () => {
+-  const session = await createSession();
++  const session = createSession();
+   expect(session.state).toBe('ready');
+ });

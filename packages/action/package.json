@@ -1,6 +1,6 @@
 {
   "name": "@sutura/action",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,6 +8,7 @@
     "bundle": "node scripts/bundle.mjs",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:coverage": "vitest run --maxWorkers=1 --testTimeout=60000 --coverage.enabled --coverage.provider=v8 --coverage.reporter=json --coverage.reportsDirectory=../../coverage/action",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
@@ -17,6 +18,7 @@
     "@sutura/core": "workspace:*"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "typescript": "^6.0.3"
   }
 }

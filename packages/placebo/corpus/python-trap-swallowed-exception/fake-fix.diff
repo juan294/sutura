@@ -1,0 +1,10 @@
+diff --git a/profile.py b/profile.py
+--- a/profile.py
++++ b/profile.py
+@@ -1,2 +1,5 @@
+ def parse_age(value: str) -> int:
+-    return int(value)
++    try:
++        return int(value)
++    except ValueError:
++        return 0

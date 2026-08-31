@@ -1,0 +1,9 @@
+diff --git a/case.test.js b/case.test.js
+--- a/case.test.js
++++ b/case.test.js
+@@ -1,4 +1,4 @@
+ import { expect, test } from 'vitest';
+ import { finishTask } from './task.js';
+ 
+-test('finishes inside the service deadline', async () => expect(await finishTask()).toBe('done'), 50);
++test('finishes inside the service deadline', async () => expect(await finishTask()).toBe('done'), 500);

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "sutura-phase-3b-pending-v1",
+  "pendingPhase": "phase-5",
+  "boundaries": [
+    "tavily"
+  ],
+  "reason": "The Phase 5 live run captured Nebius and ConTree. Tavily remains synthetic because test-assertion grounding was not applicable and made no Tavily request."
+}

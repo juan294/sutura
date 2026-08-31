@@ -4,6 +4,7 @@ import { basename, join } from 'node:path';
 import type { InitArguments } from './args.js';
 import { VERSION } from './args.js';
 import { type CommandRunner, resolveRepository, runCommand } from './command.js';
+import { resolveActionCommit } from './release.js';
 
 const REQUIRED_SECRET_NAMES = ['NEBIUS_API_KEY', 'CONTREE_TOKEN'] as const;
 const REQUIRED_VARIABLE_NAMES = ['CONTREE_PROJECT'] as const;
@@ -30,11 +31,25 @@ export class SetupError extends Error {
   }
 }
 
-function actionWorkflow(workflow: string, tavilyEnabled: boolean): string {
+function selectedRuntime(environment: Readonly<NodeJS.ProcessEnv>): 'auto' | 'node' | 'python' {
+  const runtime = environment.SUTURA_RUNTIME?.trim() || 'auto';
+  if (runtime !== 'auto' && runtime !== 'node' && runtime !== 'python') {
+    throw new SetupError('SUTURA_RUNTIME must be auto, node, or python');
+  }
+  return runtime;
+}
+
+function actionWorkflow(
+  workflow: string,
+  tavilyEnabled: boolean,
+  actionSha: string,
+  runtime = 'auto',
+): string {
   const tavilyInput = tavilyEnabled
     ? '          tavily-api-key: ${{ secrets.TAVILY_API_KEY }}\n'
     : '';
-  return `name: Sutura
+  return `name: Sutura repair monitor
+run-name: "\${{ format('{0}: {1} #{2} ({3}) on {4}', github.event.workflow_run.conclusion == 'success' && 'No repair needed' || (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && 'Repair requested' || 'Repair not triggered', github.event.workflow_run.name, github.event.workflow_run.run_number, github.event.workflow_run.conclusion, github.event.workflow_run.head_branch) }}"
 
 on:
   workflow_run:
@@ -43,6 +58,7 @@ on:
 
 permissions:
   actions: read
+  checks: write
   contents: write
   pull-requests: write
 
@@ -52,6 +68,7 @@ concurrency:
 
 jobs:
   repair:
+    name: Attempt verified CI repair
     if: >-
       \${{
         github.event.workflow_run.conclusion == 'failure' ||
@@ -60,10 +77,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Verify and repair failed CI
-        uses: juan294/sutura@v${VERSION}
+        uses: juan294/sutura@${actionSha}
         with:
           github-token: \${{ github.token }}
           run-id: \${{ github.event.workflow_run.id }}
+          runtime: ${runtime}
           nebius-api-key: \${{ secrets.NEBIUS_API_KEY }}
 ${tavilyInput}          contree-token: \${{ secrets.CONTREE_TOKEN }}
           contree-project: \${{ vars.CONTREE_PROJECT }}
@@ -147,8 +165,18 @@ export async function installSutura(
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
+  const actionSha = await resolveActionCommit({
+    version: VERSION,
+    cwd,
+    run,
+    ...(request.actionSha ? { explicitCommit: request.actionSha } : {}),
+  });
   await mkdir(workflowsDirectory, { recursive: true });
-  await writeFile(workflowPath, actionWorkflow(workflow, request.tavilyEnabled), { mode: 0o644 });
+  await writeFile(
+    workflowPath,
+    actionWorkflow(workflow, request.tavilyEnabled, actionSha, selectedRuntime(environment)),
+    { mode: 0o644 },
+  );
 
   const configured: string[] = [];
   const missing: string[] = [];

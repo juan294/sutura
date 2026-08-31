@@ -1,0 +1,6 @@
+diff --git a/checks.json b/checks.json
+--- a/checks.json
++++ b/checks.json
+@@ -1 +1 @@
+-{"required":["lint","test"]}
++{"required":["test"]}

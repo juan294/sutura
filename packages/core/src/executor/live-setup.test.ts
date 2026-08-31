@@ -21,7 +21,7 @@ describe('prepareGitTooling', () => {
         kind: 'run',
         parent: 'node-image',
         cmd: 'apt-get update -qq && apt-get install -y -qq git',
-        opts: { timeoutSec: 300 },
+        opts: { timeoutSec: 300, network: 'enabled' },
         imageId: 'mem-1',
       },
     ]);

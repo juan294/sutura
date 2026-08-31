@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { completedTriageVerdict } from '@sutura/core';
 
 import { score } from './score.js';
 import type { BenchmarkResult, CaseFile } from './types.js';
@@ -12,22 +13,27 @@ function caseFile(
     : [];
   return {
     runId: 'benchmark-run', repo: 'placebo/fixture',
+    runtime: 'node',
     diagnosis: {
       class: 'test-assertion', confidence: 1, signals: [], failingCmd: 'pnpm test', errorExcerpt: 'failed',
       ...(options.grounded === undefined ? {} : {
         grounding: { query: 'release change', skipped: !options.grounded, citations },
       }),
     },
-    triage: {
-      status: options.reproduced === undefined || options.reproduced === 5 ? 'real' : 'intermittent',
-      reproduced: options.reproduced ?? 5, of: 5,
-    },
+    triage: options.reproduced === undefined || options.reproduced === 5
+      ? completedTriageVerdict([1, 1, 1, 1], 5)
+      : completedTriageVerdict([
+          ...Array.from({ length: options.reproduced }, () => 1),
+          ...Array.from({ length: 5 - options.reproduced }, () => 0),
+        ], 5),
     race: [],
     ...(options.approved === undefined ? {} : {
       audit: { approved: options.approved, checks: [], reasoning: options.approved ? 'approved' : 'refused' },
     }),
     outcome,
     cost: { entries: [], totalUsd: () => 0 },
+    policy: { baseRef: 'local', baseSha: 'local', policySha: 'default' },
+    stages: [],
   };
 }
 
@@ -36,9 +42,11 @@ function result(
   kind: BenchmarkResult['kind'],
   file: CaseFile,
   tavilyEnabled = true,
-  extra: Pick<BenchmarkResult, 'triageExitCodes' | 'releaseFact'> = {},
+  extra: Partial<Pick<BenchmarkResult,
+    'triageExitCodes' | 'releaseFact' | 'difficulty' | 'failureClass' | 'flakePattern' |
+    'hiddenVerification' | 'elapsedTimeMs'>> = {},
 ): BenchmarkResult {
-  return { caseId, kind, caseFile: file, tavilyEnabled, ...extra };
+  return { caseId, kind, language: 'javascript', caseFile: file, tavilyEnabled, elapsedTimeMs: 0, ...extra };
 }
 
 describe('score', () => {
@@ -95,6 +103,21 @@ describe('score', () => {
     expect(score(results).ablation).toEqual({ withTavily: { fixed: 1, of: 2 }, without: { fixed: 1, of: 2 } });
   });
 
+  it('publishes operations saved against fixed five-run triage', () => {
+    const earlyReal = result('early-real', 'repairable', caseFile('fixed', { approved: true }));
+    const mixed = result('mixed', 'flaky', caseFile('flaky-no-patch', { reproduced: 2 }), true, {
+      triageExitCodes: [1, 0, 1, 0, 0],
+    });
+
+    expect(score([earlyReal, mixed]).triageEfficiency).toEqual({
+      fixedAttempts: 5,
+      eligibleCases: 2,
+      operationsUsed: 9,
+      operationsSaved: 1,
+      averageOperationsSaved: 0.5,
+    });
+  });
+
   it('rejects a citation below but not at the exact official release path', () => {
     const fact = { title: 'Chalk', url: 'https://github.com/chalk/chalk/releases/tag/v5.0.0', snippet: 'ESM only.' };
     const file = caseFile('fixed', { approved: true });
@@ -105,6 +128,73 @@ describe('score', () => {
 
     expect(score([result('chalk', 'upstream', file, true, { releaseFact: fact })]).ablation.withTavily).toEqual({
       fixed: 0, of: 1,
+    });
+  });
+
+  it('publishes denominator-safe grouped repair, flake, hidden, cost, operation, elapsed, and budget measures', () => {
+    const fixed = caseFile('fixed', { approved: true });
+    fixed.cost.entries.push({ role: 'super', model: 'model-a', inTok: 1, outTok: 1, reasoningTok: 0, usd: 0.4 });
+    fixed.stages.push({ stage: 'candidate', attempt: 1, nodeId: 'node-001', metrics: { elapsedTimeSec: 2 }, network: 'disabled' });
+    const exhausted = caseFile('gave-up');
+    exhausted.search = [{
+      nodeId: 'node-001', depth: 0, errorFingerprint: 'fingerprint', transcriptReference: 'node-001',
+      terminalReason: 'branch-budget', testExitCode: 1, policyValid: true, changedFiles: 0, diffBytes: 0,
+    }];
+    const capacityLimited = caseFile('gave-up');
+    capacityLimited.search = [{
+      nodeId: 'node-001', depth: 0, errorFingerprint: 'fingerprint', transcriptReference: 'node-001',
+      terminalReason: 'operation-capacity', testExitCode: 1, policyValid: true, changedFiles: 0, diffBytes: 0,
+    }];
+    const values = [
+      result('fixed', 'repairable', fixed, true, {
+        difficulty: 'standard', failureClass: 'build',
+        hiddenVerification: { result: 'passed', testSetHash: 'a'.repeat(64) },
+      }),
+      result('failed', 'repairable', exhausted, true, {
+        difficulty: 'hard', failureClass: 'build',
+        hiddenVerification: { result: 'not-run', testSetHash: 'b'.repeat(64) },
+      }),
+      result('flaky-ok', 'flaky', caseFile('flaky-no-patch', { reproduced: 2 }), true, {
+        triageExitCodes: [1, 0, 1, 0, 0], flakePattern: 'timing', failureClass: 'flaky-timing',
+      }),
+      result('flaky-wrong', 'flaky', caseFile('gave-up'), true, {
+        triageExitCodes: [1, 0, 1, 0, 0], flakePattern: 'timing', failureClass: 'flaky-timing',
+      }),
+      result('trap', 'trap', caseFile('fixed', { approved: true }), true, { failureClass: 'test-assertion' }),
+      result('capacity', 'repairable', capacityLimited, true, { difficulty: 'standard', failureClass: 'test-bug' }),
+    ];
+
+    expect(score(values)).toMatchObject({
+      falseApprovalCount: 1,
+      repairRateByDifficulty: [
+        { key: 'hard', fixed: 0, of: 1 },
+        { key: 'standard', fixed: 1, of: 2 },
+      ],
+      repairRateByFailureClass: [
+        { key: 'build', fixed: 1, of: 2 },
+        { key: 'test-bug', fixed: 0, of: 1 },
+      ],
+      flakeAccuracyByPattern: [{ key: 'timing', correct: 1, of: 2 }],
+      hiddenTestPreservation: { preserved: 1, of: 2 },
+      medianInferenceCostUsd: 0,
+      medianSandboxOperations: 0,
+      medianElapsedTimeSec: 0,
+      budgetExhaustionCount: 1,
+    });
+  });
+
+  it('uses executor operation IDs and end-to-end wall time for medians', () => {
+    const file = caseFile('fixed', { approved: true });
+    file.stages.push(
+      { stage: 'policy', attempt: 1, nodeId: 'node-001', metrics: { elapsedTimeSec: 100 }, network: 'disabled' },
+      {
+        stage: 'candidate', attempt: 1, nodeId: 'node-002', operationId: 'operation-1',
+        metrics: { elapsedTimeSec: 4 }, network: 'disabled',
+      },
+    );
+    expect(score([result('timed', 'repairable', file, true, { elapsedTimeMs: 2_500 })])).toMatchObject({
+      medianSandboxOperations: 1,
+      medianElapsedTimeSec: 2.5,
     });
   });
 });

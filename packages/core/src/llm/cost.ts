@@ -39,24 +39,42 @@ function assertUsage(usage: TokenUsage): void {
   }
 }
 
+export function calculateModelCostUsd(
+  price: ModelPrice,
+  usage: TokenUsage,
+): number {
+  assertUsage(usage);
+  if (
+    !Number.isFinite(price.input) || price.input < 0 ||
+    !Number.isFinite(price.output) || price.output < 0
+  ) throw new RangeError('Model prices must be non-negative and finite');
+  return roundUsd(
+    (usage.inTok * price.input +
+      (usage.outTok + usage.reasoningTok) * price.output) /
+      TOKENS_PER_MILLION,
+  );
+}
+
 export class Ledger implements CostLedger {
   readonly entries: LedgerEntry[] = [];
 
   constructor(private readonly prices: Readonly<Record<string, ModelPrice>>) {}
 
-  add(model: string, usage: TokenUsage): LedgerEntry {
-    assertUsage(usage);
-    const price = this.prices[model];
+  add(
+    role: ModelTier,
+    model: string,
+    usage: TokenUsage,
+    routedPrice?: ModelPrice,
+  ): LedgerEntry {
+    const price = routedPrice ?? this.prices[role];
     if (!price) {
-      throw new Error(`No token prices configured for model: ${model}`);
+      throw new Error(`No token prices configured for role: ${role}`);
     }
 
-    const usd = roundUsd(
-      (usage.inTok * price.input +
-        (usage.outTok + usage.reasoningTok) * price.output) /
-        TOKENS_PER_MILLION,
-    );
-    const entry = { model, ...usage, usd };
+    // Token Factory reports reasoning inside completion tokens. Both visible
+    // output and reasoning are billed at the output price.
+    const usd = calculateModelCostUsd(price, usage);
+    const entry = { role, model, ...usage, usd };
     this.entries.push(entry);
     return entry;
   }

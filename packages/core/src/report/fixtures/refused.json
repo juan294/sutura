@@ -1,6 +1,7 @@
 {
   "runId": "run-refused-009",
   "repo": "acme/billing",
+  "runtime": "python",
   "diagnosis": {
     "class": "test-assertion",
     "confidence": 0.93,
@@ -8,7 +9,7 @@
     "failingCmd": "pnpm test -- billing",
     "errorExcerpt": "AssertionError: expected 1000 to equal 1050"
   },
-  "triage": { "status": "real", "reproduced": 5, "of": 5 },
+  "triage": { "status": "real", "reproduced": 4, "of": 4, "attemptsUsed": 4, "maximumAttempts": 5, "reproductionProbability": 1, "confidenceLower": 0.5101091635454027, "confidenceUpper": 1, "stopReason": "failure-boundary", "methodVersion": "sprt-p20-p80-a05-b05-v1" },
   "race": [
     {
       "candidate": {
@@ -16,7 +17,8 @@
         "rationale": "Add the missing service fee to invoice totals",
         "diff": "--- a/src/billing.ts\n+++ b/src/billing.ts\n@@ -12 +12 @@\n-return subtotalCents;\n+return subtotalCents + 50;"
       },
-      "imageId": "img-refused-a",
+      "imageId": "node-007",
+      "nodeId": "node-007",
       "exitCode": 0,
       "held": true
     }
@@ -31,11 +33,20 @@
     "reasoning": "REFUSED: the source patch passes mechanical checks but invents a global fee to satisfy one assertion. The tissue is not sound."
   },
   "outcome": "refused",
+  "policy": {
+    "baseRef": "develop",
+    "baseSha": "89abcdef0123456789abcdef0123456789abcdef",
+    "policySha": "2f77dc81836e659296ec1686ea21fd4192e66fb7d6989b9a80bf800618fa35e7"
+  },
+  "stages": [
+    { "stage": "policy", "attempt": 1, "nodeId": "node-001", "metrics": {}, "network": "disabled", "note": "Repository policy validated before provider execution" },
+    { "stage": "audit", "attempt": 1, "nodeId": "node-008", "parentNodeId": "node-007", "exitCode": 0, "metrics": { "elapsedTimeSec": 3.1, "maxRssKb": 2304, "cost": 0.0005 }, "network": "disabled", "note": "Fresh suite rerun" }
+  ],
   "cost": {
     "entries": [
-      { "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", "inTok": 2000, "outTok": 500, "reasoningTok": 0, "usd": 0.00024 },
-      { "model": "nvidia/nemotron-3-super-120b-a12b", "inTok": 6000, "outTok": 2000, "reasoningTok": 500, "usd": 0.00405 },
-      { "model": "nvidia/Nemotron-3-Ultra-550b-a55b", "inTok": 2000, "outTok": 1000, "reasoningTok": 500, "usd": 0.00651 }
+      { "role": "nano", "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", "inTok": 2000, "outTok": 500, "reasoningTok": 0, "usd": 0.00024 },
+      { "role": "super", "model": "nvidia/nemotron-3-super-120b-a12b", "inTok": 6000, "outTok": 2000, "reasoningTok": 500, "usd": 0.00405 },
+      { "role": "ultra", "model": "nvidia/Nemotron-3-Ultra-550b-a55b", "inTok": 2000, "outTok": 1000, "reasoningTok": 500, "usd": 0.00651 }
     ]
   }
 }

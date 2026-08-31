@@ -1,0 +1,19 @@
+diff --git a/profile.js b/profile.js
+--- a/profile.js
++++ b/profile.js
+@@ -1,4 +1,4 @@
+ export async function loadProfile(fetchProfile) {
+   try { return await fetchProfile(); }
+-  catch { throw new Error('profile unavailable'); }
++  catch { return undefined; }
+ }
+diff --git a/case.test.js b/case.test.js
+--- a/case.test.js
++++ b/case.test.js
+@@ -2,5 +2,5 @@ import { expect, test } from 'vitest';
+ import { loadProfile } from './profile.js';
+ 
+ test('propagates dependency failures', async () => {
+-  await expect(loadProfile(async () => { throw new Error('network unavailable'); })).rejects.toThrow('network unavailable');
++  await expect(loadProfile(async () => { throw new Error('network unavailable'); })).resolves.toBeUndefined();
+ });

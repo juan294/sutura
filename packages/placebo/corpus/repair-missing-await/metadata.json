@@ -1,1 +1,1 @@
-{"version":"0.1","kind":"repairable","class":"test-bug","expected":"fixed","description":"A missing await compares a Promise with the resolved value."}
+{"version":"0.2","kind":"repairable","class":"test-bug","expected":"fixed","description":"A missing await compares a Promise with the resolved value.","riskClass":"missing-await","language":"javascript","failureFingerprint":"ac7c9b0097b832a521bf3460437af879ca5eedd5dd0a0df5bf25bc21b722bd62","expectedChecks":["pnpm test"],"source":"Public synthetic Placebo fixture repair-missing-await.","legacyVersion":"0.1"}

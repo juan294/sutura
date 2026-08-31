@@ -1,3 +1,6 @@
+import type { RunMetrics } from './executor/types.js';
+import type { TraceEvent } from './trace/types.js';
+
 export type FailureClass =
   | 'typecheck'
   | 'lint'
@@ -33,6 +36,13 @@ export interface TriageVerdict {
   status: 'real' | 'flaky' | 'intermittent' | 'not-run';
   reproduced: number;
   of: number;
+  attemptsUsed: number;
+  maximumAttempts: number;
+  reproductionProbability: number;
+  confidenceLower: number;
+  confidenceUpper: number;
+  stopReason: 'failure-boundary' | 'pass-boundary' | 'maximum-attempts' | 'not-run';
+  methodVersion: 'sprt-p20-p80-a05-b05-v1';
 }
 
 export interface Candidate {
@@ -41,9 +51,18 @@ export interface Candidate {
   diff: string;
 }
 
+export type RepairFailureKind =
+  | 'provider'
+  | 'completion-limit'
+  | 'sandbox'
+  | 'policy'
+  | 'budget'
+  | 'invalid';
+
 export interface RaceResult {
   candidate: Candidate;
   imageId: string;
+  nodeId: string;
   exitCode: number;
   held: boolean;
   note?: string;
@@ -56,7 +75,11 @@ export type GreenwashCheck =
   | 'loosened-type'
   | 'relaxed-config'
   | 'pass-with-no-tests'
-  | 'llm-adjudication';
+  | 'llm-adjudication'
+  | 'policy-required-command'
+  | 'policy-resource-limit'
+  | 'paired-evidence'
+  | 'policy-patch';
 
 export interface AuditVerdict {
   approved: boolean;
@@ -70,6 +93,7 @@ export interface AuditVerdict {
 
 export interface CostLedger {
   entries: Array<{
+    role: 'nano' | 'super' | 'ultra';
     model: string;
     inTok: number;
     outTok: number;
@@ -79,13 +103,76 @@ export interface CostLedger {
   totalUsd(): number;
 }
 
+export type StageName =
+  | 'policy'
+  | 'preparation'
+  | 'reproduction'
+  | 'triage'
+  | 'candidate'
+  | 'search'
+  | 'audit';
+
+export interface StageEvidence {
+  stage: StageName;
+  attempt: number;
+  nodeId: string;
+  parentNodeId?: string;
+  exitCode?: number;
+  metrics: RunMetrics;
+  network: 'disabled' | 'enabled';
+  note?: string;
+  operationId?: string;
+  operationTerminal?: 'succeeded' | 'failed' | 'cancelled';
+  cancellationRequested?: boolean;
+}
+
+export interface SearchEvidence {
+  nodeId: string;
+  parentNodeId?: string;
+  depth: number;
+  errorFingerprint: string;
+  transcriptReference: string;
+  terminalReason?: string;
+  testExitCode: number;
+  policyValid: boolean;
+  changedFiles: number;
+  diffBytes: number;
+}
+
+export interface PolicyEvidence {
+  baseRef: string;
+  baseSha: string;
+  policySha: string;
+}
+
 export interface CaseFile {
   runId: string;
   repo: string;
+  runtime: 'node' | 'python';
   diagnosis: Diagnosis;
   triage: TriageVerdict;
   race: RaceResult[];
   audit?: AuditVerdict;
+  selectedCandidate?: {
+    id: string;
+    diffHash: string;
+  };
   outcome: 'fixed' | 'flaky-no-patch' | 'refused' | 'gave-up' | 'infra-stop';
+  cost: CostLedger;
+  policy: PolicyEvidence;
+  stages: StageEvidence[];
+  search?: SearchEvidence[];
+  trace?: TraceEvent[];
+}
+
+export interface AuditFile {
+  assurance: 'reduced';
+  outcome: 'audit-approved' | 'audit-refused';
+  diagnosis: {
+    before: Diagnosis;
+    after: Diagnosis;
+  };
+  policy: PolicyEvidence;
+  audit: AuditVerdict;
   cost: CostLedger;
 }

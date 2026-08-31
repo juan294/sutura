@@ -1,5 +1,6 @@
 import type { CaseFile } from '../domain.js';
 import {
+  aggregateStageEvidence,
   diffSummary,
   escapeHtml,
   formatConfidence,
@@ -8,9 +9,44 @@ import {
   outcomeLabel,
   raceNote,
   safeWebUrl,
-  stageForModel,
+  stageForRole,
   triageSentence,
 } from './format.js';
+
+function renderSandboxEvidence(caseFile: CaseFile): string {
+  const totals = aggregateStageEvidence(caseFile);
+  const hasOperationEvidence = caseFile.stages.some((entry) => entry.operationId !== undefined);
+  const rows = caseFile.stages.map((entry) => `<tr>
+        <th scope="row">${escapeHtml(entry.stage)}</th>
+        <td>${entry.attempt}</td>
+        <td><code>${escapeHtml(entry.nodeId)}</code></td>
+        <td>${entry.parentNodeId ? `<code>${escapeHtml(entry.parentNodeId)}</code>` : '—'}</td>
+        <td>${entry.exitCode ?? '—'}</td>
+        <td>${entry.metrics.elapsedTimeSec ?? '—'}</td>
+        <td>${entry.metrics.maxRssKb ?? '—'}</td>
+        <td>${entry.metrics.cost ?? '—'}</td>${hasOperationEvidence ? `
+        <td><code>${escapeHtml(entry.operationId ?? '—')}</code></td>
+        <td>${escapeHtml(entry.operationTerminal ?? '—')}</td>
+        <td>${entry.cancellationRequested === undefined ? '—' : entry.cancellationRequested ? 'YES' : 'NO'}</td>` : ''}
+        <td>${escapeHtml(entry.network)}</td>
+        <td>${escapeHtml(entry.note ?? '—')}</td>
+      </tr>`).join('');
+  return `<div class="sandbox-evidence">
+      <p class="micro-label">Repository policy binding</p>
+      <dl class="facts">
+        <div><dt>Runtime</dt><dd><code>${escapeHtml(caseFile.runtime)}</code></dd></div>
+        <div><dt>Base ref</dt><dd><code>${escapeHtml(caseFile.policy.baseRef)}</code></dd></div>
+        <div><dt>Base SHA</dt><dd><code>${escapeHtml(caseFile.policy.baseSha)}</code></dd></div>
+        <div><dt>Policy SHA</dt><dd><code>${escapeHtml(caseFile.policy.policySha)}</code></dd></div>
+      </dl>
+      <p class="micro-label">Sandbox totals</p>
+      <p>${totals.operationCount} operations · ${totals.elapsedTimeSec.toFixed(3)} s elapsed · ${totals.cpuTimeSec.toFixed(3)} s CPU · ${totals.maxRssKb.toLocaleString('en-US')} KB peak RSS · ${formatUsd(totals.sandboxCostUsd)} sandbox cost</p>
+      <div class="table-wrap"><table class="ledger">
+        <thead><tr><th>Stage</th><th>Attempt</th><th>Node</th><th>Parent</th><th>Exit</th><th>Elapsed s</th><th>Max RSS KB</th><th>Cost USD</th>${hasOperationEvidence ? '<th>Operation</th><th>Terminal</th><th>Cancel requested</th>' : ''}<th>Network</th><th>Note</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="${hasOperationEvidence ? 13 : 10}">No sandbox operations recorded</td></tr>`}</tbody>
+      </table></div>
+    </div>`;
+}
 
 function renderCitations(caseFile: CaseFile): string {
   const grounding = caseFile.diagnosis.grounding;
@@ -87,6 +123,14 @@ function renderProcedure(caseFile: CaseFile): string {
       </details>`,
     )
     .join('');
+  const searchRows = caseFile.search?.map((node) => `<tr>
+        <th scope="row"><code>${escapeHtml(node.nodeId)}</code></th>
+        <td><code>${escapeHtml(node.parentNodeId ?? 'baseline')}</code></td>
+        <td>${node.depth}</td>
+        <td>${node.testExitCode}</td>
+        <td>${node.policyValid ? 'PASS' : 'FAIL'}</td>
+        <td>${escapeHtml(node.terminalReason ?? 'frontier')}</td>
+      </tr>`).join('') ?? '';
 
   return `<section class="sheet procedure" aria-labelledby="procedure-title">
     <div class="section-label"><span>P</span><h2 id="procedure-title">Procedure</h2></div>
@@ -96,7 +140,12 @@ function renderProcedure(caseFile: CaseFile): string {
       <div class="table-wrap"><table>
         <thead><tr><th>Candidate</th><th>Strategy</th><th>Held?</th><th>Operative note</th></tr></thead>
         <tbody>${rows || '<tr><th scope="row">—</th><td>No candidates were produced</td><td>NO</td><td>Repair cycle stopped</td></tr>'}</tbody>
-      </table></div>
+      </table></div>${searchRows ? `
+      <p class="micro-label">Adaptive checkpoint lineage</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Node</th><th>Parent</th><th>Depth</th><th>Test exit</th><th>Policy</th><th>Terminal</th></tr></thead>
+        <tbody>${searchRows}</tbody>
+      </table></div>` : ''}
       <div class="diff-stack"><p class="micro-label">Candidate tissue samples</p>${diffs || '<p>No diffs recorded.</p>'}</div>
     </div>
   </section>`;
@@ -137,8 +186,8 @@ function renderPathology(caseFile: CaseFile): string {
 function renderDischarge(caseFile: CaseFile): string {
   const ledgerRows = caseFile.cost.entries
     .map(
-      (entry, index) => `<tr>
-        <th scope="row">${escapeHtml(stageForModel(entry.model, index))}</th>
+      (entry) => `<tr>
+        <th scope="row">${escapeHtml(stageForRole(entry.role))}</th>
         <td><code>${escapeHtml(entry.model)}</code></td>
         <td>${entry.inTok.toLocaleString('en-US')}</td>
         <td>${(entry.outTok + entry.reasoningTok).toLocaleString('en-US')}</td>
@@ -159,6 +208,7 @@ function renderDischarge(caseFile: CaseFile): string {
         <thead><tr><th>Stage</th><th>Model ID</th><th>Input</th><th>Output + reasoning</th><th>USD</th></tr></thead>
         <tbody>${ledgerRows || '<tr><td colspan="5">No inference recorded</td></tr>'}</tbody>
       </table></div>
+      ${renderSandboxEvidence(caseFile)}
     </div>
   </section>`;
 }
@@ -292,7 +342,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
 export function renderCaseFile(caseFile: CaseFile): string {
   const patchSections =
     caseFile.outcome === 'flaky-no-patch' || caseFile.outcome === 'infra-stop'
-      ? ''
+      ? renderDischarge(caseFile)
       : `${renderProcedure(caseFile)}${renderPathology(caseFile)}${renderDischarge(caseFile)}`;
   const risk =
     caseFile.outcome === 'fixed'

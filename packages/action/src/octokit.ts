@@ -56,6 +56,8 @@ export function createGitHubApi(
         headSha: data.head.sha,
         headRef: data.head.ref,
         headRepo: data.head.repo?.full_name ?? null,
+        baseSha: data.base.sha,
+        baseRef: data.base.ref,
       };
     },
 
@@ -166,9 +168,63 @@ export function createGitHubApi(
       return data.parents.map((parent) => parent.sha);
     },
 
+    async getCommitSha(sha) {
+      const { data } = await octokit.rest.repos.getCommit({ owner, repo, ref: sha });
+      return data.sha;
+    },
+
     async createPullRequest(input) {
       const { data } = await octokit.rest.pulls.create({ owner, repo, ...input });
       return { number: data.number, url: data.html_url };
+    },
+
+    async listCheckRunsForRef(ref) {
+      const checks = await octokit.paginate(
+        octokit.rest.checks.listForRef,
+        { owner, repo, ref, per_page: 100 },
+      );
+      return checks.map((check) => ({
+        id: check.id,
+        headSha: check.head_sha,
+        externalId: check.external_id,
+        name: check.name,
+        status: check.status,
+        conclusion: check.conclusion,
+      }));
+    },
+
+    async createCheckRun(input) {
+      const { data } = await octokit.rest.checks.create({
+        owner, repo,
+        name: input.name,
+        head_sha: input.headSha,
+        external_id: input.externalId,
+        status: input.status,
+        output: { title: input.title, summary: input.summary },
+      });
+      return { id: data.id };
+    },
+
+    async updateCheckRun(input) {
+      await octokit.rest.checks.update({
+        owner, repo,
+        check_run_id: input.checkRunId,
+        status: input.status,
+        conclusion: input.conclusion,
+        ...(input.detailsUrl === undefined ? {} : { details_url: input.detailsUrl }),
+        output: {
+          title: input.title,
+          summary: input.summary,
+          annotations: input.annotations.map((annotation) => ({
+            path: annotation.path,
+            start_line: annotation.startLine,
+            end_line: annotation.endLine,
+            annotation_level: annotation.annotationLevel,
+            title: annotation.title,
+            message: annotation.message,
+          })),
+        },
+      });
     },
   };
 }

@@ -1,9 +1,15 @@
 import { constants as fsConstants } from 'node:fs';
-import { lstat, mkdtemp, open, realpath } from 'node:fs/promises';
+import { lstat, mkdtemp, open, realpath, rm } from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
 
+import {
+  MAX_POLICY_BYTES,
+  selectBoundedSourceWindow,
+  SourceWindowError,
+} from '@sutura/core';
 import type {
   PublishFixInput,
   RepositoryPort,
@@ -119,48 +125,20 @@ function isOmittableSourceError(error: unknown): boolean {
   return code === 'ENOENT' || code === 'ENOTDIR' || code === 'EACCES' || code === 'EPERM';
 }
 
-function boundWindow(
-  bytes: Buffer,
-  fileSize: number,
-  requestedLine: number | undefined,
-  limits: Readonly<SourceReadLimits>,
-): { content: string; startLine: number; truncated: boolean } {
-  const scanned = new TextDecoder().decode(bytes);
-  const allLines: string[] = [];
-  let lineStart = 0;
-  for (let index = 0; index < scanned.length; index += 1) {
-    if (scanned[index] !== '\n') continue;
-    allLines.push(scanned.slice(lineStart, index + 1));
-    lineStart = index + 1;
+export async function readBoundedPolicyFile(
+  handle: Pick<FileHandle, 'read' | 'stat'>,
+): Promise<string> {
+  const file = await handle.stat();
+  if (!file.isFile()) throw new RepositoryError('Repository policy must be a file');
+  if (file.size > MAX_POLICY_BYTES) {
+    throw new RepositoryError(`Repository policy exceeds ${MAX_POLICY_BYTES} bytes`);
   }
-  if (lineStart < scanned.length || scanned.length === 0) {
-    allLines.push(scanned.slice(lineStart));
+  const bytes = Buffer.alloc(file.size + 1);
+  const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
+  if (bytesRead > MAX_POLICY_BYTES || bytesRead !== file.size) {
+    throw new RepositoryError('Repository policy changed during bounded read');
   }
-  if (
-    requestedLine !== undefined &&
-    requestedLine > allLines.length
-  ) {
-    throw new RepositoryError('Referenced source line exceeds the available source window');
-  }
-  const target = Math.min(
-    Math.max(requestedLine ?? 1, 1),
-    Math.max(allLines.length, 1),
-  );
-  const before = Math.floor(limits.maxLinesPerFile / 2);
-  const startIndex = Math.max(0, target - 1 - before);
-  const selected = allLines.slice(startIndex, startIndex + limits.maxLinesPerFile);
-  let text = selected.join('');
-  let truncated = startIndex > 0 || startIndex + selected.length < allLines.length || fileSize > bytes.length;
-  if (text.length > limits.maxCharactersPerFile) {
-    text = text.slice(0, limits.maxCharactersPerFile);
-    truncated = true;
-  }
-  const encoded = Buffer.from(text, 'utf8');
-  if (encoded.length > limits.maxBytesPerFile) {
-    text = new TextDecoder().decode(encoded.subarray(0, limits.maxBytesPerFile));
-    truncated = true;
-  }
-  return { content: text, startLine: startIndex + 1, truncated };
+  return bytes.subarray(0, bytesRead).toString('utf8');
 }
 
 export class GitRepository implements RepositoryPort {
@@ -258,9 +236,6 @@ export class GitRepository implements RepositoryPort {
           }
         }
         const resolved = await realpath(current);
-        if (!contained(root, resolved)) {
-          throw new RepositoryError(`Source path escapes checkout: ${reference.path}`);
-        }
         const handle = await open(resolved, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
         try {
           const metadata = await handle.stat();
@@ -283,12 +258,20 @@ export class GitRepository implements RepositoryPort {
             bytesReadTotal += bytesRead;
             for (const byte of value) if (byte === 0x0a) newlineCount += 1;
           }
-          const bounded = boundWindow(
-            Buffer.concat(chunks),
-            metadata.size,
-            reference.line,
-            limits,
-          );
+          const bytes = Buffer.concat(chunks);
+          let bounded;
+          try {
+            bounded = selectBoundedSourceWindow({
+              scanned: new TextDecoder().decode(bytes),
+              scannedBytes: bytes.length,
+              fileSize: metadata.size,
+              ...(reference.line === undefined ? {} : { requestedLine: reference.line }),
+              limits,
+            });
+          } catch (error) {
+            if (error instanceof SourceWindowError) throw new RepositoryError(error.message);
+            throw error;
+          }
           excerpts.push({
             path: reference.path.replace(/^\.\//, ''),
             ...bounded,
@@ -302,6 +285,33 @@ export class GitRepository implements RepositoryPort {
       }
     }
     return excerpts;
+  }
+
+  async readPolicyAtSha(repo: string, sha: string): Promise<string | null> {
+    const checkoutDir = await this.checkoutHead(repo, sha);
+    try {
+      const root = await realpath(checkoutDir);
+      const policyPath = join(root, '.sutura.json');
+      let metadata;
+      try {
+        metadata = await lstat(policyPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+        throw error;
+      }
+      if (metadata.isSymbolicLink()) {
+        throw new RepositoryError('Repository policy must not be a symlink');
+      }
+      const resolved = await realpath(policyPath);
+      const handle = await open(resolved, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+      try {
+        return await readBoundedPolicyFile(handle);
+      } finally {
+        await handle.close();
+      }
+    } finally {
+      await rm(checkoutDir, { recursive: true, force: true });
+    }
   }
 
   async publishFix(input: PublishFixInput): Promise<void> {

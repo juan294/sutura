@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
@@ -6,7 +7,7 @@ import type { CaseFile, CostLedger, GreenwashCheck } from '../domain.js';
 import { renderCaseFile } from './casefile.js';
 import { renderComment } from './markdown.js';
 
-const FIXTURES = ['fixed', 'flaky-no-patch', 'refused', 'gave-up'] as const;
+const FIXTURES = ['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop'] as const;
 const ARTIFACT_URL = 'https://github.com/acme/repo/actions/runs/42/artifacts/7';
 
 type SerializedCaseFile = Omit<CaseFile, 'cost'> & {
@@ -29,12 +30,21 @@ const OUTCOMES = new Set<CaseFile['outcome']>([
   'flaky-no-patch',
   'refused',
   'gave-up',
+  'infra-stop',
 ]);
 const TRIAGE_STATUSES = new Set<CaseFile['triage']['status']>([
   'real',
   'flaky',
   'intermittent',
+  'not-run',
 ]);
+const TRIAGE_STOP_REASONS = new Set<CaseFile['triage']['stopReason']>([
+  'failure-boundary',
+  'pass-boundary',
+  'maximum-attempts',
+  'not-run',
+]);
+const MODEL_ROLES = new Set(['nano', 'super', 'ultra']);
 const AUDIT_CHECKS = new Set<GreenwashCheck>([
   'deleted-test',
   'skipped-test',
@@ -43,6 +53,8 @@ const AUDIT_CHECKS = new Set<GreenwashCheck>([
   'relaxed-config',
   'pass-with-no-tests',
   'llm-adjudication',
+  'policy-required-command',
+  'policy-resource-limit',
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -82,6 +94,8 @@ function isRaceResult(value: unknown): boolean {
     typeof value.candidate.rationale === 'string' &&
     typeof value.candidate.diff === 'string' &&
     typeof value.imageId === 'string' &&
+    typeof value.nodeId === 'string' &&
+    value.imageId === value.nodeId &&
     typeof value.exitCode === 'number' &&
     typeof value.held === 'boolean'
   );
@@ -109,12 +123,65 @@ function isAudit(value: unknown): boolean {
 function isCostEntry(value: unknown): boolean {
   return (
     isRecord(value) &&
+    MODEL_ROLES.has(value.role as string) &&
     typeof value.model === 'string' &&
     typeof value.inTok === 'number' &&
     typeof value.outTok === 'number' &&
     typeof value.reasoningTok === 'number' &&
     typeof value.usd === 'number'
   );
+}
+
+function isTriage(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const { reproduced, of, attemptsUsed, maximumAttempts } = value;
+  const { reproductionProbability, confidenceLower, confidenceUpper } = value;
+  if (
+    ![reproduced, of, attemptsUsed, maximumAttempts].every(
+      (entry) => Number.isSafeInteger(entry) && Number(entry) >= 0,
+    ) ||
+    ![reproductionProbability, confidenceLower, confidenceUpper].every(
+      (entry) => typeof entry === 'number' && entry >= 0 && entry <= 1,
+    )
+  ) return false;
+  return TRIAGE_STATUSES.has(value.status as CaseFile['triage']['status']) &&
+    Number(reproduced) <= Number(of) &&
+    of === attemptsUsed &&
+    Number(attemptsUsed) <= Number(maximumAttempts) &&
+    Number(confidenceLower) <= Number(reproductionProbability) &&
+    Number(reproductionProbability) <= Number(confidenceUpper) &&
+    TRIAGE_STOP_REASONS.has(value.stopReason as CaseFile['triage']['stopReason']) &&
+    value.methodVersion === 'sprt-p20-p80-a05-b05-v1' &&
+    ((value.status === 'not-run' && value.stopReason === 'not-run' && attemptsUsed === 0) ||
+      (value.status !== 'not-run' && value.stopReason !== 'not-run' && Number(attemptsUsed) > 0));
+}
+
+function isPolicyEvidence(value: unknown): boolean {
+  return isRecord(value) &&
+    typeof value.baseRef === 'string' &&
+    typeof value.baseSha === 'string' &&
+    typeof value.policySha === 'string';
+}
+
+function isStageEvidence(value: unknown): boolean {
+  return isRecord(value) &&
+    typeof value.stage === 'string' &&
+    Number.isSafeInteger(value.attempt) &&
+    typeof value.nodeId === 'string' &&
+    isRecord(value.metrics) &&
+    (value.network === 'disabled' || value.network === 'enabled');
+}
+
+function isSearchEvidence(value: unknown): boolean {
+  return isRecord(value) &&
+    typeof value.nodeId === 'string' &&
+    Number.isSafeInteger(value.depth) &&
+    typeof value.errorFingerprint === 'string' &&
+    typeof value.transcriptReference === 'string' &&
+    Number.isSafeInteger(value.testExitCode) &&
+    typeof value.policyValid === 'boolean' &&
+    Number.isSafeInteger(value.changedFiles) &&
+    Number.isSafeInteger(value.diffBytes);
 }
 
 function assertSerializedCaseFile(value: unknown): asserts value is SerializedCaseFile {
@@ -128,6 +195,7 @@ function assertSerializedCaseFile(value: unknown): asserts value is SerializedCa
   if (
     typeof fixture.runId !== 'string' ||
     typeof fixture.repo !== 'string' ||
+    (fixture.runtime !== 'node' && fixture.runtime !== 'python') ||
     !isRecord(diagnosis) ||
     !FAILURE_CLASSES.has(diagnosis.class as CaseFile['diagnosis']['class']) ||
     typeof diagnosis.confidence !== 'number' ||
@@ -135,10 +203,7 @@ function assertSerializedCaseFile(value: unknown): asserts value is SerializedCa
     typeof diagnosis.failingCmd !== 'string' ||
     typeof diagnosis.errorExcerpt !== 'string' ||
     !isGrounding(diagnosis.grounding) ||
-    !isRecord(triage) ||
-    !TRIAGE_STATUSES.has(triage.status as CaseFile['triage']['status']) ||
-    typeof triage.reproduced !== 'number' ||
-    typeof triage.of !== 'number' ||
+    !isTriage(triage) ||
     !Array.isArray(fixture.race) ||
     !fixture.race.every(isRaceResult) ||
     !isAudit(fixture.audit) ||
@@ -146,6 +211,10 @@ function assertSerializedCaseFile(value: unknown): asserts value is SerializedCa
     !isRecord(cost) ||
     !Array.isArray(cost.entries) ||
     !cost.entries.every(isCostEntry)
+    || !isPolicyEvidence(fixture.policy)
+    || !Array.isArray(fixture.stages)
+    || !fixture.stages.every(isStageEvidence)
+    || (fixture.search !== undefined && (!Array.isArray(fixture.search) || !fixture.search.every(isSearchEvidence)))
   ) {
     throw new TypeError('fixture does not match the CaseFile contract');
   }
@@ -194,7 +263,8 @@ describe('fixture contract', () => {
           checks: [{ name: 'invented-check', passed: true }],
         },
       },
-      { ...fixture, cost: { entries: [{ model: 'nano', usd: 'free' }] } },
+      { ...fixture, cost: { entries: [{ role: 'nano', model: 'nano', usd: 'free' }] } },
+      { ...fixture, triage: { ...(isRecord(fixture.triage) ? fixture.triage : {}), methodVersion: 'unknown' } },
     ];
 
     for (const invalid of invalidFixtures) {
@@ -206,10 +276,44 @@ describe('fixture contract', () => {
 });
 
 describe('markdown report contract', () => {
-  it('reports the smallest held candidate as the race winner', async () => {
+  it('uses the explicit ledger role for routed model stage labels', async () => {
+    const caseFile = await loadFixture('fixed');
+    caseFile.cost.entries = [{
+      role: 'nano',
+      model: 'nvidia/NVIDIA-Nemotron-3-Super-49B-v1.5',
+      inTok: 10,
+      outTok: 5,
+      reasoningTok: 0,
+      usd: 0.001,
+    }];
+
+    const report = renderComment(caseFile);
+
+    expect(report).toContain('Diagnosis (nano): <code>nvidia/NVIDIA-Nemotron-3-Super-49B-v1.5</code>');
+    expect(report).not.toContain('Procedure (super): <code>nvidia/NVIDIA-Nemotron-3-Super-49B-v1.5</code>');
+  });
+
+  it('renders stable adaptive node lineage without provider image identifiers', async () => {
+    const caseFile = await loadFixture('fixed');
+    caseFile.search = [{
+      nodeId: 'search-002', parentNodeId: 'search-001', depth: 2,
+      errorFingerprint: 'abc', transcriptReference: 'trace-2', terminalReason: 'passed',
+      testExitCode: 0, policyValid: true, changedFiles: 1, diffBytes: 42,
+    }];
+    const markdown = renderComment(caseFile);
+    const html = renderCaseFile(caseFile);
+    expect(markdown).toContain('| search-002 | search-001 | 2 | 0 | PASS | passed |');
+    expect(html).toContain('Adaptive checkpoint lineage');
+    expect(html).toContain('<code>search-002</code>');
+    expect(html).not.toContain('image-child');
+  });
+  it('reports the exact audited candidate when a smaller held diff exists', async () => {
     const caseFile = await loadFixture('fixed');
     const originalWinner = caseFile.race[0]!;
-    originalWinner.candidate.diff += '\n+large follow-up';
+    caseFile.selectedCandidate = {
+      id: originalWinner.candidate.id,
+      diffHash: createHash('sha256').update(originalWinner.candidate.diff).digest('hex'),
+    };
     caseFile.race[1] = {
       ...caseFile.race[1]!,
       exitCode: 0,
@@ -222,7 +326,7 @@ describe('markdown report contract', () => {
 
     const report = renderComment(caseFile);
 
-    expect(report).toContain('**Diff summary:** candidate-b: +1 / −1 lines');
+    expect(report).toContain('**Diff summary:** candidate-a: +1 / −1 lines');
   });
 
   it('stops after triage for a flaky outcome', async () => {
@@ -231,16 +335,13 @@ describe('markdown report contract', () => {
     expect(report).toContain('### Triage');
     expect(report).not.toContain('### Procedure');
     expect(report).not.toContain('### Pathology');
-    expect(report).not.toContain('### Discharge');
+    expect(report).toContain('### Discharge');
+    expect(report).toContain('Sandbox cost:');
+    expect(report).toContain('Policy:');
   });
 
   it('reports a preparation failure before reproduction honestly', async () => {
-    const caseFile = await loadFixture('gave-up');
-    caseFile.outcome = 'infra-stop';
-    caseFile.diagnosis.class = 'infra';
-    caseFile.diagnosis.signals = ['sandbox-preparation:failed'];
-    caseFile.triage = { status: 'not-run', reproduced: 0, of: 0 };
-    caseFile.race = [];
+    const caseFile = await loadFixture('infra-stop');
 
     const report = renderComment(caseFile);
 
@@ -248,6 +349,8 @@ describe('markdown report contract', () => {
       'Sandbox dependency preparation failed. Sutura stopped before reproduction and inference.',
     );
     expect(report).not.toContain('passed in a clean sandbox reproduction');
+    expect(report).toContain('Sandbox cost:');
+    expect(report).toContain('Policy:');
   });
 
   it('shows refused evidence and the ledger-derived inference cost', async () => {
@@ -328,6 +431,8 @@ describe('HTML case-file contract', () => {
     const caseFile = await loadFixture('fixed');
     caseFile.race[0]!.candidate.diff = '</style><script>alert("x")</script>';
     caseFile.audit!.reasoning = '<img src=x onerror=alert(1)>';
+    caseFile.policy.baseRef = '<script>policy()</script>';
+    caseFile.stages[0]!.note = '<img src=x onerror=stage()>';
 
     const html = renderCaseFile(caseFile);
 
@@ -335,5 +440,7 @@ describe('HTML case-file contract', () => {
     expect(html).not.toContain('<img');
     expect(html).toContain('&lt;/style&gt;');
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(html).toContain('&lt;script&gt;policy()&lt;/script&gt;');
+    expect(html).toContain('&lt;img src=x onerror=stage()&gt;');
   });
 });

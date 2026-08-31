@@ -1,0 +1,34 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`reduced-assurance audit reports > renders stable HTML with a visible assurance warning 1`] = `
+"<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Sutura reduced-assurance audit</title>
+<style>body{font:16px/1.5 system-ui;margin:2rem auto;max-width:70rem;padding:0 1rem;color:#17221e}aside{border:3px solid #976812;padding:1rem;background:#fff8e8}table{border-collapse:collapse;width:100%}th,td{border:1px solid #aaa;padding:.6rem;text-align:left}code{overflow-wrap:anywhere}</style></head>
+<body><main><h1>Sutura reduced-assurance audit</h1><aside><strong>Reduced assurance</strong><p>This report classifies supplied logs and a supplied diff. Sutura did not execute or verify the patch.</p></aside>
+<h2>audit-approved</h2><p>Before: <code>pnpm test</code>. After: <code>pnpm test</code>.</p>
+<table><thead><tr><th>Audit check</th><th>Result</th><th>Evidence</th></tr></thead><tbody><tr><th>paired-evidence</th><td>PASS</td><td>pnpm test: exit 1 -&gt; 0</td></tr><tr><th>policy-patch</th><td>PASS</td><td>Built-in and repository patch rules passed</td></tr><tr><th>llm-adjudication</th><td>PASS</td><td>The supplied patch matches the diagnosed assertion failure.</td></tr></tbody></table>
+<p>Inference cost: $0.0007</p><p>Policy: <code>default</code></p></main></body></html>"
+`;
+
+exports[`reduced-assurance audit reports > renders stable Markdown with a visible assurance warning 1`] = `
+"# Sutura reduced-assurance audit
+
+> Reduced assurance: this report classifies supplied logs and a supplied diff. Sutura did not execute or verify the patch.
+
+**Outcome:** audit-approved
+
+**Before:** test-assertion via \`pnpm test\`
+
+**After:** test-assertion via \`pnpm test\`
+
+| Audit check | Result | Evidence |
+| --- | :---: | --- |
+| paired-evidence | PASS | pnpm test: exit 1 -\\> 0 |
+| policy-patch | PASS | Built-in and repository patch rules passed |
+| llm-adjudication | PASS | The supplied patch matches the diagnosed assertion failure. |
+
+**Inference cost:** $0.0007
+
+**Policy:** default
+"
+`;

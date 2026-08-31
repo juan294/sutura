@@ -1,0 +1,23 @@
+{
+  "name": "@sutura/evaluation",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "validate:atif": "uv run --project . python scripts/validate-atif.py ../../docs/demo/sutura-trajectory-v1.atif.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@sutura/core": "workspace:*"
+  }
+}

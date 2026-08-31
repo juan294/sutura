@@ -1,11 +1,12 @@
 import type { CaseFile, RaceResult } from '../domain.js';
+import { findSelectedCandidate } from '../engine/candidate-identity.js';
 import { selectWinner } from '../engine/repair.js';
 
-const STAGE_BY_MODEL = [
-  { match: /nano/i, stage: 'Diagnosis' },
-  { match: /super/i, stage: 'Procedure' },
-  { match: /ultra/i, stage: 'Pathology' },
-] as const;
+const STAGE_BY_ROLE = {
+  nano: 'Diagnosis',
+  super: 'Procedure',
+  ultra: 'Pathology',
+} as const;
 
 export function escapeHtml(value: string): string {
   return value.replace(
@@ -47,11 +48,34 @@ export function formatUsd(value: number): string {
   return `$${value.toFixed(4)}`;
 }
 
-export function stageForModel(model: string, index: number): string {
-  return (
-    STAGE_BY_MODEL.find(({ match }) => match.test(model))?.stage ??
-    `Inference ${index + 1}`
-  );
+export interface StageTotals {
+  elapsedTimeSec: number;
+  cpuTimeSec: number;
+  maxRssKb: number;
+  sandboxCostUsd: number;
+  operationCount: number;
+}
+
+export function aggregateStageEvidence(caseFile: CaseFile): StageTotals {
+  return caseFile.stages.reduce<StageTotals>((totals, entry) => ({
+    elapsedTimeSec: totals.elapsedTimeSec + (entry.metrics.elapsedTimeSec ?? 0),
+    cpuTimeSec: totals.cpuTimeSec +
+      (entry.metrics.systemCpuTimeSec ?? 0) +
+      (entry.metrics.userCpuTimeSec ?? 0),
+    maxRssKb: Math.max(totals.maxRssKb, entry.metrics.maxRssKb ?? 0),
+    sandboxCostUsd: totals.sandboxCostUsd + (entry.metrics.cost ?? 0),
+    operationCount: totals.operationCount + 1,
+  }), {
+    elapsedTimeSec: 0,
+    cpuTimeSec: 0,
+    maxRssKb: 0,
+    sandboxCostUsd: 0,
+    operationCount: 0,
+  });
+}
+
+export function stageForRole(role: keyof typeof STAGE_BY_ROLE): string {
+  return STAGE_BY_ROLE[role];
 }
 
 export function outcomeLabel(outcome: CaseFile['outcome']): string {
@@ -71,14 +95,21 @@ export function triageSentence(caseFile: CaseFile): string {
     }
     return 'The failing command passed in a clean sandbox reproduction. Sutura stopped before inference.';
   }
-  const { reproduced, of, status } = caseFile.triage;
+  const {
+    reproduced, of, status, maximumAttempts, reproductionProbability,
+    confidenceLower, confidenceUpper, stopReason, methodVersion,
+  } = caseFile.triage;
+  const evidence = `Reproduced ${reproduced}/${of} (maximum ${maximumAttempts}); ` +
+    `probability ${(reproductionProbability * 100).toFixed(1)}% ` +
+    `(95% Wilson ${(confidenceLower * 100).toFixed(1)}–${(confidenceUpper * 100).toFixed(1)}%); ` +
+    `${methodVersion}; ${stopReason}`;
   if (status === 'flaky') {
-    return `Reproduced ${reproduced}/${of} across forked sandbox states — flaky. No patch proposed.`;
+    return `${evidence} — flaky. No patch proposed.`;
   }
   if (status === 'intermittent') {
-    return `Reproduced ${reproduced}/${of} across forked sandbox states — intermittent.`;
+    return `${evidence} — intermittent.`;
   }
-  return `Reproduced ${reproduced}/${of} across forked sandbox states — real.`;
+  return `${evidence} — real.`;
 }
 
 export function raceNote(result: RaceResult): string {
@@ -89,7 +120,10 @@ export function raceNote(result: RaceResult): string {
 }
 
 export function diffSummary(caseFile: CaseFile): string {
-  const winner = selectWinner(caseFile.race);
+  const selected = caseFile.selectedCandidate;
+  const winner = selected === undefined
+    ? selectWinner(caseFile.race)
+    : findSelectedCandidate(caseFile.race, selected);
   if (!winner) return 'No candidate patch survived.';
 
   const lines = winner.candidate.diff.split(/\r?\n/);

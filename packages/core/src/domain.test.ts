@@ -10,6 +10,9 @@ import type {
   GreenwashCheck,
   Grounding,
   RaceResult,
+  PolicyEvidence,
+  SearchEvidence,
+  StageEvidence,
   TriageVerdict,
 } from './domain.js';
 
@@ -44,6 +47,13 @@ describe('domain model', () => {
       status: 'real' | 'flaky' | 'intermittent' | 'not-run';
       reproduced: number;
       of: number;
+      attemptsUsed: number;
+      maximumAttempts: number;
+      reproductionProbability: number;
+      confidenceLower: number;
+      confidenceUpper: number;
+      stopReason: 'failure-boundary' | 'pass-boundary' | 'maximum-attempts' | 'not-run';
+      methodVersion: 'sprt-p20-p80-a05-b05-v1';
     }>();
     expectTypeOf<Candidate>().toEqualTypeOf<{
       id: string;
@@ -53,6 +63,7 @@ describe('domain model', () => {
     expectTypeOf<RaceResult>().toEqualTypeOf<{
       candidate: Candidate;
       imageId: string;
+      nodeId: string;
       exitCode: number;
       held: boolean;
       note?: string;
@@ -65,6 +76,10 @@ describe('domain model', () => {
       | 'relaxed-config'
       | 'pass-with-no-tests'
       | 'llm-adjudication'
+      | 'policy-required-command'
+      | 'policy-resource-limit'
+      | 'paired-evidence'
+      | 'policy-patch'
     >();
     expectTypeOf<AuditVerdict>().toEqualTypeOf<{
       approved: boolean;
@@ -77,6 +92,7 @@ describe('domain model', () => {
     }>();
     expectTypeOf<CostLedger>().toEqualTypeOf<{
       entries: Array<{
+        role: 'nano' | 'super' | 'ultra';
         model: string;
         inTok: number;
         outTok: number;
@@ -88,6 +104,7 @@ describe('domain model', () => {
     expectTypeOf<CaseFile>().toEqualTypeOf<{
       runId: string;
       repo: string;
+      runtime: 'node' | 'python';
       diagnosis: Diagnosis;
       triage: TriageVerdict;
       race: RaceResult[];
@@ -99,6 +116,14 @@ describe('domain model', () => {
         | 'gave-up'
         | 'infra-stop';
       cost: CostLedger;
+      policy: PolicyEvidence;
+      stages: StageEvidence[];
+      search?: SearchEvidence[];
+      trace?: import('./trace/types.js').TraceEvent[];
+      selectedCandidate?: {
+        id: string;
+        diffHash: string;
+      };
     }>();
   });
 

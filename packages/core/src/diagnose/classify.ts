@@ -1,6 +1,7 @@
 import type { Diagnosis, FailureClass } from '../domain.js';
 import { extractJson } from '../llm/json.js';
 import type { TierLlm } from '../llm/types.js';
+import { redactExternalMessages } from '../security/external-text.js';
 import { FAILURE_TAXONOMY } from '../taxonomy.js';
 import { boundedTail } from '../text/bounded-tail.js';
 
@@ -175,14 +176,19 @@ export async function classify(
       'CI log does not contain an observed failing command',
     );
   }
-  const messages = [
+  const messages = redactExternalMessages([
     { role: 'system' as const, content: PUBLIC_TAXONOMY_PROMPT },
     { role: 'user' as const, content: boundedLog },
-  ];
+  ]);
   const options = {
     maxTokens: 2_048,
     temperature: 0,
     responseFormat: { type: 'json_object' as const },
+    routing: {
+      failureClass: mechanical.class,
+      diagnosisConfidence: mechanical.confidence,
+      remainingInferenceBudgetUsd: Number.MAX_SAFE_INTEGER,
+    },
   };
   let reply: { text: string };
 
@@ -197,11 +203,11 @@ export async function classify(
     model = await extractJson(reply, validateDiagnosis, async (repairPrompt) =>
       llm.chat(
         'nano',
-        [
+        redactExternalMessages([
           ...messages,
-          { role: 'assistant', content: reply.text },
-          { role: 'user', content: repairPrompt },
-        ],
+          { role: 'assistant' as const, content: reply.text },
+          { role: 'user' as const, content: repairPrompt },
+        ]),
         options,
       ),
     );

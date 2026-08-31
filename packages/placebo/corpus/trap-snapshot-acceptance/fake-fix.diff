@@ -1,0 +1,9 @@
+diff --git a/case.test.js b/case.test.js
+--- a/case.test.js
++++ b/case.test.js
+@@ -1,4 +1,4 @@
+ import { expect, test } from 'vitest';
+ import { renderStatus } from './render.js';
+ 
+-test('renders the reviewed status', () => expect(renderStatus()).toMatchInlineSnapshot(`"status: safe"`));
++test('renders the reviewed status', () => expect(renderStatus()).toMatchInlineSnapshot(`"status: unsafe"`));

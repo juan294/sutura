@@ -1,6 +1,6 @@
 {
   "name": "sutura",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Install and run verified self-healing CI for GitHub Actions.",
   "type": "module",
   "license": "MIT",
@@ -35,7 +35,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "pnpm --filter @sutura/core build && pnpm run typecheck && node scripts/bundle.mjs",
+    "build": "pnpm --filter @sutura/core build && pnpm --filter @sutura/evaluation build && pnpm run typecheck && node scripts/bundle.mjs",
     "bundle": "node scripts/bundle.mjs",
     "lint": "eslint src scripts",
     "prepack": "pnpm run build",
@@ -44,6 +44,7 @@
   },
   "devDependencies": {
     "@sutura/core": "workspace:*",
+    "@sutura/evaluation": "workspace:*",
     "esbuild": "^0.28.2"
   }
 }

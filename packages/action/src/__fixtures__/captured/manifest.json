@@ -1,0 +1,434 @@
+{
+  "schemaVersion": "sutura-captured-fixtures-v1",
+  "entries": [
+    {
+      "workflowRunId": "33104093797",
+      "targetRunId": "33104093797",
+      "suturaRunId": "33104247197",
+      "kind": "dogfood-gave-up",
+      "headSha": "aa468f2a30e1795c7f156a2597ecdc0cea0acd42",
+      "capturedAt": "2026-08-30T07:05:05.339Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "ba5632d408c0d8a3fee25be9956ba07278bec0ea539438d9b0e83c238217e0df",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 1: monorepo diagnostic paths; branch demo/dogfood-typecheck no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33106066503",
+      "targetRunId": "33106066503",
+      "suturaRunId": "33106159849",
+      "kind": "ci-failure",
+      "headSha": "b4e18f4cef1768f777b13567727d8816fbba04ae",
+      "capturedAt": "2026-08-30T07:05:09.901Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "fd16b745412ff62bdb25f66c3dcabf06d71e39b31f8542658eed3ca96d4dd86f",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 2; B1: Sutura crashed after non-JSON diagnosis reply; branch demo/dogfood-typecheck no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33108254241",
+      "targetRunId": "33108254241",
+      "suturaRunId": "33108388525",
+      "kind": "dogfood-gave-up",
+      "headSha": "603b25a6dd2463648d0cd84089e6e11ce43695ba",
+      "capturedAt": "2026-08-30T07:05:14.125Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "48dffb4298042cb043abf309041247d66aa9d4ca53033499f14ca0ce69e90d2e",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 3: package managers were not run through Corepack; branch demo/dogfood-typecheck no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33111238494",
+      "targetRunId": "33111238494",
+      "suturaRunId": "33111276693",
+      "kind": "dogfood-gave-up",
+      "headSha": "3a18962b5474908d23e20a14670dfb5a76270aac",
+      "capturedAt": "2026-08-30T07:05:18.320Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "db2fe10b5ebb2c6b7ec956d357c8dd74ce98bdb23106b7c79f307e8115c5178f",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 4: repair lacked exact source grounding; branch demo/dogfood-typecheck no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33118205130",
+      "targetRunId": "33118205130",
+      "suturaRunId": "33118310653",
+      "kind": "ci-failure",
+      "headSha": "3c723b83fdb162582065fe93d97747d1f54aa9da",
+      "capturedAt": "2026-08-30T07:05:22.484Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "23733469581051aae77cc695ae4a7aa693ae0115b3cdb94432f11973f651da1d",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 5: Sutura fixed the injected failure; branch demo/dogfood-typecheck no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33118889191",
+      "targetRunId": "33118889191",
+      "kind": "ci-success",
+      "headSha": "f4f17122121c3af658c41c7b5f41c45ccc259fe0",
+      "capturedAt": "2026-08-30T07:05:26.704Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "cc5f05448fa739f60253316d448bb6f4ffc7cf3f5c1b9a7c8c161df4ec1e5cbb",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 5 repair branch validation passed after manual workflow dispatch"
+    },
+    {
+      "workflowRunId": "33169026068",
+      "targetRunId": "33169026068",
+      "suturaRunId": "33169087281",
+      "kind": "ci-failure",
+      "headSha": "62422565fa59c03e32c577fd08b3b827358e5324",
+      "capturedAt": "2026-08-30T07:05:29.746Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "bda0365ae756c7c270730e889975fb6a093b09e0f50adeef14a6be6311517bd6",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "A1: release version and Action metadata drift; B2: Sutura rejected a push event; branch develop changed; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33238191746",
+      "targetRunId": "33238191746",
+      "suturaRunId": "33238255332",
+      "kind": "ci-failure",
+      "headSha": "6eb1e5e193224b2e67a9bc091be06d4f2932e177",
+      "capturedAt": "2026-08-30T07:05:33.740Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "9daf4ad178188c6a7ea8ac4dd17fd4b0b21e644ac08a504f9d639706887fc4fa",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "A2: bundle.test.ts Hook timed out in 10000ms; B3: runtime evidence exceeded 500 entries; branch develop changed; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33238860852",
+      "targetRunId": "33238860852",
+      "kind": "dogfood-gave-up",
+      "headSha": "21a3ffcdcd44a251350fa70482f4c6eb34b5e724",
+      "capturedAt": "2026-08-30T07:05:37.400Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "c09525c8d75355df72fb0217454672135155bf51b8574161561fbc29e4922598",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 1: repair tool definitions rejected by Token Factory; branch dogfood/sutura-v02-live no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33239848825",
+      "targetRunId": "33239848825",
+      "suturaRunId": "33239910020",
+      "kind": "ci-failure",
+      "headSha": "146cbc79c033e1309adb7a46b3c5c0ab0d903ac9",
+      "capturedAt": "2026-08-30T07:04:42.940Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "8254a21eba21791f5e16675ad8db68b4ddeb34930e9ad46a306f06ae4e658d2f",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "A3: bundle.test.ts hook timeout; Sutura crashed: failed-step log lost the observed command; branch develop changed; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33240572371",
+      "targetRunId": "33240572371",
+      "kind": "dogfood-gave-up",
+      "headSha": "01bdf2c9110037c890bc339a0382a596e9b25fc4",
+      "capturedAt": "2026-08-30T07:05:40.958Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "fb7d58d369918ab3693233f4e35c994ca4cfe56cc79a588a66860df9cc112925",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 2: tool_choice contract mismatch; branch dogfood/sutura-v02-live-2 no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33241358531",
+      "targetRunId": "33241358531",
+      "kind": "dogfood-gave-up",
+      "headSha": "eb86c9dcd98e9e6ea026e0e26d94f15769f4a0f4",
+      "capturedAt": "2026-08-30T07:06:04.207Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "7acd8ee4023aa9124a6933487a06b22c61398c39aea9a273f6c8daf13d5593cc",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 3: model-turn budget exhausted; branch dogfood/sutura-v02-live-3 no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33242204485",
+      "targetRunId": "33242204485",
+      "kind": "dogfood-gave-up",
+      "headSha": "d21d3c01a1ebd8f76fdac18c7fbe3fe0a520c61a",
+      "capturedAt": "2026-08-30T07:06:08.337Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "73dc2ed1ffe945e03b5ca367f78ee056efb023a6f80f699f43f0ed1da6f99ea7",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 4: ESM .js import did not resolve to .ts source; branch dogfood/sutura-v02-live-4 no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33243759945",
+      "targetRunId": "33243759945",
+      "kind": "dogfood-gave-up",
+      "headSha": "7a349ec697a8f1b755ae4981a6d76892ce6635f4",
+      "capturedAt": "2026-08-30T07:06:11.710Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "d4f814fcdbe8b10a6d1f5caab0c563d19a79e5a6da17558ac1b5d3e720a2c165",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 5: monorepo diagnostic paths did not resolve; branch dogfood/sutura-v02-live-5 no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33244884596",
+      "targetRunId": "33244884596",
+      "kind": "dogfood-gave-up",
+      "headSha": "2f1ae67b7744346181837d8b4a7773656e2fd2e4",
+      "capturedAt": "2026-08-30T07:06:15.678Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "3976a2ede1255ff88c75d3ba631c49d011b13596084308ed961dbe7577af0be1",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 6: dynamically read sources were dropped; branch dogfood/sutura-v02-live-6 no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33246383946",
+      "targetRunId": "33246383946",
+      "kind": "dogfood-gave-up",
+      "headSha": "db9a79b305ca846668b9b1e8c93271e3115c5a7f",
+      "capturedAt": "2026-08-30T07:06:19.346Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "f5d66315ddda22414b357499f16a7966ab32c5d6cee7c96ece3fbb46c28409d2",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 7: trusted repair test could not restore; branch dogfood/sutura-v02-live-7 no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33247360873",
+      "targetRunId": "33247360873",
+      "kind": "dogfood-gave-up",
+      "headSha": "2216cc7c03aab6b4789b74ded077c963f985cc8f",
+      "capturedAt": "2026-08-30T07:06:22.898Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "6bc4fbffaa990a17d5f37937a8c660c12020d119295df1f9972b2393e487991e",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 8: accepted patch was never verified; branch dogfood/sutura-v02-live-8 no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33248388988",
+      "targetRunId": "33248388988",
+      "kind": "dogfood-gave-up",
+      "headSha": "fbc86d083ee4cd167ad3b959f612af49b4323a16",
+      "capturedAt": "2026-08-30T07:06:26.679Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "de3f307802d8d7d0454fbac5af84059d363749e32e0d057d0d67581b36090726",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 9: control path redesign; branch dogfood/sutura-v02-live-9 no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33252323239",
+      "targetRunId": "33252323239",
+      "kind": "dogfood-gave-up",
+      "headSha": "c1f0c767d688d98b7d88a347e7f1afc35c4aae96",
+      "capturedAt": "2026-08-30T07:06:30.353Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "301fa90d1d16c3dcb992c272d2670143de4392561093ba1e77207bcf02621d96",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 10: ANSI Vitest output and marker broke pnpm workspace source reconstruction; branch dogfood/sutura-v02-live-10 no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33254012677",
+      "targetRunId": "33254012677",
+      "kind": "dogfood-gave-up",
+      "headSha": "742390f8a9cc7e7657b89a551282338eecd76e5c",
+      "capturedAt": "2026-08-30T07:06:34.026Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "775afb9b9d056af4fc4d095df8ffdabd1f5384b4122eb4a8812134c09a63a346",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 11: schema-valid replies failed local bounds and old-text copy contract; branch dogfood/sutura-v02-live-11 no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33256572917",
+      "targetRunId": "33256572917",
+      "kind": "dogfood-gave-up",
+      "headSha": "6539ec9b949c4ba0049b3331c1e379a6dc182ef7",
+      "capturedAt": "2026-08-30T07:06:37.478Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "1dad7bb1a211174ef852216b9380e77d73c909180afcee19b12936c81735fdb1",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 12: replies hit the 8192-token completion ceiling; branch dogfood/sutura-v02-live-12 no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33258931783",
+      "targetRunId": "33258931783",
+      "kind": "dogfood-gave-up",
+      "headSha": "23d7adb3017bfae10ca59e46a8b0243b11b17221",
+      "capturedAt": "2026-08-30T07:06:41.075Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "e66a19d569ae17acdf0ca0bd7ea1d3d112edec43f5edb8cfae2ad53f2d24b026",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 13: replies selected ranges outside the three-line source; branch dogfood/sutura-v02-live-13 no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33261605582",
+      "targetRunId": "33261605582",
+      "kind": "dogfood-gave-up",
+      "headSha": "f71a7d136a664a84f21ed44096d82cd132e72b6e",
+      "capturedAt": "2026-08-30T07:06:45.331Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "26e28dbf534c27d4b75c608b3c3413b82857219ec7807a2c91b779aa05e75c32",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 14: invalid ranges and trusted-test failures; branch dogfood/sutura-v02-live-14 no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33265268595",
+      "targetRunId": "33265268595",
+      "kind": "dogfood-gave-up",
+      "headSha": "d4969c24b58c9df3b34eff205fdfed79091dddaa",
+      "capturedAt": "2026-08-30T07:06:49.349Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "616c65950d9c80c0d345f2c977b3d64808f63dbddf50b4fe792578837def474c",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 15: strict-schema failures and completion-limit terminal; branch dogfood/sutura-v02-live-15 no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33268037618",
+      "targetRunId": "33268037618",
+      "kind": "dogfood-gave-up",
+      "headSha": "7488afea0c123f3ef84354301c6a1d90e4f9cfb0",
+      "capturedAt": "2026-08-30T07:06:53.141Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "646342ed5f317a39d27a022f543acdd126e610296a192010442a80c97efd42cb",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "C attempt 16: endpoint rejected reasoning_effort none; branch dogfood/sutura-v02-live-16 no longer exists; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33268672246",
+      "targetRunId": "33268672246",
+      "kind": "ci-failure",
+      "headSha": "54def5cb53ab0b6359369d8513a8a63c7bd7fc76",
+      "capturedAt": "2026-08-30T07:06:56.782Z",
+      "source": "c026b69b7fa673286639e5935d678dd3ff310341",
+      "capturedBy": "local",
+      "bundleSha256": "b83a2860f42297b43e9dd9eaae3d4082e941cd451c38c1fda1959ba3f8638157",
+      "boundaries": [
+        "github"
+      ],
+      "notes": "A4: committed Action bundle was stale; branch develop changed; getRefSha derived from immutable workflow run head_sha"
+    },
+    {
+      "workflowRunId": "33321106629",
+      "targetRunId": "33321106629",
+      "suturaRunId": "33321172589",
+      "kind": "dogfood-gave-up",
+      "headSha": "1951701b95fd559335af3d3a7502e271c02befa2",
+      "capturedAt": "2026-08-30T16:02:28.403Z",
+      "source": "https://github.com/juan294/sutura/actions/runs/33321106629",
+      "capturedBy": "workflow",
+      "bundleSha256": "be789a2c58c298768224239d3cf84965a8b85ea558a705acd410dd52a62d47d3",
+      "boundaries": [
+        "contree",
+        "executor",
+        "github",
+        "nebius",
+        "repository"
+      ],
+      "notes": "Live dogfood gave up after seven search nodes; recovered losslessly for replay by omitting optional Tavily and replacing the legacy checkout capture error with an empty runtime snapshot because the recorded repository policy fixes runtime=node"
+    },
+    {
+      "workflowRunId": "33323765566",
+      "targetRunId": "33323765566",
+      "suturaRunId": "33323856253",
+      "kind": "dogfood-gave-up",
+      "headSha": "eeaaf1191dfb000fe4f262c6b1716aaf4624e10d",
+      "capturedAt": "2026-08-30T17:03:08.478Z",
+      "source": "https://github.com/juan294/sutura/actions/runs/33323765566",
+      "capturedBy": "workflow",
+      "bundleSha256": "26090235fa2d017fe6538e5799e535f0af433573b54e8e7430ae6ef81725550d",
+      "boundaries": [
+        "contree",
+        "executor",
+        "github",
+        "nebius",
+        "repository"
+      ],
+      "notes": "Live dogfood streak attempt 1 gave up"
+    },
+    {
+      "workflowRunId": "33325938237",
+      "targetRunId": "33325938237",
+      "suturaRunId": "33326031664",
+      "kind": "dogfood-refused",
+      "headSha": "506c6cc44aae56df0d0e820d3733bb6bc900d4de",
+      "capturedAt": "2026-08-30T17:45:35.801Z",
+      "source": "https://github.com/juan294/sutura/actions/runs/33325938237",
+      "capturedBy": "workflow",
+      "bundleSha256": "126969bd50159b7bbf05d885e9402d889ecba7d2e3398cfa2fd481ca7111d993",
+      "boundaries": [
+        "contree",
+        "executor",
+        "github",
+        "nebius",
+        "repository"
+      ],
+      "notes": "Live dogfood streak attempt 1 refused because Ultra returned null tool_calls with valid audit content"
+    }
+  ]
+}

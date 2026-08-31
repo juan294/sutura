@@ -1,0 +1,12 @@
+diff --git a/cache.js b/cache.js
+--- a/cache.js
++++ b/cache.js
+@@ -1,7 +1,7 @@
+ const cache = new Map();
+ 
+ export function bundle(entry, target, source) {
+-  const key = `${entry}:${target}`;
++  const key = entry;
+   if (!cache.has(key)) cache.set(key, `${target}:${source}`);
+   return cache.get(key);
+ }

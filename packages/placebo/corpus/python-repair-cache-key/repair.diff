@@ -1,0 +1,7 @@
+diff --git a/cache.py b/cache.py
+--- a/cache.py
++++ b/cache.py
+@@ -1,2 +1,2 @@
+ def cache_key(namespace: str, key: str) -> str:
+-    return key
++    return f"{namespace}:{key}"

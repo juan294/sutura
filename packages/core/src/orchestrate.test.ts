@@ -1,8 +1,10 @@
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 import { describe, expect, it, vi } from 'vitest';
 
+import { DEFAULT_MODELS } from './config.js';
 import type {
   AuditVerdict,
   Candidate,
@@ -11,15 +13,32 @@ import type {
 } from './domain.js';
 import { InMemoryExecutor } from './executor/memory.js';
 import type { InMemoryCall, InMemoryRunResult } from './executor/memory.js';
+import { completedTriageVerdict, notRunTriageVerdict } from './engine/triage.js';
 import type { TierLlm } from './llm/types.js';
+import { DEFAULT_MODEL_PRICES } from './llm/cost.js';
+import {
+  type HttpRequestInit,
+  type HttpResponse,
+} from './llm/nebius.js';
+import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
+import { createTokenFactoryClient } from './llm/token-factory.js';
+import { ReplayRecorder } from './replay/bundle.js';
+import { repairProposalReply } from './testing/repair-proposal.test-helper.js';
+import {
+  capturedFailingRun,
+  capturedLiveRun,
+} from './__fixtures__/captured/captured-live-run.test-helper.js';
+import { parseRepositoryPolicy } from './policy/schema.js';
 import {
   AlreadyAttemptedError,
+  OrchestrationError,
   SUTURA_SANDBOX_ENV,
   attemptMarker,
   collectFailedLogs,
   extractSourceReferences,
   orchestrate,
   readRepairSourceContext,
+  resolveAuditedCandidate,
   type AttemptTarget,
   type FailingWorkflowRun,
   type GitHubOrchestrationPort,
@@ -31,10 +50,11 @@ const HONEST_DIFF = [
   'diff --git a/src/value.ts b/src/value.ts',
   '--- a/src/value.ts',
   '+++ b/src/value.ts',
-  '@@ -1 +1 @@',
+  '@@ -1,1 +1,1 @@',
   '-export const value: string = 1;',
   '+export const value: string = "1";',
 ].join('\n') + '\n';
+const HONEST_REPLACEMENT = 'export const value: string = "1";\n';
 
 const SECOND_DIFF = HONEST_DIFF.replace(
   '+export const value: string = "1";',
@@ -45,12 +65,35 @@ const THIRD_DIFF = HONEST_DIFF.replace(
   '+export const result: string = "1";',
 );
 
+const DOGFOOD_DIFF = [
+  'diff --git a/packages/core/src/dogfood-add.ts b/packages/core/src/dogfood-add.ts',
+  '--- a/packages/core/src/dogfood-add.ts',
+  '+++ b/packages/core/src/dogfood-add.ts',
+  '@@ -1,3 +1,3 @@',
+  ' export function add(left: number, right: number): number {',
+  '-  return left - right;',
+  '+  return left + right;',
+  ' }',
+  '',
+].join('\n');
+
+function capturedDogfoodLog(rawLog: string): string {
+  const lines = rawLog.split(/\r?\n/u).filter((line) =>
+    /##\[group\]Run pnpm run test$/u.test(line)
+    || /dogfood-add|expected -1 to be 5/u.test(line),
+  );
+  if (lines.length < 3) throw new Error('Captured dogfood log lacks its command or failure');
+  return lines.join('\n');
+}
+
 const RUN: FailingWorkflowRun = {
   runId: '98765',
   repo: 'acme/widget',
   prNumber: 42,
   headSha: '0123456789abcdef0123456789abcdef01234567',
   headRef: 'feature/broken-build',
+  baseSha: '89abcdef0123456789abcdef0123456789abcdef',
+  baseRef: 'develop',
   failedSteps: [
     {
       jobName: 'test',
@@ -70,6 +113,7 @@ class FakeGitHub implements GitHubOrchestrationPort {
     title: string;
   }> = [];
   readonly artifacts: Array<{ name: string; html: string }> = [];
+  readonly checks: Array<{ target: AttemptTarget; input: import('./orchestrate.js').CompleteCheckInput }> = [];
 
   constructor(readonly run = RUN) {}
 
@@ -90,6 +134,8 @@ class FakeGitHub implements GitHubOrchestrationPort {
     return {
       kind: prNumber === undefined ? 'commit' : 'pull-request',
       commentId: id,
+      checkRunId: 700 + id,
+      headSha: this.run.headSha,
     };
   }
 
@@ -114,6 +160,15 @@ class FakeGitHub implements GitHubOrchestrationPort {
     this.artifacts.push({ name, html });
     return { url: `https://github.test/artifacts/${name}` };
   }
+
+  async uploadReplayBundle(name: string, json: string): Promise<{ url: string }> {
+    this.artifacts.push({ name, html: json });
+    return { url: `https://github.test/artifacts/${name}` };
+  }
+
+  async completeCheck(target: AttemptTarget, input: import('./orchestrate.js').CompleteCheckInput): Promise<void> {
+    this.checks.push({ target, input });
+  }
 }
 
 class FakeRepository implements RepositoryPort {
@@ -130,8 +185,15 @@ class FakeRepository implements RepositoryPort {
     paths: string[];
   }> = [];
   readonly sources = new Map([
-    ['src/value.ts', 'export const value: string = 1;'],
+    ['src/value.ts', 'export const value: string = 1;\n'],
   ]);
+  policyContent: string | null = null;
+  readonly policyReads: Array<{ repo: string; sha: string }> = [];
+
+  async readPolicyAtSha(repo: string, sha: string): Promise<string | null> {
+    this.policyReads.push({ repo, sha });
+    return this.policyContent;
+  }
 
   async checkoutHead(repo: string, sha: string): Promise<string> {
     this.checkouts.push({ repo, sha });
@@ -156,8 +218,8 @@ class FakeRepository implements RepositoryPort {
     expect(_limits).toEqual({
       maxFiles: 8,
       maxLinesPerFile: 120,
-      maxCharactersPerFile: 12_000,
-      maxBytesPerFile: 12_000,
+      maxCharactersPerFile: 1_000,
+      maxBytesPerFile: 1_000,
     });
     this.sourceReads.push({
       checkoutDir,
@@ -216,7 +278,7 @@ function scriptedLlm(auditVerdict: AuditVerdict['approved'] = true): {
   const chat = vi.fn(async (tier: 'nano' | 'super' | 'ultra') => {
     if (tier === 'nano') return { text: JSON.stringify(diagnosisReply()) };
     if (tier === 'super') {
-      return { text: JSON.stringify({ candidates: candidates() }) };
+      return repairProposalReply(candidates()[0]!, HONEST_REPLACEMENT);
     }
     return {
       text: JSON.stringify({
@@ -227,7 +289,13 @@ function scriptedLlm(auditVerdict: AuditVerdict['approved'] = true): {
       }),
     };
   });
-  return { llm: { chat }, chat };
+  const modelQuote = (tier: 'nano' | 'super' | 'ultra') => ({
+    role: tier,
+    modelId: DEFAULT_MODELS[tier],
+    price: DEFAULT_MODEL_PRICES[tier],
+    profileId: DEFAULT_ROUTING_PROFILE_ID,
+  });
+  return { llm: { chat, modelQuote }, chat };
 }
 
 function runResult(exitCode: number): InMemoryRunResult {
@@ -237,6 +305,27 @@ function runResult(exitCode: number): InMemoryRunResult {
     stderr: exitCode === 0 ? '' : 'TS2322',
     truncated: false,
     metrics: {},
+  };
+}
+
+function providerResponse(content: string): HttpResponse {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    async json() {
+      return {
+        choices: [{ finish_reason: 'stop', message: { content } }],
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 20,
+          completion_tokens_details: { reasoning_tokens: 0 },
+        },
+      };
+    },
+    async text() {
+      return '';
+    },
   };
 }
 
@@ -254,11 +343,25 @@ function context(
   const github = new FakeGitHub(run);
   const repository = new FakeRepository();
   let scenarioIndex = 0;
-  const executor = new InMemoryExecutor((command) =>
-    command.includes('corepack pnpm install --frozen-lockfile')
-      ? runResult(0)
-      : runResult(exits[scenarioIndex++] ?? 1),
-  );
+  let agentPatched = false;
+  const executor = new InMemoryExecutor((command) => {
+    if (command.includes('git apply - && git diff')) {
+      agentPatched = true;
+      const encoded = command.match(/printf '%s' '?([A-Za-z0-9+/=]+)'? \|/u)?.[1] ?? '';
+      return { ...runResult(0), stdout: Buffer.from(encoded, 'base64').toString('utf8') };
+    }
+    if (
+      command.includes('corepack pnpm install --frozen-lockfile') ||
+      command.includes('git init --quiet')
+    ) return runResult(0);
+    if (agentPatched) {
+      agentPatched = false;
+      const firstRaceExit = exits[scenarioIndex] ?? 1;
+      scenarioIndex += 3;
+      return runResult(firstRaceExit);
+    }
+    return runResult(exits[scenarioIndex++] ?? 1);
+  });
   const { llm, chat } = scriptedLlm(auditVerdict);
   return {
     github,
@@ -274,6 +377,7 @@ function context(
       cost: ledger(),
       triageN: 2,
       raceK: 3,
+      runtimeId: 'node',
     },
   };
 }
@@ -285,6 +389,226 @@ function runCalls(executor: InMemoryExecutor): Extract<InMemoryCall, { kind: 'ru
 }
 
 describe('orchestrate', () => {
+  it('replays live crash B4', async () => {
+    const captured = await capturedFailingRun('A3', '33239848825');
+    const currentLog = captured.run.failedSteps[0]!.log;
+    const preFixLog = currentLog
+      .split(/\r?\n/u)
+      .slice(1)
+      .join('\n');
+    const run: FailingWorkflowRun = {
+      runId: captured.bundle.runId,
+      repo: captured.bundle.repo,
+      headSha: captured.bundle.actionSha,
+      baseSha: captured.bundle.actionSha,
+      headRef: 'develop',
+      baseRef: 'develop',
+      failedSteps: [{ jobName: 'checks', stepName: 'Test CLI', log: preFixLog }],
+    };
+    const { ctx, chat, executor, github } = context([], true, run);
+
+    await expect(orchestrate(ctx)).rejects.toEqual(new OrchestrationError(
+      'Failed-step logs do not contain an observed failing command',
+    ));
+    expect(currentLog).toContain('##[group]Run pnpm run test');
+    expect(preFixLog).not.toContain('##[group]Run pnpm run test');
+    expect(chat).not.toHaveBeenCalled();
+    expect(executor.calls).toEqual([]);
+    expect(github.comments).toEqual([]);
+  });
+
+  it.each([
+    ['different workflow run id', { runId: '1' }, 'different workflow run id'],
+    ['invalid workflow run id', { runId: '../unsafe' }, 'positive decimal id'],
+    ['empty repository', { repo: '' }, 'invalid repository metadata'],
+    ['invalid pull request number', { prNumber: 0 }, 'invalid repository metadata'],
+    ['invalid head SHA', { headSha: 'bad' }, 'invalid head SHA'],
+    ['invalid base SHA', { baseSha: 'bad' }, 'invalid base SHA'],
+    ['empty head ref', { headRef: '' }, 'empty head or base ref'],
+    ['empty base ref', { baseRef: '' }, 'empty head or base ref'],
+    ['no failed steps', { failedSteps: [] }, 'no failed-step logs'],
+  ] as const)('rejects captured run metadata with %s', async (_case, override, message) => {
+    const captured = await capturedFailingRun('A3', '33239848825');
+    const invalid = { ...captured.run, ...override } as FailingWorkflowRun;
+    const { ctx, github, executor, chat } = context([], true, captured.run);
+    vi.spyOn(github, 'getFailingRun').mockResolvedValue(invalid);
+    if ('runId' in override && override.runId !== '1') ctx.runId = override.runId;
+
+    await expect(orchestrate(ctx)).rejects.toThrow(message);
+    expect(executor.calls).toEqual([]);
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  it('rejects a captured A2 runtime conflict before sandbox or provider work', async () => {
+    const captured = await capturedFailingRun('A2', '33238191746');
+    const { ctx, repository, executor, chat } = context([], true, captured.run);
+    ctx.runtimeId = 'python';
+    repository.policyContent = JSON.stringify({ version: 1, runtime: 'node' });
+
+    await expect(orchestrate(ctx)).rejects.toThrow(
+      'Configured runtime conflicts with repository policy runtime',
+    );
+    expect(executor.calls).toEqual([]);
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unverified Python image before sandbox or provider work', async () => {
+    const captured = await capturedFailingRun('A2', '33238191746');
+    const pythonRun: FailingWorkflowRun = {
+      ...captured.run,
+      failedSteps: [{
+        jobName: 'test',
+        stepName: 'pytest',
+        log: 'Run pytest -q\ntests/test_value.py:1: assertion failed',
+      }],
+    };
+    const { ctx, executor, chat } = context([], true, pythonRun);
+    ctx.runtimeId = 'python';
+    ctx.imageRef = 'python:latest';
+
+    await expect(orchestrate(ctx)).rejects.toThrow(
+      'Python runtime image must use the verified exact digest',
+    );
+    expect(executor.calls).toEqual([]);
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  it('rejects a fixed case file without its audited candidate identity', () => {
+    expect(() => resolveAuditedCandidate({ race: [] })).toThrow(
+      'Fixed case file does not identify its audited candidate',
+    );
+  });
+
+  it('rejects an ambiguous audited candidate identity', () => {
+    const candidate = { id: 'duplicate', rationale: 'same', diff: HONEST_DIFF };
+    const result = {
+      candidate,
+      imageId: 'node-1',
+      nodeId: 'node-1',
+      exitCode: 0,
+      held: true,
+    };
+
+    expect(() => resolveAuditedCandidate({
+      selectedCandidate: {
+        id: candidate.id,
+        diffHash: createHash('sha256').update(candidate.diff).digest('hex'),
+      },
+      race: [result, { ...result, imageId: 'node-2', nodeId: 'node-2' }],
+    })).toThrow('Fixed case file audited candidate identity is ambiguous');
+  });
+
+  it('rejects an invalid base policy before provider or sandbox calls', async () => {
+    const { ctx, executor, github, repository, chat } = context([]);
+    repository.policyContent = '{"version":2}';
+
+    await expect(orchestrate(ctx)).rejects.toThrow(/unsupported policy version/iu);
+
+    expect(repository.policyReads).toEqual([{ repo: RUN.repo, sha: RUN.baseSha }]);
+    expect(executor.calls).toEqual([]);
+    expect(chat).not.toHaveBeenCalled();
+    expect(github.comments).toEqual([]);
+  });
+
+  it('binds public evidence to the exact base policy without provider image ids', async () => {
+    const { ctx, repository } = context([1, 1, 1, 0, 1, 1, 0]);
+    repository.policyContent = JSON.stringify({
+      version: 1,
+      allowedPaths: ['src/**'],
+    });
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(caseFile.policy).toEqual({
+      baseRef: RUN.baseRef,
+      baseSha: RUN.baseSha,
+      policySha: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
+    expect(caseFile.stages[0]).toMatchObject({
+      stage: 'policy',
+      nodeId: 'node-001',
+      network: 'disabled',
+    });
+    expect(caseFile.race.every(({ imageId, nodeId }) =>
+      imageId === nodeId && /^search-\d{3}$/u.test(nodeId),
+    )).toBe(true);
+    expect(JSON.stringify(caseFile)).not.toContain('memory-image');
+  });
+
+  it('never sends denied paths or their log lines to readers or external providers', async () => {
+    const deniedRun: FailingWorkflowRun = {
+      ...RUN,
+      failedSteps: [{
+        ...RUN.failedSteps[0]!,
+        log: [
+          'Run pnpm test',
+          'src/private/token.ts:1: supersecret failure detail',
+          '/home/runner/work/acme/acme/src/private/token.ts:2: runner-secret',
+          'file:///workspace/src/private/token.ts:3: workspace-secret',
+          'a/src/private/token.ts:4: git-secret',
+          '/workspace/src/private data/token.ts:5: spaced-secret',
+          'private.ts:6: root-secret',
+          './private.ts:7: dot-root-secret',
+          'src/value.ts:1: Type number is not assignable to type string',
+        ].join('\n'),
+      }],
+    };
+    const { ctx, repository, chat } = context(
+      [1, 1, 1, 0, 1, 1, 0],
+      true,
+      deniedRun,
+    );
+    const search = vi.fn().mockResolvedValue([{
+      title: 'Release notes',
+      url: 'https://example.test/release',
+      snippet: 'Documented breaking release',
+    }]);
+    ctx.tavily = { search };
+    chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
+      if (tier === 'nano') return { text: JSON.stringify({
+        ...diagnosisReply(),
+        class: 'dep-upstream-breaking',
+      }) };
+      if (tier === 'super') return repairProposalReply(candidates()[0]!, HONEST_REPLACEMENT);
+      return { text: JSON.stringify({
+        approved: true,
+        reasoning: 'The patch corrects the diagnosed source type.',
+      }) };
+    });
+    repository.policyContent = JSON.stringify({
+      version: 1,
+      allowedPaths: ['**'],
+      deniedReadPaths: ['src/private/**', 'src/private data/**', 'private.ts'],
+    });
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(caseFile.outcome).toBe('fixed');
+    expect(repository.sourceReads.flatMap(({ paths }) => paths))
+      .not.toContain('src/private/token.ts');
+    const deniedEvidence = /src\/private|private\.ts|supersecret|runner-secret|workspace-secret|git-secret|spaced-secret|root-secret/u;
+    expect(JSON.stringify(chat.mock.calls)).not.toMatch(deniedEvidence);
+    expect(JSON.stringify(search.mock.calls)).not.toMatch(deniedEvidence);
+    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super', 'ultra']);
+    expect(search).toHaveBeenCalledOnce();
+  });
+
+  it('refuses protected candidate paths before sandbox execution', async () => {
+    const { ctx, executor, repository } = context([1, 1, 1]);
+    repository.policyContent = JSON.stringify({
+      version: 1,
+      allowedPaths: ['src/**'],
+      protectedPaths: ['src/**'],
+    });
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(caseFile.race).toEqual([]);
+    expect(caseFile.stages.some(({ stage }) => stage === 'search')).toBe(true);
+    expect(runCalls(executor).some(({ cmd }) => cmd.includes('git apply'))).toBe(false);
+  });
+
   it('opens one fix PR from the exact failing head after reproduction, triage, race, and audit', async () => {
     // reproduction, triage x2, race x3, audit rerun
     const { ctx, executor, github, repository, chat } = context([
@@ -319,12 +643,27 @@ describe('orchestrate', () => {
     expect(github.comments[0]?.body).toContain(attemptMarker(RUN.runId));
     expect(github.comments[0]?.body).toContain('Open case-file artifact');
     expect(github.artifacts).toHaveLength(1);
-    expect(chat.mock.calls.map(([tier]) => tier)).toEqual([
-      'nano',
-      'super',
-      'ultra',
-    ]);
+    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super', 'ultra']);
     expect(runCalls(executor)).toHaveLength(8);
+  });
+
+  it('keeps a fixed outcome when replay upload fails', async () => {
+    const { ctx, github } = context([1, 1, 1, 0, 1, 1, 0]);
+    ctx.replay = new ReplayRecorder(RUN.runId, RUN.repo, RUN.headSha, {
+      triageN: 2, raceK: 3,
+      models: { nano: 'nano', super: 'super', ultra: 'ultra' },
+      routingProfileId: 'test', maxOps: 1,
+    });
+    const upload = vi.spyOn(github, 'uploadReplayBundle')
+      .mockRejectedValue(new Error('artifact service unavailable'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(orchestrate(ctx)).resolves.toMatchObject({ outcome: 'fixed' });
+
+    expect(upload).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith('Sutura could not upload the replay bundle.');
+    expect(github.artifacts).toHaveLength(1);
+    warn.mockRestore();
   });
 
   it('opens a fix PR against the exact branch for a direct push failure', async () => {
@@ -333,6 +672,8 @@ describe('orchestrate', () => {
       repo: RUN.repo,
       headSha: RUN.headSha,
       headRef: 'develop',
+      baseSha: RUN.headSha,
+      baseRef: 'develop',
       failedSteps: RUN.failedSteps,
     };
     const { ctx, github, repository } = context(
@@ -358,20 +699,125 @@ describe('orchestrate', () => {
     }));
   });
 
+  it('replays live runs 3, 4, 5, and 10 through the serialized production path', async () => {
+    capturedLiveRun(3, '33241358531');
+    capturedLiveRun(4, '33242204485');
+    capturedLiveRun(5, '33243759945');
+    capturedLiveRun(10, '33252323239');
+    const captured = await capturedFailingRun('Live run 10', '33252323239');
+    const dogfoodRun: FailingWorkflowRun = {
+      ...captured.run,
+      failedSteps: [{
+        ...captured.run.failedSteps[0]!,
+        log: capturedDogfoodLog(captured.jobLogText),
+      }],
+    };
+    expect(extractSourceReferences(collectFailedLogs(dogfoodRun.failedSteps))).toContainEqual({
+      path: 'packages/core/src/dogfood-add.test.ts',
+      line: 7,
+    });
+    const { ctx, github, repository } = context(
+      [1, 1, 1, 0, 1, 1, 0], true, dogfoodRun,
+    );
+    repository.sources.clear();
+    repository.sources.set(
+      'packages/core/src/dogfood-add.test.ts',
+      "import { add } from './dogfood-add.js';\n\nit('adds', () => { expect(add(2, 3)).toBe(5); });\n",
+    );
+    repository.sources.set(
+      'packages/core/src/dogfood-add.ts',
+      'export function add(left: number, right: number): number {\n  return left - right;\n}\n',
+    );
+    const fetch = vi.fn(async (_url: string, init: HttpRequestInit): Promise<HttpResponse> => {
+      const body = JSON.parse(init.body) as {
+        model: string;
+        messages: Array<{ role: string; content?: string | null }>;
+        [key: string]: unknown;
+      };
+      if (body.model === DEFAULT_MODELS.nano) return providerResponse(JSON.stringify({
+        class: 'test-assertion', confidence: 0.99, signals: ['expected -1 to be 5'],
+        failingCmd: 'pnpm --filter @sutura/core test', errorExcerpt: 'expected -1 to be 5',
+      }));
+      if (body.model === DEFAULT_MODELS.super) {
+        const request = JSON.parse(body.messages.find(({ role }) => role === 'user')?.content ?? '{}') as {
+          sources?: Array<{ path: string; endLine: number; editable: boolean; lines: Array<{ line: number; text: string }> }>;
+          selectedTarget?: { path: string; startLine: number; endLine: number };
+        };
+        expect(request.sources?.map(({ path }) => path)).toEqual([
+          'packages/core/src/dogfood-add.test.ts',
+          'packages/core/src/dogfood-add.ts',
+        ]);
+        expect(request.sources?.find(({ path }) => path.endsWith('dogfood-add.ts'))).toMatchObject({
+          endLine: 3, editable: true,
+          lines: expect.arrayContaining([{ line: 2, text: '  return left - right;' }]),
+        });
+        expect(request.sources?.find(({ path }) => path.endsWith('dogfood-add.test.ts')))
+          .toMatchObject({ editable: false });
+        expect(request.selectedTarget).toEqual({
+          path: 'packages/core/src/dogfood-add.ts', startLine: 1, endLine: 3,
+        });
+        expect(JSON.stringify(body.response_format)).toContain('"replacement"');
+        expect(JSON.stringify(body.response_format)).not.toMatch(/(?:dogfood-add|startLine|endLine|"path")/u);
+        expect(body).not.toHaveProperty('tools');
+        expect(body).not.toHaveProperty('tool_choice');
+        expect(body).not.toHaveProperty('parallel_tool_calls');
+        expect(body).not.toHaveProperty('reasoning_effort');
+        expect(body).toMatchObject({
+          max_tokens: 8_192,
+          temperature: 1,
+          top_p: 0.95,
+          chat_template_kwargs: { enable_thinking: false },
+        });
+        expect(body).not.toHaveProperty('extra_body');
+        return providerResponse(JSON.stringify({
+          replacement: 'export function add(left: number, right: number): number {\n  return left + right;\n}\n',
+        }));
+      }
+      expect(body.model).toBe(DEFAULT_MODELS.ultra);
+      const auditRequest = JSON.parse(body.messages.find(({ role }) => role === 'user')?.content ?? '{}') as {
+        candidateDiff?: string;
+      };
+      expect(auditRequest.candidateDiff).toBe(DOGFOOD_DIFF);
+      return providerResponse(JSON.stringify({ approved: true, reasoning: 'The addition repair holds.' }));
+    });
+    const client = createTokenFactoryClient({
+      apiKey: 'test-key',
+      models: DEFAULT_MODELS,
+    }, { fetch });
+    ctx.llm = client;
+    ctx.cost = client.ledger;
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(caseFile.outcome).toBe('fixed');
+    expect(repository.fixes).toEqual([expect.objectContaining({
+      branch: `sutura/fix-${dogfoodRun.runId}`,
+      headSha: dogfoodRun.headSha,
+      diff: DOGFOOD_DIFF,
+    })]);
+    expect(repository.fixes[0]?.diff).not.toContain('dogfood-add.test.ts');
+    expect(github.pullRequests).toEqual([expect.objectContaining({
+      baseRef: dogfoodRun.headRef,
+      headSha: dogfoodRun.headSha,
+    })]);
+    expect(caseFile.selectedCandidate).toEqual({
+      id: expect.stringMatching(/^repair-[a-f0-9]{12}$/u),
+      diffHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    });
+    expect(fetch.mock.calls.map(([, init]) =>
+      JSON.parse((init as HttpRequestInit).body).model,
+    )).toEqual([DEFAULT_MODELS.nano, DEFAULT_MODELS.super, DEFAULT_MODELS.ultra]);
+  });
+
   it('publishes the same smallest held candidate that the audit approved', async () => {
     const { ctx, repository, chat } = context([1, 1, 1, 0, 0, 1, 0]);
-    const largerDiff = HONEST_DIFF.replace(
-      '+export const value: string = "1";',
-      '+export const value: string = String(1);',
-    );
     chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
       if (tier === 'nano') return { text: JSON.stringify(diagnosisReply()) };
       if (tier === 'super') {
-        return { text: JSON.stringify({ candidates: [
-          { id: 'larger', rationale: 'repair a longer module path', diff: largerDiff },
+        return repairProposalReply(
           { id: 'smallest', rationale: 'repair the observed source', diff: HONEST_DIFF },
-          { id: 'third', rationale: 'try a different binding', diff: THIRD_DIFF },
-        ] }) };
+          HONEST_REPLACEMENT,
+        );
       }
       return { text: JSON.stringify({ approved: true, reasoning: 'The smallest held repair is correct.' }) };
     });
@@ -395,7 +841,7 @@ describe('orchestrate', () => {
     const caseFile = await orchestrate(ctx);
 
     expect(caseFile.outcome).toBe('flaky-no-patch');
-    expect(caseFile.triage).toEqual({ status: 'flaky', reproduced: 0, of: 2 });
+    expect(caseFile.triage).toEqual(completedTriageVerdict([0, 0], 2));
     expect(repository.fixes).toEqual([]);
     expect(github.pullRequests).toEqual([]);
     expect(github.comments[0]?.body).toContain('FLAKY');
@@ -421,18 +867,15 @@ describe('orchestrate', () => {
     const caseFile = await orchestrate(ctx);
 
     expect(caseFile.outcome).toBe('gave-up');
-    expect(caseFile.race.map(({ candidate }) => candidate.id)).toEqual([
-      'source',
-      'alternate',
-      'rename',
-    ]);
+    expect(caseFile.race).toEqual([]);
     expect(repository.fixes).toEqual([]);
     expect(github.pullRequests).toEqual([]);
     expect(github.comments[0]?.body).toContain('NO PATCH HELD');
-    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super']);
+    expect(chat.mock.calls.map(([tier]) => tier).filter((tier) => tier === 'super').length)
+      .toBeGreaterThan(1);
   });
 
-  it('vets every candidate before race and reports deterministic refusals', async () => {
+  it('rejects model-selected candidate paths before sandbox repair work', async () => {
     const testPathRun: FailingWorkflowRun = {
       ...RUN,
       failedSteps: [{
@@ -448,28 +891,24 @@ describe('orchestrate', () => {
     for (let index = 0; index < 3; index += 1) {
       repository.sources.set(`src/value-${index}.test.ts`, 'export const value: string = 1;');
     }
-    const invalidCandidates = candidates().map((candidate, index) => ({
-      ...candidate,
-      diff: candidate.diff.replaceAll(
-        'src/value.ts',
-        `src/value-${index}.test.ts`,
-      ),
-    }));
-    chat.mockImplementationOnce(async () => ({
-      text: JSON.stringify(diagnosisReply()),
-    }));
-    chat.mockImplementationOnce(async () => ({
-      text: JSON.stringify({ candidates: invalidCandidates }),
-    }));
+    chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
+      if (tier === 'nano') return { text: JSON.stringify(diagnosisReply()) };
+      if (tier === 'super') return { text: JSON.stringify({
+        id: 'model-selected-path', rationale: 'Attempt to select a protected test target.',
+        edits: [{
+          path: 'src/value-0.test.ts', startLine: 1, endLine: 1,
+          new: 'export const value: string = "1";',
+        }],
+      }) };
+      return { text: JSON.stringify({ approved: true, reasoning: 'not reached' }) };
+    });
 
     const caseFile = await orchestrate(ctx);
 
     expect(caseFile.outcome).toBe('gave-up');
-    expect(caseFile.race).toHaveLength(3);
-    expect(caseFile.race.every(({ note }) => note?.startsWith('Patch vet refused:')))
-      .toBe(true);
-    expect(github.comments[0]?.body).toContain('Patch vet refused');
-    expect(runCalls(executor)).toHaveLength(4);
+    expect(caseFile.race).toEqual([]);
+    expect(github.comments[0]?.body).toContain('NO PATCH HELD');
+    expect(runCalls(executor).filter(({ cmd }) => cmd.includes('git apply'))).toHaveLength(0);
   });
 
   it('does not spend or mutate twice for the same failing run id', async () => {
@@ -519,7 +958,7 @@ describe('orchestrate', () => {
     expect(caseFile.outcome).toBe('infra-stop');
     expect(caseFile.diagnosis.class).toBe('infra');
     expect(caseFile.diagnosis.signals).toContain('reproduction:passed');
-    expect(caseFile.triage).toEqual({ status: 'not-run', reproduced: 0, of: 0 });
+    expect(caseFile.triage).toEqual(notRunTriageVerdict());
     expect(github.comments[0]?.body).toContain('INFRA — STOPPED');
     expect(github.comments[0]?.body).toContain('stopped before inference');
     expect(repository.fixes).toEqual([]);
@@ -549,7 +988,7 @@ describe('orchestrate', () => {
   it('reproduces before the first paid model call', async () => {
     const { ctx, executor, chat } = context([1, 0, 0]);
     chat.mockImplementationOnce(async () => {
-      expect(runCalls(executor)).toHaveLength(2);
+      expect(runCalls(executor)).toHaveLength(3);
       return { text: JSON.stringify(diagnosisReply()) };
     });
 
@@ -562,9 +1001,20 @@ describe('orchestrate', () => {
     await orchestrate(ctx);
 
     const calls = runCalls(executor);
-    expect(calls[0]?.cmd).toContain('corepack pnpm install --frozen-lockfile');
-    expect(calls[1]?.parent).toBe(calls[0]?.imageId);
-    expect(calls.slice(2).every(({ parent }) => parent === calls[0]?.imageId)).toBe(true);
+    const snapshots = executor.calls.filter((call) => call.kind === 'snapshot');
+    expect(snapshots.map(({ options }) => options)).toEqual([
+      { profile: 'dependency-inputs', mode: 'replace' },
+      { profile: 'repository', mode: 'overlay' },
+    ]);
+    expect(calls[0]?.cmd).toContain('corepack pnpm install --frozen-lockfile --ignore-scripts');
+    expect(calls[0]?.opts?.network).toBe('enabled');
+    expect(calls[1]?.cmd).toContain('git --literal-pathspecs add');
+    expect(calls[1]?.cmd).toContain('--pathspec-file-nul');
+    expect(calls[1]?.cmd).toContain('core.hooksPath /dev/null');
+    expect(calls[1]?.cmd).toContain('--no-verify');
+    expect(calls[1]?.opts?.network).toBe('disabled');
+    expect(calls.slice(2).every(({ parent }) => parent === calls[1]?.imageId)).toBe(true);
+    expect(calls.slice(2).every(({ opts }) => opts?.network === 'disabled')).toBe(true);
   });
 
   it('reports preparation failure before reproduction or paid inference', async () => {
@@ -655,43 +1105,39 @@ describe('orchestrate', () => {
       '+  return Number(value);',
       ' }',
     ].join('\n') + '\n';
-    chat.mockImplementationOnce(async () => ({
-      text: JSON.stringify({
-        class: 'typecheck',
-        confidence: 0.99,
-        signals: ['TS2322'],
-        failingCmd: 'pnpm test',
-        errorExcerpt: 'parse-port.ts(2,3): TS2322',
-      }),
-    }));
-    chat.mockImplementationOnce(async (
-      _tier,
-      messages: readonly { role: string; content: string }[],
+    let placeboSuperCall = 0;
+    chat.mockImplementation(async (
+      tier: 'nano' | 'super' | 'ultra',
+      messages: readonly { role: string; content?: string | null }[],
     ) => {
-      const user = messages.find(({ role }) => role === 'user');
-      const request = JSON.parse(user?.content ?? '') as {
-        sourceContext: { sources: Array<{ path: string; content: string }> };
-      };
-      expect(request.sourceContext.sources).toEqual([
-        expect.objectContaining({ path: 'parse-port.ts', content: brokenSource }),
-      ]);
-      return {
-        text: JSON.stringify({
-          candidates: [
-            { id: 'placebo-fix', rationale: 'restore numeric conversion', diff: repairDiff },
-            {
-              id: 'alternate-a',
-              rationale: 'use unary numeric conversion',
-              diff: repairDiff.replace('Number(value)', '+value'),
-            },
-            {
-              id: 'alternate-b',
-              rationale: 'use integer parsing',
-              diff: repairDiff.replace('Number(value)', 'Number.parseInt(value, 10)'),
-            },
-          ],
-        }),
-      };
+      if (tier === 'nano') return { text: JSON.stringify({
+        class: 'typecheck', confidence: 0.99, signals: ['TS2322'],
+        failingCmd: 'pnpm test', errorExcerpt: 'parse-port.ts(2,3): TS2322',
+      }) };
+      if (tier === 'super') {
+        if (placeboSuperCall === 0) {
+          const user = messages.find(({ role }) => role === 'user');
+          const request = JSON.parse(user?.content ?? '') as {
+            sources: Array<{ path: string; lines: Array<{ line: number; text: string }> }>;
+          };
+          expect(request.sources).toEqual([
+            expect.objectContaining({
+              path: 'parse-port.ts',
+              lines: [
+                { line: 1, text: 'export function parsePort(value: string): number {' },
+                { line: 2, text: '  return value;' },
+                { line: 3, text: '}' },
+              ],
+            }),
+          ]);
+        }
+        placeboSuperCall += 1;
+        return repairProposalReply(
+          { id: 'placebo-fix', rationale: 'restore numeric conversion', diff: repairDiff },
+          pristineSource,
+        );
+      }
+      return { text: JSON.stringify({ approved: true, reasoning: 'The repair restores numeric conversion.' }) };
     });
 
     const caseFile = await orchestrate(ctx);
@@ -729,15 +1175,14 @@ describe('orchestrate', () => {
       'package.json',
       '{"dependencies":{"@acme/money":"4.0.0"}}',
     );
-    chat.mockImplementationOnce(async () => ({
-      text: JSON.stringify({
-        class: 'dep-upstream-breaking',
-        confidence: 0.96,
-        signals: ['missing module'],
-        failingCmd: 'pnpm test',
-        errorExcerpt: "Cannot find module '@acme/money'",
-      }),
-    }));
+    const dependencyDiff = (version: string) => [
+      'diff --git a/package.json b/package.json',
+      '--- a/package.json',
+      '+++ b/package.json',
+      '@@ -1 +1 @@',
+      '-{"dependencies":{"@acme/money":"4.0.0"}}',
+      `+{"dependencies":{"@acme/money":"${version}"}}`,
+    ].join('\n');
     ctx.tavily = {
       search: vi.fn().mockResolvedValue([{
         title: 'Money 4 migration',
@@ -745,39 +1190,35 @@ describe('orchestrate', () => {
         snippet: 'The package now requires an explicit compatibility migration.',
       }]),
     };
-    chat.mockImplementationOnce(async (_tier, messages: readonly {
+    let dependencySuperCall = 0;
+    chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra', messages: readonly {
       role: string;
-      content: string;
+      content?: string | null;
     }[]) => {
-      const user = messages.find(({ role }) => role === 'user');
-      const request = JSON.parse(user?.content ?? '') as {
-        sourceContext: { sources: Array<{ path: string }> };
-      };
-      expect(request.sourceContext.sources.map(({ path }) => path))
-        .toEqual(['package.json']);
-      const dependencyDiff = (version: string) => [
-        'diff --git a/package.json b/package.json',
-        '--- a/package.json',
-        '+++ b/package.json',
-        '@@ -1 +1 @@',
-        '-{"dependencies":{"@acme/money":"4.0.0"}}',
-        `+{"dependencies":{"@acme/money":"${version}"}}`,
-      ].join('\n');
-      return {
-        text: JSON.stringify({
-          candidates: [
-            { id: 'pin-a', rationale: 'pin compatible release', diff: dependencyDiff('3.9.0') },
-            { id: 'pin-b', rationale: 'pin prior patch', diff: dependencyDiff('3.8.1') },
-            { id: 'pin-c', rationale: 'pin prior minor', diff: dependencyDiff('3.8.0') },
-          ],
-        }),
-      };
+      if (tier === 'nano') return { text: JSON.stringify({
+        class: 'dep-upstream-breaking', confidence: 0.96, signals: ['missing module'],
+        failingCmd: 'pnpm test', errorExcerpt: "Cannot find module '@acme/money'",
+      }) };
+      if (tier === 'super') {
+        if (dependencySuperCall === 0) {
+          const user = messages.find(({ role }) => role === 'user');
+          const request = JSON.parse(user?.content ?? '') as { sources: Array<{ path: string }> };
+          expect(request.sources.map(({ path }) => path)).toEqual(['package.json']);
+        }
+        dependencySuperCall += 1;
+        return repairProposalReply(
+          { id: 'pin-a', rationale: 'pin compatible release', diff: dependencyDiff('3.9.0') },
+          '{"dependencies":{"@acme/money":"3.9.0"}}',
+        );
+      }
+      return { text: JSON.stringify({ approved: true, reasoning: 'not reached' }) };
     });
 
     const caseFile = await orchestrate(ctx);
 
     expect(caseFile.outcome).toBe('gave-up');
-    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super']);
+    expect(chat.mock.calls.map(([tier]) => tier).filter((tier) => tier === 'super').length)
+      .toBeGreaterThan(1);
     expect(repository.sourceReads[0]?.paths).toEqual([
       'package.json',
       'pnpm-lock.yaml',
@@ -786,17 +1227,8 @@ describe('orchestrate', () => {
     ]);
   });
 
-  it('fails closed without Super when no logged or fallback source exists', async () => {
-    const noPathRun: FailingWorkflowRun = {
-      ...RUN,
-      failedSteps: [
-        {
-          jobName: 'typecheck',
-          stepName: 'Typecheck',
-          log: 'Run pnpm test\nerror TS2322: Type string is not assignable to type number',
-        },
-      ],
-    };
+  it('replays live run 6: absent editable source stops before a Super turn', async () => {
+    const noPathRun = (await capturedFailingRun('Live run 6', '33244884596')).run;
     const { ctx, chat, repository } = context([1, 1, 1], true, noPathRun);
     repository.sources.clear();
 
@@ -804,7 +1236,7 @@ describe('orchestrate', () => {
 
     expect(caseFile.outcome).toBe('gave-up');
     expect(caseFile.race).toEqual([]);
-    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
+    expect(chat.mock.calls.map(([tier]) => tier)).not.toContain('super');
   });
 
   it('rejects a non-numeric workflow run id before claiming an attempt', async () => {
@@ -859,6 +1291,221 @@ describe('failed log collection', () => {
 });
 
 describe('repair source context', () => {
+  it('rejects a repository response beyond the source file limit', async () => {
+    const captured = await capturedFailingRun('A3', '33239848825');
+    expect(captured.run.failedSteps).not.toHaveLength(0);
+    const paths = Array.from({ length: 8 }, (_, index) => `src/captured-${index}.ts`);
+    const repository = {
+      readSourceExcerpts: vi.fn().mockResolvedValue([
+        ...paths.map((path) => ({
+          path, startLine: 1, content: 'export {};\n', truncated: false,
+        })),
+        { path: 'src/extra.ts', startLine: 1, content: 'export {};\n', truncated: false },
+      ]),
+    };
+
+    await expect(readRepairSourceContext(
+      repository,
+      '/tmp/captured',
+      paths.map((path) => `${path}:1: error`).join('\n'),
+    )).rejects.toThrow('Repository source port exceeded the file limit');
+  });
+
+  it('rejects more repository excerpts than were requested', async () => {
+    const captured = await capturedFailingRun('A3', '33239848825');
+    const path = extractSourceReferences(captured.run.failedSteps[0]?.log ?? '')[0]?.path;
+    if (path === undefined) throw new Error('Captured A3 log has no source path');
+    const repository = {
+      readSourceExcerpts: vi.fn().mockResolvedValue([
+        { path, startLine: 1, content: 'export {};\n', truncated: false },
+        { path: 'src/extra.ts', startLine: 1, content: 'export {};\n', truncated: false },
+      ]),
+    };
+
+    await expect(readRepairSourceContext(
+      repository,
+      '/tmp/captured',
+      `${path}:1: error`,
+    )).rejects.toThrow('Repository source port returned an unsafe or unbounded excerpt');
+  });
+
+  it('rejects a structurally unsafe repository excerpt', async () => {
+    const captured = await capturedFailingRun('A3', '33239848825');
+    const path = extractSourceReferences(captured.run.failedSteps[0]?.log ?? '')[0]?.path;
+    if (path === undefined) throw new Error('Captured A3 log has no source path');
+    const repository = {
+      readSourceExcerpts: vi.fn().mockResolvedValue([
+        { path, startLine: 0, content: 'export {};\n', truncated: false },
+      ]),
+    };
+
+    await expect(readRepairSourceContext(
+      repository,
+      '/tmp/captured',
+      `${path}:1: error`,
+    )).rejects.toThrow('Repository source port returned an unsafe or unbounded excerpt');
+  });
+
+  it('replays live runs 4 and 5: monorepo ESM evidence reaches the TypeScript implementation', async () => {
+    capturedLiveRun(4, '33242204485');
+    const captured = await capturedFailingRun('Live run 5', '33243759945');
+    const repository = new FakeRepository();
+    repository.sources.clear();
+    repository.sources.set(
+      'packages/core/src/dogfood-add.test.ts',
+      "import { add } from './dogfood-add.js';\n\nexpect(add(2, 3)).toBe(5);\n",
+    );
+    repository.sources.set(
+      'packages/core/src/dogfood-add.ts',
+      'export function add(left: number, right: number): number {\n  return left - right;\n}\n',
+    );
+
+    const context = await readRepairSourceContext(
+      repository,
+      '/tmp/exact-pr-head',
+      capturedDogfoodLog(captured.jobLogText),
+      { class: 'test-assertion' },
+    );
+
+    expect(context.sources.map(({ path }) => path)).toEqual([
+      'packages/core/src/dogfood-add.test.ts',
+      'packages/core/src/dogfood-add.ts',
+    ]);
+    expect(repository.sourceReads).toEqual([
+      {
+        checkoutDir: '/tmp/exact-pr-head',
+        paths: [
+          'packages/core/src/dogfood-add.test.ts',
+        ],
+      },
+      {
+        checkoutDir: '/tmp/exact-pr-head',
+        paths: [
+          'packages/core/src/dogfood-add.js',
+          'packages/core/src/dogfood-add.ts',
+          'packages/core/src/dogfood-add.tsx',
+        ],
+      },
+    ]);
+  });
+
+  it('omits ambiguous and credential-shaped dependency sources', async () => {
+    const repository = new FakeRepository();
+    repository.sources.clear();
+    repository.sources.set('src/test.ts', "import './ambiguous.js';\nimport './secret.js';\n");
+    repository.sources.set('src/ambiguous.js', 'export const value = 1;\n');
+    repository.sources.set('src/ambiguous.ts', 'export const value = 2;\n');
+    repository.sources.set('src/secret.ts', 'const TOKEN: string = "super-secret-value";\n');
+
+    const context = await readRepairSourceContext(
+      repository,
+      '/tmp/exact-pr-head',
+      'src/test.ts:1: assertion failed',
+      { class: 'test-assertion' },
+    );
+
+    expect(context.sources.map(({ path }) => path)).toEqual(['src/test.ts']);
+    expect(JSON.stringify(context)).not.toContain('super-secret-value');
+  });
+
+  it('omits source evidence that capture already redacted', async () => {
+    const repository = new FakeRepository();
+    repository.sources.clear();
+    repository.sources.set('src/test.ts', '[redacted credential]\n');
+
+    const context = await readRepairSourceContext(
+      repository,
+      '/tmp/exact-pr-head',
+      'src/test.ts:1: assertion failed',
+      { class: 'test-assertion' },
+    );
+
+    expect(context.sources).toEqual([]);
+  });
+
+  it('does not add another dependency variant when the failed log already supplied one', async () => {
+    const repository = new FakeRepository();
+    repository.sources.clear();
+    repository.sources.set('src/test.ts', "import './local.js';\n");
+    repository.sources.set('src/local.ts', 'export const value = 1;\n');
+    repository.sources.set('src/local.js', 'export const value = 2;\n');
+
+    const context = await readRepairSourceContext(
+      repository,
+      '/tmp/exact-pr-head',
+      'src/test.ts:1: assertion failed\nsrc/local.ts:1: related frame',
+      { class: 'test-assertion' },
+    );
+
+    expect(context.sources.map(({ path }) => path)).toEqual(['src/test.ts', 'src/local.ts']);
+    expect(repository.sourceReads).toHaveLength(1);
+  });
+
+  it('bounds dependency cycles, depth, policy, and total source count', async () => {
+    const repository = new FakeRepository();
+    repository.sources.clear();
+    repository.sources.set('src/root.ts', "import './child.js';\nimport './denied.js';\n");
+    repository.sources.set('src/child.ts', "import './root.js';\nimport './grand.js';\n");
+    repository.sources.set('src/grand.ts', "import './too-deep.js';\n");
+    repository.sources.set('src/too-deep.ts', 'export const value = 4;\n');
+    repository.sources.set('src/denied.ts', 'export const secret = 1;\n');
+
+    const bounded = await readRepairSourceContext(
+      repository,
+      '/tmp/exact-pr-head',
+      'src/root.ts:1: assertion failed',
+      { class: 'test-assertion' },
+      parseRepositoryPolicy(JSON.stringify({
+        version: 1, allowedPaths: ['src/**'], deniedReadPaths: ['src/denied.*'],
+      })),
+    );
+
+    expect(bounded.sources.map(({ path }) => path)).toEqual([
+      'src/root.ts', 'src/child.ts', 'src/grand.ts',
+    ]);
+    expect(JSON.stringify(repository.sourceReads)).not.toContain('src/denied.ts');
+    expect(JSON.stringify(repository.sourceReads)).not.toContain('src/too-deep.ts');
+
+    const cappedRepository = new FakeRepository();
+    cappedRepository.sources.clear();
+    cappedRepository.sources.set(
+      'src/root.ts',
+      Array.from({ length: 8 }, (_, index) => `import './d${index}.js';`).join('\n'),
+    );
+    for (let index = 0; index < 8; index += 1) {
+      cappedRepository.sources.set(`src/d${index}.ts`, `export const d${index} = ${index};\n`);
+    }
+
+    const capped = await readRepairSourceContext(
+      cappedRepository, '/tmp/exact-pr-head', 'src/root.ts:1: assertion failed',
+      { class: 'test-assertion' },
+    );
+
+    expect(capped.sources.map(({ path }) => path)).toEqual([
+      'src/root.ts', 'src/d0.ts', 'src/d1.ts', 'src/d2.ts',
+      'src/d3.ts', 'src/d4.ts', 'src/d5.ts', 'src/d6.ts',
+    ]);
+  });
+
+  it('caps dependency candidate probes without treating unprobed variants as unique', async () => {
+    const repository = new FakeRepository();
+    repository.sources.clear();
+    repository.sources.set(
+      'src/root.ts',
+      Array.from({ length: 24 }, (_, index) => `import './missing-${index}';`).join('\n'),
+    );
+    repository.sources.set('src/missing-23.ts', 'export const tooLate = true;\n');
+
+    const context = await readRepairSourceContext(
+      repository, '/tmp/exact-pr-head', 'src/root.ts:1: assertion failed',
+      { class: 'test-assertion' },
+    );
+
+    expect(context.sources.map(({ path }) => path)).toEqual(['src/root.ts']);
+    expect(repository.sourceReads).toHaveLength(25);
+    expect(repository.sourceReads.flatMap(({ paths }) => paths)).not.toContain('src/missing-23.ts');
+  });
+
   it('extracts only safe, exact workspace-relative source paths', () => {
     const log = [
       '/workspace/src/value.ts:42:3 error TS2322',
@@ -909,9 +1556,53 @@ describe('repair source context', () => {
     });
     expect(repository.sourceReads[0]?.paths).toEqual([
       'packages/core/src/diagnose/tavily.ts',
-      'src/diagnose/tavily.ts',
       'tsconfig.json',
       'package.json',
+    ]);
+  });
+
+  it('resolves ANSI-colored Vitest reporter paths to their pnpm workspace', async () => {
+    const repository = new FakeRepository();
+    repository.sources.clear();
+    repository.sources.set(
+      'packages/core/src/dogfood-add.test.ts',
+      "import { add } from './dogfood-add.js';\nexpect(add(2, 3)).toBe(5);\n",
+    );
+    repository.sources.set(
+      'packages/core/src/dogfood-add.ts',
+      'export const add = (left: number, right: number) => left - right;\n',
+    );
+    const log = [
+      'packages/core test: \u001b[31m❯\u001b[39m src/dogfood-add.test.ts \u001b[2m(1 test | 1 failed)\u001b[22m',
+      'packages/core test: \u001b[36m ❯\u001b[39m src/dogfood-add.test.ts:\u001b[2m7:23\u001b[22m',
+    ].join('\n');
+
+    const context = await readRepairSourceContext(
+      repository, '/tmp/exact-pr-head', log, { class: 'test-assertion' },
+    );
+
+    expect(context.sources.map(({ path }) => path)).toEqual([
+      'packages/core/src/dogfood-add.test.ts',
+      'packages/core/src/dogfood-add.ts',
+    ]);
+  });
+
+  it('uses only Python fallback manifests for Python dependency failures', async () => {
+    const repository = new FakeRepository();
+
+    await readRepairSourceContext(
+      repository,
+      '/tmp/exact-pr-head',
+      'Run pytest -q\nImportError: dependency failed',
+      { class: 'dep-upstream-breaking' },
+      undefined,
+      'python',
+    );
+
+    expect(repository.sourceReads[0]?.paths).toEqual([
+      'pyproject.toml',
+      'uv.lock',
+      'requirements.txt',
     ]);
   });
 
@@ -937,6 +1628,78 @@ describe('repair source context', () => {
     expect(references).not.toContainEqual(
       expect.objectContaining({ path: 'packages/ignored/src/ninth.ts' }),
     );
+  });
+
+  it('keeps the latest failure paths when earlier reporter summaries fill the cap', () => {
+    const log = [
+      ...Array.from({ length: 8 }, (_, index) => `src/summary-${index}.test.ts`),
+      'src/dogfood-add.test.ts:7:23 AssertionError: expected -1 to be 5',
+    ].join('\n');
+
+    const references = extractSourceReferences(log, 'latest');
+
+    expect(references).toHaveLength(8);
+    expect(references).not.toContainEqual({ path: 'src/summary-0.test.ts' });
+    expect(references).toContainEqual({ path: 'src/dogfood-add.test.ts', line: 7 });
+  });
+
+  it('keeps latest pnpm reporter paths qualified by their workspace', () => {
+    const log = [
+      ...Array.from(
+        { length: 8 },
+        (_, index) => `packages/core test: src/summary-${index}.test.ts`,
+      ),
+      'packages/core test: src/dogfood-add.test.ts:7:23 AssertionError',
+    ].join('\n');
+
+    const references = extractSourceReferences(log, 'latest');
+
+    expect(references).toContainEqual({
+      path: 'packages/core/src/dogfood-add.test.ts',
+      line: 7,
+    });
+    expect(references).not.toContainEqual({ path: 'src/dogfood-add.test.ts', line: 7 });
+  });
+
+  it('reserves dependency capacity for the latest line-bearing failure source', async () => {
+    const repository = new FakeRepository();
+    repository.sources.clear();
+    for (let index = 0; index < 8; index += 1) {
+      repository.sources.set(
+        `packages/core/src/summary-${index}.test.ts`,
+        'export {};\n',
+      );
+    }
+    repository.sources.set(
+      'packages/core/src/dogfood-add.test.ts',
+      "import { add } from './dogfood-add.js';\nexpect(add(2, 3)).toBe(5);\n",
+    );
+    repository.sources.set(
+      'packages/core/src/dogfood-add.ts',
+      'export const add = (left: number, right: number) => left - right;\n',
+    );
+    const log = [
+      ...Array.from(
+        { length: 8 },
+        (_, index) => `packages/core test: src/summary-${index}.test.ts`,
+      ),
+      'packages/core test: src/dogfood-add.test.ts:7:23 AssertionError',
+    ].join('\n');
+
+    const context = await readRepairSourceContext(
+      repository,
+      '/tmp/exact-pr-head',
+      log,
+      { class: 'test-assertion' },
+      undefined,
+      'node',
+      'latest',
+    );
+
+    expect(context.sources.map(({ path }) => path)).toContain(
+      'packages/core/src/dogfood-add.ts',
+    );
+    expect(repository.sourceReads[0]?.paths).toHaveLength(4);
   });
 
   it('extracts exact JSON paths without accepting partial extensions', () => {

@@ -1,6 +1,7 @@
 {
   "runId": "run-fixed-042",
   "repo": "acme/checkout",
+  "runtime": "node",
   "diagnosis": {
     "class": "build",
     "confidence": 0.96,
@@ -19,7 +20,7 @@
       ]
     }
   },
-  "triage": { "status": "real", "reproduced": 5, "of": 5 },
+  "triage": { "status": "real", "reproduced": 4, "of": 4, "attemptsUsed": 4, "maximumAttempts": 5, "reproductionProbability": 1, "confidenceLower": 0.5101091635454027, "confidenceUpper": 1, "stopReason": "failure-boundary", "methodVersion": "sprt-p20-p80-a05-b05-v1" },
   "race": [
     {
       "candidate": {
@@ -27,7 +28,8 @@
         "rationale": "Import format from the supported package root",
         "diff": "--- a/src/cart.ts\n+++ b/src/cart.ts\n@@ -1 +1 @@\n-import { format } from '@acme/money/format';\n+import { format } from '@acme/money';"
       },
-      "imageId": "img-branch-a",
+      "imageId": "node-007",
+      "nodeId": "node-007",
       "exitCode": 0,
       "held": true
     },
@@ -37,7 +39,8 @@
         "rationale": "Pin the dependency to the previous major",
         "diff": "--- a/package.json\n+++ b/package.json\n@@ -8 +8 @@\n-\"@acme/money\": \"^4.0.0\"\n+\"@acme/money\": \"^3.8.0\""
       },
-      "imageId": "img-branch-b",
+      "imageId": "node-008",
+      "nodeId": "node-008",
       "exitCode": 1,
       "held": false
     },
@@ -47,7 +50,8 @@
         "rationale": "Add a local compatibility shim",
         "diff": "--- /dev/null\n+++ b/src/money-shim.ts\n@@ -0,0 +1 @@\n+export { format } from '@acme/money';"
       },
-      "imageId": "img-branch-c",
+      "imageId": "node-009",
+      "nodeId": "node-009",
       "exitCode": 1,
       "held": false
     }
@@ -66,11 +70,20 @@
     "reasoning": "APPROVED: the survivor restores the supported API without reducing coverage or enforcement."
   },
   "outcome": "fixed",
+  "policy": {
+    "baseRef": "develop",
+    "baseSha": "89abcdef0123456789abcdef0123456789abcdef",
+    "policySha": "2f77dc81836e659296ec1686ea21fd4192e66fb7d6989b9a80bf800618fa35e7"
+  },
+  "stages": [
+    { "stage": "policy", "attempt": 1, "nodeId": "node-001", "metrics": {}, "network": "disabled", "note": "Repository policy validated before provider execution" },
+    { "stage": "candidate", "attempt": 1, "nodeId": "node-007", "parentNodeId": "node-006", "exitCode": 0, "metrics": { "elapsedTimeSec": 2.5, "maxRssKb": 2048, "systemCpuTimeSec": 0.2, "userCpuTimeSec": 0.8, "cost": 0.0004 }, "network": "disabled", "note": "Candidate verification race" }
+  ],
   "cost": {
     "entries": [
-      { "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", "inTok": 2100, "outTok": 420, "reasoningTok": 80, "usd": 0.000246 },
-      { "model": "nvidia/nemotron-3-super-120b-a12b", "inTok": 7800, "outTok": 2600, "reasoningTok": 900, "usd": 0.00549 },
-      { "model": "nvidia/Nemotron-3-Ultra-550b-a55b", "inTok": 2500, "outTok": 900, "reasoningTok": 400, "usd": 0.0064 }
+      { "role": "nano", "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", "inTok": 2100, "outTok": 420, "reasoningTok": 80, "usd": 0.000246 },
+      { "role": "super", "model": "nvidia/nemotron-3-super-120b-a12b", "inTok": 7800, "outTok": 2600, "reasoningTok": 900, "usd": 0.00549 },
+      { "role": "ultra", "model": "nvidia/Nemotron-3-Ultra-550b-a55b", "inTok": 2500, "outTok": 900, "reasoningTok": 400, "usd": 0.0064 }
     ]
   }
 }

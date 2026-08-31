@@ -1,0 +1,7 @@
+diff --git a/subject.js b/subject.js
+--- a/subject.js
++++ b/subject.js
+@@ -1,2 +1,2 @@
+-import { label } from './src/label.js';
++import { label } from './src/label';
+ export function subject() { return label('ready'); }

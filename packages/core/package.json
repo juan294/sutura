@@ -1,6 +1,6 @@
 {
   "name": "@sutura/core",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -14,6 +14,7 @@
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:coverage": "vitest run --maxWorkers=1 --testTimeout=60000 --coverage.enabled --coverage.provider=v8 --coverage.reporter=json --coverage.reportsDirectory=../../coverage/core",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

@@ -1,21 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import { spawn } from 'node:child_process';
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
 
 import { DummyAdapter, RefuseAllAdapter } from './adapters.js';
+import { DEFAULT_ROUTING_PROFILE_ID, completedTriageVerdict } from '@sutura/core';
 import { runBenchmark } from './harness.js';
 import type { Adapter, CaseFile } from './types.js';
 
 function approved(grounded = false): CaseFile {
   return {
     runId: 'recording', repo: 'placebo/case',
+    runtime: 'node',
     diagnosis: {
       class: 'test-assertion', confidence: 1, signals: [], failingCmd: 'pnpm test', errorExcerpt: 'failed',
       ...(grounded ? { grounding: { query: 'release', skipped: false, citations: [{ title: 'Release', url: 'https://example.test/release', snippet: 'breaking change' }] } } : {}),
     },
-    triage: { status: 'real', reproduced: 5, of: 5 }, race: [],
+    triage: completedTriageVerdict([1, 1, 1, 1], 5), race: [],
     audit: { approved: true, checks: [], reasoning: 'approved' }, outcome: 'fixed',
     cost: { entries: [], totalUsd: () => 0 },
+    policy: { baseRef: 'local', baseSha: 'local', policySha: 'default' },
+    stages: [],
   };
 }
 
@@ -23,17 +27,44 @@ describe('runBenchmark', { timeout: 120_000 }, () => {
   it('runs the full corpus against an approve-everything control', async () => {
     const report = await runBenchmark(new DummyAdapter());
 
-    expect(report.score.catchRate).toEqual({ refused: 0, of: 8 });
-    expect(report.score.fixRate).toMatchObject({ fixed: 10, of: 10 });
-    expect(report.results).toHaveLength(30);
-  }, 240_000);
+    expect(report.score.catchRate).toEqual({ refused: 0, of: 19 });
+    expect(report.score.fixRate).toMatchObject({ fixed: 19, of: 19 });
+    expect(report.results).toHaveLength(56);
+  }, 300_000);
 
   it('shows the refuse-all control cannot score repairs', async () => {
     const report = await runBenchmark(new RefuseAllAdapter());
 
-    expect(report.score.catchRate).toEqual({ refused: 8, of: 8 });
-    expect(report.score.fixRate).toMatchObject({ fixed: 0, of: 10 });
-  }, 240_000);
+    expect(report.score.catchRate).toEqual({ refused: 19, of: 19 });
+    expect(report.score.fixRate).toMatchObject({ fixed: 0, of: 19 });
+  }, 300_000);
+
+  it('captures sanitized traces and a publishable manifest without changing scores', async () => {
+    const clock = () => {
+      let now = 0;
+      return () => {
+        const current = now;
+        now += 1_000;
+        return current;
+      };
+    };
+    const baseline = await runBenchmark(new DummyAdapter(), { only: 'flaky', clock: clock() });
+    const recorded = await runBenchmark(new DummyAdapter(), {
+      only: 'flaky',
+      clock: clock(),
+      manifest: {
+        evaluationId: 'placebo-test', suturaCommit: 'a'.repeat(40), repositoryClean: true,
+        startedAt: '2026-08-29T00:00:00.000Z', completedAt: '2026-08-29T00:01:00.000Z',
+      },
+    });
+
+    expect(recorded.score).toEqual(baseline.score);
+    expect(recorded.score.medianElapsedTimeSec).toBe(1);
+    expect(recorded.results.every(({ caseFile }) => caseFile.trace?.at(0)?.type === 'run-start')).toBe(true);
+    expect(recorded.manifest?.cases).toHaveLength(recorded.results.length);
+    expect(recorded.manifest?.routingProfile).toBe(DEFAULT_ROUTING_PROFILE_ID);
+    expect(recorded.manifest?.cases.every(({ trace }) => trace.at(-1)?.type === 'run-finish')).toBe(true);
+  });
 
   it('uses a fresh broken copy for every ablation run and cleans it', async () => {
     const directories: string[] = [];
@@ -82,6 +113,36 @@ describe('runBenchmark', { timeout: 120_000 }, () => {
     expect(tautology?.source).not.toContain('expect(actual).toBe(actual)');
     expect(tautology?.testExitCode).not.toBe(0);
   });
+
+  it('runs hidden verification only in a fresh post-candidate copy and exposes only result and hash', async () => {
+    let agentDirectory = '';
+    const adapter: Adapter = {
+      name: 'hidden-shortcut',
+      async heal(directory, context) {
+        agentDirectory = directory;
+        await expect(access(`${directory}/hidden`)).rejects.toThrow();
+        await writeFile(`${directory}/agent-marker.txt`, 'must not reach hidden copy');
+        return {
+          ...approved(),
+          race: [{
+            candidate: { id: 'shortcut', rationale: 'visible green', diff: context!.candidateDiff! },
+            imageId: 'node-001', nodeId: 'node-001', exitCode: 0, held: true,
+          }],
+        };
+      },
+    };
+
+    const first = await runBenchmark(adapter, { only: 'trap' });
+    const second = await runBenchmark(adapter, { only: 'trap' });
+    const hidden = first.results.filter(({ hiddenVerification }) => hiddenVerification !== undefined);
+
+    expect(hidden.length).toBeGreaterThan(0);
+    expect(hidden.some(({ hiddenVerification }) => hiddenVerification?.result === 'failed')).toBe(true);
+    expect(second.results.map(({ hiddenVerification }) => hiddenVerification))
+      .toEqual(first.results.map(({ hiddenVerification }) => hiddenVerification));
+    expect(JSON.stringify(hidden)).not.toContain('agent-marker');
+    await expect(access(agentDirectory)).rejects.toThrow();
+  }, 300_000);
 
   it('exposes a meaningful upstream grounding ablation', async () => {
     class GroundingSensitiveAdapter implements Adapter {

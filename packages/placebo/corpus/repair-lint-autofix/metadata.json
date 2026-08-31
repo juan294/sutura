@@ -1,1 +1,1 @@
-{"version":"0.1","kind":"repairable","class":"lint","expected":"fixed","description":"An accidental loose equality violates the repository lint contract."}
+{"version":"0.2","kind":"repairable","class":"lint","expected":"fixed","description":"An accidental loose equality violates the repository lint contract.","riskClass":"lint-autofix","language":"javascript","failureFingerprint":"ae404fb66a8fa1fcb47abf5420ecacc0cbfdfb383a843c4ea72ca69fc49c0e63","expectedChecks":["pnpm test"],"source":"Public synthetic Placebo fixture repair-lint-autofix.","legacyVersion":"0.1"}

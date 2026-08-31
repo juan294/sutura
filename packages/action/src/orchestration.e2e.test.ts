@@ -1,11 +1,19 @@
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, rm } from 'node:fs/promises';
 
 import {
   AlreadyAttemptedError,
+  DEFAULT_MODELS,
+  DEFAULT_MODEL_PRICES,
+  DEFAULT_ROUTING_PROFILE_ID,
   InMemoryExecutor,
+  ReplayRecorder,
   SUTURA_SANDBOX_ENV,
   attemptMarker,
   orchestrate,
+  recordingContreeFetch,
+  recordingExecutor,
+  recordingNebiusFetch,
+  recordingTavilyFetch,
   type CostLedger,
   type OrchestrationContext,
   type OrchestratorLlm,
@@ -15,7 +23,7 @@ import {
   type SourceReadLimits,
   type SourceReference,
 } from '@sutura/core';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import {
   GitHubAdapter,
@@ -25,11 +33,13 @@ import {
   type WorkflowJobRecord,
   type WorkflowRunRecord,
 } from './github.js';
+import { recordingGitHubApi } from './replay-github.js';
+import { recordingRepositoryPort } from './replay-repository.js';
 
 const RUN_ID = '77001';
 const ACTION_RUN_ID = '88001';
 const HEAD_SHA = '0123456789abcdef0123456789abcdef01234567';
-const CHECKOUT_DIR = '/tmp/sutura-recorded-checkout';
+const CHECKOUT_DIR = `/tmp/sutura-recorded-checkout-${String(process.pid)}`;
 const FIX_TIP_SHA = 'fedcba9876543210fedcba9876543210fedcba98';
 const ARTIFACT_URL =
   'https://github.com/acme/widget/actions/runs/88001/artifacts/9001';
@@ -38,19 +48,22 @@ const HONEST_DIFF = [
   'diff --git a/src/value.ts b/src/value.ts',
   '--- a/src/value.ts',
   '+++ b/src/value.ts',
-  '@@ -1 +1 @@',
+  '@@ -1,1 +1,1 @@',
   '-export const value: string = 1;',
   '+export const value: string = "1";',
 ].join('\n') + '\n';
 
-const NUMBER_DIFF = HONEST_DIFF.replace(
-  '+export const value: string = "1";',
-  '+export const value: number = 1;',
-);
-const INFERRED_DIFF = HONEST_DIFF.replace(
-  '+export const value: string = "1";',
-  '+export const value = String(1);',
-);
+const DOGFOOD_DIFF = [
+  'diff --git a/packages/core/src/dogfood-add.ts b/packages/core/src/dogfood-add.ts',
+  '--- a/packages/core/src/dogfood-add.ts',
+  '+++ b/packages/core/src/dogfood-add.ts',
+  '@@ -1,3 +1,3 @@',
+  ' export function add(left: number, right: number): number {',
+  '-  return left - right;',
+  '+  return left + right;',
+  ' }',
+  '',
+].join('\n');
 
 interface RawWorkflowRun {
   id: number;
@@ -58,6 +71,7 @@ interface RawWorkflowRun {
   repository: { full_name: string };
   event: string;
   conclusion: string | null;
+  head_branch?: string | null;
   pull_requests: Array<{ number: number }>;
 }
 
@@ -67,6 +81,10 @@ interface RawPullRequest {
     sha: string;
     ref: string;
     repo: { full_name: string } | null;
+  };
+  base: {
+    sha: string;
+    ref: string;
   };
 }
 
@@ -134,6 +152,7 @@ class RecordedGitHubApi implements GitHubApi {
   private readonly commitParents = new Map<string, string[]>();
   private readonly claimRefs = new Set<string>();
   private nextCommentId = 7001;
+  readonly checks: Array<{ id: number; headSha: string; externalId: string; name: string; status: string; conclusion: string | null; detailsUrl?: string }> = [];
 
   constructor(private readonly fixtures: RecordedFixtures) {}
 
@@ -146,11 +165,13 @@ class RecordedGitHubApi implements GitHubApi {
       repository: run.repository.full_name,
       event: run.event,
       conclusion: run.conclusion,
+      ...(run.head_branch === undefined ? {} : { headBranch: run.head_branch }),
       pullRequests: run.pull_requests,
     };
   }
 
   async listPullRequestsForCommit(): Promise<Array<{ number: number }>> {
+    if (this.fixtures.workflowRun.event === 'workflow_dispatch') return [];
     throw new Error('The recorded workflow run must resolve its exact PR directly');
   }
 
@@ -162,6 +183,8 @@ class RecordedGitHubApi implements GitHubApi {
       headSha: pull.head.sha,
       headRef: pull.head.ref,
       headRepo: pull.head.repo?.full_name ?? null,
+      baseSha: pull.base.sha,
+      baseRef: pull.base.ref,
     };
   }
 
@@ -234,6 +257,9 @@ class RecordedGitHubApi implements GitHubApi {
   }
 
   async getRefSha(ref: string): Promise<string> {
+    if (ref === `heads/${this.fixtures.workflowRun.head_branch ?? ''}`) {
+      return this.fixtures.workflowRun.head_sha;
+    }
     const sha = this.fixBranches.get(ref);
     if (!sha) throw new Error(`Unknown branch ${ref}`);
     return sha;
@@ -243,11 +269,33 @@ class RecordedGitHubApi implements GitHubApi {
     return this.commitParents.get(sha) ?? [];
   }
 
+  async getCommitSha(sha: string): Promise<string> {
+    return sha;
+  }
+
   async createPullRequest(
     input: RecordedPullRequestCreation,
   ): Promise<{ number: number; url: string }> {
     this.createdPullRequests.push(input);
     return { number: 43, url: 'https://github.test/acme/widget/pull/43' };
+  }
+
+  async listCheckRunsForRef(ref: string) {
+    return this.checks.filter(({ headSha }) => headSha === ref).map((check) => ({ ...check }));
+  }
+
+  async createCheckRun(input: { name: string; headSha: string; externalId: string; status: 'in_progress'; title: string; summary: string }): Promise<{ id: number }> {
+    const id = 8001;
+    this.checks.push({ id, headSha: input.headSha, externalId: input.externalId, name: input.name, status: input.status, conclusion: null });
+    return { id };
+  }
+
+  async updateCheckRun(input: { checkRunId: number; status: 'completed'; conclusion: 'neutral' | 'action_required'; detailsUrl?: string }): Promise<void> {
+    const check = this.checks.find(({ id }) => id === input.checkRunId);
+    if (!check) throw new Error(`Unknown check ${input.checkRunId}`);
+    check.status = input.status;
+    check.conclusion = input.conclusion;
+    if (input.detailsUrl !== undefined) check.detailsUrl = input.detailsUrl;
   }
 
   publishBranch(branch: string, parentSha: string): void {
@@ -303,8 +351,17 @@ class RecordedRepository implements RepositoryPort {
   }> = [];
   readonly fixes: PublishFixInput[] = [];
   readonly sourceRequests: SourceReference[][] = [];
+  readonly sources = new Map([
+    ['src/value.ts', 'export const value: string = 1;\n'],
+    ['package.json', '{"scripts":{"test":"vitest run"}}'],
+    ['tsconfig.json', '{"compilerOptions":{"strict":true}}'],
+  ]);
 
   constructor(private readonly api: RecordedGitHubApi) {}
+
+  async readPolicyAtSha(): Promise<string | null> {
+    return null;
+  }
 
   async checkoutHead(
     repo: string,
@@ -329,13 +386,8 @@ class RecordedRepository implements RepositoryPort {
     if (checkoutDir !== CHECKOUT_DIR) throw new Error('Unexpected checkout directory');
     if (references.length > limits.maxFiles) throw new Error('Unbounded source request');
     this.sourceRequests.push([...references]);
-    const sources = new Map([
-      ['src/value.ts', 'export const value: string = 1;'],
-      ['package.json', '{"scripts":{"test":"vitest run"}}'],
-      ['tsconfig.json', '{"compilerOptions":{"strict":true}}'],
-    ]);
     return references.flatMap(({ path }) => {
-      const content = sources.get(path);
+      const content = this.sources.get(path);
       return content === undefined
         ? []
         : [{ path, startLine: 1, content, truncated: false }];
@@ -353,9 +405,18 @@ class ScriptedLlm implements OrchestratorLlm {
 
   constructor(private readonly auditApproved: boolean) {}
 
+  modelQuote(tier: 'nano' | 'super' | 'ultra') {
+    return {
+      role: tier,
+      modelId: DEFAULT_MODELS[tier],
+      price: DEFAULT_MODEL_PRICES[tier],
+      profileId: DEFAULT_ROUTING_PROFILE_ID,
+    };
+  }
+
   async chat(
     tier: 'nano' | 'super' | 'ultra',
-  ): Promise<{ text: string }> {
+  ): Promise<{ text: string; usd?: number }> {
     this.calls.push(tier);
     if (tier === 'nano') {
       return {
@@ -371,12 +432,9 @@ class ScriptedLlm implements OrchestratorLlm {
     if (tier === 'super') {
       return {
         text: JSON.stringify({
-          candidates: [
-            { id: 'source', rationale: 'Correct the source value.', diff: HONEST_DIFF },
-            { id: 'declaration', rationale: 'Correct the declared type.', diff: NUMBER_DIFF },
-            { id: 'inference', rationale: 'Use inferred string conversion.', diff: INFERRED_DIFF },
-          ],
+          replacement: 'export const value: string = "1";',
         }),
+        usd: 0.001,
       };
     }
     return {
@@ -394,10 +452,35 @@ function ledger(): CostLedger {
   return { entries: [], totalUsd: () => 0 };
 }
 
-function executorFor(exits: readonly number[]): InMemoryExecutor {
+function executorFor(
+  exits: readonly number[],
+  preparationFails = false,
+  repairDiff = HONEST_DIFF,
+): InMemoryExecutor {
   let scenarioIndex = 0;
+  let agentPatched = false;
   return new InMemoryExecutor((command) => {
+    if (command.includes('git apply - && git diff')) {
+      agentPatched = true;
+      return {
+        exitCode: 0, stdout: repairDiff, stderr: '', truncated: false, metrics: {},
+      };
+    }
+    if (agentPatched) {
+      agentPatched = false;
+      const exitCode = exits[scenarioIndex] ?? 1;
+      scenarioIndex += 3;
+      return {
+        exitCode,
+        stdout: exitCode === 0 ? 'Tests passed' : '',
+        stderr: exitCode === 0 ? '' : 'TS2322',
+        truncated: false,
+        metrics: {},
+      };
+    }
     const exitCode = command.includes('install --frozen-lockfile')
+      ? preparationFails ? 1 : 0
+      : command.includes('git init --quiet')
       ? 0
       : exits[scenarioIndex++] ?? 1;
     return {
@@ -414,8 +497,9 @@ interface Storyline {
   name: string;
   exits: number[];
   auditApproved: boolean;
-  outcome: 'fixed' | 'flaky-no-patch' | 'refused' | 'gave-up';
+  outcome: 'fixed' | 'flaky-no-patch' | 'refused' | 'gave-up' | 'infra-stop';
   commentSignal: string;
+  preparationFails?: boolean;
 }
 
 const STORYLINES: Storyline[] = [
@@ -447,6 +531,14 @@ const STORYLINES: Storyline[] = [
     outcome: 'gave-up',
     commentSignal: 'NO PATCH HELD',
   },
+  {
+    name: 'infra-stop',
+    exits: [],
+    auditApproved: true,
+    outcome: 'infra-stop',
+    commentSignal: 'INFRA — STOPPED',
+    preparationFails: true,
+  },
 ];
 
 async function harnessFor(storyline: Storyline): Promise<{
@@ -459,31 +551,179 @@ async function harnessFor(storyline: Storyline): Promise<{
   ctx: OrchestrationContext;
 }> {
   const api = new RecordedGitHubApi(await loadFixtures());
+  const capturesReplay = storyline.outcome === 'fixed' || storyline.outcome === 'gave-up';
+  const recorder = capturesReplay
+    ? new ReplayRecorder(RUN_ID, 'acme/widget', HEAD_SHA, {
+        triageN: 2, raceK: 3,
+        models: DEFAULT_MODELS,
+        routingProfileId: DEFAULT_ROUTING_PROFILE_ID,
+        maxOps: 40,
+      })
+    : undefined;
   const artifact = new RecordedArtifactApi();
-  const github = new CapturingGitHubAdapter(api, {
+  const github = new CapturingGitHubAdapter(recorder ? recordingGitHubApi(api, recorder) : api, {
     owner: 'acme',
     repo: 'widget',
     runId: RUN_ID,
     actionRunId: ACTION_RUN_ID,
     artifact,
   });
+  await mkdir(CHECKOUT_DIR, { recursive: true });
   const repository = new RecordedRepository(api);
-  const executor = executorFor(storyline.exits);
+  const executor = executorFor(storyline.exits, storyline.preparationFails);
+  if (recorder) {
+    const nebius = recordingNebiusFetch(recorder, async () => new Response(
+      '{"choices":[]}',
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ));
+    await (await nebius('https://example.test/nebius', {
+      method: 'POST', headers: {}, body: '{}',
+    })).json();
+    const tavily = recordingTavilyFetch(recorder, async () => new Response(
+      '{"results":[]}',
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ));
+    await (await tavily('https://example.test/tavily', {
+      method: 'POST', headers: {}, body: '{}',
+    })).json();
+    const contree = recordingContreeFetch(recorder, async () => new Response(
+      '{"status":"SUCCESS"}',
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ));
+    await (await contree('https://example.test/contree', {
+      method: 'POST', headers: {}, body: '{}',
+    })).json();
+  }
   const llm = new ScriptedLlm(storyline.auditApproved);
   const ctx: OrchestrationContext = {
     runId: RUN_ID,
     github,
-    repository,
-    executor,
+    repository: recorder ? recordingRepositoryPort(repository, recorder) : repository,
+    executor: recorder ? recordingExecutor(executor, recorder) : executor,
     llm,
     cost: ledger(),
     triageN: 2,
     raceK: 3,
+    runtimeId: 'node',
+    ...(recorder ? { replay: recorder } : {}),
   };
   return { api, artifact, executor, github, llm, repository, ctx };
 }
 
 describe('recorded GitHub API orchestration E2E', () => {
+  it('repairs the recorded direct workflow-dispatch dogfood failure and redelivers once', async () => {
+    const fixtures = await loadFixtures();
+    fixtures.workflowRun = {
+      ...fixtures.workflowRun,
+      event: 'workflow_dispatch',
+      head_branch: 'dogfood/sutura-v02-live-replay',
+      pull_requests: [],
+    };
+    fixtures.jobLog = [
+      '2026-08-27T10:00:12Z Run pnpm --filter @sutura/core test',
+      '2026-08-27T10:00:13Z packages/core test: \u001b[31m❯\u001b[39m src/dogfood-add.test.ts:7: expected -1 to be 5',
+    ].join('\n');
+    const api = new RecordedGitHubApi(fixtures);
+    const artifact = new RecordedArtifactApi();
+    const github = new CapturingGitHubAdapter(api, {
+      owner: 'acme', repo: 'widget', runId: RUN_ID, actionRunId: ACTION_RUN_ID, artifact,
+    });
+    const repository = new RecordedRepository(api);
+    repository.sources.clear();
+    repository.sources.set(
+      'packages/core/src/dogfood-add.test.ts',
+      "import { add } from './dogfood-add.js';\n\nit('adds', () => { expect(add(2, 3)).toBe(5); });\n",
+    );
+    repository.sources.set(
+      'packages/core/src/dogfood-add.ts',
+      'export function add(left: number, right: number): number {\n  return left - right;\n}\n',
+    );
+    const llmCalls: Array<'nano' | 'super' | 'ultra'> = [];
+    const llm: OrchestratorLlm = {
+      modelQuote: (tier) => ({
+        role: tier, modelId: DEFAULT_MODELS[tier], price: DEFAULT_MODEL_PRICES[tier],
+        profileId: DEFAULT_ROUTING_PROFILE_ID,
+      }),
+      chat: async (tier, messages, options) => {
+        llmCalls.push(tier);
+        if (tier === 'nano') return { text: JSON.stringify({
+          class: 'test-assertion', confidence: 0.99, signals: ['expected -1 to be 5'],
+          failingCmd: 'pnpm --filter @sutura/core test', errorExcerpt: 'expected -1 to be 5',
+        }) };
+        if (tier === 'super') {
+          const request = JSON.parse(messages.find(({ role }) => role === 'user')?.content ?? '{}') as {
+            sources?: Array<{ path: string; endLine: number; editable: boolean; lines: Array<{ line: number; text: string }> }>;
+            selectedTarget?: { path: string; startLine: number; endLine: number };
+          };
+          expect(request.sources?.map(({ path }) => path)).toEqual([
+            'packages/core/src/dogfood-add.test.ts',
+            'packages/core/src/dogfood-add.ts',
+          ]);
+          expect(request.sources?.find(({ path }) => path.endsWith('dogfood-add.ts'))).toMatchObject({
+            endLine: 3, editable: true,
+            lines: expect.arrayContaining([{ line: 2, text: '  return left - right;' }]),
+          });
+          expect(request.sources?.find(({ path }) => path.endsWith('dogfood-add.test.ts')))
+            .toMatchObject({ editable: false });
+          expect(request.selectedTarget).toEqual({
+            path: 'packages/core/src/dogfood-add.ts', startLine: 1, endLine: 3,
+          });
+          expect(options).toMatchObject({ responseFormat: { type: 'json_schema' } });
+          expect(JSON.stringify(options)).toContain('"replacement"');
+          expect(JSON.stringify(options)).not.toMatch(/(?:dogfood-add|startLine|endLine|"path")/u);
+          expect(options).not.toHaveProperty('tools');
+          expect(options).not.toHaveProperty('toolChoice');
+          return { text: JSON.stringify({
+            replacement: 'export function add(left: number, right: number): number {\n  return left + right;\n}\n',
+          }), usd: 0.001 };
+        }
+        return { text: JSON.stringify({ approved: true, reasoning: 'The addition repair holds.' }) };
+      },
+    };
+    const executor = executorFor([1, 1, 1, 0, 1, 1, 0], false, DOGFOOD_DIFF);
+    const ctx: OrchestrationContext = {
+      runId: RUN_ID, github, repository, executor, llm, cost: ledger(),
+      triageN: 2, raceK: 3, runtimeId: 'node',
+    };
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(caseFile.outcome).toBe('fixed');
+    expect(github.resolvedRuns[0]).toMatchObject({
+      headRef: 'dogfood/sutura-v02-live-replay',
+      baseRef: 'dogfood/sutura-v02-live-replay',
+      headSha: HEAD_SHA,
+    });
+    expect(repository.fixes).toEqual([expect.objectContaining({
+      branch: `sutura/fix-${RUN_ID}`, headSha: HEAD_SHA, diff: DOGFOOD_DIFF,
+    })]);
+    expect(repository.fixes[0]?.diff).not.toContain('dogfood-add.test.ts');
+    expect(api.createdPullRequests).toEqual([expect.objectContaining({
+      head: `acme:sutura/fix-${RUN_ID}`,
+      base: 'dogfood/sutura-v02-live-replay',
+    })]);
+    expect(api.comments).toHaveLength(1);
+    expect(llmCalls).toEqual(['nano', 'super', 'ultra']);
+
+    const mutationCounts = {
+      artifacts: artifact.uploads.length,
+      comments: api.comments.length,
+      executor: executor.calls.length,
+      fixes: repository.fixes.length,
+      llm: llmCalls.length,
+      pulls: api.createdPullRequests.length,
+    };
+    await expect(orchestrate(ctx)).rejects.toBeInstanceOf(AlreadyAttemptedError);
+    expect({
+      artifacts: artifact.uploads.length,
+      comments: api.comments.length,
+      executor: executor.calls.length,
+      fixes: repository.fixes.length,
+      llm: llmCalls.length,
+      pulls: api.createdPullRequests.length,
+    }).toEqual(mutationCounts);
+  });
+
   it.each(STORYLINES)(
     'resolves the exact recorded PR and completes the $name storyline once',
     async (storyline) => {
@@ -525,15 +765,57 @@ describe('recorded GitHub API orchestration E2E', () => {
           expect(call.opts?.env).not.toHaveProperty('RECORDED_GITHUB_SECRET');
         }
 
-        expect(harness.artifact.uploads).toHaveLength(1);
+        const capturesReplay = storyline.outcome === 'fixed' || storyline.outcome === 'gave-up';
+        expect(harness.artifact.uploads).toHaveLength(capturesReplay ? 2 : 1);
         expect(harness.artifact.uploads[0]?.name).toBe(
           `sutura-case-file-${RUN_ID}.html`,
         );
         expect(harness.artifact.uploads[0]?.html).toContain('<!doctype html>');
+        if (capturesReplay) {
+          expect(harness.artifact.uploads[1]?.name).toBe(`sutura-replay-${RUN_ID}.json`);
+          const replay = JSON.parse(harness.artifact.uploads[1]?.html ?? '{}') as {
+            schemaVersion: string;
+            outcome: string;
+            github: Array<{ method: string }>;
+            repository: Array<{ method: string }>;
+            executor: Array<{ method: string }>;
+            http: Array<{ boundary: string }>;
+            completeness: { complete: boolean };
+          };
+          expect(replay).toMatchObject({
+            schemaVersion: 'sutura-replay-v1',
+            outcome: storyline.outcome,
+            github: expect.arrayContaining([expect.any(Object)]),
+          });
+          expect(replay.github.map(({ method }) => method)).toEqual(expect.arrayContaining([
+            'updateIssueComment', 'updateCheckRun',
+          ]));
+          expect(replay.executor.length).toBeGreaterThan(0);
+          expect(replay.http.map(({ boundary }) => boundary).sort()).toEqual([
+            'contree', 'nebius', 'tavily',
+          ]);
+          expect(replay.completeness.complete).toBe(true);
+          if (storyline.outcome === 'fixed') {
+            expect(replay.github.map(({ method }) => method)).toContain('createPullRequest');
+            expect(replay.repository.map(({ method }) => method)).toContain('publishFix');
+          }
+        }
         expect(harness.api.comments).toHaveLength(1);
         expect(harness.api.comments[0]?.body).toContain(attemptMarker(RUN_ID));
         expect(harness.api.comments[0]?.body).toContain(storyline.commentSignal);
         expect(harness.api.comments[0]?.body).toContain(ARTIFACT_URL);
+        expect(harness.api.checks).toEqual([
+          expect.objectContaining({
+            id: 8001,
+            headSha: HEAD_SHA,
+            externalId: `sutura:acme/widget:workflow-run:${RUN_ID}`,
+            status: 'completed',
+            conclusion: storyline.outcome === 'fixed' || storyline.outcome === 'flaky-no-patch'
+              ? 'neutral'
+              : 'action_required',
+            detailsUrl: ARTIFACT_URL,
+          }),
+        ]);
 
         if (storyline.outcome === 'fixed') {
           expect(harness.repository.fixes).toEqual([
@@ -560,11 +842,7 @@ describe('recorded GitHub API orchestration E2E', () => {
           expect(harness.api.createdPullRequests).toEqual([]);
         }
         if (storyline.outcome === 'gave-up') {
-          expect(caseFile.race.map(({ candidate }) => candidate.id)).toEqual([
-            'source',
-            'declaration',
-            'inference',
-          ]);
+          expect(caseFile.race).toEqual([]);
         }
 
         const mutationCounts = {
@@ -574,6 +852,7 @@ describe('recorded GitHub API orchestration E2E', () => {
           fixes: harness.repository.fixes.length,
           llm: harness.llm.calls.length,
           pulls: harness.api.createdPullRequests.length,
+          checks: JSON.stringify(harness.api.checks),
         };
         await expect(orchestrate(harness.ctx)).rejects.toBeInstanceOf(
           AlreadyAttemptedError,
@@ -585,6 +864,7 @@ describe('recorded GitHub API orchestration E2E', () => {
           fixes: harness.repository.fixes.length,
           llm: harness.llm.calls.length,
           pulls: harness.api.createdPullRequests.length,
+          checks: JSON.stringify(harness.api.checks),
         }).toEqual(mutationCounts);
       } finally {
         if (previousSecret === undefined) {
@@ -595,4 +875,8 @@ describe('recorded GitHub API orchestration E2E', () => {
       }
     },
   );
+});
+
+afterAll(async () => {
+  await rm(CHECKOUT_DIR, { recursive: true, force: true });
 });

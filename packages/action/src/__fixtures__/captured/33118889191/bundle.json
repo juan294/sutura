@@ -1,0 +1,185 @@
+{
+  "schemaVersion": "sutura-replay-v1",
+  "runId": "33118889191",
+  "repo": "juan294/sutura",
+  "actionSha": "f4f17122121c3af658c41c7b5f41c45ccc259fe0",
+  "capturedAt": "2026-08-30T07:05:26.704Z",
+  "github": [
+    {
+      "sequence": 1,
+      "method": "getWorkflowRun",
+      "args": [
+        33118889191
+      ],
+      "result": {
+        "id": 33118889191,
+        "headSha": "f4f17122121c3af658c41c7b5f41c45ccc259fe0",
+        "repository": "juan294/sutura",
+        "event": "workflow_dispatch",
+        "conclusion": "success",
+        "headBranch": "sutura/fix-33118205130",
+        "pullRequests": []
+      }
+    },
+    {
+      "sequence": 2,
+      "method": "listPullRequestsForCommit",
+      "args": [
+        "f4f17122121c3af658c41c7b5f41c45ccc259fe0"
+      ],
+      "result": [
+        {
+          "number": 23
+        }
+      ]
+    },
+    {
+      "sequence": 3,
+      "method": "getPullRequest",
+      "args": [
+        23
+      ],
+      "result": {
+        "number": 23,
+        "headSha": "f4f17122121c3af658c41c7b5f41c45ccc259fe0",
+        "headRef": "sutura/fix-33118205130",
+        "headRepo": "juan294/sutura",
+        "baseSha": "3c723b83fdb162582065fe93d97747d1f54aa9da",
+        "baseRef": "demo/dogfood-typecheck"
+      }
+    },
+    {
+      "sequence": 4,
+      "method": "getCommitSha",
+      "args": [
+        "3c723b83fdb162582065fe93d97747d1f54aa9da"
+      ],
+      "result": "3c723b83fdb162582065fe93d97747d1f54aa9da"
+    },
+    {
+      "sequence": 5,
+      "method": "listJobsForWorkflowRun",
+      "args": [
+        33118889191
+      ],
+      "result": [
+        {
+          "id": 98680481669,
+          "name": "checks",
+          "conclusion": "success",
+          "steps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:36:05Z",
+              "completedAt": "2026-08-27T21:36:07Z"
+            },
+            {
+              "name": "Run actions/checkout@v7",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:36:07Z",
+              "completedAt": "2026-08-27T21:36:08Z"
+            },
+            {
+              "name": "Run pnpm/action-setup@v4",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:36:08Z",
+              "completedAt": "2026-08-27T21:36:10Z"
+            },
+            {
+              "name": "Run actions/setup-node@v4",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:36:10Z",
+              "completedAt": "2026-08-27T21:36:12Z"
+            },
+            {
+              "name": "Run pnpm install --frozen-lockfile",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:36:12Z",
+              "completedAt": "2026-08-27T21:36:15Z"
+            },
+            {
+              "name": "Run pnpm --filter placebo run smoke:offline",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:36:15Z",
+              "completedAt": "2026-08-27T21:36:21Z"
+            },
+            {
+              "name": "Run pnpm run typecheck",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:36:21Z",
+              "completedAt": "2026-08-27T21:36:29Z"
+            },
+            {
+              "name": "Run pnpm run lint",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:36:29Z",
+              "completedAt": "2026-08-27T21:36:34Z"
+            },
+            {
+              "name": "Run pnpm run test",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:36:34Z",
+              "completedAt": "2026-08-27T21:39:57Z"
+            },
+            {
+              "name": "Run pnpm run build",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:39:57Z",
+              "completedAt": "2026-08-27T21:40:06Z"
+            },
+            {
+              "name": "Post Run actions/setup-node@v4",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:40:06Z",
+              "completedAt": "2026-08-27T21:40:06Z"
+            },
+            {
+              "name": "Post Run pnpm/action-setup@v4",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:40:06Z",
+              "completedAt": "2026-08-27T21:40:06Z"
+            },
+            {
+              "name": "Post Run actions/checkout@v7",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:40:06Z",
+              "completedAt": "2026-08-27T21:40:06Z"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success",
+              "startedAt": "2026-08-27T21:40:06Z",
+              "completedAt": "2026-08-27T21:40:06Z"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "repository": [],
+  "executor": [],
+  "http": [],
+  "configuration": {
+    "triageN": 5,
+    "raceK": 3,
+    "models": {
+      "nano": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+      "super": "nvidia/nemotron-3-super-120b-a12b",
+      "ultra": "nvidia/Nemotron-3-Ultra-550b-a55b"
+    },
+    "routingProfileId": "production-baseline-v1",
+    "maxOps": 40
+  },
+  "completeness": {
+    "complete": false,
+    "overflowedBoundaries": [],
+    "pendingBoundaries": [
+      "contree",
+      "executor",
+      "nebius",
+      "repository",
+      "tavily"
+    ]
+  }
+}
