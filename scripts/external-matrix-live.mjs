@@ -369,8 +369,9 @@ export async function gateExternalMatrixLive({ mode: selectedMode, controllerSha
       run?.status === 'completed' && run?.conclusion === 'success')) {
     throw new Error('External matrix demo exact-main CI is missing');
   }
-  const secretNames = (await command('gh', ['secret', 'list', '-R', DEMO_REPOSITORY, '--json', 'name']))
-    .then((text) => JSON.parse(text).map(({ name }) => name));
+  const secretNames = JSON.parse(await command('gh', [
+    'secret', 'list', '-R', DEMO_REPOSITORY, '--json', 'name',
+  ])).map(({ name }) => name);
   for (const name of ['NEBIUS_API_KEY', 'TAVILY_API_KEY', 'CONTREE_TOKEN']) {
     if (!secretNames.includes(name)) throw new Error(`External matrix demo secret is missing: ${name}`);
   }
