@@ -81,6 +81,7 @@ Go directly to these paths -- never search for them.
 
 | Topic    | Path                            | Notes                       |
 | -------- | ------------------------------- | --------------------------- |
+| Agent reports | `docs/agents/*-report.md` | Gitignored on public repos; tracked on private (Rule #70) |
 | Active hackathon roadmap | `docs/plans/2026-08-31-sutura-hackathon-winning-roadmap.md` | Remaining work through submission |
 | Research | `docs/research/YYYY-MM-DD-*.md` |                             |
 | Plans    | `docs/plans/YYYY-MM-DD-*.md`    | Phase files in `-phases/`   |
