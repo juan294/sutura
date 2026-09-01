@@ -24,6 +24,10 @@ const MAX_ARTIFACT_BYTES = 10 * 1024 * 1024;
 const OUTCOMES = new Set(['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop']);
 const KIND_ORDER = new Map([['flaky', 0], ['trap', 1], ['upstream', 2], ['repairable', 3]]);
 const CORPUS_HASH = '785cfc70359935a0f04a9a9cda39e8fb6ff4b05cc8fea3738fb24b70bcda101f';
+const PUBLIC_REDACTION = Object.freeze({
+  credential: '[REDACTED_CREDENTIAL]',
+  privatePath: '[REDACTED_PRIVATE_PATH]',
+});
 
 function boundedUsd(value, label) {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100) {
@@ -134,6 +138,7 @@ function artifactBase(input, options = {}) {
     result.caseFile.cost.entries.reduce((subtotal, entry) => subtotal + entry.usd, 0), 0);
   const sandboxUsd = results.reduce((total, result) => total +
     result.caseFile.stages.reduce((subtotal, stage) => subtotal + (stage.metrics?.cost ?? 0), 0), 0);
+  const redactions = input.redactions === undefined ? undefined : validateRedactionSummary(input.redactions);
   return {
     schemaVersion: 'sutura-placebo-live-case-v1',
     controllerSha,
@@ -154,6 +159,7 @@ function artifactBase(input, options = {}) {
     totalUsd: inferenceUsd + sandboxUsd,
     evaluationCount: results.length,
     artifactName: artifactName(input.artifactName),
+    ...(redactions === undefined ? {} : { redactions }),
   };
 }
 
@@ -189,6 +195,66 @@ export function assertPublicArtifactSafe(value, secrets = []) {
     throw new Error('Placebo public artifact contains a credential or private local path');
   }
   return value;
+}
+
+function validateRedactionSummary(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value) ||
+      !Number.isSafeInteger(value.credentialValues) || value.credentialValues < 0 ||
+      !Number.isSafeInteger(value.privatePaths) || value.privatePaths < 0) {
+    throw new Error('Placebo public artifact redaction summary is invalid');
+  }
+  return { credentialValues: value.credentialValues, privatePaths: value.privatePaths };
+}
+
+function replaceCount(value, pattern, replacement) {
+  let count = 0;
+  return {
+    value: value.replace(pattern, () => {
+      count += 1;
+      return replacement;
+    }),
+    count,
+  };
+}
+
+export function redactPublicArtifact(value, secrets = []) {
+  const summary = { credentialValues: 0, privatePaths: 0 };
+  const knownSecrets = [...new Set(secrets.filter((secret) =>
+    typeof secret === 'string' && secret.length > 0))].sort((left, right) => right.length - left.length);
+
+  function redactString(input) {
+    let output = input;
+    for (const secret of knownSecrets) {
+      const pieces = output.split(secret);
+      if (pieces.length > 1) {
+        summary.credentialValues += pieces.length - 1;
+        output = pieces.join(PUBLIC_REDACTION.credential);
+      }
+    }
+    for (const [pattern, replacement, category] of [
+      [/Authorization:\s*(?:Bearer|Basic)\s+[^\s"']+/giu, `Authorization: ${PUBLIC_REDACTION.credential}`, 'credentialValues'],
+      [/(?:github_pat_|ghp_)[A-Za-z0-9_]+/gu, PUBLIC_REDACTION.credential, 'credentialValues'],
+      [/sk-[A-Za-z0-9]{20,}/gu, PUBLIC_REDACTION.credential, 'credentialValues'],
+      [/\/Users\/[^\\\s"'<>]+/gu, PUBLIC_REDACTION.privatePath, 'privatePaths'],
+      [/[A-Z]:\\Users\\[^\s"'<>]+/giu, PUBLIC_REDACTION.privatePath, 'privatePaths'],
+    ]) {
+      const redacted = replaceCount(output, pattern, replacement);
+      output = redacted.value;
+      summary[category] += redacted.count;
+    }
+    return output;
+  }
+
+  function visit(input) {
+    if (typeof input === 'string') return redactString(input);
+    if (Array.isArray(input)) return input.map(visit);
+    if (input !== null && typeof input === 'object') {
+      return Object.fromEntries(Object.entries(input).map(([key, child]) => [key, visit(child)]));
+    }
+    return input;
+  }
+
+  return { value: visit(value), summary };
 }
 
 export function validatePlaceboCaseArtifact(value, options = {}) {
@@ -570,6 +636,8 @@ async function artifactCommand(args) {
       !SHA256_PATTERN.test(installEvidence.packageIntegrity ?? '')) {
     throw new Error('Placebo candidate install evidence is invalid');
   }
+  const secrets = [process.env.NEBIUS_API_KEY, process.env.TAVILY_API_KEY, process.env.CONTREE_TOKEN];
+  const sanitized = redactPublicArtifact({ results: report.results, evaluationManifest }, secrets);
   const artifact = createPlaceboCaseArtifact({
     controllerSha: valueAfter(args, '--controller-sha'),
     githubRunId: valueAfter(args, '--run-id'),
@@ -578,15 +646,12 @@ async function artifactCommand(args) {
     packageContentHash: installEvidence.packageContentHash,
     packageIntegrity: installEvidence.packageIntegrity,
     caseId,
-    results: report.results,
-    evaluationManifest,
+    results: sanitized.value.results,
+    evaluationManifest: sanitized.value.evaluationManifest,
     artifactName: `sutura-placebo-${controllerId}-${caseId}`,
+    redactions: sanitized.summary,
   });
-  assertPublicArtifactSafe(artifact, [
-    process.env.NEBIUS_API_KEY,
-    process.env.TAVILY_API_KEY,
-    process.env.CONTREE_TOKEN,
-  ]);
+  assertPublicArtifactSafe(artifact, secrets);
   await writeFile(valueAfter(args, '--output'), `${canonicalJson(artifact)}\n`, { encoding: 'utf8', flag: 'wx' });
   return artifact;
 }

@@ -9,6 +9,7 @@ import {
   createPlaceboLedger,
   finalizePlaceboEvidence,
   placeboSpendDecision,
+  redactPublicArtifact,
   runPlaceboStreak,
   validatePlaceboCaseArtifact,
   validatePlaceboLedger,
@@ -111,6 +112,35 @@ test('public artifact safety rejects credential values and private local paths',
   assert.equal(assertPublicArtifactSafe({ result: 'safe' }).result, 'safe');
   assert.throws(() => assertPublicArtifactSafe({ value: 'secret-value' }, ['secret-value']), /credential/u);
   assert.throws(() => assertPublicArtifactSafe({ path: '/Users/person/private' }), /private local path/u);
+});
+
+test('public artifact redaction removes sensitive strings before fail-closed validation', () => {
+  const input = {
+    diagnosis: 'Authorization: Bearer bearer-token /Users/person/private secret-value',
+    trace: [
+      'C:\\Users\\person\\private',
+      'github_pat_abcdefghijklmnopqrstuvwxyz',
+      'sk-abcdefghijklmnopqrstuvwxyz',
+    ],
+  };
+  const redacted = redactPublicArtifact(input, ['secret-value']);
+  assert.deepEqual(redacted.summary, { credentialValues: 4, privatePaths: 2 });
+  assert.doesNotMatch(JSON.stringify(redacted.value), /secret-value|\/Users\/person|C:\\Users\\person|github_pat_|sk-/u);
+  assert.equal(redacted.value.diagnosis.endsWith('[REDACTED_PRIVATE_PATH] [REDACTED_CREDENTIAL]'), true);
+  assert.equal(redacted.value.trace[0], '[REDACTED_PRIVATE_PATH]');
+  assert.deepEqual(assertPublicArtifactSafe(redacted.value, ['secret-value']), redacted.value);
+  assert.equal(input.diagnosis.endsWith('secret-value'), true);
+});
+
+test('case artifacts bind a deterministic public redaction summary', () => {
+  const value = artifact('repair-off-by-one', {
+    redactions: { credentialValues: 2, privatePaths: 1 },
+  });
+  assert.deepEqual(value.redactions, { credentialValues: 2, privatePaths: 1 });
+  assert.deepEqual(validatePlaceboCaseArtifact(value, { corpus }), value);
+  assert.throws(() => validatePlaceboCaseArtifact({
+    ...value, redactions: { credentialValues: -1, privatePaths: 0 },
+  }, { corpus }), /redaction summary/u);
 });
 
 test('upstream artifacts require their exact Tavily pair', () => {
