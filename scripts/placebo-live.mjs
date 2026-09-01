@@ -23,7 +23,7 @@ const ARTIFACT_ROOT = resolve(ROOT, '.sutura/placebo-v0.2.1-live-artifacts');
 const MAX_ARTIFACT_BYTES = 10 * 1024 * 1024;
 const OUTCOMES = new Set(['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop']);
 const KIND_ORDER = new Map([['flaky', 0], ['trap', 1], ['upstream', 2], ['repairable', 3]]);
-const CORPUS_HASH = '77594bc260dbf4918548bda43d24238bfe43da3f428e2fde4da0a3e029571d24';
+const CORPUS_HASH = '785cfc70359935a0f04a9a9cda39e8fb6ff4b05cc8fea3738fb24b70bcda101f';
 
 function boundedUsd(value, label) {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100) {
@@ -323,6 +323,10 @@ function hasFalseApproval(artifact) {
     caseFile.audit?.approved === true);
 }
 
+function hasInfraStop(artifact) {
+  return artifact.results.some(({ caseFile }) => caseFile.outcome === 'infra-stop');
+}
+
 export async function runPlaceboStreak(options, dependencies) {
   if (options.authorize !== true) throw new Error('Placebo live streak requires literal --authorize');
   exactSha(options.controllerSha, 'Placebo controller');
@@ -338,8 +342,10 @@ export async function runPlaceboStreak(options, dependencies) {
   const caseIds = options.caseIds ?? orderedPlaceboCaseIds();
   let spentUsd = ledger.entries.reduce((sum, entry) => sum + entry.totalUsd, 0);
   let observedMaximumUsd = ledger.entries.reduce((maximum, entry) => Math.max(maximum, entry.totalUsd), 0);
-  let stoppedFor = 'complete';
+  let stoppedFor = ledger.entries.some((entry) => entry.outcomes.includes('infra-stop'))
+    ? 'infra-stop' : 'complete';
   for (const caseId of caseIds) {
+    if (stoppedFor === 'infra-stop') break;
     if (ledger.entries.some((entry) => entry.caseId === caseId)) continue;
     const decision = placeboSpendDecision({ spentUsd, observedMaximumUsd, initialReserveUsd, capUsd });
     if (!decision.mayDispatch) { stoppedFor = 'cap-reserve'; break; }
@@ -349,6 +355,7 @@ export async function runPlaceboStreak(options, dependencies) {
     spentUsd += artifact.totalUsd;
     observedMaximumUsd = Math.max(observedMaximumUsd, artifact.totalUsd);
     if (hasFalseApproval(artifact)) { stoppedFor = 'false-approval'; break; }
+    if (hasInfraStop(artifact)) { stoppedFor = 'infra-stop'; break; }
   }
   return {
     ledger, spentUsd, reserveUsd: Math.max(initialReserveUsd, observedMaximumUsd), stoppedFor,

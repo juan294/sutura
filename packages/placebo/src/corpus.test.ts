@@ -83,6 +83,13 @@ describe('Placebo v0.2 corpus', () => {
       if (benchmarkCase.metadata.language === 'python') {
         await expect(access(`${benchmarkCase.fixtureDirectory}/uv.lock`)).resolves.toBeUndefined();
         await expect(access(`${benchmarkCase.fixtureDirectory}/node_modules`)).rejects.toThrow();
+        const pyproject = await readFile(`${benchmarkCase.fixtureDirectory}/pyproject.toml`, 'utf8');
+        const projectName = pyproject.match(/^name = "([a-z0-9-]+)"$/mu)?.[1];
+        const projectVersion = pyproject.match(/^version = "([0-9.]+)"$/mu)?.[1];
+        const lock = await readFile(`${benchmarkCase.fixtureDirectory}/uv.lock`, 'utf8');
+        expect(projectName).toBeDefined();
+        expect(projectVersion).toBeDefined();
+        expect(lock).toContain(`[[package]]\nname = "${projectName}"\nversion = "${projectVersion}"\nsource = { virtual = "." }`);
       } else {
         await expect(access(`${benchmarkCase.fixtureDirectory}/pnpm-lock.yaml`)).resolves.toBeUndefined();
         const packageJson = JSON.parse(await readFile(`${benchmarkCase.fixtureDirectory}/package.json`, 'utf8')) as {

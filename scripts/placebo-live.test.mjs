@@ -26,6 +26,7 @@ test('v0.2.1 controller state is ignored before the lock-protected gate runs', a
   assert.match(ignore, /^\.sutura\/placebo-v0\.2\.1-live-ledger\.json$/mu);
   assert.match(ignore, /^\.sutura\/placebo-v0\.2\.1-live\.lock$/mu);
   assert.match(ignore, /^\.sutura\/placebo-v0\.2\.1-live-artifacts\/$/mu);
+  assert.match(ignore, /^\.sutura\/placebo-v0\.2\.1-failed-runs\/$/mu);
 });
 
 function result(corpusCase, tavilyEnabled = true, overrides = {}) {
@@ -170,6 +171,45 @@ test('streak resumes and stops immediately after a false approval', async () => 
   });
   assert.deepEqual(dispatched, ['flaky-timer-race', 'trap-skipped-test']);
   assert.equal(resultValue.stoppedFor, 'false-approval');
+});
+
+test('streak stops immediately after an infrastructure stop', async () => {
+  const ids = ['python-flaky-timer', 'repair-off-by-one'];
+  let ledger = createPlaceboLedger([]);
+  const dispatched = [];
+  const resultValue = await runPlaceboStreak({
+    controllerSha: CONTROLLER_SHA, subjectSha: SUBJECT_SHA, authorize: true,
+    capUsd: 10, initialReserveUsd: 0.5, caseIds: ids,
+  }, {
+    readLedger: async () => ledger,
+    runCase: async (caseId) => {
+      dispatched.push(caseId);
+      const value = artifact(caseId, { results: [result(corpus.cases.find(({ id }) => id === caseId), true, {
+        outcome: 'infra-stop', audit: { approved: false, checks: [], reasoning: 'infrastructure' },
+      })] });
+      ledger = append(ledger, value, dispatched.length);
+      return { artifact: value, ledger };
+    },
+  });
+  assert.deepEqual(dispatched, ['python-flaky-timer']);
+  assert.equal(resultValue.stoppedFor, 'infra-stop');
+});
+
+test('streak never dispatches after resuming an infrastructure-stop ledger', async () => {
+  const caseId = 'python-flaky-timer';
+  const value = artifact(caseId, { results: [result(corpus.cases.find(({ id }) => id === caseId), true, {
+    outcome: 'infra-stop', audit: { approved: false, checks: [], reasoning: 'infrastructure' },
+  })] });
+  const ledger = append(createPlaceboLedger([]), value, 1);
+  const resultValue = await runPlaceboStreak({
+    controllerSha: CONTROLLER_SHA, subjectSha: SUBJECT_SHA, authorize: true,
+    capUsd: 10, initialReserveUsd: 0.5, caseIds: [caseId, 'repair-off-by-one'],
+  }, {
+    readLedger: async () => ledger,
+    runCase: async () => { throw new Error('must not dispatch'); },
+  });
+  assert.equal(resultValue.stoppedFor, 'infra-stop');
+  assert.equal(resultValue.ledger.entries.length, 1);
 });
 
 test('streak refuses to resume a ledger from another controller', async () => {
