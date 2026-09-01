@@ -56,6 +56,7 @@ test('runtime image canary command and workflows are read-only and fail closed',
   assert.equal(manifest.scripts['canary:runtime-image'], 'pnpm --filter @sutura/core build && node scripts/runtime-image-canary.mjs');
   assert.match(source, /process\.env\.CONTREE_TOKEN/u);
   assert.match(source, /process\.env\.CONTREE_PROJECT/u);
+  assert.match(source, /process\.env\.SUTURA_CANARY_OUTPUT_DIRECTORY/u);
   assert.match(source, /provePythonRuntimeImage/u);
   assert.match(source, /requires a clean tree/u);
   assert.doesNotMatch(source, /(?:git|gh)\s+(?:push|branch|pr)|createFixPullRequest|publishFix/u);
@@ -63,5 +64,7 @@ test('runtime image canary command and workflows are read-only and fail closed',
     assert.match(workflow, /pnpm run canary:runtime-image/u);
     assert.match(workflow, /CONTREE_TOKEN: \$\{\{ secrets\.CONTREE_TOKEN \}\}/u);
     assert.match(workflow, /CONTREE_PROJECT: \$\{\{ vars\.CONTREE_PROJECT \}\}/u);
+    assert.match(workflow, /SUTURA_CANARY_OUTPUT_DIRECTORY: \$\{\{ runner\.temp \}\}/u);
+    assert.match(workflow, /path: \$\{\{ runner\.temp \}\}\/runtime-image-canary-\*\.json/u);
   }
 });

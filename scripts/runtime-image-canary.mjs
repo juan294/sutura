@@ -47,6 +47,8 @@ export async function runRuntimeImageCanary(options = {}) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const { proof } = await runRuntimeImageCanary();
+  const { proof } = await runRuntimeImageCanary({
+    outputDirectory: process.env.SUTURA_CANARY_OUTPUT_DIRECTORY,
+  });
   process.stdout.write(`${JSON.stringify(proof, null, 2)}\n`);
 }
