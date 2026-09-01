@@ -331,10 +331,15 @@ function validateCanaryEvidence(evidence, candidate, expected) {
 }
 
 function validateRuntimeImageEvidence(evidence, candidate, expected) {
-  if (evidence?.schemaVersion !== 'sutura-runtime-image-canary-v1' ||
+  if (evidence?.schemaVersion !== 'sutura-runtime-image-canary-v2' ||
       evidence.headSha !== candidate ||
+      evidence.registryResolution?.imageRef !== expected.imageRef ||
+      evidence.registryResolution?.indexDigest !== expected.indexDigest ||
+      evidence.registryResolution?.linuxAmd64Digest !== expected.linuxAmd64Digest ||
       evidence.proof?.schemaVersion !== expected.schemaVersion ||
       evidence.proof?.imageRef !== expected.imageRef ||
+      evidence.proof?.expectedIndexDigest !== expected.indexDigest ||
+      evidence.proof?.expectedLinuxAmd64Digest !== expected.linuxAmd64Digest ||
       typeof evidence.proof?.importedImageId !== 'string' || !evidence.proof.importedImageId ||
       JSON.stringify(evidence.proof?.requiredTools) !== JSON.stringify(expected.requiredTools) ||
       evidence.proof?.operationId !== 'sutura-python-runtime-image-proof') {
@@ -451,6 +456,8 @@ export async function gateDogfood(sha, inputDependencies = {}) {
     validateRuntimeImageEvidence(evidence, candidate, {
       schemaVersion: core.PYTHON_IMAGE_PROOF_SCHEMA_VERSION,
       imageRef: core.PYTHON_IMAGE_REF,
+      indexDigest: core.PYTHON_IMAGE_INDEX_DIGEST,
+      linuxAmd64Digest: core.PYTHON_IMAGE_LINUX_AMD64_DIGEST,
       requiredTools: core.PYTHON_REQUIRED_TOOLS,
     });
     const age = dependencies.now() - Date.parse(evidence.capturedAt);

@@ -91,12 +91,19 @@ async function gateDependencies(overrides = {}) {
       },
     }),
     runtimeImageEvidence: async () => ({
-      schemaVersion: 'sutura-runtime-image-canary-v1',
+      schemaVersion: 'sutura-runtime-image-canary-v2',
       headSha: SHA,
       capturedAt: new Date(NOW - 60_000).toISOString(),
+      registryResolution: {
+        imageRef: core.PYTHON_IMAGE_REF,
+        indexDigest: core.PYTHON_IMAGE_INDEX_DIGEST,
+        linuxAmd64Digest: core.PYTHON_IMAGE_LINUX_AMD64_DIGEST,
+      },
       proof: {
         schemaVersion: core.PYTHON_IMAGE_PROOF_SCHEMA_VERSION,
         imageRef: core.PYTHON_IMAGE_REF,
+        expectedIndexDigest: core.PYTHON_IMAGE_INDEX_DIGEST,
+        expectedLinuxAmd64Digest: core.PYTHON_IMAGE_LINUX_AMD64_DIGEST,
         importedImageId: 'image-1',
         requiredTools: core.PYTHON_REQUIRED_TOOLS,
         operationId: 'sutura-python-runtime-image-proof',

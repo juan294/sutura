@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { InMemoryExecutor } from '../executor/memory.js';
-import { PYTHON_IMAGE_REF } from './python.js';
+import {
+  PYTHON_IMAGE_INDEX_DIGEST,
+  PYTHON_IMAGE_LINUX_AMD64_DIGEST,
+  PYTHON_IMAGE_REF,
+} from './python.js';
 import {
   PYTHON_IMAGE_PROOF_SCHEMA_VERSION,
   PythonImageProofError,
@@ -20,10 +24,10 @@ function successfulExecutor(): InMemoryExecutor {
 }
 
 describe('Python image proof', () => {
-  it('accepts only one exact untagged SHA-256 image reference', () => {
-    expect(parseExactImageReference(PYTHON_IMAGE_REF)).toEqual({
+  it('parses exact untagged SHA-256 image references independently', () => {
+    expect(parseExactImageReference(`astral/uv@${PYTHON_IMAGE_LINUX_AMD64_DIGEST}`)).toEqual({
       repository: 'astral/uv',
-      digest: 'sha256:35b0aa516fbcf6f18624919cfc38fa02ab3458e0ffcd3c03e932051b37f315db',
+      digest: PYTHON_IMAGE_LINUX_AMD64_DIGEST,
     });
     expect(() => parseExactImageReference('ghcr.io/astral-sh/uv:0.9.30-python3.13-bookworm')).toThrow(PythonImageProofError);
     expect(() => parseExactImageReference('ghcr.io/astral-sh/uv:stable@sha256:35b0aa516fbcf6f18624919cfc38fa02ab3458e0ffcd3c03e932051b37f315db')).toThrow(/mutable tag/u);
@@ -35,6 +39,8 @@ describe('Python image proof', () => {
     await expect(provePythonRuntimeImage(executor)).resolves.toMatchObject({
       schemaVersion: PYTHON_IMAGE_PROOF_SCHEMA_VERSION,
       imageRef: PYTHON_IMAGE_REF,
+      expectedIndexDigest: PYTHON_IMAGE_INDEX_DIGEST,
+      expectedLinuxAmd64Digest: PYTHON_IMAGE_LINUX_AMD64_DIGEST,
       importedImageId: 'mem-1',
       operationId: 'sutura-python-runtime-image-proof',
     });
@@ -49,8 +55,15 @@ describe('Python image proof', () => {
     });
   });
 
+  it('rejects any unverified ConTree tag', async () => {
+    await expect(provePythonRuntimeImage(
+      successfulExecutor(),
+      'astral/uv:latest',
+    )).rejects.toThrow(/verified ConTree versioned tag/u);
+  });
+
   it('reproduces the captured unavailable-index failure without accepting a proof', async () => {
-    const deletedIndex = 'ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a';
+    const deletedIndex = PYTHON_IMAGE_REF;
     const executor = successfulExecutor();
     executor.importImage = async () => {
       throw new Error('ConTree image import failed: HTTP 404');

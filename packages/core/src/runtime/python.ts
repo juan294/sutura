@@ -18,9 +18,12 @@ const PYTHON_DEPENDENCY_FILE_SYSTEM: PythonDependencyFileSystem = {
   realpath: async (path) => realpath(path),
 };
 
-// Pin the Linux AMD64 image manifest, not the multi-platform OCI index.
-// Use Astral's Docker Hub mirror because ConTree cannot import the GHCR mirror.
-export const PYTHON_IMAGE_REF = 'astral/uv@sha256:35b0aa516fbcf6f18624919cfc38fa02ab3458e0ffcd3c03e932051b37f315db';
+// ConTree's beta importer rejects OCI digest references. Use the versioned
+// Docker Hub tag at that boundary, then fail closed in the live canary unless
+// it still resolves to these exact index and Linux AMD64 manifest digests.
+export const PYTHON_IMAGE_REF = 'astral/uv:0.9.30-python3.13-bookworm';
+export const PYTHON_IMAGE_INDEX_DIGEST = 'sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a';
+export const PYTHON_IMAGE_LINUX_AMD64_DIGEST = 'sha256:35b0aa516fbcf6f18624919cfc38fa02ab3458e0ffcd3c03e932051b37f315db';
 export const PYTHON_REQUIRED_TOOLS = Object.freeze([
   'Python 3.13.11',
   'uv 0.9.30',

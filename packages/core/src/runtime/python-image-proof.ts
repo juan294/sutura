@@ -1,9 +1,14 @@
 import { shellQuote } from '../engine/shell.js';
 import type { Executor, RunResult } from '../executor/types.js';
 
-import { PYTHON_IMAGE_REF, PYTHON_REQUIRED_TOOLS } from './python.js';
+import {
+  PYTHON_IMAGE_INDEX_DIGEST,
+  PYTHON_IMAGE_LINUX_AMD64_DIGEST,
+  PYTHON_IMAGE_REF,
+  PYTHON_REQUIRED_TOOLS,
+} from './python.js';
 
-export const PYTHON_IMAGE_PROOF_SCHEMA_VERSION = 'sutura-python-image-proof-v1';
+export const PYTHON_IMAGE_PROOF_SCHEMA_VERSION = 'sutura-python-image-proof-v2';
 
 export class PythonImageProofError extends Error {
   constructor(message: string) {
@@ -20,6 +25,8 @@ export interface ExactImageReference {
 export interface PythonImageProof {
   schemaVersion: typeof PYTHON_IMAGE_PROOF_SCHEMA_VERSION;
   imageRef: string;
+  expectedIndexDigest: string;
+  expectedLinuxAmd64Digest: string;
   importedImageId: string;
   requiredTools: readonly string[];
   operationId: string;
@@ -80,7 +87,9 @@ export async function provePythonRuntimeImage(
   executor: Executor,
   imageRef = PYTHON_IMAGE_REF,
 ): Promise<PythonImageProof> {
-  parseExactImageReference(imageRef);
+  if (imageRef !== PYTHON_IMAGE_REF) {
+    throw new PythonImageProofError('Python runtime image must use the verified ConTree versioned tag');
+  }
   const importedImageId = await executor.importImage(imageRef);
   const operationId = 'sutura-python-runtime-image-proof';
   const result = await executor.run(importedImageId, pythonImageProofCommand(), {
@@ -90,6 +99,8 @@ export async function provePythonRuntimeImage(
   return {
     schemaVersion: PYTHON_IMAGE_PROOF_SCHEMA_VERSION,
     imageRef,
+    expectedIndexDigest: PYTHON_IMAGE_INDEX_DIGEST,
+    expectedLinuxAmd64Digest: PYTHON_IMAGE_LINUX_AMD64_DIGEST,
     importedImageId,
     requiredTools: [...PYTHON_REQUIRED_TOOLS],
     operationId,
