@@ -6,7 +6,7 @@ import test from 'node:test';
 
 const root = resolve(import.meta.dirname, '..');
 const SHA = 'a'.repeat(40);
-const IMAGE = 'ghcr.io/astral-sh/uv@sha256:35b0aa516fbcf6f18624919cfc38fa02ab3458e0ffcd3c03e932051b37f315db';
+const IMAGE = 'astral/uv@sha256:35b0aa516fbcf6f18624919cfc38fa02ab3458e0ffcd3c03e932051b37f315db';
 
 test('runtime image canary writes exact-SHA proof and refuses dirty input', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'sutura-runtime-canary-'));

@@ -16,7 +16,7 @@ import { EXTERNAL_MATRIX_CASES } from './test-external-matrix.mjs';
 const ACTION_SHA = 'a943ded4c734aed75c5c63f2b2dd63a2f44556c2';
 const CONTROLLER_SHA = 'a'.repeat(40);
 const DEMO_SHA = 'b'.repeat(40);
-const PACKAGE_HASH = 'f7770a5d425215d70618733461f2abaf4b4640f59e07163c73bf57c02d123313';
+const PACKAGE_HASH = '5f0e97a3a8888868e2b2174b21eee2e84273b5af8dff82a881dfae8036fae08c';
 
 function artifact(definition, mode = 'candidate', overrides = {}) {
   const runId = String(20_000 + EXTERNAL_MATRIX_CASES.indexOf(definition));

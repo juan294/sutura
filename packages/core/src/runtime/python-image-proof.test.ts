@@ -22,7 +22,7 @@ function successfulExecutor(): InMemoryExecutor {
 describe('Python image proof', () => {
   it('accepts only one exact untagged SHA-256 image reference', () => {
     expect(parseExactImageReference(PYTHON_IMAGE_REF)).toEqual({
-      repository: 'ghcr.io/astral-sh/uv',
+      repository: 'astral/uv',
       digest: 'sha256:35b0aa516fbcf6f18624919cfc38fa02ab3458e0ffcd3c03e932051b37f315db',
     });
     expect(() => parseExactImageReference('ghcr.io/astral-sh/uv:0.9.30-python3.13-bookworm')).toThrow(PythonImageProofError);

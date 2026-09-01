@@ -19,8 +19,8 @@ const PYTHON_DEPENDENCY_FILE_SYSTEM: PythonDependencyFileSystem = {
 };
 
 // Pin the Linux AMD64 image manifest, not the multi-platform OCI index.
-// ConTree imports the concrete platform manifest used by its workers.
-export const PYTHON_IMAGE_REF = 'ghcr.io/astral-sh/uv@sha256:35b0aa516fbcf6f18624919cfc38fa02ab3458e0ffcd3c03e932051b37f315db';
+// Use Astral's Docker Hub mirror because ConTree cannot import the GHCR mirror.
+export const PYTHON_IMAGE_REF = 'astral/uv@sha256:35b0aa516fbcf6f18624919cfc38fa02ab3458e0ffcd3c03e932051b37f315db';
 export const PYTHON_REQUIRED_TOOLS = Object.freeze([
   'Python 3.13.11',
   'uv 0.9.30',

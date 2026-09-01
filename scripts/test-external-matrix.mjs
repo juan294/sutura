@@ -26,7 +26,7 @@ export const EXTERNAL_MATRIX_RELEASE_VERSION = RELEASE_VERSION;
 
 const DEFINITION_BY_ID = new Map(EXTERNAL_MATRIX_CASES.map((item) => [item.caseId, item]));
 const OUTCOMES = new Set(['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop', 'audit-approved', 'audit-refused']);
-const PACKAGE_CONTENT_HASH = 'f7770a5d425215d70618733461f2abaf4b4640f59e07163c73bf57c02d123313';
+const PACKAGE_CONTENT_HASH = '5f0e97a3a8888868e2b2174b21eee2e84273b5af8dff82a881dfae8036fae08c';
 const SANDBOX_CASES = new Set([
   'javascript-repair', 'javascript-flake', 'direct-branch-repair',
   'repository-policy-refusal', 'python-repair',
