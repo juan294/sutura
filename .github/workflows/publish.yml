@@ -11,6 +11,7 @@ jobs:
   npm:
     if: ${{ startsWith(github.event.release.tag_name, 'v') }}
     runs-on: ubuntu-latest
+    environment: npm
     permissions:
       actions: read
       contents: read
