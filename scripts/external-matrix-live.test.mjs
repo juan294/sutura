@@ -16,7 +16,7 @@ import { EXTERNAL_MATRIX_CASES } from './test-external-matrix.mjs';
 const ACTION_SHA = 'a943ded4c734aed75c5c63f2b2dd63a2f44556c2';
 const CONTROLLER_SHA = 'a'.repeat(40);
 const DEMO_SHA = 'b'.repeat(40);
-const PACKAGE_HASH = '999e189d91dc52383361e739f075056622308da6360b5d9187fea8f303330572';
+const PACKAGE_HASH = 'f7770a5d425215d70618733461f2abaf4b4640f59e07163c73bf57c02d123313';
 
 function artifact(definition, mode = 'candidate', overrides = {}) {
   const runId = String(20_000 + EXTERNAL_MATRIX_CASES.indexOf(definition));
@@ -28,7 +28,7 @@ function artifact(definition, mode = 'candidate', overrides = {}) {
     expectedOutcome: definition.expectedOutcome,
     actualOutcome: definition.expectedOutcome,
     auditApproved: ['fixed', 'audit-approved'].includes(definition.expectedOutcome),
-    packageVersion: '0.2.0',
+    packageVersion: '0.2.1',
     packageMode: mode,
     packageContentHash: PACKAGE_HASH,
     actionCommit: ACTION_SHA,
@@ -152,6 +152,28 @@ test('streak resumes after a subset and stops before dispatch when reserve reach
   assert.equal(dispatches, 0);
   assert.equal(completed.ledger.entries.length, 2);
   assert.equal(completed.stoppedFor, 'cap-reserve');
+});
+
+test('streak retains one infra-stop with unavailable cost and stops without calling it zero spend', async () => {
+  let ledger = createExternalMatrixLedger('candidate', []);
+  const completed = await runExternalMatrixStreak({
+    mode: 'candidate', controllerSha: CONTROLLER_SHA, actionSha: ACTION_SHA,
+    authorize: true, capUsd: 1, initialReserveUsd: 0.1,
+  }, {
+    readLedger: async () => ledger,
+    runCase: async (definition) => {
+      const value = normalizedArtifact(definition, 'candidate', {
+        actualOutcome: 'infra-stop', auditApproved: false, costStatus: 'unavailable',
+        inferenceCostUsd: null, sandboxCostUsd: null, stages: [],
+      });
+      ledger = append(ledger, value, 1);
+      return { artifact: value, ledger };
+    },
+  });
+  assert.equal(completed.stoppedFor, 'infra-stop');
+  assert.equal(completed.spentUsd, 0);
+  assert.equal(completed.ledger.entries[0].costStatus, 'unavailable');
+  assert.equal(completed.ledger.entries[0].totalUsd, null);
 });
 
 test('candidate and public finalization keep all eight cases and call the authoritative analyzer', () => {

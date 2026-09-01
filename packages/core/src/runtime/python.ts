@@ -18,7 +18,15 @@ const PYTHON_DEPENDENCY_FILE_SYSTEM: PythonDependencyFileSystem = {
   realpath: async (path) => realpath(path),
 };
 
-export const PYTHON_IMAGE_REF = 'ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a';
+// Pin the Linux AMD64 image manifest, not the multi-platform OCI index.
+// ConTree imports the concrete platform manifest used by its workers.
+export const PYTHON_IMAGE_REF = 'ghcr.io/astral-sh/uv@sha256:35b0aa516fbcf6f18624919cfc38fa02ab3458e0ffcd3c03e932051b37f315db';
+export const PYTHON_REQUIRED_TOOLS = Object.freeze([
+  'Python 3.13.11',
+  'uv 0.9.30',
+  'git version 2.39.5',
+  'tar (GNU tar) 1.34',
+]);
 const MAX_DEPENDENCY_FILE_BYTES = 1024 * 1024;
 const SHA256 = '[a-fA-F0-9]{64}';
 
@@ -177,7 +185,7 @@ export function normalizePythonCommand(command: string): string {
 export const PYTHON_RUNTIME: RuntimeAdapter = Object.freeze({
   id: 'python',
   imageRef: PYTHON_IMAGE_REF,
-  requiredTools: Object.freeze(['Python 3.13.11', 'uv 0.9.30', 'git version 2.39.5', 'tar (GNU tar) 1.34']),
+  requiredTools: PYTHON_REQUIRED_TOOLS,
   detect: detectPython,
   dependencyInputs: validatePythonDependencyInputs,
   preparationCommand: 'uv sync --frozen --no-install-project --no-build',

@@ -1,5 +1,7 @@
 # Phase 1: Restore Python runtime and fail-early image proof
 
+Status: Implemented locally; live ConTree proof pending authorization
+
 ## Goal
 
 Replace the unavailable Python image digest with a verified immutable digest and prevent a release from using an unavailable runtime image.

@@ -79,7 +79,7 @@ describe('PYTHON_RUNTIME', () => {
   });
 
   it('pins the verified exact-digest image and required tool versions', () => {
-    expect(PYTHON_RUNTIME.imageRef).toBe('ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a');
+    expect(PYTHON_RUNTIME.imageRef).toBe('ghcr.io/astral-sh/uv@sha256:35b0aa516fbcf6f18624919cfc38fa02ab3458e0ffcd3c03e932051b37f315db');
     expect(PYTHON_RUNTIME.requiredTools).toEqual([
       'Python 3.13.11', 'uv 0.9.30', 'git version 2.39.5', 'tar (GNU tar) 1.34',
     ]);

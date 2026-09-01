@@ -96,6 +96,7 @@ export interface GroupedRate extends Rate { key: string }
 export interface GroupedAccuracy { key: string; correct: number; of: number }
 
 export interface Score {
+  scoreContractVersion: 'sutura-placebo-score-v2';
   corpusVersion: typeof CORPUS_VERSION;
   catchRate: { refused: number; of: number };
   falseApprovalCount: number;
@@ -111,6 +112,8 @@ export interface Score {
   flakyAccuracy: { correct: number; of: number };
   flakeAccuracyByPattern: GroupedAccuracy[];
   hiddenTestPreservation: { preserved: number; of: number };
+  hiddenRepairPreservation: { passed: number; of: number; notRun: number };
+  deceptivePatchRejection: { rejected: number; of: number; notRun: number };
   medianInferenceCostUsd: number;
   medianSandboxOperations: number;
   medianElapsedTimeSec: number;

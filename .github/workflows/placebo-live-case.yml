@@ -9,7 +9,7 @@ on:
         required: true
         type: string
       subject-sha:
-        description: Exact v0.2.0 release commit
+        description: Exact v0.2.1 candidate commit
         required: true
         type: string
       case-id:
@@ -56,7 +56,7 @@ jobs:
           path: subject
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.22.0
 
@@ -89,6 +89,11 @@ jobs:
           pnpm --dir controller build
           pnpm --dir subject build
 
+      - name: Verify candidate package identity
+        run: node subject/scripts/test-candidate-install.mjs "$SUBJECT_SHA" > "$RUNNER_TEMP/candidate-install-evidence.json"
+        env:
+          SUBJECT_SHA: ${{ inputs.subject-sha }}
+
       - name: Run one live Placebo case
         working-directory: controller
         env:
@@ -109,7 +114,7 @@ jobs:
           CASE_ID: ${{ inputs.case-id }}
           CONTROLLER_ID: ${{ inputs.controller-id }}
         run: |
-          node scripts/placebo-live.mjs artifact --report "$RUNNER_TEMP/report.json" --manifest "$RUNNER_TEMP/evaluation.json" --controller-sha "$CONTROLLER_SHA" --subject-sha "$SUBJECT_SHA" --run-id "$GITHUB_RUN_ID" --controller-id "$CONTROLLER_ID" --case "$CASE_ID" --output "$RUNNER_TEMP/placebo-case.json"
+          node scripts/placebo-live.mjs artifact --report "$RUNNER_TEMP/report.json" --manifest "$RUNNER_TEMP/evaluation.json" --install-evidence "$RUNNER_TEMP/candidate-install-evidence.json" --controller-sha "$CONTROLLER_SHA" --subject-sha "$SUBJECT_SHA" --run-id "$GITHUB_RUN_ID" --controller-id "$CONTROLLER_ID" --case "$CASE_ID" --output "$RUNNER_TEMP/placebo-case.json"
 
       - name: Upload one case artifact
         uses: actions/upload-artifact@v7

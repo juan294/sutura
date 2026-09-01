@@ -90,6 +90,18 @@ async function gateDependencies(overrides = {}) {
         requestId: null,
       },
     }),
+    runtimeImageEvidence: async () => ({
+      schemaVersion: 'sutura-runtime-image-canary-v1',
+      headSha: SHA,
+      capturedAt: new Date(NOW - 60_000).toISOString(),
+      proof: {
+        schemaVersion: core.PYTHON_IMAGE_PROOF_SCHEMA_VERSION,
+        imageRef: core.PYTHON_IMAGE_REF,
+        importedImageId: 'image-1',
+        requiredTools: core.PYTHON_REQUIRED_TOOLS,
+        operationId: 'sutura-python-runtime-image-proof',
+      },
+    }),
     readLedger: async () => dogfoodLedger([]),
     findRegressionTest: async () => 'replays live run 2001',
     runRegressionTest: async () => '',
@@ -101,13 +113,14 @@ async function gateDependencies(overrides = {}) {
 test('dogfood gate fails each precondition independently and passes only when all hold', async () => {
   const valid = await gateDependencies();
   await assert.doesNotReject(() => gateDogfood(SHA, valid.dependencies));
-  assert.equal(valid.output.filter((line) => line.startsWith('PASS')).length, 6);
+  assert.equal(valid.output.filter((line) => line.startsWith('PASS')).length, 7);
 
   const failures = [
     { git: async (args) => args[0] === 'status' ? ' M packages/core/src/x.ts' : args[1] === `${SHA}:packages` ? TREE : SHA },
     { git: async (args) => args[0] === 'status' || args[0] === 'fetch' ? '' : args[1] === `${SHA}:packages` ? TREE : 'c'.repeat(40) },
     { ghApi: async () => JSON.stringify({ workflow_runs: [] }) },
     { canaryEvidence: async () => ({ headSha: 'c'.repeat(40), contractVersion: await contractVersion(), capturedAt: new Date(NOW).toISOString() }) },
+    { runtimeImageEvidence: async () => ({ headSha: SHA, capturedAt: new Date(NOW).toISOString(), proof: {} }) },
     {
       readLedger: async () => dogfoodLedger([entry(1, { outcome: 'gave-up' })]),
       findRegressionTest: async () => undefined,

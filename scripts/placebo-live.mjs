@@ -12,27 +12,28 @@ import { promisify } from 'node:util';
 import {
   canonicalJson, contentHash, exactSha, publicGitHubUrl, SHA256_PATTERN,
 } from './evidence-contract.mjs';
+import { RELEASE_VERSION } from './install-test-lib.mjs';
 
 const execFileAsync = promisify(execFile);
 const ROOT = resolve(import.meta.dirname, '..');
 const CORPUS_PATH = resolve(ROOT, 'docs/demo/placebo-v0.2-corpus.json');
-const LEDGER_PATH = resolve(ROOT, '.sutura/placebo-v0.2-live-ledger.json');
-const LOCK_PATH = resolve(ROOT, '.sutura/placebo-v0.2-live.lock');
-const ARTIFACT_ROOT = resolve(ROOT, '.sutura/placebo-v0.2-live-artifacts');
+const LEDGER_PATH = resolve(ROOT, '.sutura/placebo-v0.2.1-live-ledger.json');
+const LOCK_PATH = resolve(ROOT, '.sutura/placebo-v0.2.1-live.lock');
+const ARTIFACT_ROOT = resolve(ROOT, '.sutura/placebo-v0.2.1-live-artifacts');
 const MAX_ARTIFACT_BYTES = 10 * 1024 * 1024;
 const OUTCOMES = new Set(['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop']);
 const KIND_ORDER = new Map([['flaky', 0], ['trap', 1], ['upstream', 2], ['repairable', 3]]);
-const RELEASE_SHA = 'a943ded4c734aed75c5c63f2b2dd63a2f44556c2';
-const RELEASE_VERSION = '0.2.0';
-const PUBLISH_RUN_ID = '33388564135';
 const CORPUS_HASH = '77594bc260dbf4918548bda43d24238bfe43da3f428e2fde4da0a3e029571d24';
-const PACKAGE_CONTENT_HASH = '999e189d91dc52383361e739f075056622308da6360b5d9187fea8f303330572';
-const PACKAGE_INTEGRITY = '6365ab9af9cfcef0cdfe1441b95c9de2ff504e2181e77fdf5669ff92eef3937f';
 
 function boundedUsd(value, label) {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100) {
     throw new Error(`${label} must be a bounded nonnegative USD amount`);
   }
+  return value;
+}
+
+function exactSha256(value, label) {
+  if (!SHA256_PATTERN.test(value ?? '')) throw new Error(`${label} must be an exact SHA-256 digest`);
   return value;
 }
 
@@ -121,11 +122,11 @@ function artifactBase(input, options = {}) {
   const results = validateResultSet(input.results, expectedCase);
   const controllerSha = exactSha(input.controllerSha, 'Placebo controller');
   const subjectSha = exactSha(input.subjectSha, 'Placebo subject');
-  if (input.subjectVersion !== RELEASE_VERSION || subjectSha !== RELEASE_SHA) {
+  if (input.subjectVersion !== RELEASE_VERSION) {
     throw new Error('Placebo subject identity is invalid');
   }
-  if (input.packageContentHash !== PACKAGE_CONTENT_HASH ||
-      input.packageIntegrity !== PACKAGE_INTEGRITY ||
+  if (!SHA256_PATTERN.test(input.packageContentHash ?? '') ||
+      !SHA256_PATTERN.test(input.packageIntegrity ?? '') ||
       !SHA256_PATTERN.test(input.evaluationManifestHash ?? '')) {
     throw new Error('Placebo package or evaluation identity is invalid');
   }
@@ -253,6 +254,8 @@ export function validatePlaceboLedger(value) {
       artifactSha256: entry.artifactSha256,
       controllerSha: exactSha(entry.controllerSha, 'Placebo ledger controller'),
       subjectSha: exactSha(entry.subjectSha, 'Placebo ledger subject'),
+      packageContentHash: exactSha256(entry.packageContentHash, 'Placebo package content hash'),
+      packageIntegrity: exactSha256(entry.packageIntegrity, 'Placebo package integrity'),
       resultHash: entry.resultHash,
       outcomes: [...entry.outcomes],
       evaluationCount: entry.evaluationCount,
@@ -284,6 +287,8 @@ export function appendPlaceboLedger(ledgerInput, artifactInput, metadata, option
     artifactSha256: createHash('sha256').update(bytes).digest('hex'),
     controllerSha: artifact.controllerSha,
     subjectSha: artifact.subjectSha,
+    packageContentHash: artifact.packageContentHash,
+    packageIntegrity: artifact.packageIntegrity,
     resultHash: artifact.resultHash,
     outcomes: artifact.results.map(({ caseFile }) => caseFile.outcome),
     evaluationCount: artifact.evaluationCount,
@@ -362,7 +367,9 @@ export async function finalizePlaceboEvidence(ledgerInput, artifactInputs, optio
     throw new Error('Placebo finalization requires all 51 canonical cases');
   }
   if (new Set(ledger.entries.map(({ controllerSha }) => controllerSha)).size !== 1 ||
-      new Set(ledger.entries.map(({ subjectSha }) => subjectSha)).size !== 1) {
+      new Set(ledger.entries.map(({ subjectSha }) => subjectSha)).size !== 1 ||
+      new Set(ledger.entries.map(({ packageContentHash }) => packageContentHash)).size !== 1 ||
+      new Set(ledger.entries.map(({ packageIntegrity }) => packageIntegrity)).size !== 1) {
     throw new Error('Placebo finalization requires one exact controller and subject identity');
   }
   for (const entry of ledger.entries) {
@@ -447,30 +454,14 @@ async function ghApi(endpoint, binary = false) {
 export async function gatePlaceboLive(controllerSha, subjectSha) {
   const controller = exactSha(controllerSha, 'Placebo controller');
   const subject = exactSha(subjectSha, 'Placebo subject');
-  if (subject !== RELEASE_SHA) throw new Error(`Placebo subject must be v${RELEASE_VERSION} release commit`);
+  if (subject !== controller) throw new Error('Placebo candidate controller and subject must be the same exact commit');
   const { gateDogfood } = await import('./dogfood.mjs');
   await gateDogfood(controller);
-  await command('git', ['fetch', 'origin', 'tag', `v${RELEASE_VERSION}`]);
-  const tagCommit = await command('git', ['rev-list', '-n', '1', `v${RELEASE_VERSION}`]);
-  if (tagCommit !== subject) throw new Error('Placebo subject tag differs from release commit');
-  const publish = JSON.parse(await ghApi(`repos/juan294/sutura/actions/runs/${PUBLISH_RUN_ID}`));
-  if (publish?.head_sha !== subject || publish?.conclusion !== 'success') {
-    throw new Error('Placebo publish and install run identity is invalid');
-  }
-  const artifacts = JSON.parse(await ghApi(
-    `repos/juan294/sutura/actions/runs/${PUBLISH_RUN_ID}/artifacts?per_page=100`,
-  ));
-  if (!(artifacts?.artifacts ?? []).some((artifact) =>
-    artifact?.name === 'sutura-v0.2.0-install-evidence' && artifact.expired === false)) {
-    throw new Error('Placebo publish and install artifact is missing');
-  }
   const corpus = validateCorpus(JSON.parse(await readFile(CORPUS_PATH, 'utf8')));
   return {
     controllerSha: controller,
     subjectSha: subject,
     corpusHash: corpus.corpusHash,
-    packageContentHash: PACKAGE_CONTENT_HASH,
-    packageIntegrity: PACKAGE_INTEGRITY,
   };
 }
 
@@ -561,15 +552,24 @@ function valueAfter(args, flag) {
 async function artifactCommand(args) {
   const report = JSON.parse(await readFile(valueAfter(args, '--report'), 'utf8'));
   const evaluationManifest = JSON.parse(await readFile(valueAfter(args, '--manifest'), 'utf8'));
+  const installEvidence = JSON.parse(await readFile(valueAfter(args, '--install-evidence'), 'utf8'));
   const controllerId = valueAfter(args, '--controller-id');
   const caseId = valueAfter(args, '--case');
+  const subjectSha = valueAfter(args, '--subject-sha');
+  if (installEvidence?.schemaVersion !== 'sutura-install-evidence-v1' ||
+      installEvidence.mode !== 'candidate' || installEvidence.packageVersion !== RELEASE_VERSION ||
+      installEvidence.actionCommit !== subjectSha || installEvidence.outcome !== 'passed' ||
+      !SHA256_PATTERN.test(installEvidence.packageContentHash ?? '') ||
+      !SHA256_PATTERN.test(installEvidence.packageIntegrity ?? '')) {
+    throw new Error('Placebo candidate install evidence is invalid');
+  }
   const artifact = createPlaceboCaseArtifact({
     controllerSha: valueAfter(args, '--controller-sha'),
     githubRunId: valueAfter(args, '--run-id'),
     subjectVersion: RELEASE_VERSION,
-    subjectSha: valueAfter(args, '--subject-sha'),
-    packageContentHash: PACKAGE_CONTENT_HASH,
-    packageIntegrity: PACKAGE_INTEGRITY,
+    subjectSha,
+    packageContentHash: installEvidence.packageContentHash,
+    packageIntegrity: installEvidence.packageIntegrity,
     caseId,
     results: report.results,
     evaluationManifest,
@@ -616,7 +616,7 @@ export async function main(args = process.argv.slice(2)) {
     const artifacts = await Promise.all(artifactFiles.map(async (name) =>
       JSON.parse(await readFile(join(ARTIFACT_ROOT, name), 'utf8'))));
     const finalized = await finalizePlaceboEvidence(await readLedgerDefault(), artifacts);
-    await writeFile(join(outputDirectory, 'placebo-v0.2-live.json'), `${canonicalJson(finalized)}\n`, {
+    await writeFile(join(outputDirectory, 'placebo-v0.2.1-live.json'), `${canonicalJson(finalized)}\n`, {
       encoding: 'utf8', flag: 'wx',
     });
     return finalized;

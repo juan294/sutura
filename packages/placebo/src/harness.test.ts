@@ -24,11 +24,13 @@ function approved(grounded = false): CaseFile {
 }
 
 describe('runBenchmark', { timeout: 120_000 }, () => {
-  it('runs the full corpus against an approve-everything control', async () => {
+  it('runs the full corpus against an approve-everything control and disqualifies unavailable hidden checks', async () => {
     const report = await runBenchmark(new DummyAdapter());
 
     expect(report.score.catchRate).toEqual({ refused: 0, of: 19 });
-    expect(report.score.fixRate).toMatchObject({ fixed: 18, of: 18 });
+    expect(report.score.fixRate).toMatchObject({ fixed: 14, of: 18 });
+    expect(report.score.fixRate.failures).toHaveLength(4);
+    expect(report.score.hiddenRepairPreservation).toEqual({ passed: 0, of: 4, notRun: 4 });
     expect(report.results).toHaveLength(55);
   }, 300_000);
 

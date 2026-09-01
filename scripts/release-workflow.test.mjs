@@ -8,7 +8,7 @@ async function text(path) {
   return readFile(new URL(path, root), 'utf8');
 }
 
-test('all release-bearing packages and the public API declare 0.2.0', async () => {
+test('all release-bearing packages and the public API declare 0.2.1', async () => {
   const manifests = await Promise.all([
     'package.json',
     'packages/action/package.json',
@@ -17,8 +17,8 @@ test('all release-bearing packages and the public API declare 0.2.0', async () =
     'packages/evaluation/package.json',
     'packages/placebo/package.json',
   ].map(async (path) => JSON.parse(await text(path))));
-  assert.deepEqual(manifests.map(({ version }) => version), Array(6).fill('0.2.0'));
-  assert.match(await text('packages/core/src/index.ts'), /VERSION = '0\.2\.0'/u);
+  assert.deepEqual(manifests.map(({ version }) => version), Array(6).fill('0.2.1'));
+  assert.match(await text('packages/core/src/index.ts'), /VERSION = '0\.2\.1'/u);
 });
 
 test('ordinary CI runs deterministic release contract and candidate install checks', async () => {
@@ -88,34 +88,36 @@ test('Placebo live workflow is manual, read-only, exact, and case-bounded', asyn
   assert.match(workflow, /ref: \$\{\{ inputs\.controller-sha \}\}/u);
   assert.match(workflow, /ref: \$\{\{ inputs\.subject-sha \}\}/u);
   assert.match(workflow, /test "\$GITHUB_SHA" = "\$CONTROLLER_SHA"/u);
+  assert.match(workflow, /test-candidate-install\.mjs "\$SUBJECT_SHA"/u);
+  assert.match(workflow, /--install-evidence "\$RUNNER_TEMP\/candidate-install-evidence\.json"/u);
   assert.match(workflow, /--sutura-command "\$GITHUB_WORKSPACE\/subject\/packages\/cli\/dist\/bin\.js" --case "\$CASE_ID"/u);
   assert.match(workflow, /actions\/upload-artifact@v7/u);
   assert.doesNotMatch(workflow, /pull-requests: write|issues: write|id-token: write/u);
 });
 
 test('versioned release evidence requirements name every authorization gate', async () => {
-  const requirements = JSON.parse(await text('docs/demo/sutura-v0.2.0-release-evidence-requirements.json'));
-  assert.equal(requirements.releaseVersion, '0.2.0');
+  const requirements = JSON.parse(await text('docs/demo/sutura-v0.2.1-release-evidence-requirements.json'));
+  assert.equal(requirements.releaseVersion, '0.2.1');
   assert.deepEqual(requirements.requiredEvidenceIds, [
     'benchmark', 'candidate-matrix', 'demo', 'dogfood', 'devpost', 'feedback',
     'github-release', 'local-gate', 'marketplace', 'npm', 'public-matrix',
   ]);
   assert.deepEqual(requirements.authorizationGates, [
-    'live-provider-benchmark', 'live-dogfood-streak', 'release-publication',
-    'public-demo-enable', 'devpost-update',
+    'provider-contree-canaries', 'live-provider-benchmark', 'candidate-matrix',
+    'release-publication', 'public-matrix', 'public-demo-enable', 'devpost-update',
   ]);
   assert.deepEqual(requirements.ownerPhaseByEvidenceId, {
-    benchmark: 0,
-    'candidate-matrix': 0,
+    benchmark: 4,
+    'candidate-matrix': 4,
     demo: 1,
     devpost: 7,
-    dogfood: 0,
+    dogfood: 4,
     feedback: 5,
-    'github-release': 0,
-    'local-gate': 0,
+    'github-release': 4,
+    'local-gate': 4,
     marketplace: 4,
-    npm: 0,
-    'public-matrix': 0,
+    npm: 4,
+    'public-matrix': 4,
   });
   assert.equal(Object.keys(requirements.ownerPhaseByEvidenceId).length, 11);
 });

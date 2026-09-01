@@ -33,10 +33,20 @@ jobs:
       - run: pnpm run test:release-contracts
       - run: pnpm run build
       - run: git diff --exit-code -- packages/action/dist/index.cjs
+      - name: Prove immutable Python runtime image in ConTree
+        run: pnpm run canary:runtime-image
+        env:
+          CONTREE_TOKEN: ${{ secrets.CONTREE_TOKEN }}
+          CONTREE_PROJECT: ${{ vars.CONTREE_PROJECT }}
       - name: Verify candidate package and immutable Action
         run: node scripts/test-candidate-install.mjs "${{ inputs.action-sha }}" > "$RUNNER_TEMP/candidate-install-evidence.json"
       - uses: actions/upload-artifact@v7
         with:
           name: candidate-install-evidence
           path: ${{ runner.temp }}/candidate-install-evidence.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: runtime-image-canary
+          path: runtime-image-canary-*.json
           if-no-files-found: error

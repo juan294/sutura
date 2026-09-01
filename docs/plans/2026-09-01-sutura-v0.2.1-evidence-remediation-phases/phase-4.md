@@ -1,5 +1,7 @@
 # Phase 4: Freeze, publish, and remeasure v0.2.1
 
+Status: Local candidate verified; external and publication gates not authorized
+
 ## Goal
 
 Create one exact patch candidate, prove it locally and remotely, publish only after authorization, and replace no v0.2.0 evidence.

@@ -271,6 +271,47 @@ async function defaultCanaryEvidence(sha, dependencies) {
   }
 }
 
+async function defaultRuntimeImageEvidence(sha, dependencies) {
+  const listing = JSON.parse(await dependencies.ghApi(
+    `repos/juan294/sutura/actions/workflows/provider-contract-canary.yml/runs?head_sha=${sha}&status=completed&per_page=100`,
+  ));
+  const runs = Array.isArray(listing?.workflow_runs) ? listing.workflow_runs : [];
+  const run = runs.filter((value) => value?.head_sha === sha && value?.conclusion === 'success')
+    .sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))[0];
+  if (!run || !Number.isSafeInteger(run.id)) throw new Error('missing successful runtime image canary run');
+  const artifacts = JSON.parse(await dependencies.ghApi(
+    `repos/juan294/sutura/actions/runs/${run.id}/artifacts?per_page=100`,
+  ));
+  if (!Number.isSafeInteger(artifacts?.total_count) || artifacts.total_count < 0 ||
+      artifacts.total_count > 100 || !Array.isArray(artifacts.artifacts)) {
+    throw new Error('invalid or unbounded runtime image canary artifact metadata');
+  }
+  const matches = artifacts.artifacts.filter((artifact) =>
+    artifact?.name === 'runtime-image-canary' && artifact.expired === false &&
+    Number.isSafeInteger(artifact.id) && Number.isSafeInteger(artifact.size_in_bytes) &&
+    artifact.size_in_bytes > 0 && artifact.size_in_bytes <= 10 * 1024 * 1024);
+  if (matches.length !== 1) throw new Error('missing runtime-image-canary artifact');
+  const archive = await dependencies.ghApi(
+    `repos/juan294/sutura/actions/artifacts/${matches[0].id}/zip`, true,
+  );
+  if (!(archive instanceof Uint8Array) || archive.byteLength > 10 * 1024 * 1024) {
+    throw new Error('runtime image canary artifact archive is invalid or too large');
+  }
+  const directory = await mkdtemp(join(tmpdir(), 'sutura-runtime-canary-artifact-'));
+  try {
+    const zip = join(directory, 'artifact.zip');
+    await writeFile(zip, archive);
+    const listing = await command('unzip', ['-Z1', zip], { maxBuffer: MAX_JSON_BYTES });
+    const files = listing.split(/\r?\n/u).filter((name) =>
+      name === `runtime-image-canary-${sha}.json`);
+    if (files.length !== 1) throw new Error('runtime image canary archive must contain one SHA-bound JSON file');
+    const text = await command('unzip', ['-p', zip, files[0]], { maxBuffer: MAX_JSON_BYTES });
+    return JSON.parse(text);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
 function validateCanaryEvidence(evidence, candidate, expected) {
   if (evidence?.schemaVersion !== 'sutura-provider-contract-canary-v1' ||
       evidence.headSha !== candidate || evidence.contractVersion !== expected.contractVersion ||
@@ -285,6 +326,19 @@ function validateCanaryEvidence(evidence, candidate, expected) {
       !Number.isSafeInteger(evidence.result?.usage?.outTok) || evidence.result.usage.outTok <= 0 ||
       evidence.result?.usage?.reasoningTok !== 0) {
     throw new Error('provider canary artifact contract is invalid');
+  }
+  return evidence;
+}
+
+function validateRuntimeImageEvidence(evidence, candidate, expected) {
+  if (evidence?.schemaVersion !== 'sutura-runtime-image-canary-v1' ||
+      evidence.headSha !== candidate ||
+      evidence.proof?.schemaVersion !== expected.schemaVersion ||
+      evidence.proof?.imageRef !== expected.imageRef ||
+      typeof evidence.proof?.importedImageId !== 'string' || !evidence.proof.importedImageId ||
+      JSON.stringify(evidence.proof?.requiredTools) !== JSON.stringify(expected.requiredTools) ||
+      evidence.proof?.operationId !== 'sutura-python-runtime-image-proof') {
+    throw new Error('runtime image canary artifact contract is invalid');
   }
   return evidence;
 }
@@ -322,6 +376,7 @@ export function createDogfoodDependencies(overrides = {}) {
       resolve(ROOT, SCRATCH_LEDGER), `${JSON.stringify(ledger, null, 2)}\n`,
     ),
     canaryEvidence: undefined,
+    runtimeImageEvidence: undefined,
     findRegressionTest,
     runRegressionTest: (name) => command('pnpm', [
       '--filter', '@sutura/core', '--filter', '@sutura/action', 'test', '-t', name,
@@ -334,6 +389,7 @@ export function createDogfoodDependencies(overrides = {}) {
     ...overrides,
   };
   dependencies.canaryEvidence ??= (sha) => defaultCanaryEvidence(sha, dependencies);
+  dependencies.runtimeImageEvidence ??= (sha) => defaultRuntimeImageEvidence(sha, dependencies);
   dependencies.readCommittedLedger ??= async () => JSON.parse(await dependencies.git([
     'show', `HEAD:${CANONICAL_LEDGER}`,
   ]));
@@ -387,6 +443,19 @@ export async function gateDogfood(sha, inputDependencies = {}) {
     const age = dependencies.now() - Date.parse(evidence.capturedAt);
     if (!Number.isFinite(age) || age < 0 || age > 24 * 60 * 60 * 1000) {
       throw new Error('provider canary is older than 24 hours');
+    }
+  });
+  await check('runtime-image-canary', async () => {
+    const evidence = await dependencies.runtimeImageEvidence(candidate);
+    const core = await import('../packages/core/dist/index.js');
+    validateRuntimeImageEvidence(evidence, candidate, {
+      schemaVersion: core.PYTHON_IMAGE_PROOF_SCHEMA_VERSION,
+      imageRef: core.PYTHON_IMAGE_REF,
+      requiredTools: core.PYTHON_REQUIRED_TOOLS,
+    });
+    const age = dependencies.now() - Date.parse(evidence.capturedAt);
+    if (!Number.isFinite(age) || age < 0 || age > 24 * 60 * 60 * 1000) {
+      throw new Error('runtime image canary is older than 24 hours');
     }
   });
   await check('ledger', async () => {

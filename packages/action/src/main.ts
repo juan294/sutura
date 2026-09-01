@@ -156,7 +156,12 @@ export async function runAction(
       ...orchestrationOptions,
       ...(tavily ? { tavily } : {}),
       ...(recorder ? { replay: recorder } : {}),
-    }), (message) => core.warning(message), recorder);
+    }), (message) => core.warning(message), recorder, {
+      actionRunId,
+      targetRunId: action.runId,
+      repository: `${owner}/${repo}`,
+      actionSha: dependencies.environment.GITHUB_SHA ?? '',
+    });
     reportOutcome(result.outcome, action.requireFixed, core);
     for (const evidence of runtimeEvidence(result)) core.info(evidence);
     core.info(`Sutura outcome: ${result.outcome}`);

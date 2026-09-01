@@ -1,5 +1,7 @@
 # Phase 2: Make policy, provider, and terminal evidence fail closed
 
+Status: Implemented and verified locally
+
 ## Goal
 
 Give every expected safe stop the correct terminal class and produce a valid artifact even when execution stops early.

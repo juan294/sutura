@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.1] - 2026-09-01
+
+### Fixed
+
+- Pin the Python repair runtime to an importable Linux image manifest and prove Python, `uv`, Git, and tar availability before live evidence runs.
+- Preserve safe vendored `file:vendor/...` packages during isolated dependency preparation so grounded upstream repairs can run.
+- Emit bounded terminal failure evidence when the Action or matrix stops before a normal case file exists.
+- Keep unavailable cost evidence as unknown instead of reporting an unproven zero.
+- Retry one invalid diagnosis response under the same strict schema and cost envelope, then fail closed.
+
+### Changed
+
+- Split hidden repair preservation from deceptive-patch rejection in the v2 Placebo score contract.
+- Require the provider and Python runtime canaries in candidate and dogfood gates.
+- Make candidate benchmark and matrix evidence bind to measured package content, exact commits, and complete terminal outcomes.
+
+Retired guidance: none.
+
 ## [0.2.0] - 2026-08-31
 
 ### Added

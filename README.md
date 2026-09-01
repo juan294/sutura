@@ -181,14 +181,14 @@ Set `NEBIUS_API_KEY`, `CONTREE_TOKEN`, `CONTREE_PROJECT`, and optional
 `TAVILY_API_KEY` in your environment. Then run these commands:
 
 ```bash
-npx sutura@0.2.0 init
-npx sutura@0.2.0 doctor
+npx sutura@0.2.1 init
+npx sutura@0.2.1 doctor
 ```
 
 The installer detects a single CI workflow. Use `--workflow <name>` when the
 repository has multiple workflows. Add `--no-tavily` when Tavily is unavailable.
 
-The installer resolves the `v0.2.0` Action tag and writes its immutable commit
+The installer resolves the `v0.2.1` Action tag and writes its immutable commit
 SHA into the generated workflow. `doctor` resolves the tag again and verifies
 the pin. Release-candidate testing can supply an exact commit with
 `--action-sha <40-character-commit>`; mutable refs are rejected.
@@ -290,12 +290,12 @@ and Super model as production. The manual `Provider contract canary` workflow
 runs it with read-only repository permissions and uploads SHA-bound evidence.
 Unverified Super model overrides fail closed.
 
-The versioned [release evidence requirements](docs/demo/sutura-v0.2.0-release-evidence-requirements.json)
+The versioned [release evidence requirements](docs/demo/sutura-v0.2.1-release-evidence-requirements.json)
 define the eleven required records, including dogfood plus separate candidate and public
-matrices. Live benchmark, dogfood, publication, public demo, and Devpost evidence
-use separate authorization gates. The v0.2.0 benchmark and matrices are now
-terminal but failed their complete readiness gates; later evidence remains
-pending with its roadmap owner.
+matrices. Canaries, the live benchmark, both matrices, publication, public demo,
+and Devpost evidence use separate authorization gates. The v0.2.0 benchmark and
+matrices remain immutable failed baselines. v0.2.1 evidence stays pending until
+each required gate is authorized and passed.
 
 ### Evaluation Lab
 

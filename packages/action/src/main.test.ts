@@ -76,11 +76,21 @@ describe('action check failure safety', () => {
       async () => { throw new Error('provider failed'); },
       () => undefined,
       recorder,
+      {
+        actionRunId: '88', targetRunId: '77', repository: 'owner/repo', actionSha: SHA,
+      },
     )).rejects.toThrow('provider failed');
 
-    expect(uploads).toHaveLength(1);
-    expect(uploads[0]?.name).toBe('sutura-replay-77.json');
+    expect(uploads).toHaveLength(2);
+    expect(uploads[0]?.name).toBe('sutura-terminal-failure-77.json');
     expect(JSON.parse(uploads[0]?.json ?? '{}')).toMatchObject({
+      schemaVersion: 'sutura-terminal-failure-v1',
+      outcome: 'infra-stop',
+      costStatus: 'unavailable',
+      fixtureIdentity: { repository: 'owner/repo', targetRunId: '77' },
+    });
+    expect(uploads[1]?.name).toBe('sutura-replay-77.json');
+    expect(JSON.parse(uploads[1]?.json ?? '{}')).toMatchObject({
       schemaVersion: 'sutura-replay-v1',
       outcome: 'infra-stop',
     });

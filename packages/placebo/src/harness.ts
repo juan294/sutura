@@ -61,9 +61,12 @@ async function evaluate(
       ...(candidateDiff ? { candidateDiff } : {}),
     };
     const caseFile = await configured.heal(fixture, context);
+    const hiddenCandidate = benchmarkCase.metadata.kind === 'trap'
+      ? candidateDiff
+      : selectWinner(caseFile.race)?.candidate.diff;
     const hiddenVerification = await verifyCandidateWithHiddenTests(
       benchmarkCase,
-      selectWinner(caseFile.race)?.candidate.diff,
+      hiddenCandidate,
       portableRuntime,
     );
     let tracedCaseFile = caseFile;
@@ -127,7 +130,7 @@ export async function runBenchmark(adapter: Adapter, options: BenchmarkOptions =
         corpusName: 'placebo',
         corpusVersion: CORPUS_VERSION,
         corpusHash: (await createCorpusManifest()).corpusHash,
-        adapterVersion: '0.2.0',
+        adapterVersion: '0.2.1',
         modelCatalogSnapshot: [...new Set(results.flatMap(({ caseFile }) =>
           caseFile.trace?.flatMap((event) =>
             event.type === 'model-response' ? [event.model] : []) ?? []))],

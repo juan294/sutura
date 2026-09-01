@@ -15,13 +15,13 @@ import {
   assertPublicArtifactSafe, gatePlaceboLive, placeboSpendDecision,
 } from './placebo-live.mjs';
 import {
-  EXTERNAL_MATRIX_CASES, createExternalMatrixManifest, validateExternalMatrixResult,
+  EXTERNAL_MATRIX_CASES, EXTERNAL_MATRIX_RELEASE_VERSION,
+  createExternalMatrixManifest, validateExternalMatrixResult,
 } from './test-external-matrix.mjs';
 
 const execFileAsync = promisify(execFile);
 const ROOT = resolve(import.meta.dirname, '..');
 const DEMO_REPOSITORY = 'juan294/sutura-demo';
-const ACTION_SHA = 'a943ded4c734aed75c5c63f2b2dd63a2f44556c2';
 const MAX_ARTIFACT_BYTES = 10 * 1024 * 1024;
 const MODES = new Set(['candidate', 'public']);
 
@@ -46,8 +46,9 @@ function artifactName(value) {
 function artifactBase(input, options) {
   const selectedMode = mode(options.mode);
   const actionSha = exactSha(options.actionSha, 'External matrix Action');
-  if (actionSha !== ACTION_SHA) throw new Error('External matrix must use the v0.2.0 Action commit');
-  const result = validateExternalMatrixResult(input, '0.2.0', actionSha, selectedMode);
+  const result = validateExternalMatrixResult(
+    input, EXTERNAL_MATRIX_RELEASE_VERSION, actionSha, selectedMode,
+  );
   const base = {
     schemaVersion: 'sutura-external-matrix-case-v1',
     ...result,
@@ -112,7 +113,8 @@ export function validateExternalMatrixLedger(value) {
         typeof entry.caseId !== 'string' || caseIds.has(entry.caseId) ||
         runIds.has(entry.runId) || !SHA256_PATTERN.test(entry.artifactSha256 ?? '') ||
         !SHA256_PATTERN.test(entry.resultHash ?? '') ||
-        typeof entry.falseApproval !== 'boolean') {
+        typeof entry.falseApproval !== 'boolean' ||
+        (entry.costStatus !== 'observed' && entry.costStatus !== 'unavailable')) {
       throw new Error(`External matrix ledger entry ${index + 1} is invalid or duplicate`);
     }
     caseIds.add(entry.caseId);
@@ -124,8 +126,10 @@ export function validateExternalMatrixLedger(value) {
     }
     const timestamp = new Date(entry.recordedAt);
     if (Number.isNaN(timestamp.valueOf()) || timestamp.toISOString() !== entry.recordedAt ||
-        typeof entry.totalUsd !== 'number' || !Number.isFinite(entry.totalUsd) ||
-        entry.totalUsd < 0 || entry.totalUsd > 100) {
+        (entry.totalUsd !== null && (typeof entry.totalUsd !== 'number' || !Number.isFinite(entry.totalUsd) ||
+        entry.totalUsd < 0 || entry.totalUsd > 100)) ||
+        (entry.costStatus === 'observed' && entry.totalUsd === null) ||
+        (entry.costStatus === 'unavailable' && entry.totalUsd !== null)) {
       throw new Error(`External matrix ledger entry ${index + 1} time or cost is invalid`);
     }
     if (typeof entry.controllerId !== 'string' || !/^[A-Za-z0-9-]{1,64}$/u.test(entry.controllerId)) {
@@ -159,6 +163,7 @@ export function validateExternalMatrixLedger(value) {
       actionSha: exactSha(entry.actionSha, 'External matrix Action'),
       demoCommit: exactSha(entry.demoCommit, 'External matrix demo commit'),
       totalUsd: entry.totalUsd,
+      costStatus: entry.costStatus,
       falseApproval: entry.falseApproval,
       recordedAt: entry.recordedAt,
       ...(entry.cleanupBranch === undefined ? {} : { cleanupBranch: entry.cleanupBranch }),
@@ -195,7 +200,10 @@ export function appendExternalMatrixLedger(ledgerInput, artifactInput, metadata,
     controllerSha: exactSha(metadata.controllerSha ?? artifact.actionCommit, 'External matrix controller'),
     actionSha: artifact.actionCommit,
     demoCommit: artifact.demoCommit,
-    totalUsd: artifact.inferenceCostUsd + artifact.sandboxCostUsd,
+    totalUsd: artifact.costStatus === 'observed'
+      ? artifact.inferenceCostUsd + artifact.sandboxCostUsd
+      : null,
+    costStatus: artifact.costStatus,
     falseApproval: artifact.falseApproval,
     recordedAt: metadata.recordedAt,
     ...(artifact.cleanupBranch === undefined ? {} : { cleanupBranch: artifact.cleanupBranch }),
@@ -215,8 +223,8 @@ export async function runExternalMatrixStreak(options, dependencies) {
       entry.actionSha !== options.actionSha)) {
     throw new Error('External matrix ledger identity differs from requested identity');
   }
-  let spentUsd = ledger.entries.reduce((sum, entry) => sum + entry.totalUsd, 0);
-  let maximumUsd = ledger.entries.reduce((maximum, entry) => Math.max(maximum, entry.totalUsd), 0);
+  let spentUsd = ledger.entries.reduce((sum, entry) => sum + (entry.totalUsd ?? 0), 0);
+  let maximumUsd = ledger.entries.reduce((maximum, entry) => Math.max(maximum, entry.totalUsd ?? 0), 0);
   let stoppedFor = 'complete';
   for (const definition of EXTERNAL_MATRIX_CASES) {
     if (ledger.entries.some(({ caseId }) => caseId === definition.caseId)) continue;
@@ -230,9 +238,12 @@ export async function runExternalMatrixStreak(options, dependencies) {
     const artifact = validateExternalMatrixCaseArtifact(completed.artifact, {
       mode: selectedMode, actionSha: options.actionSha,
     });
-    spentUsd += artifact.inferenceCostUsd + artifact.sandboxCostUsd;
-    maximumUsd = Math.max(maximumUsd, artifact.inferenceCostUsd + artifact.sandboxCostUsd);
+    if (artifact.costStatus === 'observed') {
+      spentUsd += artifact.inferenceCostUsd + artifact.sandboxCostUsd;
+      maximumUsd = Math.max(maximumUsd, artifact.inferenceCostUsd + artifact.sandboxCostUsd);
+    }
     if (artifact.falseApproval) { stoppedFor = 'false-approval'; break; }
+    if (artifact.actualOutcome === 'infra-stop') { stoppedFor = 'infra-stop'; break; }
   }
   return { ledger, spentUsd, reserveUsd: Math.max(options.initialReserveUsd, maximumUsd), stoppedFor };
 }
@@ -253,7 +264,7 @@ export function finalizeExternalMatrixLive(ledgerInput, artifactsInput, options)
   }
   return createExternalMatrixManifest({
     mode: selectedMode,
-    packageVersion: '0.2.0',
+    packageVersion: EXTERNAL_MATRIX_RELEASE_VERSION,
     actionCommit: options.actionSha,
     results: artifacts,
   });
@@ -394,8 +405,8 @@ async function pollRun(controllerId, selectedMode, caseId, demoSha) {
     if (matches.length > 1) throw new Error(`Multiple external matrix runs match ${controllerId}`);
     const current = matches[0];
     if (current?.status === 'completed') {
-      if (current.headSha !== demoSha || current.conclusion !== 'success') {
-        throw new Error(`External matrix run ${current.databaseId} failed or changed identity`);
+      if (current.headSha !== demoSha || !['success', 'failure'].includes(current.conclusion)) {
+        throw new Error(`External matrix run ${current.databaseId} changed identity or has an invalid conclusion`);
       }
       return current;
     }
@@ -442,6 +453,12 @@ async function runRemoteCase(options) {
     if (artifact.demoRunId !== String(run.databaseId) || artifact.demoCommit !== options.demoSha ||
         artifact.controllerId !== controllerId || artifact.caseId !== options.definition.caseId) {
       throw new Error('External matrix downloaded artifact identity differs from dispatch');
+    }
+    if (run.conclusion !== 'success' && artifact.actualOutcome !== 'infra-stop') {
+      throw new Error('Failed external matrix workflow requires a validated infra-stop artifact');
+    }
+    if (run.conclusion === 'success' && artifact.actualOutcome === 'infra-stop') {
+      throw new Error('Infra-stop external matrix workflow must have a failed conclusion');
     }
     const paths = pathsForMode(options.mode);
     const ledger = appendExternalMatrixLedger(await readLedgerDefault(options.mode), artifact, {

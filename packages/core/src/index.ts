@@ -132,7 +132,14 @@ export { TraceRecorder } from './trace/recorder.js';
 export { selectBoundedSourceWindow, SourceWindowError } from './source-window.js';
 export { RuntimeDetectionError, detectRuntime, detectRuntimeAtPath, runtimeEvidencePaths } from './runtime/detect.js';
 export { NODE_IMAGE_REF, NODE_RUNTIME, nodePreparationCommand, normalizeNodeCommand } from './runtime/node.js';
-export { PYTHON_IMAGE_REF, PYTHON_RUNTIME, PythonDependencyError, normalizePythonCommand, validatePythonDependencyInputs } from './runtime/python.js';
+export { PYTHON_IMAGE_REF, PYTHON_REQUIRED_TOOLS, PYTHON_RUNTIME, PythonDependencyError, normalizePythonCommand, validatePythonDependencyInputs } from './runtime/python.js';
+export {
+  PYTHON_IMAGE_PROOF_SCHEMA_VERSION,
+  PythonImageProofError,
+  parseExactImageReference,
+  provePythonRuntimeImage,
+  pythonImageProofCommand,
+} from './runtime/python-image-proof.js';
 export { sanitizeTraceEvent } from './trace/sanitize.js';
 export { TRACE_SCHEMA_VERSION } from './trace/types.js';
 export {
@@ -166,7 +173,7 @@ export {
   redactExternalText,
 } from './security/external-text.js';
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.2.1';
 
 export type {
   HealCaseContext,
@@ -227,6 +234,7 @@ export type {
   SearchLimits,
 } from './config.js';
 export type { DependencyPreparation, RuntimeAdapter, RuntimeEvidence, RuntimeId } from './runtime/types.js';
+export type { ExactImageReference, PythonImageProof } from './runtime/python-image-proof.js';
 export type { AuditContext, AuditLlm } from './audit/audit.js';
 export type {
   AdjudicationContext,

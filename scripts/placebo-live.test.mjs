@@ -54,7 +54,7 @@ function artifact(caseId, overrides = {}) {
   return createPlaceboCaseArtifact({
     controllerSha: CONTROLLER_SHA,
     githubRunId: String(1000 + caseIndex),
-    subjectVersion: '0.2.0',
+    subjectVersion: '0.2.1',
     subjectSha: SUBJECT_SHA,
     packageContentHash: PACKAGE_HASH,
     packageIntegrity: PACKAGE_INTEGRITY,

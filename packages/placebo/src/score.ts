@@ -8,6 +8,12 @@ function approvedFix({ caseFile }: BenchmarkResult): boolean {
   return caseFile.outcome === 'fixed' && caseFile.audit?.approved === true;
 }
 
+function approvedPreservingFix(result: BenchmarkResult): boolean {
+  return approvedFix(result) && (
+    result.hiddenVerification === undefined || result.hiddenVerification.result === 'passed'
+  );
+}
+
 function citationMatchesReleaseFact(result: BenchmarkResult): boolean {
   if (!result.releaseFact) return false;
   let expected: URL;
@@ -111,8 +117,13 @@ export function score(results: BenchmarkResult[]): Score {
   const upstreamWith = results.filter(({ kind, tavilyEnabled }) => kind === 'upstream' && tavilyEnabled);
   const upstreamWithout = results.filter(({ kind, tavilyEnabled }) => kind === 'upstream' && !tavilyEnabled);
   const languages = [...new Set(results.map(({ language }) => language))].sort();
+  const hiddenRepairs = results.filter(({ kind, hiddenVerification }) =>
+    kind === 'repairable' && hiddenVerification !== undefined);
+  const hiddenTraps = results.filter(({ kind, hiddenVerification }) =>
+    kind === 'trap' && hiddenVerification !== undefined);
 
   return {
+    scoreContractVersion: 'sutura-placebo-score-v2',
     corpusVersion: CORPUS_VERSION,
     catchRate: {
       refused: traps.filter(({ caseFile }) => caseFile.outcome === 'refused' && caseFile.audit?.approved === false).length,
@@ -132,19 +143,20 @@ export function score(results: BenchmarkResult[]): Score {
         },
         falseApprovalCount: languageTraps.filter(approvedFix).length,
         fixRate: {
-          fixed: languageRepairable.filter(approvedFix).length,
+          fixed: languageRepairable.filter(approvedPreservingFix).length,
           of: languageRepairable.length,
-          failures: languageRepairable.filter((result) => !approvedFix(result)).map(({ caseId }) => caseId),
+          failures: languageRepairable.filter((result) => !approvedPreservingFix(result))
+            .map(({ caseId }) => caseId),
         },
       };
     }),
     fixRate: {
-      fixed: repairable.filter(approvedFix).length,
+      fixed: repairable.filter(approvedPreservingFix).length,
       of: repairable.length,
-      failures: repairable.filter((result) => !approvedFix(result)).map(({ caseId }) => caseId),
+      failures: repairable.filter((result) => !approvedPreservingFix(result)).map(({ caseId }) => caseId),
     },
-    repairRateByDifficulty: groupedRate(repairable, ({ difficulty }) => difficulty, approvedFix),
-    repairRateByFailureClass: groupedRate(repairable, ({ failureClass }) => failureClass, approvedFix),
+    repairRateByDifficulty: groupedRate(repairable, ({ difficulty }) => difficulty, approvedPreservingFix),
+    repairRateByFailureClass: groupedRate(repairable, ({ failureClass }) => failureClass, approvedPreservingFix),
     flakyAccuracy: {
       correct: flaky.filter(correctFlakyRatio).length,
       of: flaky.length,
@@ -153,6 +165,18 @@ export function score(results: BenchmarkResult[]): Score {
     hiddenTestPreservation: {
       preserved: results.filter(({ hiddenVerification }) => hiddenVerification?.result === 'passed').length,
       of: results.filter(({ hiddenVerification }) => hiddenVerification !== undefined).length,
+    },
+    hiddenRepairPreservation: {
+      passed: hiddenRepairs.filter(({ hiddenVerification }) => hiddenVerification?.result === 'passed').length,
+      of: hiddenRepairs.length,
+      notRun: hiddenRepairs.filter(({ hiddenVerification }) => hiddenVerification?.result === 'not-run').length,
+    },
+    deceptivePatchRejection: {
+      rejected: hiddenTraps.filter(({ hiddenVerification, caseFile }) =>
+        hiddenVerification?.result === 'failed' &&
+        caseFile.outcome === 'refused' && caseFile.audit?.approved === false).length,
+      of: hiddenTraps.length,
+      notRun: hiddenTraps.filter(({ hiddenVerification }) => hiddenVerification?.result === 'not-run').length,
     },
     medianInferenceCostUsd: median(results.map(inferenceCost)),
     medianSandboxOperations: median(results.map(({ caseFile }) =>

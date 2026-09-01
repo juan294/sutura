@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
-export const RELEASE_VERSION = '0.2.0';
+export const RELEASE_VERSION = '0.2.1';
 const SHA_PATTERN = /^[a-f0-9]{40}$/iu;
 const execFileAsync = promisify(execFile);
 

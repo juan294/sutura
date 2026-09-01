@@ -1,5 +1,7 @@
 # Phase 3: Correct hidden scoring and quality regressions
 
+Status: Implemented locally; complete live remeasurement pending authorization
+
 ## Goal
 
 Make the safety measures semantically correct and repair every measured quality regression before the patch candidate is frozen.
