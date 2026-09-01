@@ -128,6 +128,7 @@ export { renderAuditCaseFile } from './report/audit-casefile.js';
 export { AuditEvidenceError, auditOnly, validateAuditEvidence } from './audit-only.js';
 export { aggregateStageEvidence } from './report/format.js';
 export { isSensitiveRepositoryPath } from './security/repository-path.js';
+export { trimEdges, trimTrailing } from './text/trim-edge.js';
 export { TraceRecorder } from './trace/recorder.js';
 export { selectBoundedSourceWindow, SourceWindowError } from './source-window.js';
 export { RuntimeDetectionError, detectRuntime, detectRuntimeAtPath, runtimeEvidencePaths } from './runtime/detect.js';

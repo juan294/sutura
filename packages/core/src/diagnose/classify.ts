@@ -45,18 +45,21 @@ function failingCommand(log: string): string {
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = githubLogPayload(lines[index] ?? '');
-    const runMatch = /^(?:Run|\$)\s+(.+)$/.exec(line);
+    const runMatch = /^(?:Run|\$)\s+(\S.*)$/.exec(line);
     if (runMatch?.[1]) {
       command = runMatch[1].trim();
       continue;
     }
 
-    if (/^>\s+\S+@\S+\s+(?:typecheck|lint|test|build)(?:\s+\S+)?$/.test(line)) {
+    const scriptHeader = /^>\s+(\S+)\s+(?:typecheck|lint|test|build)(?:\s+\S+)?$/.exec(line);
+    const packageToken = scriptHeader?.[1] ?? '';
+    const packageAt = packageToken.indexOf('@', 1);
+    if (packageAt > 0 && packageAt < packageToken.length - 1) {
       const nextLine = lines
         .slice(index + 1)
         .map(githubLogPayload)
         .find(Boolean);
-      const nestedCommand = /^>\s+(.+)$/.exec(nextLine ?? '');
+      const nestedCommand = /^>\s+(\S.*)$/.exec(nextLine ?? '');
       if (nestedCommand?.[1]) {
         command = nestedCommand[1].trim();
       }

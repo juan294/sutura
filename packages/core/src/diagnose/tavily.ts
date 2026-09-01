@@ -1,10 +1,11 @@
 import type { Diagnosis, Grounding } from '../domain.js';
 import type { HttpRequestInit, HttpResponse } from '../llm/nebius.js';
 import { redactExternalText } from '../security/external-text.js';
+import { trimTrailing } from '../text/trim-edge.js';
 
 const DEFAULT_BASE_URL = 'https://api.tavily.com';
 const WEB_HELPFUL_CLASSES = new Set(['dep-upstream-breaking', 'env-config', 'build']);
-const DEPENDENCY_NOT_FUNCTION = /\bTypeError:\s+[@\w./-]+(?:\.[\w$]+)*\s+is not a function\b/i;
+const DEPENDENCY_NOT_FUNCTION = /\bTypeError:\s+[@\w$./-]+\s+is not a function\b/i;
 const VERSION_PATTERN_SOURCE = '[~^]?\\d+\\.\\d+\\.\\d+(?:-[\\w.-]+)?';
 const NESTED_SPECIFIER = new RegExp(
   `^specifier:\\s*(?<version>${VERSION_PATTERN_SOURCE})$`,
@@ -96,7 +97,7 @@ function githubRepository(value: unknown): string | null {
 }
 
 function endpoint(baseUrl: string): string {
-  return `${baseUrl.replace(/\/+$/, '')}/search`;
+  return `${trimTrailing(baseUrl, '/')}/search`;
 }
 
 function isCitation(value: unknown): value is {
@@ -210,7 +211,7 @@ export class TavilyClient implements TavilySearch {
 
     let response: TavilyHttpResponse;
     try {
-      response = await this.fetch(`${this.baseUrl.replace(/\/+$/, '')}/extract`, {
+      response = await this.fetch(`${trimTrailing(this.baseUrl, '/')}/extract`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${this.apiKey}`,

@@ -4,7 +4,7 @@ import type { RuntimeId } from '../runtime/types.js';
 import type { RepairSourceExcerpt } from './repair.js';
 
 const MAX_DEPENDENCY_GROUPS = 24;
-const NODE_STATIC_SPECIFIER = /(?:\b(?:import|export)\s+(?:[^'"\n]*?\s+from\s+)?|\b(?:import|require)\s*\(\s*)['"](?<specifier>\.{1,2}\/[^'"\n]+)['"]/gu;
+const NODE_STATIC_SPECIFIER = /(?:\b(?:import|export)\s(?:[^'"\n]*\bfrom\s)?\s*|\b(?:import|require)\s*\(\s*)['"](?<specifier>\.{1,2}\/[^'"\n]+)['"]/gu;
 const PYTHON_RELATIVE_IMPORT = /^\s*from\s+(?<dots>\.+)(?<module>[A-Za-z_][A-Za-z0-9_.]*)?\s+import\s+(?<imports>[A-Za-z_][A-Za-z0-9_]*(?:\s+as\s+[A-Za-z_][A-Za-z0-9_]*)?(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*(?:\s+as\s+[A-Za-z_][A-Za-z0-9_]*)?)*)/gmu;
 const SAFE_DEPENDENCY_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9_@./-]+$/u;
 
@@ -80,7 +80,7 @@ function* dependencySpecifiers(
     const moduleName = match.groups?.module ?? '';
     if (!moduleName) {
       for (const imported of (match.groups?.imports ?? '').split(',')) {
-        const importedName = imported.trim().split(/\s+as\s+/u)[0] ?? '';
+        const importedName = imported.trim().split(/\s/u)[0] ?? '';
         if (importedName) {
           yield {
             specifier: `${dots}${importedName}`,

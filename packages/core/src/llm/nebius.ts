@@ -17,6 +17,7 @@ import {
   type ModelRouteDecision,
   type ModelSelectionProfile,
 } from './router.js';
+import { trimTrailing } from '../text/trim-edge.js';
 
 export interface NebiusClientConfig {
   apiKey: string;
@@ -106,7 +107,7 @@ function nonNegativeInteger(value: unknown, field: string): number {
 }
 
 function endpoint(baseUrl: string): string {
-  return `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+  return `${trimTrailing(baseUrl, '/')}/chat/completions`;
 }
 
 function wireMessages(messages: readonly ChatMessage[]): readonly unknown[] {
