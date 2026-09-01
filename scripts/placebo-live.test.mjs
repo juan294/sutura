@@ -21,6 +21,13 @@ const PACKAGE_INTEGRITY = '6365ab9af9cfcef0cdfe1441b95c9de2ff504e2181e77fdf5669f
 const RECORDED_AT = '2026-08-31T12:00:00.000Z';
 const corpus = JSON.parse(await readFile('docs/demo/placebo-v0.2-corpus.json', 'utf8'));
 
+test('v0.2.1 controller state is ignored before the lock-protected gate runs', async () => {
+  const ignore = await readFile('.gitignore', 'utf8');
+  assert.match(ignore, /^\.sutura\/placebo-v0\.2\.1-live-ledger\.json$/mu);
+  assert.match(ignore, /^\.sutura\/placebo-v0\.2\.1-live\.lock$/mu);
+  assert.match(ignore, /^\.sutura\/placebo-v0\.2\.1-live-artifacts\/$/mu);
+});
+
 function result(corpusCase, tavilyEnabled = true, overrides = {}) {
   return {
     caseId: corpusCase.id,
