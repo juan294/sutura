@@ -25,7 +25,7 @@ flowchart LR
   C --> D[ConTree dependency-prepared snapshot]
   D -->|Branching use 1| E1[Progressive triage batch 1]
   D -->|Same image| E2[Next batch when evidence is mixed]
-  E1 --> F[Nemotron Super repair tools]
+  E1 --> F[Nemotron Super repair proposals]
   E2 --> F
   D -->|Branching use 2| G1[Initial checkpoint branches]
   D -->|Same image| G2[Adaptive beam expansion]
@@ -135,10 +135,12 @@ The public dogfood record starts with [PR #18](https://github.com/juan294/sutura
   hooks before it enables network access.
 - Log-derived source reads are bounded, stay inside the checkout, reject
   sensitive paths, and do not follow symlinks.
-- The repair agent can use only six bounded tools. Source reads and literal
-  searches stay inside the network-disabled sandbox. Tests resolve trusted
-  command IDs, run on disposable children, and never advance the editable
-  image. Every cumulative patch passes built-in and repository policy checks.
+- Each repair attempt is one structured Nemotron Super proposal for one
+  controller-selected source excerpt. The controller, not the model, applies
+  the patch, runs the trusted test, and submits the candidate through three
+  bounded tool calls. Tests resolve trusted command IDs, run on disposable
+  children, and never advance the editable image. Every cumulative patch
+  passes built-in and repository policy checks.
 - Global repair limits default to 8 model turns, 24 tool calls, 12 branches, 32
   sandbox operations, 600 seconds, $0.25 inference cost, and 65,536 diff bytes.
   Action inputs can lower these limits but cannot raise the core maxima.

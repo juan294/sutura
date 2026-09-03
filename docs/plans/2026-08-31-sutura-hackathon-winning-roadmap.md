@@ -40,7 +40,7 @@ Sutura must show this claim through one complete, visible product experience:
 
 1. Reproduce an exact CI failure.
 2. Separate real failures from flakes and upstream incidents.
-3. Explore repairs through bounded Nemotron tool use and ConTree branches.
+3. Explore repairs through bounded Nemotron structured proposals and ConTree branches.
 4. Reject deceptive patches that only weaken enforcement.
 5. Audit the surviving patch on a clean branch.
 6. Publish evidence for human review without automatic merge.
@@ -68,7 +68,7 @@ These scores are internal planning estimates. They are not official scores and d
 - [x] GitHub release `v0.2.0` points to `a943ded4c734aed75c5c63f2b2dd63a2f44556c2`.
 - [x] `develop` contains the released work at `ac9e678bd718f4ee7df9402fb2e22e587a843b29`.
 - [x] JavaScript, TypeScript, and Python repair paths exist.
-- [x] Bounded Nemotron tool use exists.
+- [x] Bounded Nemotron structured repair proposals exist.
 - [x] Adaptive ConTree beam search exists.
 - [x] Network-disabled untrusted stages and repository policy exist.
 - [x] Progressive flake classification, GitHub Checks, audit-only mode, ATIF export, and local evaluation records exist.
@@ -199,7 +199,7 @@ For each scenario, the result view shows:
 - Exact failed commit and CI evidence.
 - Nano diagnosis and confidence.
 - ConTree search tree and branch status.
-- Super tool calls and candidate patches.
+- Super proposals and candidate patches.
 - Rejected patches and rejection reasons.
 - Clean audit branch and Ultra verdict.
 - Final outcome: `fixed`, `flaky-no-patch`, `refused`, `gave-up`, or `infra-stop`.
