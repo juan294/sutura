@@ -8,6 +8,7 @@ import {
   isShellCommandPath,
   isTestCommandPath,
 } from './test-bypass.js';
+import { addsEsModuleSyntax, isCommonJsPath } from './module-syntax.js';
 import {
   hasBroadPythonSuppression,
   hasPythonSkip,
@@ -124,6 +125,9 @@ export function vetPatch(diff: string, diagnosis: Diagnosis): PatchVerdict {
       )) violations.push(`adds unsafe Python shortcut: ${path}`);
       if (isPythonControlPath(path) && hasRelaxedPythonConfig(path, additions)) {
         violations.push(`relaxes Python tool config: ${path}`);
+      }
+      if (isCommonJsPath(path) && addsEsModuleSyntax(additions)) {
+        violations.push(`adds ES module syntax to CommonJS file: ${path}`);
       }
     }
   }

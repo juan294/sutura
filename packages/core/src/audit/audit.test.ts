@@ -73,6 +73,7 @@ describe('audit', () => {
     'loosened-type',
     'relaxed-config',
     'pass-with-no-tests',
+    'module-syntax',
   ])('refuses %s mechanically before spending a sandbox or LLM call', async (name) => {
     const sandbox = executor();
     const { llm, chat } = llmReplies(JSON.stringify({ approved: true, reasoning: 'ok' }));
@@ -80,7 +81,7 @@ describe('audit', () => {
     const verdict = await audit(sandbox, llm, winner(await fixture(name)), CONTEXT);
 
     expect(verdict.approved).toBe(false);
-    expect(verdict.checks).toHaveLength(7);
+    expect(verdict.checks).toHaveLength(8);
     expect(verdict.checks.some((check) => !check.passed)).toBe(true);
     expect(verdict.checks.find((check) => !check.passed)?.evidence).toContain('@@');
     expect(sandbox.calls).toEqual([]);
@@ -102,7 +103,7 @@ describe('audit', () => {
 
     expect(verdict.approved).toBe(true);
     expect(verdict.reasoning).toBe('The patch fixes the diagnosed export.');
-    expect(verdict.checks).toHaveLength(7);
+    expect(verdict.checks).toHaveLength(8);
     expect(verdict.checks.every(({ passed }) => passed)).toBe(true);
     expect(sandbox.calls).toEqual([
       expect.objectContaining({
@@ -204,7 +205,7 @@ describe('audit', () => {
     );
 
     expect(verdict.approved).toBe(false);
-    expect(verdict.checks).toHaveLength(7);
+    expect(verdict.checks).toHaveLength(8);
     expect(verdict.reasoning).toContain('suite rerun exited 1');
     expect(verdict.reasoning).toContain('Assertion failed');
     expect(chat).not.toHaveBeenCalled();

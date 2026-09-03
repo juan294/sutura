@@ -46,7 +46,8 @@ rerun of the selected patch for adversarial audit. Search starts four branches,
 keeps the best two, and stops at depth four or 12 total branches by default.
 A passing command is necessary, but
 it is not enough. Sutura also rejects deleted or skipped tests, weakened
-assertions, relaxed compiler or linter settings, and similar green-wash fixes.
+assertions, relaxed compiler or linter settings, ES module syntax added to
+CommonJS files, and similar green-wash fixes.
 
 Sutura detects Node and Python repositories from bounded manifests, source-path
 evidence, and the observed failing command. A polyglot repository must set

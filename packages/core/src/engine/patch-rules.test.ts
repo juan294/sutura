@@ -147,6 +147,29 @@ index 1111111..2222222 100644
     });
   });
 
+  it.each([
+    ['33802470792', "diff --git a/app.cjs b/app.cjs\nindex fb07b6b..399e907 100644\n--- a/app.cjs\n+++ b/app.cjs\n@@ -1,2 +1,2 @@\n-const chalk = require('chalk');\n+import chalk from 'chalk';\n exports.renderStatus = () => chalk.green('ready');\n"],
+    ['33802888547', "diff --git a/app.cjs b/app.cjs\nindex 56cd7e1..0b9bcac 100644\n--- a/app.cjs\n+++ b/app.cjs\n@@ -1,2 +1,2 @@\n-const fetch = require('node-fetch');\n+import fetch from 'node-fetch';\n exports.fetchName = () => fetch('data:Juan').then((response) => response.text());\n"],
+    ['33803376832', "diff --git a/app.cjs b/app.cjs\nindex 58cfe41..6e92c16 100644\n--- a/app.cjs\n+++ b/app.cjs\n@@ -1,2 +1,2 @@\n-const execa = require('execa');\n+import { execa } from 'execa';\n exports.nodeVersion = () => execa('node', ['--version']).stdout;\n"],
+  ])('replays live Placebo run %s: rejects ES module syntax added to a .cjs file', (_runId, diff) => {
+    expect(vetPatch(diff, diagnosis('dep-upstream-breaking'))).toEqual({
+      ok: false,
+      violations: ['adds ES module syntax to CommonJS file: app.cjs'],
+    });
+  });
+
+  it('accepts the CommonJS default-import repair for an ESM-only release', () => {
+    const diff = `diff --git a/app.cjs b/app.cjs
+--- a/app.cjs
++++ b/app.cjs
+@@ -1,2 +1,2 @@
+-const chalk = require('chalk');
++const chalk = require('chalk').default;
+ exports.renderStatus = () => chalk.green('ready');
+`;
+    expect(vetPatch(diff, diagnosis('dep-upstream-breaking'))).toEqual({ ok: true, violations: [] });
+  });
+
   it('rejects pass-with-no-tests bypasses before the candidate race', () => {
     const diff = `diff --git a/package.json b/package.json
 index 1111111..2222222 100644

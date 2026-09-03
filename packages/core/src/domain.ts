@@ -75,6 +75,7 @@ export type GreenwashCheck =
   | 'loosened-type'
   | 'relaxed-config'
   | 'pass-with-no-tests'
+  | 'module-syntax'
   | 'llm-adjudication'
   | 'policy-required-command'
   | 'policy-resource-limit'
