@@ -408,7 +408,7 @@ export class NebiusClient {
     const chatTemplateKwargs = options.thinkingMode === undefined
       ? undefined
       : options.thinkingMode === 'disabled'
-        ? { enable_thinking: false }
+        ? { enable_thinking: false, force_nonempty_content: true }
         : options.thinkingMode === 'low-effort'
           ? { enable_thinking: true, low_effort: true }
           : { enable_thinking: true };

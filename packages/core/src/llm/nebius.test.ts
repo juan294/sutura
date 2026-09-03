@@ -250,7 +250,10 @@ describe('NebiusClient', () => {
       max_tokens: 8_192,
       temperature: 1,
       top_p: 0.95,
-      chat_template_kwargs: { enable_thinking: false },
+      chat_template_kwargs: {
+        enable_thinking: false,
+        force_nonempty_content: true,
+      },
     });
     expect(body).not.toHaveProperty('extra_body');
     expect(body).not.toHaveProperty('reasoning_effort');
@@ -271,8 +274,12 @@ describe('NebiusClient', () => {
     expect(bodies[0]).toMatchObject({
       chat_template_kwargs: { enable_thinking: true },
     });
+    expect(bodies[0].chat_template_kwargs).toEqual({ enable_thinking: true });
     expect(bodies[1]).toMatchObject({
       chat_template_kwargs: { enable_thinking: true, low_effort: true },
+    });
+    expect(bodies[1].chat_template_kwargs).toEqual({
+      enable_thinking: true, low_effort: true,
     });
   });
 

@@ -254,13 +254,14 @@ describe('healCase', () => {
       { search: { initialBranches: 4, beamWidth: 1, maximumDepth: 1, maximumTotalBranches: 5 } },
     );
     let scenarioIndex = 0;
+    const selectedTargets: string[] = [];
     value.ctx.executor = new InMemoryExecutor((command) =>
       command.includes('git apply - && git diff')
         ? { ...result(0), stdout: HONEST_DIFF }
         : command.includes('corepack pnpm install --frozen-lockfile') ||
           command.includes('git init --quiet')
           ? result(0)
-          : result([1, 1, 1, 1, 1, 0, 0][scenarioIndex++] ?? 1),
+          : result(scenarioIndex++ < 5 || selectedTargets.at(-1) !== 'page-count.js' ? 1 : 0),
     { operationLimit: 1 });
     const distractors = Array.from({ length: 4 }, (_unused, index) => ({
       path: `src/distractor-${index + 1}.ts`, startLine: 1,
@@ -275,7 +276,6 @@ describe('healCase', () => {
         ].join('\n'), truncated: false },
       ],
     });
-    const selectedTargets: string[] = [];
     value.ctx.llm = {
       chat: vi.fn(async (
         tier: 'nano' | 'super' | 'ultra',
@@ -294,7 +294,7 @@ describe('healCase', () => {
         const selected = request.sources.find(({ path }) => path === request.selectedTarget.path)!;
         const replacement = request.selectedTarget.path === 'page-count.js'
           ? HONEST_REPLACEMENT
-          : `${selected.lines.map(({ text }) => text).join('\n')}\n`;
+          : `${selected.lines.map(({ text }) => text).join('\n')}\n// distinct failing repair\n`;
         return repairProposalReply(
           { id: request.selectedTarget.path, rationale: 'Repair the assigned target.', diff: HONEST_DIFF },
           replacement,
@@ -519,6 +519,246 @@ describe('healCase', () => {
     expect(new Set(applyParents).size).toBe(1);
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super', 'super', 'ultra']);
     expect(JSON.stringify(caseFile.trace)).not.toContain('Math.round');
+  });
+
+  it('requests one alternative when a child repeats its parent proposal', async () => {
+    let applyCount = 0;
+    let ordinaryTestCount = 0;
+    let awaitingCandidateTest = false;
+    const executor = new InMemoryExecutor((command) => {
+      if (
+        command.includes('corepack pnpm install --frozen-lockfile') ||
+        command.includes('git init --quiet')
+      ) return result(0);
+      if (command.includes('git apply - && git diff')) {
+        applyCount += 1;
+        awaitingCandidateTest = true;
+        return { ...result(0), stdout: applyCount < 3 ? WRONG_REPLACEMENT_DIFF : HONEST_DIFF };
+      }
+      if (awaitingCandidateTest) {
+        awaitingCandidateTest = false;
+        return applyCount < 3
+          ? result(1, 'still failing after rounded division')
+          : result(0);
+      }
+      ordinaryTestCount += 1;
+      return ordinaryTestCount <= 5 ? result(1) : result(0);
+    });
+    let superCall = 0;
+    const chat = vi.fn(async (
+      tier: 'nano' | 'super' | 'ultra',
+      messages: readonly ChatMessage[],
+    ) => {
+      void messages;
+      if (tier === 'nano') return { text: JSON.stringify(diagnosis('test-assertion')) };
+      if (tier === 'super') {
+        superCall += 1;
+        const candidate = superCall < 3
+          ? { id: 'rounded', rationale: 'Round the division result.', diff: WRONG_REPLACEMENT_DIFF }
+          : { id: 'ceiling', rationale: 'Use ceiling division.', diff: HONEST_DIFF };
+        return repairProposalReply(candidate, candidateReplacement(candidate));
+      }
+      return { text: JSON.stringify({ approved: true, reasoning: 'The ceiling repair holds.' }) };
+    });
+    const value = context('repair-off-by-one', [], 'test-assertion', {
+      executor,
+      search: { initialBranches: 1, beamWidth: 1, maximumDepth: 2, maximumTotalBranches: 2 },
+    });
+    value.ctx.executor = executor;
+    value.ctx.llm = {
+      chat,
+      modelQuote: (tier) => ({
+        role: tier, modelId: DEFAULT_MODELS[tier], price: DEFAULT_MODEL_PRICES[tier],
+        profileId: DEFAULT_ROUTING_PROFILE_ID,
+      }),
+    };
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('fixed');
+    expect(caseFile.stages).toContainEqual(expect.objectContaining({
+      note: expect.stringMatching(/^Identical proposal for search-/u),
+    }));
+    const alternativeMessages = chat.mock.calls[3]?.[1] as readonly ChatMessage[];
+    expect(alternativeMessages.find(({ role }) => role === 'user')?.content)
+      .toContain('"repeatedProposal":true');
+    expect(caseFile.trace?.filter(({ type }) => type === 'model-request')).toHaveLength(5);
+    expect(executor.calls.filter((call) =>
+      call.kind === 'run' && call.opts?.operationId?.startsWith('search-002-alt-'),
+    )).toHaveLength(2);
+  });
+
+  it('marks the node repeated-state when the alternative is identical too', async () => {
+    let ordinaryTestCount = 0;
+    let awaitingCandidateTest = false;
+    const executor = new InMemoryExecutor((command) => {
+      if (
+        command.includes('corepack pnpm install --frozen-lockfile') ||
+        command.includes('git init --quiet')
+      ) return result(0);
+      if (command.includes('git apply - && git diff')) {
+        awaitingCandidateTest = true;
+        return { ...result(0), stdout: WRONG_REPLACEMENT_DIFF };
+      }
+      if (awaitingCandidateTest) {
+        awaitingCandidateTest = false;
+        return result(1, 'still failing after rounded division');
+      }
+      ordinaryTestCount += 1;
+      return ordinaryTestCount <= 5 ? result(1) : result(0);
+    });
+    const value = context('repair-off-by-one', [], 'test-assertion', {
+      executor,
+      search: { initialBranches: 1, beamWidth: 1, maximumDepth: 2, maximumTotalBranches: 2 },
+    });
+    value.ctx.executor = executor;
+    value.ctx.llm = {
+      ...value.ctx.llm,
+      chat: vi.fn(async (tier: 'nano' | 'super' | 'ultra') => {
+        if (tier === 'nano') return { text: JSON.stringify(diagnosis('test-assertion')) };
+        if (tier === 'super') {
+          return repairProposalReply(
+            { id: 'rounded', rationale: 'Round the division result.', diff: WRONG_REPLACEMENT_DIFF },
+            WRONG_REPLACEMENT,
+          );
+        }
+        return { text: JSON.stringify({ approved: true, reasoning: 'unused' }) };
+      }),
+    };
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(caseFile.search).toContainEqual(expect.objectContaining({
+      nodeId: 'search-002',
+      terminalReason: 'repeated-state',
+    }));
+  });
+
+  it('skips the alternative when no complete repair branch remains', async () => {
+    let ordinaryTestCount = 0;
+    let awaitingCandidateTest = false;
+    const executor = new InMemoryExecutor((command) => {
+      if (
+        command.includes('corepack pnpm install --frozen-lockfile') ||
+        command.includes('git init --quiet')
+      ) return result(0);
+      if (command.includes('git apply - && git diff')) {
+        awaitingCandidateTest = true;
+        return { ...result(0), stdout: WRONG_REPLACEMENT_DIFF };
+      }
+      if (awaitingCandidateTest) {
+        awaitingCandidateTest = false;
+        return result(1, 'still failing after rounded division');
+      }
+      ordinaryTestCount += 1;
+      return ordinaryTestCount <= 5 ? result(1) : result(0);
+    });
+    const value = context('repair-off-by-one', [], 'test-assertion', {
+      executor,
+      repairBudgets: { branches: 2 },
+      search: { initialBranches: 1, beamWidth: 1, maximumDepth: 2, maximumTotalBranches: 2 },
+    });
+    const superChat = vi.fn(async (tier: 'nano' | 'super' | 'ultra') => {
+      if (tier === 'nano') return { text: JSON.stringify(diagnosis('test-assertion')) };
+      if (tier === 'super') {
+        return repairProposalReply(
+          { id: 'rounded', rationale: 'Round the division result.', diff: WRONG_REPLACEMENT_DIFF },
+          WRONG_REPLACEMENT,
+        );
+      }
+      return { text: JSON.stringify({ approved: true, reasoning: 'unused' }) };
+    });
+    value.ctx.executor = executor;
+    value.ctx.llm = {
+      ...value.ctx.llm,
+      chat: superChat,
+    };
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(superChat.mock.calls.filter(([tier]) => tier === 'super')).toHaveLength(2);
+    expect(caseFile.stages).not.toContainEqual(expect.objectContaining({
+      note: expect.stringMatching(/^Identical proposal for search-/u),
+    }));
+  });
+
+  it('expands an unpatched parent on the next target', async () => {
+    const alternateDiff = [
+      'diff --git a/src/alternate.ts b/src/alternate.ts',
+      '--- a/src/alternate.ts',
+      '+++ b/src/alternate.ts',
+      '@@ -1 +1 @@',
+      '-export const alternate = 1;',
+      '+export const alternate = 2;',
+    ].join('\n') + '\n';
+    let ordinaryTestCount = 0;
+    let awaitingCandidateTest = false;
+    const executor = new InMemoryExecutor((command) => {
+      if (
+        command.includes('corepack pnpm install --frozen-lockfile') ||
+        command.includes('git init --quiet')
+      ) return result(0);
+      if (command.includes('git apply - && git diff')) {
+        awaitingCandidateTest = true;
+        return { ...result(0), stdout: alternateDiff };
+      }
+      if (awaitingCandidateTest) {
+        awaitingCandidateTest = false;
+        return result(1, 'alternate still fails');
+      }
+      ordinaryTestCount += 1;
+      return ordinaryTestCount <= 5 ? result(1) : result(0);
+    });
+    const selectedTargets: string[] = [];
+    let superCall = 0;
+    const superChat = vi.fn(async (
+      tier: 'nano' | 'super' | 'ultra',
+      messages: readonly ChatMessage[],
+    ) => {
+      if (tier === 'nano') return { text: JSON.stringify(diagnosis('test-assertion')) };
+      if (tier === 'super') {
+        superCall += 1;
+        const request = JSON.parse(
+          messages.find(({ role }) => role === 'user')?.content ?? '{}',
+        ) as { selectedTarget: { path: string } };
+        selectedTargets.push(request.selectedTarget.path);
+        return superCall <= 4
+          ? { text: 'not json', usd: 0 }
+          : { text: JSON.stringify({ replacement: 'export const alternate = 2;\n' }), usd: 0 };
+      }
+      return { text: JSON.stringify({ approved: true, reasoning: 'unused' }) };
+    });
+    const value = context('repair-off-by-one', [], 'test-assertion', {
+      executor,
+      search: { initialBranches: 1, beamWidth: 1, maximumDepth: 2, maximumTotalBranches: 3 },
+      readSourceContext: async () => ({ sources: [
+        {
+          path: 'page-count.js', startLine: 1,
+          content: 'export function pageCount(items, size) { return Math.floor(items / size) + 1; }\n',
+          truncated: false,
+        },
+        {
+          path: 'src/alternate.ts', startLine: 1,
+          content: 'export const alternate = 1;\n', truncated: false,
+        },
+      ] }),
+    });
+    value.ctx.executor = executor;
+    value.ctx.llm = {
+      ...value.ctx.llm,
+      chat: superChat,
+    };
+
+    await healCase(value.ctx);
+
+    expect(selectedTargets).toHaveLength(5);
+    expect(selectedTargets.slice(0, 4).sort()).toEqual([
+      'page-count.js', 'page-count.js',
+      'src/alternate.ts', 'src/alternate.ts',
+    ].sort());
+    expect(selectedTargets.at(-1)).toBe('src/alternate.ts');
   });
 
   it('refuses the first adaptive expansion when the current provider snapshot has no capacity', async () => {

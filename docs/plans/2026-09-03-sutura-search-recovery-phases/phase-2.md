@@ -1,6 +1,6 @@
 # Phase 2: Proposal validity retry and provider flag `[batch-eligible]`
 
-Status: Not started
+Status: Completed; live canary pending separate authorization
 
 ## Goal
 

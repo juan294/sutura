@@ -2,7 +2,7 @@
 
 Date: 2026-09-03
 
-Status: Planned; implementation not started
+Status: Implemented locally; live authorization gates pending
 
 Integration branch: `develop`
 
@@ -69,15 +69,15 @@ Live measurement, each under its own authorization and cap:
 
 Automated:
 
-- All new and existing tests in the listed files pass.
-- No fixture, hidden test, scorer rule, or denominator changes (`git diff --stat` shows no path under `packages/placebo/corpus` or `packages/placebo/src/score.ts`).
-- The offline corpus self-check remains 51 cases and 55 evaluations (`pnpm --filter placebo run smoke:offline`).
-- `pnpm run ci:local` passes on the integrated commit.
+- [x] All new and existing tests in the listed files pass.
+- [x] No fixture, hidden test, scorer rule, or denominator changes (`git diff --stat` shows no path under `packages/placebo/corpus` or `packages/placebo/src/score.ts`).
+- [x] The offline corpus self-check remains 51 cases and 55 evaluations (`pnpm --filter placebo run smoke:offline`).
+- [x] `pnpm run ci:local` passes on the integrated commit.
 
 Manual:
 
-- Review that no change weakens a policy rule, the audit, or a terminal outcome class.
-- Confirm the live canary passed with `sutura-super-repair-v5` before any benchmark dispatch.
+- [x] Review that no change weakens a policy rule, the audit, or a terminal outcome class.
+- [ ] Confirm the live canary passed with `sutura-super-repair-v5` before any benchmark dispatch.
 
 ## Out of scope
 

@@ -36,6 +36,7 @@ import {
 } from './engine/repair-attempt.js';
 import { validateCandidateDiff } from './engine/candidate-validation.js';
 import { candidateIdentity } from './engine/candidate-identity.js';
+import { diffFingerprint } from './engine/fingerprint.js';
 import {
   RepairBudget,
   repairBudgetLimits,
@@ -864,14 +865,16 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
     const attemptContext = (
       parent: SearchNode | undefined,
       targetIndex: number,
+      repeatedProposal = false,
     ): ControlledRepairAttemptContext => {
-      const key = `${parent?.id ?? 'baseline'}:${targetIndex}`;
+      const key = `${parent?.id ?? 'baseline'}:${targetIndex}${repeatedProposal ? ':repeat' : ''}`;
       const existing = attemptContexts.get(key);
       if (existing !== undefined) return existing;
       const feedback = parent === undefined ? undefined : {
         candidateDiff: parent.cumulativeDiff,
         testOutput: parent.testEvidence.output,
         errorFingerprint: parent.errorFingerprint,
+        ...(repeatedProposal ? { repeatedProposal: true as const } : {}),
       };
       const prepared = {
         llm: fullContext.llm,
@@ -889,8 +892,14 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       attemptContexts.set(key, prepared);
       return prepared;
     };
+    const childTargetIndex = (parent: SearchNode): number => {
+      const parentTarget = nodeTargets.get(parent.id) ?? 0;
+      return parent.cumulativeDiff === '' && proposalTemplate.targetCount > 1
+        ? (parentTarget + 1) % proposalTemplate.targetCount
+        : parentTarget;
+    };
     const targetIndexes = (parent: SearchNode | undefined): number[] => {
-      if (parent !== undefined) return [nodeTargets.get(parent.id) ?? 0];
+      if (parent !== undefined) return [childTargetIndex(parent)];
       return Array.from({ length: proposalTemplate.targetCount }, (_value, index) => index);
     };
     const inferenceCapacity = (parents: readonly (SearchNode | undefined)[]): number => {
@@ -936,6 +945,23 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
     let providerCapacity: CapacitySnapshot | undefined = fullContext.llm.capacitySnapshot?.();
     const activeOperations = new Map<string, string>();
     const lastOperations = new Map<string, string>();
+    const availableBranches = (
+      parents: readonly (SearchNode | undefined)[] = [],
+    ): number => {
+      const snapshot = budget.snapshot();
+      if (
+        providerCapacityAvailable(providerCapacity) < 1 ||
+        ctx.executor.operationCapacity().available < 1
+      ) return 0;
+      return Math.min(
+        budget.limits.branches - snapshot.branches,
+        Math.floor((budget.limits.sandboxOperations - snapshot.sandboxOperations) / REPAIR_ATTEMPT_COSTS.sandboxOperations),
+        Math.floor((budget.limits.modelTurns - snapshot.modelTurns) / REPAIR_ATTEMPT_COSTS.modelTurns),
+        Math.floor((budget.limits.toolCalls - snapshot.toolCalls) / REPAIR_ATTEMPT_COSTS.toolCalls),
+        inferenceCapacity(parents),
+        budget.remainingElapsedTimeSec() > 0 ? Number.MAX_SAFE_INTEGER : 0,
+      );
+    };
     const result = await adaptiveSearch({
       baselineImageId: ctx.failingImage,
       initialBranches: Math.min(
@@ -947,21 +973,7 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       beamWidth: searchLimits.beamWidth,
       maximumDepth: searchLimits.maximumDepth,
       maximumTotalBranches: Math.min(searchLimits.maximumTotalBranches, budget.limits.branches),
-      availableBranches: (parents = []) => {
-        const snapshot = budget.snapshot();
-        if (
-          providerCapacityAvailable(providerCapacity) < 1 ||
-          ctx.executor.operationCapacity().available < 1
-        ) return 0;
-        return Math.min(
-          budget.limits.branches - snapshot.branches,
-          Math.floor((budget.limits.sandboxOperations - snapshot.sandboxOperations) / REPAIR_ATTEMPT_COSTS.sandboxOperations),
-          Math.floor((budget.limits.modelTurns - snapshot.modelTurns) / REPAIR_ATTEMPT_COSTS.modelTurns),
-          Math.floor((budget.limits.toolCalls - snapshot.toolCalls) / REPAIR_ATTEMPT_COSTS.toolCalls),
-          inferenceCapacity(parents),
-          budget.remainingElapsedTimeSec() > 0 ? Number.MAX_SAFE_INTEGER : 0,
-        );
-      },
+      availableBranches,
       concurrencyCapacity: () => ctx.search === undefined
         ? 1
         : Math.max(1, Math.min(
@@ -999,30 +1011,55 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
         const before = ledger.entries().length;
         const targetIndex = parent === undefined
           ? (branch - 1) % proposalTemplate.targetCount
-          : nodeTargets.get(parent.id) ?? 0;
+          : childTargetIndex(parent);
         nodeTargets.set(nodeId, targetIndex);
-        const agent = await runControlledRepairAttempt({
-          ...attemptContext(parent, targetIndex),
-          branchId: nodeId,
-          operationIdPrefix: operationId,
-          signal,
-          trace,
-          onOperationStart: (activeOperationId) => {
-            activeOperations.set(nodeId, activeOperationId);
-            lastOperations.set(nodeId, activeOperationId);
-          },
-          observeCapacity: (capacity) => { providerCapacity = capacity; },
-          observe: ({ result, imageId, parentImageId, note }) => ledger.record({
-            stage: 'search',
-            attempt: ++candidateAttempt,
-            network: 'disabled',
-            ...(result === undefined ? {} : { result }),
-            ...(imageId === undefined ? {} : { imageId }),
-            parentImageId,
-            note,
-          }),
-        });
-        activeOperations.delete(nodeId);
+        const runAttempt = async (
+          context: ControlledRepairAttemptContext,
+          operationIdPrefix: string,
+        ) => {
+          try {
+            return await runControlledRepairAttempt({
+              ...context,
+              branchId: nodeId,
+              operationIdPrefix,
+              signal,
+              trace,
+              onOperationStart: (activeOperationId) => {
+                activeOperations.set(nodeId, activeOperationId);
+                lastOperations.set(nodeId, activeOperationId);
+              },
+              observeCapacity: (capacity) => { providerCapacity = capacity; },
+              observe: ({ result, imageId, parentImageId, note }) => ledger.record({
+                stage: 'search',
+                attempt: ++candidateAttempt,
+                network: 'disabled',
+                ...(result === undefined ? {} : { result }),
+                ...(imageId === undefined ? {} : { imageId }),
+                parentImageId,
+                note,
+              }),
+            });
+          } finally {
+            activeOperations.delete(nodeId);
+          }
+        };
+        let agent = await runAttempt(attemptContext(parent, targetIndex), operationId);
+        if (
+          !signal.aborted &&
+          parent !== undefined &&
+          (agent.status === 'submitted' || agent.status === 'checkpoint') &&
+          diffFingerprint(agent.candidate.diff) === diffFingerprint(parent.cumulativeDiff) &&
+          availableBranches([parent]) >= 1
+        ) {
+          ledger.record({
+            stage: 'search', attempt: ++candidateAttempt, network: 'disabled',
+            note: `Identical proposal for ${nodeId}; requesting an alternative`,
+          });
+          agent = await runAttempt(
+            attemptContext(parent, targetIndex, true),
+            `${operationId}-alt`,
+          );
+        }
         if (signal.aborted) {
           const lastOperation = lastOperations.get(nodeId);
           if (lastOperation !== undefined) {

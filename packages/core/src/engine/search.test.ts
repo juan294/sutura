@@ -39,6 +39,31 @@ describe('adaptiveSearch', () => {
     expect(result.terminalReason).toBe('frontier-exhausted');
   });
 
+  it('keeps patched failures in the beam ahead of a branch that produced no patch', async () => {
+    const expand = vi.fn(async ({ depth, branch, parent }: {
+      depth: number;
+      branch: number;
+      parent: { id: string } | undefined;
+    }) => {
+      if (depth !== 1) return expansion(`depth-2-${parent?.id}`, 1, `depth-2-${parent?.id}`);
+      if (branch !== 3) return expansion(`diff-${branch}`, 1, `e${branch}`);
+      return {
+        ...expansion('', 1, 'invalid: Repair proposal must be valid JSON'),
+        policyEvidence: { valid: true, violations: [], changedFiles: [], diffBytes: 0 },
+        terminalReason: 'failed' as const,
+      };
+    });
+    const result = await adaptiveSearch({
+      baselineImageId: 'base', initialBranches: 4, beamWidth: 2, maximumDepth: 2,
+      maximumTotalBranches: 12, availableBranches: () => 12, expand,
+    });
+    const depthTwoNodes = result.nodes.filter(({ depth }) => depth === 2);
+    const patchedParentIds = new Set(['search-001', 'search-002', 'search-004']);
+    expect(depthTwoNodes).toHaveLength(2);
+    expect(depthTwoNodes.every(({ parentId }) => parentId !== undefined && patchedParentIds.has(parentId))).toBe(true);
+    expect(depthTwoNodes.map(({ parentId }) => parentId)).not.toContain('search-003');
+  });
+
   it('still prunes repeated generic failed states', async () => {
     const expand = vi.fn(async () => ({
       ...expansion('same-failed-diff', 1, 'same failed output'),

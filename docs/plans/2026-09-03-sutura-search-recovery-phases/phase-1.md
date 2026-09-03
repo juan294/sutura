@@ -1,6 +1,6 @@
 # Phase 1: Rank patched branches first `[batch-eligible]`
 
-Status: Not started
+Status: Completed
 
 ## Goal
 

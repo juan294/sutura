@@ -30,6 +30,7 @@ export interface RepairAttemptFeedback {
   candidateDiff: string;
   testOutput: string;
   errorFingerprint: string;
+  repeatedProposal?: true;
 }
 
 export interface ControlledRepairAttemptContext extends RepairAgentContext {
@@ -205,11 +206,18 @@ export function prepareControlledRepairProposalTemplate(
       const feedbackKey = redactedFeedback === undefined
         ? 'baseline'
         : digest(JSON.stringify(redactedFeedback));
-      const key = `${targetIndex}:${feedbackKey}`;
+      const repeatedProposal = feedback?.repeatedProposal === true;
+      const key = `${targetIndex}:${feedbackKey}${repeatedProposal ? ':repeat' : ''}`;
       const existing = cache.get(key);
       if (existing !== undefined) return existing;
+      const contractSystemMessage = repeatedProposal
+        ? {
+            ...systemMessage,
+            content: `${systemMessage.content}\nThe previous proposal was identical to an earlier failed proposal for this excerpt. Return a materially different replacement.`,
+          }
+        : systemMessage;
       const messages: ChatMessage[] = [
-        systemMessage,
+        contractSystemMessage,
         {
           role: 'user',
           content: JSON.stringify({
@@ -338,19 +346,67 @@ export async function runControlledRepairAttempt(
       reason: 'Repair proposal reached the provider completion-token limit',
     };
   }
-  let proposal: RepairProposal;
-  let proposalDiff: string;
-  try {
-    proposal = parseProposal(reply.text);
-    proposalDiff = anchoredEditsDiff([{
+  const parseAttempt = (text: string): {
+    proposal: RepairProposal;
+    proposalDiff: string;
+  } => {
+    const proposal = parseProposal(text);
+    const proposalDiff = anchoredEditsDiff([{
       path: target.path,
       startLine: target.startLine,
       endLine: target.endLine,
       [REPAIR_EDIT_FIELDS.replacement]: proposal.replacement,
     }], ctx.sourceContext);
-  } catch (error) {
-    return { status: 'gave-up', failureKind: 'invalid', reason: publicRepairReason(error instanceof Error ? error.message : String(error)) };
+    return { proposal, proposalDiff };
+  };
+  let parsedAttempt: ReturnType<typeof parseAttempt>;
+  try {
+    parsedAttempt = parseAttempt(reply.text);
+  } catch (firstError) {
+    const firstReason = publicRepairReason(
+      firstError instanceof Error ? firstError.message : String(firstError),
+    );
+    const retryMessages: ChatMessage[] = [
+      ...messages,
+      { role: 'assistant', content: reply.text },
+      {
+        role: 'user',
+        content: `The previous reply was not a valid repair proposal: ${firstReason}. Return only ${JSON.stringify(REPAIR_PROPOSAL_EXAMPLE)} with the complete replacement text.`,
+      },
+    ];
+    ctx.observe?.({
+      parentImageId: ctx.initialImageId,
+      note: 'Proposal retry after invalid response',
+    });
+    const retryBytes = Buffer.byteLength(JSON.stringify({
+      messages: retryMessages,
+      responseSchema: schema,
+    }), 'utf8');
+    const retryResponse = await requestRepairModel({
+      llm: ctx.llm, budget: ctx.budget, messages: retryMessages, options,
+      worstCaseUsd: (price) => worstCaseRequestUsd(retryBytes, price.input, price.output),
+      ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
+      ...(ctx.observeCapacity === undefined ? {} : { observeCapacity: ctx.observeCapacity }),
+    });
+    if (!retryResponse.ok) return retryResponse.outcome;
+    if (retryResponse.reply.finishReason === 'length') {
+      return {
+        status: 'gave-up', failureKind: 'completion-limit',
+        reason: 'Repair proposal reached the provider completion-token limit',
+      };
+    }
+    try {
+      parsedAttempt = parseAttempt(retryResponse.reply.text);
+    } catch (secondError) {
+      return {
+        status: 'gave-up', failureKind: 'invalid',
+        reason: publicRepairReason(
+          secondError instanceof Error ? secondError.message : String(secondError),
+        ),
+      };
+    }
   }
+  const { proposal, proposalDiff } = parsedAttempt;
   const proposalDiffHash = digest(proposalDiff);
   const proposalId = `repair-${proposalDiffHash.slice(0, 12)}`;
   const proposalRationale = 'Replace the controller-selected source excerpt.';

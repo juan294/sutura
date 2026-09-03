@@ -1,6 +1,6 @@
 # Phase 3: Identical re-proposal recovery and target rotation
 
-Status: Not started
+Status: Completed
 
 Dependency: Phase 2 (both phases edit `packages/core/src/engine/repair-attempt.ts`)
 
