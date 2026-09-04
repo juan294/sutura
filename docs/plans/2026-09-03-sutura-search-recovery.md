@@ -2,7 +2,7 @@
 
 Date: 2026-09-03
 
-Status: Implemented locally; live authorization gates pending
+Status: Implemented and pushed (`5a4fd146`, followed by `dd3cc7a`, `ca3a44d`, `08459fe`); v5 canary green; four-case upstream re-run measured on `08459fe`; full benchmark pending
 
 Integration branch: `develop`
 
@@ -31,6 +31,19 @@ The `gave-up` result (`upstream-formatter-release`) exposes four defects in the 
 2. `packages/core/src/heal.ts:1000-1003` gives every child the parent's target index. A parent that produced no patch is re-expanded on the same excerpt with no new information.
 3. `packages/core/src/engine/repair-attempt.ts:186` states that proposals apply to the clean baseline. When the model returns the same replacement at depth 2, the child's cumulative diff equals the parent's, `packages/core/src/engine/search.ts:158-166` marks it `repeated-state`, and the frontier empties. The chalk run stopped at 6 of 12 branches, depth 2 of 4, with 6 of 8 model turns used.
 4. `packages/core/src/engine/repair-attempt.ts:343-352` fails the attempt on the first invalid proposal. Across the got and chalk runs 3 of 14 Super proposals were invalid JSON (476 to 627 output tokens). The bounded strict-schema retry added by the parent plan covers diagnosis only (`packages/core/src/diagnose/classify.ts:206-216`). NVIDIA's Nemotron 3 model cards recommend `chat_template_kwargs.force_nonempty_content` for coding agents; the flag is absent from `packages/core/src/llm/nebius.ts:408-414`.
+
+## Measured result after implementation
+
+Live re-run of the same four cases on `develop` commit `08459febad47294b8202f4dac5d8feeedf1c37c5` on 2026-09-04 (USD 0.9472; archive `.sutura/placebo-v0.2.1-failed-runs/upstream-rerun-08459fe/`):
+
+| Case | With Tavily | Without Tavily | Search stop | Run |
+| --- | --- | --- | --- | --- |
+| upstream-client-release | gave-up | gave-up | completion-limit at depth 1 with 3 live branches | 33836453870 |
+| upstream-formatter-release | gave-up | gave-up | completion-limit at depth 1 with 2 live branches | 33836899254 |
+| upstream-parser-release | fixed | gave-up | candidate found at depth 1, audit approved | 33837301600 |
+| upstream-retry-release | fixed | gave-up | candidate found at depth 1, audit approved | 33837788877 |
+
+Result: 2/4 with Tavily, the same count as `d03a8d15` but with `upstream-parser-release` fixed for the first time and no `refused` outcome. No ESM-in-CJS candidate reached the audit. The two remaining `gave-up` outcomes share one cause that this plan did not cover: one Super proposal per case ran to the 8,192-token completion limit (about 8,790 bytes for 8,192 tokens, consistent with a degenerate repetition loop), and `packages/core/src/engine/search.ts:78` treats `completion-limit` as a global terminal that ends the whole search even though two or three patched depth-1 branches were retained in the frontier. That rule dates from the 2026-08-29 live-repair reliability plan (commit `c7f3125`). Making the completion-limit terminal branch-local instead of global is the next candidate change and needs its own plan.
 
 ## Design decisions
 
@@ -77,7 +90,7 @@ Automated:
 Manual:
 
 - [x] Review that no change weakens a policy rule, the audit, or a terminal outcome class.
-- [ ] Confirm the live canary passed with `sutura-super-repair-v5` before any benchmark dispatch.
+- [x] Confirm the live canary passed with `sutura-super-repair-v5` before any benchmark dispatch (run 33835281127 on `08459fe`, 2026-09-04).
 
 ## Out of scope
 
