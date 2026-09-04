@@ -61,6 +61,16 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  packages/case-lab:
+    dependencies:
+      '@sutura/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/cli:
     devDependencies:
       '@sutura/core':
