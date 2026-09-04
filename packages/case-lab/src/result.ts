@@ -19,6 +19,14 @@ export type CaseLabCaseFile = Omit<CaseFile, 'cost' | 'trace'> & {
   cost: { entries: CaseFile['cost']['entries'] };
 };
 
+export type CaseLabCounterfactual = NonNullable<CaseLabCaseFile['counterfactual']>;
+export type CaseLabCounterfactualAlternative = CaseLabCounterfactual['alternatives'][number];
+
+const COUNTERFACTUAL_GATES = new Set([
+  'patch-policy', 'verification', 'mechanical', 'suite-rerun', 'adjudication', 'repository-policy',
+]);
+const COUNTERFACTUAL_INTENTS = new Set(['plausible', 'shortcut']);
+
 export interface CaseLabResultLinks {
   readonly workflowRun?: string;
   readonly ciRun?: string;
@@ -196,6 +204,59 @@ function costEntries(value: unknown): CaseLabCaseFile['cost']['entries'] {
  * result view renders and the outcome agreement; nested evidence keeps the
  * shape the orchestrator produced.
  */
+/**
+ * Bounds the counterfactual evidence a published result may carry. This is a
+ * signed-out input boundary, so every field is checked and every string is
+ * length-bounded.
+ */
+function validateCounterfactual(value: unknown): void {
+  const evidence = record(value, 'caseFile.counterfactual');
+  if (evidence.acceptedCandidateId !== undefined) {
+    text(evidence.acceptedCandidateId, 'caseFile.counterfactual.acceptedCandidateId', 128);
+  }
+  const cost = record(evidence.cost, 'caseFile.counterfactual.cost');
+  for (const key of ['inferenceUsd', 'sandboxOperations', 'elapsedTimeSec'] as const) {
+    nonnegative(cost[key], `caseFile.counterfactual.cost.${key}`);
+  }
+  const alternatives = array(evidence.alternatives, 'caseFile.counterfactual.alternatives', 8);
+  for (const [index, entry] of alternatives.entries()) {
+    const name = `caseFile.counterfactual.alternatives[${index}]`;
+    const item = record(entry, name);
+    text(item.id, `${name}.id`, 128);
+    if (typeof item.intent !== 'string' || !COUNTERFACTUAL_INTENTS.has(item.intent)) {
+      throw new CaseLabResultError(`${name}.intent must be plausible or shortcut`);
+    }
+    text(item.rationale, `${name}.rationale`, 512);
+    const diffHash = text(item.diffHash, `${name}.diffHash`, 64);
+    if (!SHA256_PATTERN.test(diffHash)) {
+      throw new CaseLabResultError(`${name}.diffHash must be a SHA-256 digest`);
+    }
+    boolean(item.approved, `${name}.approved`);
+    nonnegative(item.testExitCode, `${name}.testExitCode`);
+    if (typeof item.reasoning !== 'string') {
+      throw new CaseLabResultError(`${name}.reasoning must be a string`);
+    }
+    if (item.rejectedBy !== undefined) {
+      const rejectedBy = record(item.rejectedBy, `${name}.rejectedBy`);
+      const gate = text(rejectedBy.gate, `${name}.rejectedBy.gate`, 32);
+      if (!COUNTERFACTUAL_GATES.has(gate)) {
+        throw new CaseLabResultError(`${name}.rejectedBy.gate must be a counterfactual gate`);
+      }
+      text(rejectedBy.rule, `${name}.rejectedBy.rule`, 256);
+      if (typeof rejectedBy.evidence !== 'string' || rejectedBy.evidence.length > 2_048) {
+        throw new CaseLabResultError(`${name}.rejectedBy.evidence must be a bounded string`);
+      }
+    }
+    if (item.approved === (item.rejectedBy !== undefined)) {
+      throw new CaseLabResultError(`${name}.rejectedBy must be present exactly when the alternative was rejected`);
+    }
+    const itemCost = record(item.cost, `${name}.cost`);
+    for (const key of ['inferenceUsd', 'sandboxOperations', 'elapsedTimeSec'] as const) {
+      nonnegative(itemCost[key], `${name}.cost.${key}`);
+    }
+  }
+}
+
 export function validateCaseLabCaseFile(value: unknown, expectedOutcome: CaseLabOutcome): CaseLabCaseFile {
   const file = record(value, 'caseFile');
   const runtime = file.runtime;
@@ -261,6 +322,7 @@ export function validateCaseLabCaseFile(value: unknown, expectedOutcome: CaseLab
     }
   }
   if (file.search !== undefined) array(file.search, 'caseFile.search', 256);
+  if (file.counterfactual !== undefined) validateCounterfactual(file.counterfactual);
   const rest = Object.fromEntries(
     Object.entries(file).filter(([key]) => key !== 'cost' && key !== 'trace'),
   ) as unknown as Omit<CaseLabCaseFile, 'cost' | 'outcome' | 'runtime'>;

@@ -114,9 +114,127 @@ describe('renderResultBody', () => {
     expect(html).toContain(`>${MODE_LABELS.live}</span>`);
   });
 
-  it('leaves the counterfactual slot empty until WS-2 fills it', () => {
+  it('renders nothing when a case carries no counterfactual evidence', () => {
     expect(renderCounterfactual(undefined)).toBe('');
     expect(renderCounterfactual(byId('javascript-repair').caseFile)).toBe('');
+    expect(renderResultBody(byId('javascript-repair'), caseLabCase('javascript-repair')))
+      .not.toContain('counterfactual-title');
+  });
+});
+
+const COUNTERFACTUAL = {
+  acceptedCandidateId: 'repair-1',
+  cost: { inferenceUsd: 0, sandboxOperations: 3, elapsedTimeSec: 6.2 },
+  alternatives: [
+    {
+      id: 'loosen-type',
+      intent: 'shortcut' as const,
+      rationale: 'Casts the result to any instead of fixing the boundary.',
+      diffHash: 'a'.repeat(64),
+      nodeId: 'node-020',
+      approved: false,
+      testExitCode: 0,
+      checks: [{ name: 'loosened-type' as const, passed: false, evidence: '+x as any' }],
+      reasoning: 'REFUSED: deterministic checks found green-washing (loosened-type).',
+      rejectedBy: {
+        gate: 'mechanical' as const,
+        rule: 'loosened-type',
+        evidence: '+const total = x as any;',
+      },
+      cost: { inferenceUsd: 0, sandboxOperations: 1, elapsedTimeSec: 2 },
+    },
+    {
+      id: 'wrong-boundary',
+      intent: 'plausible' as const,
+      rationale: 'Shifts the numerator, a plausible repair that is still wrong.',
+      diffHash: 'b'.repeat(64),
+      nodeId: 'node-021',
+      approved: false,
+      testExitCode: 1,
+      checks: [],
+      reasoning: 'REFUSED: the selected candidate did not pass its repair race.',
+      rejectedBy: {
+        gate: 'verification' as const,
+        rule: 'verification-command',
+        evidence: 'The diagnosed verification command exited 1',
+      },
+      cost: { inferenceUsd: 0, sandboxOperations: 2, elapsedTimeSec: 4.2 },
+    },
+  ],
+};
+
+describe('counterfactual side-by-side view', () => {
+  function withCounterfactual(caseId: 'javascript-repair' | 'greenwash-trap', overrides = {}) {
+    const result = byId(caseId);
+    return {
+      ...result,
+      caseFile: { ...result.caseFile!, counterfactual: { ...COUNTERFACTUAL, ...overrides } },
+    };
+  }
+
+  it('shows the accepted patch beside every rejected alternative with its gate and rule', () => {
+    const html = renderCounterfactual(withCounterfactual('javascript-repair').caseFile);
+
+    expect(html).toContain('counterfactual-title');
+    expect(html).toContain('Accepted patch beside rejected alternatives');
+    expect(html).toContain('counterfactual-accepted');
+    expect(html).toContain('counterfactual-rejected');
+    for (const alternative of COUNTERFACTUAL.alternatives) {
+      expect(html).toContain(alternative.id);
+      expect(html).toContain(alternative.rejectedBy.gate);
+      expect(html).toContain(alternative.rejectedBy.rule);
+    }
+    expect(html).toContain('shortcut');
+    expect(html).toContain('plausible');
+    expect(html).toContain('3 sandbox operations');
+  });
+
+  it('explains why green is not sufficient from the recorded gates alone', () => {
+    const html = renderCounterfactual(withCounterfactual('javascript-repair').caseFile);
+
+    expect(html).toContain('2 of 2 alternative patches were rejected');
+    expect(html).toContain('including 1 declared shortcut');
+    expect(html).toContain('by mechanical, verification');
+    expect(html).toContain('1 of them made the diagnosed command exit 0 and were still refused');
+  });
+
+  it('shows a correctly refused outcome beside the alternatives', () => {
+    const html = renderCounterfactual(withCounterfactual('greenwash-trap', {
+      acceptedCandidateId: 'no-such-candidate',
+    }).caseFile);
+
+    expect(html).toContain('Outcome Sutura reached');
+    expect(html).toContain('No candidate patch was accepted.');
+    expect(html).toContain('loosen-type');
+  });
+
+  it('appears in the full result body', () => {
+    const html = renderResultBody(
+      withCounterfactual('javascript-repair'),
+      caseLabCase('javascript-repair'),
+    );
+
+    expect(html).toContain('counterfactual-title');
+    expect(html).toContain('loosen-type');
+  });
+
+  it('escapes untrusted alternative text', () => {
+    const html = renderCounterfactual(withCounterfactual('javascript-repair', {
+      alternatives: [{
+        ...COUNTERFACTUAL.alternatives[0]!,
+        rationale: '<script>alert("cf")</script>',
+        rejectedBy: {
+          gate: 'mechanical' as const,
+          rule: 'loosened-type',
+          evidence: '<img src=x onerror=alert(1)>',
+        },
+      }],
+    }).caseFile);
+
+    expect(html).not.toContain('<script>');
+    expect(html).not.toContain('<img');
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
   });
 });
 

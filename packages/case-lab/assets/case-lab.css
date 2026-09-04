@@ -267,6 +267,75 @@ th {
   padding-left: 0.75rem;
 }
 
+.counterfactual {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  margin: 1rem 0;
+}
+
+.counterfactual-accepted,
+.counterfactual-rejected {
+  min-width: 0;
+}
+
+.counterfactual-accepted {
+  border-left: 4px solid var(--ok);
+  padding-left: 0.75rem;
+}
+
+.counterfactual-rejected {
+  border-left: 4px solid var(--accent);
+  padding-left: 0.75rem;
+}
+
+.counterfactual h3 {
+  margin-top: 0;
+}
+
+.counterfactual-alternative {
+  border-top: 1px solid var(--line);
+  padding-top: 0.6rem;
+  margin-top: 0.6rem;
+}
+
+.counterfactual-alternative:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.counterfactual-alternative h4 {
+  margin: 0 0 0.25rem;
+}
+
+.counterfactual-alternative .evidence {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.8rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.counterfactual-lede {
+  font-weight: 600;
+}
+
+.counterfactual-cost {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.badge-intent-shortcut {
+  background: var(--accent);
+  color: var(--paper);
+}
+
+.badge-intent-plausible {
+  background: var(--stop);
+  color: var(--paper);
+}
+
 .cases {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
@@ -343,7 +412,8 @@ th {
     margin-bottom: 0.5rem;
   }
 
-  .cases {
+  .cases,
+  .counterfactual {
     grid-template-columns: 1fr;
   }
 

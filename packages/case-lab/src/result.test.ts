@@ -182,3 +182,64 @@ describe('CaseLabResult', () => {
     expect(modeLabel('recorded')).toBe('Recorded live result');
   });
 });
+
+describe('counterfactual evidence at the published-result boundary', () => {
+  const ALTERNATIVE = {
+    id: 'loosen-type',
+    intent: 'shortcut',
+    rationale: 'Casts the result to any.',
+    diffHash: 'a'.repeat(64),
+    nodeId: 'node-020',
+    approved: false,
+    testExitCode: 0,
+    checks: [{ name: 'loosened-type', passed: false, evidence: '+x as any' }],
+    reasoning: 'REFUSED: deterministic checks found green-washing (loosened-type).',
+    rejectedBy: { gate: 'mechanical', rule: 'loosened-type', evidence: '+x as any' },
+    cost: { inferenceUsd: 0, sandboxOperations: 1, elapsedTimeSec: 2 },
+  };
+
+  function withCounterfactual(overrides: Record<string, unknown> = {}): CaseLabResultBase {
+    return recordedBase({
+      caseFile: {
+        ...recordedCaseFile('repair-off-by-one'),
+        counterfactual: {
+          acceptedCandidateId: 'repair-1',
+          cost: { inferenceUsd: 0, sandboxOperations: 1, elapsedTimeSec: 2 },
+          alternatives: [ALTERNATIVE],
+          ...overrides,
+        },
+      } as unknown as CaseLabCaseFile,
+    });
+  }
+
+  it('accepts and preserves well-formed counterfactual evidence', () => {
+    const validated = validateCaseLabResult(createCaseLabResult(withCounterfactual()));
+
+    expect(validated.caseFile?.counterfactual?.alternatives).toHaveLength(1);
+    expect(validated.caseFile?.counterfactual?.alternatives[0]).toMatchObject({
+      id: 'loosen-type',
+      rejectedBy: { gate: 'mechanical', rule: 'loosened-type' },
+    });
+  });
+
+  it.each([
+    ['an unknown gate', { alternatives: [{ ...ALTERNATIVE, rejectedBy: { gate: 'vibes', rule: 'r', evidence: 'e' } }] }],
+    ['an unknown intent', { alternatives: [{ ...ALTERNATIVE, intent: 'clever' }] }],
+    ['a malformed diff hash', { alternatives: [{ ...ALTERNATIVE, diffHash: 'not-a-hash' }] }],
+    ['a negative cost', { cost: { inferenceUsd: -1, sandboxOperations: 1, elapsedTimeSec: 2 } }],
+    ['an approved alternative that still names a rejecting gate', { alternatives: [{ ...ALTERNATIVE, approved: true }] }],
+    ['a rejected alternative with no rejecting gate', { alternatives: [{ ...ALTERNATIVE, rejectedBy: undefined }] }],
+    ['more alternatives than the bound permits', {
+      alternatives: Array.from({ length: 9 }, (_value, index) => ({ ...ALTERNATIVE, id: `alt-${index}` })),
+    }],
+  ])('refuses counterfactual evidence with %s', (_case, overrides) => {
+    expect(() => createCaseLabResult(withCounterfactual(overrides as Record<string, unknown>)))
+      .toThrow(CaseLabResultError);
+  });
+
+  it('keeps the published result public-safe with counterfactual evidence attached', () => {
+    const result = createCaseLabResult(withCounterfactual());
+
+    expect(() => assertCaseLabResultPublicSafe(result)).not.toThrow();
+  });
+});
