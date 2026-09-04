@@ -1,6 +1,7 @@
 # Phase 3: Phase 5 qualitative submission source
 
-Status: Locally verified; integration pending
+Status: Qualitative source integrated and remotely verified at
+`625f642afa92bd981e4eb149306383fb925f3aed`; measured/public work remains gated
 
 Issues: #99, #100, #101, #102, #105, #104, draft #56 and #57
 

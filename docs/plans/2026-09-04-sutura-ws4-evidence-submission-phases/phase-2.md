@@ -1,6 +1,6 @@
 # Phase 2: Phase 0 exact live evidence
 
-Status: Blocked at live-spend authorization
+Status: Blocked at G4 provider/ConTree canary authorization, then G1
 
 Issues: #47, #48, #49
 
@@ -8,14 +8,16 @@ Issues: #47, #48, #49
 
 1. Preserve the failed `da98aff6a9d25e8cbb9818429ea91cdc49623262`
    artifacts and create a ledger for the new exact candidate.
-2. Run G1 once. Accept only `fixed` with Tavily enabled, a grounded Execa 6
+2. Run G4 once for the settled exact candidate. Require both named SHA-bound
+   artifacts, then rerun the read-only Placebo gate.
+3. Run G1 once. Accept only `fixed` with Tavily enabled, a grounded Execa 6
    release citation, paired no-Tavily `gave-up`, and no false approval.
-3. Run G2 on the same candidate. Retain all 51 cases and 55 evaluations,
+4. Run G2 on the same candidate. Retain all 51 cases and 55 evaluations,
    failures, costs, operation identities, and run URLs. Close #47 only after the
    terminal evidence commit is on `develop`.
-4. Resolve the exact Case Lab/demo main SHA and run G3 on that same Action
+5. Resolve the exact Case Lab/demo main SHA and run G3 on that same Action
    candidate. Close #48 after the eight-case candidate evidence is committed.
-5. Run G6 only after the verified release exists. Close #49 after all eight
+6. Run G6 only after the verified release exists. Close #49 after all eight
    public-package cases are committed and ready.
 
 ## Freeze procedure for every paid run

@@ -1,6 +1,7 @@
 # Phase 1: dispatch freeze and Tavily recovery
 
-Status: Locally verified; integration pending
+Status: Integrated and remotely verified at
+`625f642afa92bd981e4eb149306383fb925f3aed`
 
 Issues prepared: #47
 
@@ -54,4 +55,5 @@ test and no GitHub workflow dispatch occurs in this phase.
 
 - Focused and full local gates pass.
 - The task commit is integrated on `develop` and remote CI is green.
-- G1 is presented with its exact candidate SHA before any paid call.
+- The read-only live gate identifies G4 canary authorization as the only missing
+  prerequisite before G1 is presented for a settled exact candidate.

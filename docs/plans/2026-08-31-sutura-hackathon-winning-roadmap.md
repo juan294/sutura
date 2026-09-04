@@ -14,14 +14,15 @@ Submission deadline: 2026-10-30 at 10:00 PDT
 
 Planned submission date: 2026-10-29
 
-Current phase: Phase 0 remediation and Phase 5 source preparation - Active
+Current phase: Phase 0 - Blocked at provider and ConTree canary authorization;
+Phase 5 qualitative source complete
 
 Detailed plan: `docs/plans/2026-09-04-sutura-ws4-evidence-submission.md`
 
-Next action: Integrate the locally verified WS-4 runner, Tavily, and qualitative
-submission changes on `develop`, confirm remote CI, then present authorization
-gate G1 for the exact `upstream-retry-release` candidate. No paid dispatch has
-been authorized.
+Next action: On the next settled exact `origin/develop` candidate, authorize and
+run G4 once to produce the provider-contract and runtime-image canary artifacts;
+then run the read-only Placebo gate and present G1 for the single
+`upstream-retry-release` proof. No paid dispatch has been authorized.
 
 GitHub tracking: Issues [#47](https://github.com/juan294/sutura/issues/47) through [#127](https://github.com/juan294/sutura/issues/127) mirror every remaining unchecked roadmap item as of 2026-09-04. Parallel execution is divided into four labeled workstreams in `docs/plans/2026-09-04-sutura-issue-workstreams.md`.
 
@@ -132,12 +133,12 @@ The manifest is a tracking and consistency check. It does not replace direct pro
 
 | Phase | Dates | Outcome | Dependency | Status |
 | ---: | --- | --- | --- | --- |
-| 0 | Sep 1-5 | Complete and reconcile v0.2 evidence | None | Active: runner freeze and Tavily recovery |
+| 0 | Sep 1-5 | Complete and reconcile v0.2 evidence | None | Blocked: provider/ConTree canary authorization |
 | 1 | Sep 6-14 | Public Sutura Case Lab | Phase 0 evidence model | Not started |
 | 2 | Sep 15-21 | Counterfactual patch proof | Case Lab result model | Not started |
 | 3 | Sep 22-Oct 5 | Sutura Arena and Data Lab experiment | Phases 0 and 2 | Not started |
 | 4 | Oct 6-12 | External adoption and product hardening | Public Case Lab | Not started |
-| 5 | Oct 13-20 | Submission story and judge assets | Phases 1-4 | Active: qualitative source only |
+| 5 | Oct 13-20 | Submission story and judge assets | Phases 1-4 | Active: qualitative source complete; measured evidence blocked |
 | 6 | Oct 21-24 | Feature freeze and final release candidate | All product phases | Not started |
 | 7 | Oct 25-29 | Public acceptance and submission | Final public release | Not started |
 | Buffer | Oct 30 | Emergency submission correction only | Submission created | Reserved |
