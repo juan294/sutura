@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 
+import { moduleSystemInstruction } from './module-syntax.js';
 import type { Candidate } from '../domain.js';
 import type { ChatMessage, ChatOptions, JsonSchema } from '../llm/types.js';
 import { policyAllowsPatchPath } from '../policy/evaluate.js';
@@ -210,12 +211,15 @@ export function prepareControlledRepairProposalTemplate(
       const key = `${targetIndex}:${feedbackKey}${repeatedProposal ? ':repeat' : ''}`;
       const existing = cache.get(key);
       if (existing !== undefined) return existing;
-      const contractSystemMessage = repeatedProposal
-        ? {
-            ...systemMessage,
-            content: `${systemMessage.content}\nThe previous proposal was identical to an earlier failed proposal for this excerpt. Return a materially different replacement.`,
-          }
-        : systemMessage;
+      const extraLines = [
+        moduleSystemInstruction(target.path),
+        repeatedProposal
+          ? 'The previous proposal was identical to an earlier failed proposal for this excerpt. Return a materially different replacement.'
+          : undefined,
+      ].filter((line): line is string => line !== undefined);
+      const contractSystemMessage = extraLines.length === 0
+        ? systemMessage
+        : { ...systemMessage, content: [systemMessage.content, ...extraLines].join('\n') };
       const messages: ChatMessage[] = [
         contractSystemMessage,
         {
@@ -448,7 +452,10 @@ export async function runControlledRepairAttempt(
   if (ctx.signal?.aborted) return { status: 'gave-up', failureKind: 'sandbox', reason: 'Repair branch was cancelled' };
   const applied = await execute(`${ctx.branchId ?? 'repair'}-apply`, 'apply_patch', { diff: proposalDiff });
   if (!applied.ok || applied.exitCode !== 0) {
-    return { status: 'gave-up', failureKind: applied.kind ?? 'invalid', reason: 'Repair proposal patch was not accepted' };
+    return {
+      status: 'gave-up', failureKind: applied.kind ?? 'invalid',
+      reason: publicRepairReason(`Repair proposal patch was not accepted: ${applied.message}`),
+    };
   }
   if (ctx.signal?.aborted) return { status: 'gave-up', failureKind: 'sandbox', reason: 'Repair branch was cancelled' };
   const tested = await execute(`${ctx.branchId ?? 'repair'}-test`, 'run_test', { commandId: 'diagnosed' });

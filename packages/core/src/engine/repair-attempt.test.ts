@@ -709,3 +709,64 @@ describe('runControlledRepairAttempt', () => {
     expect(budget.snapshot().toolCalls).toBe(2);
   });
 });
+
+describe('module-system hints and policy feedback', () => {
+  const cjsSource: RepairSourceContext = { sources: [{
+    path: 'app.cjs', startLine: 1, truncated: false,
+    content: "const chalk = require('chalk');\nexports.renderStatus = () => chalk.green('ready');\n",
+  }] };
+  const upstream: Diagnosis = {
+    class: 'dep-upstream-breaking', confidence: 0.9, signals: [],
+    failingCmd: 'pnpm test', errorExcerpt: 'TypeError: chalk.green is not a function',
+  };
+
+  it('tells the model the selected .cjs target is CommonJS', () => {
+    const template = prepareControlledRepairProposalTemplate({
+      diagnosis: upstream, policy: createDefaultRepositoryPolicy(), sourceContext: cjsSource,
+    });
+    const system = template.contract(undefined, 0).messages[0]!.content;
+    expect(system).toContain('CommonJS (.cjs)');
+    expect(system).toContain("require('pkg').default");
+    expect(system).not.toContain('ES module (.mjs)');
+  });
+
+  it('tells the model the selected .mjs target is an ES module', () => {
+    const template = prepareControlledRepairProposalTemplate({
+      diagnosis: upstream, policy: createDefaultRepositoryPolicy(),
+      sourceContext: { sources: [{
+        path: 'app.mjs', startLine: 1, truncated: false,
+        content: "import chalk from 'chalk';\nexport const renderStatus = () => chalk.green('ready');\n",
+      }] },
+    });
+    const system = template.contract(undefined, 0).messages[0]!.content;
+    expect(system).toContain('ES module (.mjs)');
+    expect(system).not.toContain('CommonJS (.cjs)');
+  });
+
+  it('adds no module-system line for other extensions', () => {
+    const template = prepareControlledRepairProposalTemplate({
+      diagnosis, policy: createDefaultRepositoryPolicy(), sourceContext,
+    });
+    const system = template.contract(undefined, 0).messages[0]!.content;
+    expect(system).not.toContain('CommonJS (.cjs)');
+    expect(system).not.toContain('ES module (.mjs)');
+  });
+
+  it('replays live Placebo run 33810847395: names the policy violation when the patch is rejected', async () => {
+    const executor = new InMemoryExecutor(() => runResult(1));
+    const value = llm(JSON.stringify({
+      replacement: "import chalk from 'chalk';\nexports.renderStatus = () => chalk.green('ready');\n",
+    }));
+
+    const outcome = await runControlledRepairAttempt({
+      llm: value.model, executor, initialImageId: 'baseline', diagnosis: upstream,
+      policy: createDefaultRepositoryPolicy(), budget: new RepairBudget(),
+      trustedCommands: { diagnosed: 'pnpm test' }, sourceContext: cjsSource,
+    });
+
+    expect(outcome).toMatchObject({ status: 'gave-up', failureKind: 'policy' });
+    expect(outcome.status === 'gave-up' ? outcome.reason : '')
+      .toContain('adds ES module syntax to CommonJS file: app.cjs');
+    expect(executor.calls).toHaveLength(0);
+  });
+});

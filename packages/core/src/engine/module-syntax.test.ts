@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { addsEsModuleSyntax, isCommonJsPath } from './module-syntax.js';
+import { addsEsModuleSyntax, isCommonJsPath, isEsModulePath, moduleSystemInstruction } from './module-syntax.js';
 
 describe('module syntax detection', () => {
   it('treats only .cjs paths as CommonJS files', () => {
@@ -37,5 +37,16 @@ describe('module syntax detection', () => {
     'const exported = 2;',
   ])('does not match the CommonJS-compatible line %s', (line) => {
     expect(addsEsModuleSyntax([line])).toBe(false);
+  });
+});
+
+describe('module system instruction', () => {
+  it('names the module system only for .cjs and .mjs targets', () => {
+    expect(isEsModulePath('app.mjs')).toBe(true);
+    expect(isEsModulePath('app.cjs')).toBe(false);
+    expect(moduleSystemInstruction('app.cjs')).toContain('CommonJS (.cjs)');
+    expect(moduleSystemInstruction('app.mjs')).toContain('ES module (.mjs)');
+    expect(moduleSystemInstruction('app.js')).toBeUndefined();
+    expect(moduleSystemInstruction('src/index.ts')).toBeUndefined();
   });
 });

@@ -33,9 +33,19 @@ The Ultra audit is the only guard today and it is inconsistent. No rule in `pack
 - Fixture: the real chalk diff from run 33802470792 becomes `packages/core/src/audit/__fixtures__/module-syntax.diff`. The node-fetch and execa diffs are asserted verbatim in `patch-rules.test.ts` with their run identifiers.
 - No change to any Placebo fixture, scorer, limit, or policy schema.
 
-## Phase
+## Phases
 
-One phase: `docs/plans/2026-09-03-sutura-module-syntax-guard-phases/phase-1.md`.
+| Phase | Name | Files | Status |
+| ---: | --- | --- | --- |
+| 1 | Reject ES module syntax added to CommonJS files | `engine/module-syntax.ts`, `engine/patch-rules.ts`, `audit/mechanical.ts`, `domain.ts` | Completed (`dd3cc7a`) |
+| 2 | Module-system hint and violation feedback | `engine/module-syntax.ts`, `engine/repair-attempt.ts` | Completed |
+
+Phase files:
+
+- `docs/plans/2026-09-03-sutura-module-syntax-guard-phases/phase-1.md`
+- `docs/plans/2026-09-03-sutura-module-syntax-guard-phases/phase-2.md`
+
+Phase 2 was added on 2026-09-04 after the four-case re-run on `dd3cc7a` (USD 0.9421) ended 0/4 with Tavily: the guard rejected five ES-module candidates at apply time and no false green reached the audit, but the model was never told the selected file was CommonJS and a policy rejection fed back only `policy: Repair proposal patch was not accepted`.
 
 ## Verification
 
