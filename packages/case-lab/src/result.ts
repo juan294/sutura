@@ -390,7 +390,10 @@ export function assertCaseLabResultPublicSafe<T>(value: T, secrets: readonly (st
     throw new CaseLabResultError('result contains a credential or private local path');
   }
   for (const secret of secrets) {
-    if (typeof secret === 'string' && secret.length > 0 && serialized.includes(secret)) {
+    if (typeof secret !== 'string' || secret.length === 0) continue;
+    // The serialized text is JSON-escaped, so match the escaped form as well as the raw one.
+    const escaped = JSON.stringify(secret).slice(1, -1);
+    if (serialized.includes(secret) || serialized.includes(escaped)) {
       throw new CaseLabResultError('result contains a credential or private local path');
     }
   }

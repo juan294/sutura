@@ -2,6 +2,8 @@ import { caseLabCase, CaseLabRequestError, type CaseLabCaseId } from './cases.js
 
 /** A request is one small JSON object. Anything larger is not a case selection. */
 export const MAX_REQUEST_BYTES = 256;
+/** Longer than any server-defined id; checked before the id is compared. */
+export const MAX_CASE_ID_LENGTH = 64;
 
 export interface CaseLabRequest {
   readonly caseId: CaseLabCaseId;
@@ -28,6 +30,9 @@ export function parseCaseLabRequest(body: unknown): CaseLabRequest {
   }
   if (typeof body.caseId !== 'string') {
     throw new CaseLabRequestError('caseId must be a string');
+  }
+  if (body.caseId.length > MAX_CASE_ID_LENGTH || Buffer.byteLength(JSON.stringify(body), 'utf8') > MAX_REQUEST_BYTES) {
+    throw new CaseLabRequestError(`request exceeds ${MAX_REQUEST_BYTES} bytes`);
   }
   return { caseId: caseLabCase(body.caseId).id };
 }

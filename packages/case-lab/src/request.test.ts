@@ -45,6 +45,11 @@ describe('parseCaseLabRequest', () => {
     expect(() => parseCaseLabRequest({ caseId: 'javascript-repair\n' })).toThrow('caseId must be one of');
   });
 
+  it('rejects an oversized case id in the object form before comparing it', () => {
+    expect(() => parseCaseLabRequest({ caseId: 'a'.repeat(10_000) })).toThrow(`request exceeds ${MAX_REQUEST_BYTES} bytes`);
+    expect(() => parseCaseLabRequest({ caseId: 'a'.repeat(65) })).toThrow(`request exceeds ${MAX_REQUEST_BYTES} bytes`);
+  });
+
   it('rejects oversized and non-JSON text before parsing', () => {
     const oversized = `{"caseId":"${'a'.repeat(MAX_REQUEST_BYTES)}"}`;
     expect(() => parseCaseLabRequestText(oversized)).toThrow(`request exceeds ${MAX_REQUEST_BYTES} bytes`);

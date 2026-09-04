@@ -62,7 +62,7 @@ Runtime core: Token Factory and ConTree inside the Action step, unchanged. Nebiu
   identity: { controllerSha, demoSha? },
   outcome: CaseFile['outcome'],
   expectedOutcome, matchesExpectation: boolean,
-  links: { workflowRun?, ciRun?, pullRequest?, refusalComment?, check?, caseFileArtifact?, replayBundleArtifact?, evidence? }  // https://github.com/... only
+  links: { workflowRun?, ciRun?, pullRequest?, repairPullRequest?, refusalComment?, check?, caseFileArtifact?, replayBundleArtifact?, evidence?, atifTrajectory? }  // https://github.com/ or https://raw.githubusercontent.com/ only, no credentials, no fragment
   caseFile?: CaseFile,                        // absent only when the live bundle was partial
   recordedFrom?: { file, resultHash, runUrl, subjectSha, recordedAt },   // mode recorded
   replayedFrom?: { bundleSha256, capturedRunUrl, actionSha },            // mode replay

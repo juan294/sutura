@@ -140,6 +140,8 @@ describe('CaseLabResult', () => {
     expect(() => assertCaseLabResultPublicSafe({ note: 'contains SECRETVALUE123' }, ['SECRETVALUE123']))
       .toThrow('result contains a credential or private local path');
     expect(assertCaseLabResultPublicSafe({ note: 'clean' }, ['SECRETVALUE123', undefined, ''])).toEqual({ note: 'clean' });
+    expect(() => assertCaseLabResultPublicSafe({ note: 'tok"en\\x' }, ['tok"en\\x']))
+      .toThrow('result contains a credential or private local path');
   });
 
   it('validates the stored case file structure', () => {
