@@ -2,6 +2,10 @@
 
 ## [0.2.1] - 2026-09-01
 
+### Added
+
+- Reject ES module `import`/`export` syntax introduced into CommonJS files as an unsafe repair, naming the target module system and the policy violation.
+
 ### Fixed
 
 - Pin the Python repair runtime to an importable Linux image manifest and prove Python, `uv`, Git, and tar availability before live evidence runs.
@@ -9,6 +13,7 @@
 - Emit bounded terminal failure evidence when the Action or matrix stops before a normal case file exists.
 - Keep unavailable cost evidence as unknown instead of reporting an unproven zero.
 - Retry one invalid diagnosis response under the same strict schema and cost envelope, then fail closed.
+- Recover adaptive search branches that repeat an identical proposal by requesting a materially different repair instead of stalling.
 
 ### Changed
 
