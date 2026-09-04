@@ -14,15 +14,17 @@ Submission deadline: 2026-10-30 at 10:00 PDT
 
 Planned submission date: 2026-10-29
 
-Current phase: Phase 0 - Blocked at provider and ConTree canary authorization;
-Phase 5 qualitative source complete
+Current phase: Phase 6 - Feature freeze active from integrated candidate base
+`096a48e7ffb5e95103ee91746644386bba1a0c12`; Phase 0 remains blocked at G4
+provider and ConTree canary authorization
 
 Detailed plan: `docs/plans/2026-09-04-sutura-ws4-evidence-submission.md`
 
-Next action: On the next settled exact `origin/develop` candidate, authorize and
-run G4 once to produce the provider-contract and runtime-image canary artifacts;
-then run the read-only Placebo gate and present G1 for the single
-`upstream-retry-release` proof. No paid dispatch has been authorized.
+Next action: Complete the sequential local candidate and installation gates on
+the frozen line, then authorize and run G4 once to produce the provider-contract
+and runtime-image canary artifacts. After G4, run the read-only Placebo gate and
+present G1 for the single `upstream-retry-release` proof. No paid dispatch has
+been authorized.
 
 GitHub tracking: Issues [#47](https://github.com/juan294/sutura/issues/47) through [#127](https://github.com/juan294/sutura/issues/127) mirror every remaining unchecked roadmap item as of 2026-09-04. Parallel execution is divided into four labeled workstreams in `docs/plans/2026-09-04-sutura-issue-workstreams.md`.
 
@@ -134,12 +136,12 @@ The manifest is a tracking and consistency check. It does not replace direct pro
 | Phase | Dates | Outcome | Dependency | Status |
 | ---: | --- | --- | --- | --- |
 | 0 | Sep 1-5 | Complete and reconcile v0.2 evidence | None | Blocked: provider/ConTree canary authorization |
-| 1 | Sep 6-14 | Public Sutura Case Lab | Phase 0 evidence model | Not started |
-| 2 | Sep 15-21 | Counterfactual patch proof | Case Lab result model | Not started |
-| 3 | Sep 22-Oct 5 | Sutura Arena and Data Lab experiment | Phases 0 and 2 | Not started |
+| 1 | Sep 6-14 | Public Sutura Case Lab | Phase 0 evidence model | Implementation merged; public deployment gated |
+| 2 | Sep 15-21 | Counterfactual patch proof | Case Lab result model | Implementation and offline evidence merged; live evidence gated |
+| 3 | Sep 22-Oct 5 | Sutura Arena and Data Lab experiment | Phases 0 and 2 | Implementation and control artifacts merged; live evidence gated |
 | 4 | Oct 6-12 | External adoption and product hardening | Public Case Lab | Not started |
 | 5 | Oct 13-20 | Submission story and judge assets | Phases 1-4 | Active: qualitative source complete; measured evidence blocked |
-| 6 | Oct 21-24 | Feature freeze and final release candidate | All product phases | Not started |
+| 6 | Oct 21-24 | Feature freeze and final release candidate | All product phases | Active: feature freeze on integrated candidate line; local gates next |
 | 7 | Oct 25-29 | Public acceptance and submission | Final public release | Not started |
 | Buffer | Oct 30 | Emergency submission correction only | Submission created | Reserved |
 
@@ -396,8 +398,10 @@ Objective: Freeze one submission candidate and prove its complete local and publ
 
 ### Work
 
-- [ ] Stop new features on 2026-10-21.
-- [ ] Accept only security, release, evidence, and demo-blocking fixes after the freeze.
+- [x] Stop new features no later than 2026-10-21; freeze began on 2026-09-04
+  from integrated candidate base `096a48e7ffb5e95103ee91746644386bba1a0c12`.
+- [x] Accept only security, release, evidence, and demo-blocking fixes after the
+  freeze; each admitted fix replaces the candidate and resets its gates.
 - [ ] Run `pnpm run ci:local` sequentially on the exact candidate.
 - [ ] Run candidate installation and external matrix checks.
 - [ ] Run live provider and ConTree contract canaries under an authorized cap.
@@ -512,6 +516,7 @@ Update this table only when the direct evidence exists. Link the evidence and re
 | Nebius feedback | Active | Phase 5 | Qualitative draft in `docs/feedback/2026-10-sutura-nebius-feedback.md`; final measured report remains gated |
 | Public video | Not started | Phase 5 | Public YouTube URL required |
 | Devpost submission | Active | Phase 7 | Qualitative source and video script in `docs/devpost/`; measured assembly and update remain gated |
+| Final candidate | Active | Phase 6 | Feature-freeze record in `docs/demo/sutura-v0.2.1-candidate-freeze.md`; integrated base `096a48e7ffb5e95103ee91746644386bba1a0c12` contains WS-1, WS-2, WS-3, and WS-4 |
 
 ## Cost and authorization ledger
 

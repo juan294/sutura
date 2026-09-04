@@ -152,7 +152,7 @@ that no accepted gate was weakened.
 | 2 | Phase 0 exact live evidence | #47, #48, #49 | 1; authorization; #49 also needs release | Blocked at G4 canary authorization, then G1 |
 | 3 | Phase 5 qualitative submission source | #99, #100, #101, #102, #105, #104, draft #56/#57 | 1 | Qualitative source complete on `develop` at `625f642afa92bd981e4eb149306383fb925f3aed` |
 | 4 | Phase 5 measured assembly | #103, #106, final #56/#57 | committed WS-1/2/3 and Phase 0/public evidence | Blocked on evidence |
-| 5 | Phase 6 candidate and release | #107-#115 | merged WS-1, WS-2, WS-3; separate authorizations | Blocked on cross-stream merge |
+| 5 | Phase 6 candidate and release | #107-#115 | merged WS-1, WS-2, WS-3; separate authorizations | Active on integrated base `096a48e7ffb5e95103ee91746644386bba1a0c12`; feature freeze recorded; local gates next |
 | 6 | Phase 7 public acceptance | #116-#123 | released candidate, WS-1 acceptance script, video | Blocked on Phase 5 |
 | 7 | Phase 7 submission and index | #124-#127, #58 | complete public evidence; Devpost authorization | Blocked on Phase 6 |
 

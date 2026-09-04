@@ -1,6 +1,7 @@
 # Phase 5: Phase 6 exact candidate and release
 
-Status: Blocked on merged WS-1, WS-2, and WS-3
+Status: Active on the frozen integrated candidate line based at
+`096a48e7ffb5e95103ee91746644386bba1a0c12`
 
 Issues: #107-#115
 
