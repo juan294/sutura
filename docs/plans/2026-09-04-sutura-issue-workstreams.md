@@ -25,7 +25,9 @@ Every issue carries a GitHub label that names its workstream: `ws-1-case-lab`, `
 | WS-3 | Data Lab and external adoption | 83, 85, 88, 86, 84, 87, 52, 92, 98, 93, 89, 90, 91, 94, 95, 96, 97, 54, 55 | 19 | 3 (Data Lab), 4 | new `packages/evaluation` redaction and Data Lab modules, `packages/cli` setup and doctor, `action.yml`, install scripts, privacy docs, README setup |
 | WS-4 | Evidence gates, submission story, release | 47, 48, 49, 99, 100, 101, 102, 103, 104, 105, 106, 56, 57, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 58 | 35 | 0, 5, 6, 7 | `docs/demo`, `docs/devpost` (new), `docs/release`, release and evidence scripts, roadmap status |
 
-WS-1 is the largest product build and the biggest judging gain (Design 5-6/10 to 9/10). WS-4 has the most issues but most of them are documents, gate scripts, and sequential release operations that are date-locked to October 21 through 29.
+WS-1 is the largest product build and the biggest judging gain (Design 5-6/10 to 9/10). WS-4 has the most issues but most of them are documents, gate scripts, and sequential release operations.
+
+Target: Juan expects about 99 percent of this work to be complete within three days of 2026-09-04. The roadmap dates for Phases 5 to 7 (October 13 to 29) are latest dates, not start dates. WS-4 runs the freeze, release candidate, acceptance matrix, and submission preparation on the first candidate that contains the merged output of WS-1, WS-2, and WS-3. If a later change lands on `develop` after that candidate, the final-candidate gates run again on the new candidate. Only the Devpost submission itself waits for Juan's explicit authorization.
 
 Recommended assignment: the agent that produced this document takes WS-1. The three other agents take WS-2, WS-3, and WS-4.
 
@@ -50,11 +52,22 @@ Only four dependencies cross streams. Every other issue in a stream can complete
 6. Each stream edits only its own phase section in the roadmap. WS-4 owns the roadmap header, the evidence register, and the phase status table.
 7. Close a GitHub issue only after its evidence is on `develop`. The closing comment names the integrated commit and the evidence file, run URL, or test.
 8. Provider secrets never enter a worktree, a document, or a test fixture. Live runs dispatch through GitHub Actions only.
-9. Authorization gates are listed per stream below. At a gate, the agent prepares the exact command, cap, reserve, stop condition, and expected cost, records them in the stream's plan, and continues with every non-gated issue. It does not wait idle.
+9. Check `pnpm run push-freeze status` before every push. While a freeze is active, keep working in the worktree and push later. Never bypass the pre-push hook.
+10. Authorization gates are listed per stream below. At a gate, the agent prepares the exact command, cap, reserve, stop condition, and expected cost, records them in the stream's plan, and continues with every non-gated issue. It does not wait idle.
 
-### Paid-run conflict on `develop`
+### Push freeze on `develop` during paid runs
 
-`scripts/placebo-live.mjs` requires the controller SHA to equal `origin/develop` HEAD at every case dispatch, and the 51-case v0.2.1 benchmark takes several hours. With four streams pushing, HEAD moves during the run and later dispatches fail the gate. WS-4 must resolve this before the benchmark. The recommended fix is a `candidate/v0.2.1` branch pinned to the exact candidate SHA, with the live workflows dispatched on that ref, so `develop` stays open. The alternative is an announced push freeze on `develop` for the duration of the run, which blocks the other three streams.
+`scripts/placebo-live.mjs` requires the controller SHA to equal `origin/develop` HEAD at every case dispatch, and the 51-case v0.2.1 benchmark takes several hours. With four streams pushing, HEAD would move during the run and later dispatches would fail the gate. Decision (Juan, 2026-09-04): a push freeze on `develop` for the duration of each paid run. The other streams keep committing in their worktrees and push after the freeze ends.
+
+The freeze is a marker file in the Git common directory (`.git/sutura-push-freeze.json`), so every worktree of this repository sees the same state. `.husky/pre-push` refuses to push while the marker exists and prints the reason, the start time, and the owner. Never bypass it with `--no-verify`.
+
+```bash
+pnpm run push-freeze on --reason "v0.2.1 benchmark on <sha>"   # WS-4, before the first dispatch
+pnpm run push-freeze status                                      # any stream, any worktree
+pnpm run push-freeze off                                         # WS-4, after the last case is terminal
+```
+
+WS-4 owns the freeze. It turns the freeze on immediately before the first paid dispatch, posts the reason and expected duration as a comment on the benchmark issue, and turns it off as soon as the run is terminal. WS-4 also makes the live runners (`placebo-live.mjs run`, `external-matrix-live.mjs`) refuse to dispatch unless the freeze is on, so the gate fails closed. A stream that is blocked by the freeze continues with its next issue in its worktree and rebases when the freeze lifts.
 
 ## WS-1: Public Case Lab
 
@@ -151,7 +164,7 @@ Objective: close the v0.2.1 evidence gap that blocks Phase 0, build the Devpost 
 
 Order, Phase 0 evidence (start immediately):
 
-1. Resolve the paid-run conflict on `develop` described above (candidate branch or freeze decision).
+1. Make the live runners require the push freeze (see the freeze section above), then own the freeze for every paid run.
 2. Resolve the Tavily HTTP 403 for `upstream-retry-release` named as the roadmap next action.
 3. #47 Complete live Placebo v0.2 benchmark: 51 cases, 55 evaluations, on one exact v0.2.1 candidate, under a new cap.
 4. #48 Candidate eight-case external matrix on the same candidate.
@@ -169,18 +182,18 @@ Order, Phase 5 submission story (start after step 2, in parallel with waiting on
 13. #106 Public repository, demo, release, Marketplace, benchmark, and evidence links.
 14. #57 Devpost description, images, and public video. The video script follows the roadmap timing table. Recording and upload are Juan actions.
 
-Order, Phase 6 release candidate (tooling now, execution October 21 to 24):
+Order, Phase 6 release candidate (execute on the first complete candidate; October 21 to 24 is the latest window):
 
 15. #109 `pnpm run ci:local` sequential on the exact candidate.
 16. #110 Candidate installation and external matrix checks.
 17. #111 Live provider and ConTree canaries under an authorized cap.
 18. #112 Code reuse, quality, and efficiency review with `codex-simplify`.
-19. #107 Feature freeze on 2026-10-21 and #108 accept only security, release, evidence, and demo-blocking fixes after it.
+19. #107 Feature freeze (as soon as WS-1, WS-2, and WS-3 are merged; 2026-10-21 at the latest) and #108 accept only security, release, evidence, and demo-blocking fixes after it.
 20. #113 Merge the approved candidate through the release path after separate authorization.
 21. #114 Publish a patch or later release only when the verified candidate requires it.
 22. #115 Verify npm, Action tag, Marketplace listing, GitHub release, and public install from a clean environment.
 
-Order, Phase 7 acceptance and submission (scripts now, execution October 25 to 29):
+Order, Phase 7 acceptance and submission (execute on the released candidate; October 25 to 29 is the latest window):
 
 23. #116, #117, #118 Signed-out Case Lab desktop, mobile, refusal and flaky (run the WS-1 acceptance script on the final candidate).
 24. #119 Stable evidence and download links.
@@ -219,5 +232,5 @@ You own workstream WS-3 (Data Lab and external adoption) from docs/plans/2026-09
 ### WS-4
 
 ```text
-You own workstream WS-4 (Evidence gates, submission story, release) from docs/plans/2026-09-04-sutura-issue-workstreams.md. Read that document, CLAUDE.md, the roadmap completely, docs/plans/2026-09-01-sutura-v0.2.1-evidence-remediation.md and its phase-4 file, docs/release/e2e-pro-playbook.md, and scripts/placebo-live.mjs completely. List your issues with: gh issue list --label ws-4-evidence-submission --state open. Your first task is the paid-run conflict on develop described in the workstream document: research and implement a way to dispatch the live benchmark and matrices against an exact candidate SHA while the other three streams keep pushing to develop. Then resolve the Tavily HTTP 403 for upstream-retry-release. Run the full RPI loop without stopping between phases: /research, /plan, /implement in a worktree, /validate. Cover every WS-4 issue in the documented order: Phase 0 evidence first, Phase 5 documents while paid runs wait, Phase 6 and Phase 7 tooling now and execution on their roadmap dates. Never write a placeholder number; write measured sections last from committed evidence. Stop only at an authorization gate: prepare the exact command, cap, reserve, stop condition, and expected cost, record it in the plan, then continue with every non-gated issue. Close each issue with an evidence comment after its commit is on develop. Keep the roadmap header, evidence register, and phase table current. Report when every WS-4 issue is closed or blocked at a named gate.
+You own workstream WS-4 (Evidence gates, submission story, release) from docs/plans/2026-09-04-sutura-issue-workstreams.md. Read that document, CLAUDE.md, the roadmap completely, docs/plans/2026-09-01-sutura-v0.2.1-evidence-remediation.md and its phase-4 file, docs/release/e2e-pro-playbook.md, and scripts/placebo-live.mjs completely. List your issues with: gh issue list --label ws-4-evidence-submission --state open. Your first task is the push freeze: make scripts/placebo-live.mjs run and scripts/external-matrix-live.mjs refuse to dispatch unless pnpm run push-freeze status reports an active freeze, then own the freeze for every paid run (on before the first dispatch, a comment on the benchmark issue with the expected duration, off as soon as the run is terminal). Then resolve the Tavily HTTP 403 for upstream-retry-release. Run the full RPI loop without stopping between phases: /research, /plan, /implement in a worktree, /validate. Cover every WS-4 issue in the documented order: Phase 0 evidence first, Phase 5 documents while paid runs wait, Phase 6 and Phase 7 on the first candidate that contains the merged WS-1, WS-2, and WS-3 work (the October roadmap dates are latest dates, not start dates). Never write a placeholder number; write measured sections last from committed evidence. Stop only at an authorization gate: prepare the exact command, cap, reserve, stop condition, and expected cost, record it in the plan, then continue with every non-gated issue. Close each issue with an evidence comment after its commit is on develop. Keep the roadmap header, evidence register, and phase table current. Report when every WS-4 issue is closed or blocked at a named gate.
 ```

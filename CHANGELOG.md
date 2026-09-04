@@ -5,6 +5,7 @@
 ### Added
 
 - Reject ES module `import`/`export` syntax introduced into CommonJS files as an unsafe repair, naming the target module system and the policy violation.
+- Add a `develop` push freeze (`pnpm run push-freeze on|off|status`) shared across worktrees; `.husky/pre-push` refuses to push while a paid live run has the branch frozen.
 
 ### Fixed
 
