@@ -1,4 +1,4 @@
-import { cp, readFile, rm } from 'node:fs/promises';
+import { cp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { DEFAULT_ROUTING_PROFILE_ID, TraceRecorder, selectWinner } from '@sutura/core';
@@ -14,6 +14,10 @@ import {
   verifyCandidateWithHiddenTests,
   type PortableTestRuntime,
 } from './corpus.js';
+import {
+  discoverCounterfactualCases,
+  type CounterfactualCase,
+} from './counterfactual.js';
 import { score } from './score.js';
 import {
   CORPUS_VERSION,
@@ -31,6 +35,12 @@ export interface BenchmarkOptions {
   noTavily?: boolean;
   manifest?: BenchmarkManifestOptions;
   clock?: () => number;
+  /**
+   * Supplies each case's declared counterfactual alternatives to the adapter,
+   * so the run evaluates them through the same gate stack as the accepted
+   * patch. Off by default, because it spends extra sandbox operations.
+   */
+  counterfactual?: boolean;
 }
 
 async function evaluate(
@@ -39,6 +49,7 @@ async function evaluate(
   tavilyEnabled: boolean,
   portableRuntime: PortableTestRuntime,
   clock: () => number,
+  counterfactualCase?: CounterfactualCase,
 ): Promise<BenchmarkResult> {
   const startedAt = clock();
   const temporaryRoot = await createPlaceboTemporaryDirectory(`run-${benchmarkCase.id}-`);
@@ -56,9 +67,22 @@ async function evaluate(
     const candidateDiff = benchmarkCase.metadata.placebo
       ? await readFile(join(benchmarkCase.directory, benchmarkCase.metadata.placebo), 'utf8')
       : undefined;
+    let alternativesFile: string | undefined;
+    if (counterfactualCase !== undefined) {
+      alternativesFile = join(temporaryRoot, 'alternatives.json');
+      await writeFile(alternativesFile, JSON.stringify({
+        alternatives: counterfactualCase.declaration.alternatives.map((alternative) => ({
+          id: alternative.id,
+          intent: alternative.intent,
+          rationale: alternative.rationale,
+          diff: counterfactualCase.diffs.get(alternative.id)!,
+        })),
+      }));
+    }
     const context = {
       language: benchmarkCase.metadata.language,
       ...(candidateDiff ? { candidateDiff } : {}),
+      ...(alternativesFile === undefined ? {} : { alternativesFile }),
     };
     const caseFile = await configured.heal(fixture, context);
     const hiddenCandidate = benchmarkCase.metadata.kind === 'trap'
@@ -92,6 +116,7 @@ async function evaluate(
       failureClass: benchmarkCase.metadata.class,
       ...(benchmarkCase.metadata.flakePattern ? { flakePattern: benchmarkCase.metadata.flakePattern } : {}),
       ...(hiddenVerification ? { hiddenVerification } : {}),
+      ...(caseFile.counterfactual ? { counterfactual: caseFile.counterfactual } : {}),
     };
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
@@ -109,13 +134,18 @@ export async function runBenchmark(adapter: Adapter, options: BenchmarkOptions =
   const results: BenchmarkResult[] = [];
   const portableRuntime = await createPortableTestRuntime();
   const clock = options.clock ?? performance.now.bind(performance);
+  const counterfactualCases = options.counterfactual === true
+    ? new Map((await discoverCounterfactualCases()).map((item) =>
+      [item.declaration.caseId, item] as const))
+    : new Map<string, CounterfactualCase>();
   try {
     for (const benchmarkCase of cases) {
+      const counterfactualCase = counterfactualCases.get(benchmarkCase.id);
       if (benchmarkCase.metadata.kind === 'upstream' && !options.noTavily) {
-        results.push(await evaluate(adapter, benchmarkCase, true, portableRuntime, clock));
-        results.push(await evaluate(adapter, benchmarkCase, false, portableRuntime, clock));
+        results.push(await evaluate(adapter, benchmarkCase, true, portableRuntime, clock, counterfactualCase));
+        results.push(await evaluate(adapter, benchmarkCase, false, portableRuntime, clock, counterfactualCase));
       } else {
-        results.push(await evaluate(adapter, benchmarkCase, !options.noTavily, portableRuntime, clock));
+        results.push(await evaluate(adapter, benchmarkCase, !options.noTavily, portableRuntime, clock, counterfactualCase));
       }
     }
   } finally {

@@ -20,6 +20,11 @@ on:
         description: Bounded controller correlation ID
         required: true
         type: string
+      counterfactual:
+        description: Evaluate the case's declared counterfactual alternatives
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -102,9 +107,11 @@ jobs:
           CONTREE_TOKEN: ${{ secrets.CONTREE_TOKEN }}
           CONTREE_PROJECT: ${{ vars.CONTREE_PROJECT }}
           CASE_ID: ${{ inputs.case-id }}
+          COUNTERFACTUAL: ${{ inputs.counterfactual }}
         run: |
           chmod +x "$GITHUB_WORKSPACE/subject/packages/cli/dist/bin.js"
-          node packages/placebo/bin/placebo.js run --adapter sutura --sutura-command "$GITHUB_WORKSPACE/subject/packages/cli/dist/bin.js" --case "$CASE_ID" --manifest-output "$RUNNER_TEMP/evaluation.json" > "$RUNNER_TEMP/report.json"
+          if [ "$COUNTERFACTUAL" = "true" ]; then set -- --counterfactual; else set --; fi
+          node packages/placebo/bin/placebo.js run --adapter sutura --sutura-command "$GITHUB_WORKSPACE/subject/packages/cli/dist/bin.js" --case "$CASE_ID" "$@" --manifest-output "$RUNNER_TEMP/evaluation.json" > "$RUNNER_TEMP/report.json"
 
       - name: Create bounded case evidence
         working-directory: controller

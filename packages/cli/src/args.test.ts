@@ -129,3 +129,37 @@ describe('parseArgs', () => {
     expect(() => parseArgs(args)).toThrow(CliUsageError);
   });
 });
+
+describe('parseArgs counterfactual alternatives', () => {
+  it('parses --alternatives-file as a path', () => {
+    expect(parseArgs([
+      'heal', '--case-dir', '/tmp/case', '--format', 'json',
+      '--alternatives-file', '/tmp/alternatives.json',
+    ])).toEqual({
+      command: 'heal',
+      caseDir: '/tmp/case',
+      format: 'json',
+      alternativesFile: '/tmp/alternatives.json',
+      tavilyEnabled: true,
+    });
+  });
+
+  it('omits the field when the flag is absent', () => {
+    expect(parseArgs(['heal', '--case-dir', '/tmp/case', '--format', 'json']))
+      .not.toHaveProperty('alternativesFile');
+  });
+
+  it.each([
+    ['a missing value', ['heal', '--case-dir', '/tmp/case', '--format', 'json', '--alternatives-file']],
+    ['a flag as the value', ['heal', '--case-dir', '/tmp/case', '--format', 'json', '--alternatives-file', '--no-tavily']],
+    ['a duplicate flag', ['heal', '--case-dir', '/tmp/case', '--format', 'json', '--alternatives-file', '/a.json', '--alternatives-file', '/b.json']],
+  ])('refuses %s', (_case, args) => {
+    expect(() => parseArgs(args)).toThrow(CliUsageError);
+  });
+
+  it('documents the flag in the usage text', async () => {
+    const { USAGE } = await import('./args.js');
+
+    expect(USAGE).toContain('--alternatives-file <file>');
+  });
+});

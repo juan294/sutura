@@ -1,3 +1,4 @@
+import type { CounterfactualEvidence } from './counterfactual/types.js';
 import type { RunMetrics } from './executor/types.js';
 import type { TraceEvent } from './trace/types.js';
 
@@ -163,6 +164,7 @@ export interface CaseFile {
   policy: PolicyEvidence;
   stages: StageEvidence[];
   search?: SearchEvidence[];
+  counterfactual?: CounterfactualEvidence;
   trace?: TraceEvent[];
 }
 

@@ -16,8 +16,10 @@ import {
   selectBoundedSourceWindow,
   SourceWindowError,
   detectRuntimeAtPath,
+  validateCounterfactualAlternatives,
   type CaseFile,
   type AuditFile,
+  type CounterfactualAlternative,
   type ConfigEnvironment,
   type CostLedger,
   type Diagnosis,
@@ -335,6 +337,53 @@ export async function readDependencyHints(caseDir: string): Promise<string[]> {
   return [...hints].slice(0, 25);
 }
 
+export const MAX_ALTERNATIVES_FILE_BYTES = 256 * 1024;
+
+/**
+ * Reads and validates a counterfactual alternative set. The set is refused
+ * whole on any defect, so a malformed file can never reach the gate stack as a
+ * partial set.
+ */
+export async function readCounterfactualAlternatives(
+  path: string,
+): Promise<CounterfactualAlternative[]> {
+  let handle;
+  try {
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const metadata = await handle.stat();
+    if (!metadata.isFile()) {
+      throw new CliConfigError(`${path} must be a regular file`);
+    }
+    if (metadata.size > MAX_ALTERNATIVES_FILE_BYTES) {
+      throw new CliConfigError(
+        `${path} exceeds ${MAX_ALTERNATIVES_FILE_BYTES} bytes`,
+      );
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await handle.readFile('utf8'));
+    } catch (error) {
+      throw new CliConfigError(
+        `${path} must be valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new CliConfigError(`${path} must be an object with an alternatives array`);
+    }
+    try {
+      return validateCounterfactualAlternatives(
+        (parsed as { alternatives?: unknown }).alternatives,
+      );
+    } catch (error) {
+      throw new CliConfigError(
+        `${path} is not a valid alternative set: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  } finally {
+    await handle?.close();
+  }
+}
+
 export async function healWithRuntime(
   request: HealArguments,
   runtime: HealRuntime,
@@ -342,6 +391,9 @@ export async function healWithRuntime(
   const caseDir = await canonicalCaseDirectory(request.caseDir);
   const loadedPolicy = loadRepositoryPolicy(await readLocalPolicy(caseDir));
   const dependencyHints = await readDependencyHints(caseDir);
+  const counterfactuals = request.alternativesFile === undefined
+    ? undefined
+    : await readCounterfactualAlternatives(request.alternativesFile);
   const caseName = basename(caseDir).replace(/[^A-Za-z0-9_.-]+/gu, '-') || 'case';
   return healCase({
     runId: `local-${caseName}`,
@@ -372,6 +424,7 @@ export async function healWithRuntime(
     ...(runtime.runtimeId ? { runtimeId: runtime.runtimeId } : {}),
     ...(dependencyHints.length === 0 ? {} : { dependencyHints }),
     ...(request.candidateDiff === undefined ? {} : { candidateDiff: request.candidateDiff }),
+    ...(counterfactuals === undefined ? {} : { counterfactuals }),
   });
 }
 

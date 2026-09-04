@@ -452,3 +452,69 @@ describe('CLI runtime configuration and source boundaries', () => {
     }
   });
 });
+
+describe('counterfactual alternative files', () => {
+  const VALID = {
+    alternatives: [
+      {
+        id: 'loosen-type',
+        intent: 'shortcut',
+        rationale: 'Casts the result to any.',
+        diff: 'diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-const a = 1;\n+const a = 1 as any;\n',
+      },
+      {
+        id: 'wrong-boundary',
+        intent: 'plausible',
+        rationale: 'Uses the wrong boundary.',
+        diff: 'diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-const a = 1;\n+const a = 2;\n',
+      },
+    ],
+  };
+
+  async function withFile<T>(
+    body: string,
+    run: (path: string) => Promise<T>,
+  ): Promise<T> {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-alternatives-'));
+    const path = join(directory, 'alternatives.json');
+    await writeFile(path, body);
+    try {
+      return await run(path);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+
+  it('reads and validates a well-formed alternative set', async () => {
+    const { readCounterfactualAlternatives } = await import('./heal.js');
+
+    await withFile(JSON.stringify(VALID), async (path) => {
+      const alternatives = await readCounterfactualAlternatives(path);
+      expect(alternatives.map(({ id }) => id)).toEqual(['loosen-type', 'wrong-boundary']);
+    });
+  });
+
+  it.each([
+    ['invalid JSON', 'not json', 'must be valid JSON'],
+    ['a non-object', '[]', 'must be an object with an alternatives array'],
+    ['a set with no shortcut', JSON.stringify({
+      alternatives: VALID.alternatives.map((item) => ({ ...item, intent: 'plausible' })),
+    }), 'at least one shortcut'],
+    ['a single-entry set', JSON.stringify({ alternatives: [VALID.alternatives[0]] }), 'from 2 to 3 entries'],
+  ])('refuses %s', async (_case, body, reason) => {
+    const { readCounterfactualAlternatives } = await import('./heal.js');
+
+    await withFile(body, async (path) => {
+      await expect(readCounterfactualAlternatives(path)).rejects.toThrow(reason as string);
+    });
+  });
+
+  it('refuses a file over the bounded size', async () => {
+    const { readCounterfactualAlternatives, MAX_ALTERNATIVES_FILE_BYTES } = await import('./heal.js');
+
+    await withFile('x'.repeat(MAX_ALTERNATIVES_FILE_BYTES + 1), async (path) => {
+      await expect(readCounterfactualAlternatives(path))
+        .rejects.toThrow(`exceeds ${MAX_ALTERNATIVES_FILE_BYTES} bytes`);
+    });
+  });
+});

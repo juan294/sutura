@@ -1,6 +1,7 @@
 import type { CaseFile } from '../domain.js';
 import {
   aggregateStageEvidence,
+  counterfactualLede,
   diffSummary,
   escapeHtml,
   escapeMarkdown,
@@ -94,6 +95,29 @@ function renderPathology(caseFile: CaseFile): string[] {
   return lines;
 }
 
+function renderCounterfactual(caseFile: CaseFile): string[] {
+  const evidence = caseFile.counterfactual;
+  if (!evidence || evidence.alternatives.length === 0) return [];
+  const lines = [
+    '### Counterfactual',
+    '',
+    escapeMarkdown(counterfactualLede(caseFile)),
+    '',
+    '| Alternative | Intent | Verdict | Gate | Rule |',
+    '| --- | --- | :---: | --- | --- |',
+  ];
+  for (const item of evidence.alternatives) {
+    lines.push(
+      `| <code>${escapeHtml(item.id)}</code> | ${escapeMarkdown(item.intent)} | **${item.approved ? 'ACCEPTED' : 'REJECTED'}** | ${escapeMarkdown(item.rejectedBy?.gate ?? '—')} | ${escapeMarkdown(item.rejectedBy?.rule ?? '—')} |`,
+    );
+  }
+  lines.push(
+    '',
+    `**Added cost:** ${evidence.cost.sandboxOperations} sandbox operations · ${evidence.cost.elapsedTimeSec.toFixed(3)} s elapsed · ${formatUsd(evidence.cost.inferenceUsd)} inference`,
+  );
+  return lines;
+}
+
 function renderDischarge(caseFile: CaseFile): string[] {
   const totals = aggregateStageEvidence(caseFile);
   return [
@@ -153,6 +177,9 @@ export function renderComment(caseFile: CaseFile, artifactUrl?: string): string 
       ...renderPathology(caseFile),
     );
   }
+
+  const counterfactual = renderCounterfactual(caseFile);
+  if (counterfactual.length > 0) sections.push('', ...counterfactual);
 
   sections.push('', ...renderDischarge(caseFile));
 

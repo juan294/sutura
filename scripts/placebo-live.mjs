@@ -624,15 +624,16 @@ export async function dispatchPlaceboWorkflow(input, dependencies = {}) {
     'workflow', 'run', 'placebo-live-case.yml', '--ref', 'develop',
     '-f', `controller-sha=${input.controllerSha}`, '-f', `subject-sha=${input.subjectSha}`,
     '-f', `case-id=${input.caseId}`, '-f', `controller-id=${input.controllerId}`,
+    '-f', `counterfactual=${input.counterfactual === true ? 'true' : 'false'}`,
   ]);
 }
 
-async function runRemoteCase({ controllerSha, subjectSha, caseId, skipGate = false }) {
+async function runRemoteCase({ controllerSha, subjectSha, caseId, skipGate = false, counterfactual = false }) {
   if (!skipGate) await gatePlaceboLive(controllerSha, subjectSha);
   const corpus = loadCorpusSync();
   corpusCase(corpus, caseId);
   const controllerId = `pl-${Date.now()}-${randomUUID().slice(0, 8)}`;
-  await dispatchPlaceboWorkflow({ controllerSha, subjectSha, caseId, controllerId });
+  await dispatchPlaceboWorkflow({ controllerSha, subjectSha, caseId, controllerId, counterfactual });
   const run = await pollRun(controllerId, caseId, controllerSha);
   const expectedArtifactName = `sutura-placebo-${controllerId}-${caseId}`;
   const directory = await mkdtemp(join(tmpdir(), 'sutura-placebo-live-'));
@@ -717,12 +718,15 @@ export async function main(args = process.argv.slice(2)) {
     const caseId = valueAfter(args, '--case');
     const capUsd = Number(valueAfter(args, '--cap-usd'));
     const initialReserveUsd = Number(valueAfter(args, '--initial-reserve-usd'));
+    const counterfactual = args.includes('--counterfactual');
     return withLock(() => runSinglePlaceboCase({
       controllerSha, subjectSha, caseId, capUsd, initialReserveUsd,
     }, {
       gate: gatePlaceboLive,
       readLedger: readLedgerDefault,
-      runCase: () => runRemoteCase({ controllerSha, subjectSha, caseId, skipGate: true }),
+      runCase: () => runRemoteCase({
+        controllerSha, subjectSha, caseId, skipGate: true, counterfactual,
+      }),
     }));
   }
   if (commandName === 'streak') {

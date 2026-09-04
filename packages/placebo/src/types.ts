@@ -1,4 +1,8 @@
-import type { CaseFile as CoreCaseFile, FailureClass } from '@sutura/core';
+import type {
+  CaseFile as CoreCaseFile,
+  CounterfactualEvidence,
+  FailureClass,
+} from '@sutura/core';
 import type { EvaluationManifest } from '@sutura/evaluation';
 
 export const CORPUS_VERSION = '0.2' as const;
@@ -69,6 +73,12 @@ export interface Adapter {
 export interface AdapterContext {
   candidateDiff?: string;
   language?: FixtureLanguage;
+  /**
+   * Path to a JSON alternative set the harness wrote into the per-case
+   * temporary directory. A path, never inline diffs, so patch bodies never
+   * cross the process boundary as argv values.
+   */
+  alternativesFile?: string;
 }
 
 export interface BenchmarkResult {
@@ -84,6 +94,7 @@ export interface BenchmarkResult {
   failureClass?: FailureClass;
   flakePattern?: FlakePattern;
   hiddenVerification?: HiddenVerificationResult;
+  counterfactual?: CounterfactualEvidence;
 }
 
 export interface HiddenVerificationResult {

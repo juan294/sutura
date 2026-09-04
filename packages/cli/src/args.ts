@@ -7,7 +7,7 @@ export const USAGE = [
   'Usage:',
   '  sutura init [--workflow <name>] [--repo <owner/repo>] [--action-sha <commit>] [--force] [--no-tavily]',
   '  sutura doctor [--repo <owner/repo>] [--action-sha <commit>]',
-  '  sutura heal --case-dir <dir> --format json [--candidate-diff <diff>] [--routing-profile <id>] [--runtime <auto|node|python>] [--no-tavily]',
+  '  sutura heal --case-dir <dir> --format json [--candidate-diff <diff>] [--alternatives-file <file>] [--routing-profile <id>] [--runtime <auto|node|python>] [--no-tavily]',
   '  sutura audit --case-dir <dir> --candidate-diff <file> --before-log <file> --after-log <file> --format json',
   '  sutura replay --bundle <file> --format json [--runtime <auto|node|python>]',
   '  sutura eval validate --manifest <file>',
@@ -21,6 +21,12 @@ export interface HealArguments {
   caseDir: string;
   format: 'json';
   candidateDiff?: string;
+  /**
+   * Path to a JSON file holding `{ "alternatives": [...] }`. A path, never
+   * inline JSON, because a three-entry alternative set exceeds a comfortable
+   * argv value. The file is read and validated in `heal.ts`.
+   */
+  alternativesFile?: string;
   routingProfile?: string;
   runtime?: 'node' | 'python';
   tavilyEnabled: boolean;
@@ -122,6 +128,7 @@ function parseHeal(args: readonly string[]): HealArguments {
   let caseDir: string | undefined;
   let format: string | undefined;
   let candidateDiff: string | undefined;
+  let alternativesFile: string | undefined;
   let routingProfile: string | undefined;
   let runtime: 'node' | 'python' | undefined;
   let tavilyEnabled = true;
@@ -129,7 +136,7 @@ function parseHeal(args: readonly string[]): HealArguments {
 
   for (let index = 1; index < args.length; index += 1) {
     const flag = args[index];
-    if (!flag || !['--case-dir', '--format', '--candidate-diff', '--routing-profile', '--runtime', '--no-tavily'].includes(flag)) {
+    if (!flag || !['--case-dir', '--format', '--candidate-diff', '--alternatives-file', '--routing-profile', '--runtime', '--no-tavily'].includes(flag)) {
       throw new CliUsageError(`Unknown argument: ${flag ?? '(missing)'}`);
     }
     if (seen.has(flag)) throw new CliUsageError(`Duplicate argument: ${flag}`);
@@ -143,6 +150,7 @@ function parseHeal(args: readonly string[]): HealArguments {
     if (flag === '--case-dir') caseDir = value;
     else if (flag === '--format') format = value;
     else if (flag === '--candidate-diff') candidateDiff = value;
+    else if (flag === '--alternatives-file') alternativesFile = value;
     else if (flag === '--routing-profile') routingProfile = value;
     else if (value === 'auto') runtime = undefined;
     else if (value === 'node' || value === 'python') runtime = value;
@@ -162,6 +170,7 @@ function parseHeal(args: readonly string[]): HealArguments {
     caseDir,
     format: 'json',
     ...(candidateDiff === undefined ? {} : { candidateDiff }),
+    ...(alternativesFile === undefined ? {} : { alternativesFile }),
     ...(routingProfile === undefined ? {} : { routingProfile }),
     ...(runtime === undefined ? {} : { runtime }),
     tavilyEnabled,
