@@ -214,16 +214,16 @@ For each scenario, the result view shows:
 
 ### Safety and reliability
 
-- [ ] Accept only server-defined case identifiers.
-- [ ] Reject arbitrary repository names, refs, commands, patches, and free text.
-- [ ] Apply request throttling, concurrency limits, a daily spend stop, and an emergency disable control.
-- [ ] Use a protected service identity with minimum GitHub permissions.
-- [ ] Keep provider secrets outside ConTree.
-- [ ] Provide a deterministic replay for every case.
-- [ ] Clearly label live runs and replayed runs.
-- [ ] Return stable result URLs that survive a page refresh.
-- [ ] Make the main result readable on desktop and mobile.
-- [ ] Remove the old instruction that asks visitors to run a collaborator-only `workflow_dispatch` action.
+- [x] Accept only server-defined case identifiers.
+- [x] Reject arbitrary repository names, refs, commands, patches, and free text.
+- [x] Apply request throttling, concurrency limits, a daily spend stop, and an emergency disable control.
+- [x] Use a protected service identity with minimum GitHub permissions.
+- [x] Keep provider secrets outside ConTree.
+- [x] Provide a deterministic replay for every case.
+- [x] Clearly label live runs and replayed runs.
+- [x] Return stable result URLs that survive a page refresh.
+- [x] Make the main result readable on desktop and mobile.
+- [x] Remove the old instruction that asks visitors to run a collaborator-only `workflow_dispatch` action.
 
 ### Nebius deployment decision
 
@@ -231,11 +231,11 @@ Evaluate Nebius Serverless Jobs and Serverless Endpoints for the public control 
 
 ### Exit gate
 
-- A signed-out non-collaborator selects each allowlisted case and receives a stable result.
-- At least one live repair and one refusal complete through the public path.
-- Every case has a tested replay fallback.
-- The demo is pinned to the exact current public Sutura release.
-- Security tests prove that arbitrary input and unauthorized repository access fail closed.
+- A signed-out non-collaborator selects each allowlisted case and receives a stable result. (Built and locally accepted; public enablement is Gate A in `docs/plans/2026-09-04-sutura-case-lab.md`.)
+- At least one live repair and one refusal complete through the public path. (Gate B in the same plan.)
+- Every case has a tested replay fallback. (Done: `packages/case-lab`, five recorded results validated in CI.)
+- The demo is pinned to the exact current public Sutura release. (Done: `packages/case-lab/release.json` names v0.2.0; `case-lab verify-pin` proves the demo workflow and tag agree.)
+- Security tests prove that arbitrary input and unauthorized repository access fail closed. (Done: `packages/case-lab/src/request.test.ts`, `dispatcher.test.ts`, `demo-workflow.test.ts`.)
 
 ## Phase 2 - Add counterfactual patch proof
 
