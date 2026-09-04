@@ -106,6 +106,6 @@ node packages/case-lab/bin/case-lab.js verify-pin --tag v0.2.0
 ## Success criteria
 
 - [x] Demo workflow is fail-closed (disabled by default, input re-validation, daily cap, static concurrency, minimum permissions, secrets only in the Action step), with contract tests in both repositories.
-- [ ] Pin verified against `v0.2.0`; `verify-pin` proves tag, file, and workflow agreement.
-- [ ] Disabled dispatch proven on the real repository with a free run that fails at the gate step.
+- [x] Pin verified against `v0.2.0`; `verify-pin` proves tag, file, and workflow agreement.
+- [x] Disabled dispatch proven on the real repository with a free run that fails at the gate step.
 - [x] Gate A and Gate B recorded with exact commands, cap, and expected cost.
