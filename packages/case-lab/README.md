@@ -111,6 +111,8 @@ and `NODE_ENV=test` and no credential
 | Result tampering | Result documents carry a content hash and are validated by rebuilding it; links are restricted to public GitHub URLs. |
 | Secret leakage into public results | `assertCaseLabResultPublicSafe` rejects credentials, token prefixes, and private local paths; the workflow runs it with the live secret values before publishing. |
 | Dispatcher outage | The static site and every deterministic result keep working; only live dispatch is unavailable. |
+| Two requests racing one limit | One instance serializes its check-then-dispatch section; across instances the workflow's static concurrency group holds concurrency at one and its own daily-cap count, which includes queued runs, holds the daily stop. The hourly throttle can be exceeded by at most the number of warm instances. |
+| Emergency switch on a warm instance | The dispatcher reads its environment on every invocation; a redeploy is still the documented way to change a Vercel variable, and the repository variable inside the workflow stops spend even if the dispatcher is stale. |
 
 ## Commands
 
@@ -119,7 +121,7 @@ case-lab catalog --out <dir>                 write the five deterministic result
 case-lab replay <case-id> [--out <file>]     one deterministic result
 case-lab build-site                          write dist/site
 case-lab serve [--port 4177]                 serve dist/site for local review
-case-lab acceptance --base-url <url>         signed-out acceptance record
+case-lab acceptance --base-url <url>         signed-out acceptance record (--offline skips link checks)
 case-lab verify-pin [--tag v0.2.0]           prove release.json, the demo workflow, and the tag agree
 case-lab dispatch --base-url <url> --case <id>
 case-lab capture-replay --request-id <id> --out replay

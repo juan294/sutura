@@ -168,6 +168,27 @@ describe('createCaseLabHandler', () => {
     expect(daily.dispatched).toEqual([]);
   });
 
+  it('serializes concurrent requests so both cannot pass the concurrency limit', async () => {
+    const dispatched: WorkflowRunSummary[] = [];
+    const github: GitHubDispatchClient = {
+      async listWorkflowRuns() {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return dispatched;
+      },
+      async dispatchWorkflow(_file, _ref, inputs) {
+        dispatched.push(run({ id: dispatched.length + 1, status: 'queued', conclusion: null,
+          createdAt: NOW.toISOString(), displayTitle: `Case Lab ${inputs['request-id']} ${inputs['case-id']}` }));
+      },
+    };
+    const handler = handlerWith(github);
+    const [first, second] = await Promise.all([
+      handler(post('{"caseId":"javascript-repair"}')),
+      handler(post('{"caseId":"flaky-failure"}')),
+    ]);
+    expect([first.status, second.status].sort()).toEqual([202, 429]);
+    expect(dispatched).toHaveLength(1);
+  });
+
   it('ignores runs from the previous UTC day for the daily stop but counts them for nothing else', async () => {
     const github = fakeGitHub(Array.from({ length: 20 }, (_, index) =>
       run({ id: index + 1, createdAt: '2026-09-03T23:00:00.000Z' })));

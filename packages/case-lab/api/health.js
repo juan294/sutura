@@ -1,16 +1,12 @@
 import release from '../release.json' with { type: 'json' };
 import { caseLabEnvironment, createCaseLabHandler, createGitHubDispatchClient, DEMO_REPOSITORY } from '../dist/index.js';
 
-let handler;
-
+/** Environment is read per invocation; see api/dispatch.js. */
 function handlerFor(env) {
-  if (!handler) {
-    const environment = caseLabEnvironment(env, release);
-    handler = createCaseLabHandler(environment, {
-      github: createGitHubDispatchClient({ repository: DEMO_REPOSITORY, token: environment.token }),
-    });
-  }
-  return handler;
+  const environment = caseLabEnvironment(env, release);
+  return createCaseLabHandler(environment, {
+    github: createGitHubDispatchClient({ repository: DEMO_REPOSITORY, token: environment.token }),
+  });
 }
 
 export default async function health(request, response) {

@@ -134,6 +134,13 @@ export function createCaseLabHandler(
   const cors: Record<string, string> = environment.siteOrigin === undefined
     ? {}
     : { 'Access-Control-Allow-Origin': environment.siteOrigin, Vary: 'Origin' };
+  /** Serializes the check-then-dispatch section so two requests on one instance cannot both pass a limit. */
+  let queue: Promise<unknown> = Promise.resolve();
+  function serialized<T>(operation: () => Promise<T>): Promise<T> {
+    const next = queue.then(operation, operation);
+    queue = next.catch(() => undefined);
+    return next;
+  }
 
   return async function handle(request) {
     if (request.path === '/api/health' && request.method === 'GET') {
@@ -167,52 +174,54 @@ export function createCaseLabHandler(
       throw error;
     }
 
-    const current = now();
-    let runs: WorkflowRunSummary[];
-    try {
-      runs = await dependencies.github.listWorkflowRuns(CASE_LAB_WORKFLOW_FILE, {
-        since: new Date(current.getTime() - DAY_MS),
-      });
-    } catch (error) {
-      if (error instanceof GitHubDispatchError) {
-        return reply(502, { error: 'run accounting is unavailable; no run was started' }, cors);
+    return serialized(async () => {
+      const current = now();
+      let runs: WorkflowRunSummary[];
+      try {
+        runs = await dependencies.github.listWorkflowRuns(CASE_LAB_WORKFLOW_FILE, {
+          since: new Date(current.getTime() - DAY_MS),
+        });
+      } catch (error) {
+        if (error instanceof GitHubDispatchError) {
+          return reply(502, { error: 'run accounting is unavailable; no run was started' }, cors);
+        }
+        throw error;
       }
-      throw error;
-    }
 
-    const decision = caseLabDispatchDecision({
-      enabled: environment.enabled,
-      activeRuns: runs.filter(isActive).length,
-      runsInLastHour: runsInLastHour(runs, current),
-      runsToday: runsToday(runs, current),
+      const decision = caseLabDispatchDecision({
+        enabled: environment.enabled,
+        activeRuns: runs.filter(isActive).length,
+        runsInLastHour: runsInLastHour(runs, current),
+        runsToday: runsToday(runs, current),
+      });
+      if (!decision.allowed) {
+        const retryAfter = retryAfterSeconds(decision.reason, current);
+        return reply(
+          refusalStatus(decision.reason),
+          { error: decision.reason, retryAfterSeconds: retryAfter, caseId },
+          { ...cors, 'Retry-After': String(retryAfter) },
+        );
+      }
+
+      const requestId = liveRequestId(current, randomId);
+      try {
+        await dependencies.github.dispatchWorkflow(CASE_LAB_WORKFLOW_FILE, CASE_LAB_WORKFLOW_REF, {
+          'case-id': caseId,
+          'request-id': requestId,
+        });
+      } catch (error) {
+        if (error instanceof GitHubDispatchError) {
+          return reply(502, { error: 'dispatch failed; no run was started', caseId }, cors);
+        }
+        throw error;
+      }
+      return reply(202, {
+        requestId,
+        caseId,
+        mode: 'live',
+        resultPath: `/result/?id=${requestId}`,
+        runsListUrl: `https://github.com/${DEMO_REPOSITORY}/actions/workflows/${CASE_LAB_WORKFLOW_FILE}`,
+      }, cors);
     });
-    if (!decision.allowed) {
-      const retryAfter = retryAfterSeconds(decision.reason, current);
-      return reply(
-        refusalStatus(decision.reason),
-        { error: decision.reason, retryAfterSeconds: retryAfter, caseId },
-        { ...cors, 'Retry-After': String(retryAfter) },
-      );
-    }
-
-    const requestId = liveRequestId(current, randomId);
-    try {
-      await dependencies.github.dispatchWorkflow(CASE_LAB_WORKFLOW_FILE, CASE_LAB_WORKFLOW_REF, {
-        'case-id': caseId,
-        'request-id': requestId,
-      });
-    } catch (error) {
-      if (error instanceof GitHubDispatchError) {
-        return reply(502, { error: 'dispatch failed; no run was started', caseId }, cors);
-      }
-      throw error;
-    }
-    return reply(202, {
-      requestId,
-      caseId,
-      mode: 'live',
-      resultPath: `/result/?id=${requestId}`,
-      runsListUrl: `https://github.com/${DEMO_REPOSITORY}/actions/workflows/${CASE_LAB_WORKFLOW_FILE}`,
-    }, cors);
   };
 }

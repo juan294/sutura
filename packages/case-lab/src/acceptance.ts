@@ -22,7 +22,7 @@ export interface AcceptanceRecord {
 }
 
 export interface AcceptanceOptions {
-  /** Check that every GitHub link in the results answers without authentication. Off keeps the run offline. */
+  /** Check that every GitHub link in the results answers without authentication. Defaults to true; false keeps the run offline. */
   readonly checkLinks?: boolean;
   readonly liveResultId?: string;
   readonly fetch?: typeof fetch;
@@ -125,7 +125,7 @@ export async function acceptance(baseUrl: string, options: AcceptanceOptions = {
     record('mobile-css', false, error instanceof Error ? error.message : String(error));
   }
 
-  if (options.checkLinks === true) {
+  if (options.checkLinks !== false) {
     const links = [...new Set([...results.values()].flatMap((result) => Object.values(result.links)))];
     const outcomes = await mapLimited(links, LINK_CONCURRENCY, async (url) => {
       try {

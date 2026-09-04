@@ -58,10 +58,22 @@ function shortSha(sha: string): string {
   return sha.slice(0, 12);
 }
 
+/** Only https URLs become hrefs; anything else is rendered as inert text. */
+export function safeHref(url: string): string | undefined {
+  return /^https:\/\/[^\s"'<>]+$/u.test(url) ? escapeHtml(url) : undefined;
+}
+
+function anchor(url: string, label: string): string {
+  const href = safeHref(url);
+  return href === undefined
+    ? `<span class="withheld">${escapeHtml(label)} (link withheld: not an https URL)</span>`
+    : `<a href="${href}" rel="noopener">${escapeHtml(label)}</a>`;
+}
+
 function link(url: string | undefined, label: string, note?: string): string {
   if (url === undefined) return '';
   const suffix = note === undefined ? '' : ` <small>(${escapeHtml(note)})</small>`;
-  return `<li><a href="${escapeHtml(url)}" rel="noopener">${escapeHtml(label)}</a>${suffix}</li>`;
+  return `<li>${anchor(url, label)}${suffix}</li>`;
 }
 
 function section(id: string, title: string, body: string): string {
@@ -135,7 +147,7 @@ function renderDiagnosis(file: CaseLabCaseFile | undefined): string {
   const grounding = file.diagnosis.grounding;
   const citations = grounding && !grounding.skipped && grounding.citations.length > 0
     ? `<h3>Grounding</h3><ul>${grounding.citations.map((citation) =>
-      `<li><a href="${escapeHtml(citation.url)}" rel="noopener">${escapeHtml(citation.title)}</a></li>`).join('')}</ul>`
+      `<li>${anchor(citation.url, citation.title)}</li>`).join('')}</ul>`
     : '';
   return section('diagnosis', 'Nano diagnosis and confidence', `<dl>
   <dt>Failure class</dt><dd>${escapeHtml(file.diagnosis.class)}</dd>
@@ -262,6 +274,7 @@ function renderLinks(links: CaseLabResultLinks, mode: CaseLabMode): string {
     link(links.caseFileArtifact, 'HTML case file artifact', 'requires GitHub sign-in'),
     link(links.replayBundleArtifact, 'Replay bundle artifact', 'requires GitHub sign-in'),
     link(links.evidence, 'Evidence file'),
+    link(links.atifTrajectory, 'ATIF trajectory'),
   ].filter((item) => item.length > 0);
   return section('links', 'Links', items.length === 0 ? '<p class="empty">No public links were recorded.</p>' : `<ul>${items.join('\n')}</ul>`);
 }
@@ -271,7 +284,7 @@ function renderSource(result: CaseLabResult): string {
     return `<p class="source">Recorded from <code>${escapeHtml(result.recordedFrom.file)}</code> (result hash <code>${escapeHtml(shortSha(result.recordedFrom.resultHash))}…</code>) at ${escapeHtml(result.recordedFrom.recordedAt)}, subject <code>${escapeHtml(result.recordedFrom.subjectSha)}</code>.</p>`;
   }
   if (result.replayedFrom) {
-    return `<p class="source">Replayed from bundle <code>${escapeHtml(shortSha(result.replayedFrom.bundleSha256))}…</code> captured at <a href="${escapeHtml(result.replayedFrom.capturedRunUrl)}" rel="noopener">${escapeHtml(result.replayedFrom.capturedRunUrl)}</a>.</p>`;
+    return `<p class="source">Replayed from bundle <code>${escapeHtml(shortSha(result.replayedFrom.bundleSha256))}…</code> captured at ${anchor(result.replayedFrom.capturedRunUrl, result.replayedFrom.capturedRunUrl)}.</p>`;
   }
   return '';
 }
@@ -395,7 +408,7 @@ export function renderPendingBody(state: PendingState): string {
   <p class="badges">${modeBadge('live')}</p>
   <p class="mode-note">Request <code>${escapeHtml(state.requestId)}</code>. This page keeps the same address; refresh it at any time.</p>
   <p id="live-status" class="live-status" role="status" aria-live="polite">${escapeHtml(state.status)}</p>${state.runUrl === undefined ? '' : `
-  <p><a href="${escapeHtml(state.runUrl)}" rel="noopener">Watch the workflow run on GitHub</a></p>`}
+  <p>${anchor(state.runUrl, 'Watch the workflow run on GitHub')}</p>`}
 </header>`;
 }
 

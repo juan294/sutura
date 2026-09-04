@@ -42,6 +42,7 @@ export interface CaseLabResultLinks {
   readonly caseFileArtifact?: string;
   readonly replayBundleArtifact?: string;
   readonly evidence?: string;
+  readonly atifTrajectory?: string;
 }
 
 export interface CaseLabResultBase {
@@ -90,7 +91,7 @@ export class CaseLabResultError extends Error {
 
 const LINK_KEYS = Object.freeze([
   'workflowRun', 'ciRun', 'pullRequest', 'repairPullRequest', 'refusalComment',
-  'check', 'caseFileArtifact', 'replayBundleArtifact', 'evidence',
+  'check', 'caseFileArtifact', 'replayBundleArtifact', 'evidence', 'atifTrajectory',
 ] as const);
 
 /** Matched against canonical JSON, where a backslash is escaped, so Windows paths allow one or two. */
@@ -230,6 +231,17 @@ export function validateCaseLabCaseFile(value: unknown, expectedOutcome: CaseLab
   array(diagnosis.signals, 'caseFile.diagnosis.signals', 256);
   if (typeof diagnosis.failingCmd !== 'string') throw new CaseLabResultError('caseFile.diagnosis.failingCmd must be a string');
   if (typeof diagnosis.errorExcerpt !== 'string') throw new CaseLabResultError('caseFile.diagnosis.errorExcerpt must be a string');
+  if (diagnosis.grounding !== undefined) {
+    const grounding = record(diagnosis.grounding, 'caseFile.diagnosis.grounding');
+    for (const [index, entry] of array(grounding.citations ?? [], 'caseFile.diagnosis.grounding.citations', 32).entries()) {
+      const citation = record(entry, `caseFile.diagnosis.grounding.citations[${index}]`);
+      text(citation.title, `caseFile.diagnosis.grounding.citations[${index}].title`, 512);
+      const url = text(citation.url, `caseFile.diagnosis.grounding.citations[${index}].url`, 2_048);
+      if (!/^https:\/\/[^\s"'<>]+$/u.test(url)) {
+        throw new CaseLabResultError(`caseFile.diagnosis.grounding.citations[${index}].url must be an https URL`);
+      }
+    }
+  }
   const triage = record(file.triage, 'caseFile.triage');
   text(triage.status, 'caseFile.triage.status', 32);
   nonnegative(triage.reproduced, 'caseFile.triage.reproduced');

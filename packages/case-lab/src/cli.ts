@@ -24,7 +24,7 @@ export const USAGE = [
   '  case-lab replay <case-id> [--out <file>]',
   '  case-lab build-site [--out <dir>] [--api-base <origin or empty>] [--site-root </>]',
   '  case-lab serve [--dir <dir>] [--port <port>]',
-  '  case-lab acceptance --base-url <url> [--check-links] [--live-result <request-id>] [--out <file>]',
+  '  case-lab acceptance --base-url <url> [--offline] [--live-result <request-id>] [--out <file>]',
   '  case-lab verify-pin [--tag <tag>] [--workflow <file>] [--set-controller <sha>]',
   '  case-lab dispatch --base-url <url> --case <case-id>',
   '  case-lab capture-replay --request-id <id> [--out <dir>]',
@@ -147,7 +147,7 @@ export async function runCaseLabCli(argv: readonly string[], dependencies: CliDe
         const baseUrl = requireValue(args, '--base-url');
         const liveResultId = valueAfter(args, '--live-result');
         const record = await acceptance(baseUrl, {
-          checkLinks: args.includes('--check-links'),
+          checkLinks: !args.includes('--offline'),
           ...(liveResultId === undefined ? {} : { liveResultId }),
         });
         const text = `${canonicalJson(record)}\n`;

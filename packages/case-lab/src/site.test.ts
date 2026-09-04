@@ -58,9 +58,13 @@ describe('buildSite', () => {
     const index = readFileSync(join(outDir, 'index.html'), 'utf8');
     expect(index).toContain('data-page="index" data-site-root="/" data-api-base=""');
     expect(index.match(/class="case-card"/gu)).toHaveLength(5);
-    const catalogJson = JSON.parse(readFileSync(join(outDir, 'catalog.json'), 'utf8')) as { cases: unknown[]; release: unknown };
+    const catalogJson = JSON.parse(readFileSync(join(outDir, 'catalog.json'), 'utf8')) as { cases: unknown[]; release: unknown; labels: unknown };
     expect(catalogJson.cases).toHaveLength(5);
     expect(catalogJson.release).toEqual(RELEASE);
+    expect(catalogJson.labels).toEqual({
+      mode: { live: 'Live run', replay: 'Deterministic replay', recorded: 'Recorded live result' },
+      outcome: { fixed: 'Fixed', 'flaky-no-patch': 'Flaky, no patch', refused: 'Refused', 'gave-up': 'Gave up', 'infra-stop': 'Infrastructure stop' },
+    });
   });
 
   it('ships a browser bundle that never assigns location-derived HTML and pulls in the case list', () => {
@@ -92,7 +96,7 @@ describe('static server and acceptance', () => {
   });
 
   it('serves the site signed-out and passes the acceptance record', { timeout: 60_000 }, async () => {
-    const record = await acceptance(baseUrl, { now: NOW });
+    const record = await acceptance(baseUrl, { now: NOW, checkLinks: false });
     const failed = record.checks.filter((check) => !check.passed);
     expect(failed, JSON.stringify(failed)).toEqual([]);
     expect(record.passed).toBe(true);
@@ -122,7 +126,7 @@ describe('static server and acceptance', () => {
     const tamperedServer = createStaticServer(tamperedDir);
     const port = await listen(tamperedServer, 0);
     try {
-      const record = await acceptance(`http://127.0.0.1:${port}`, { now: NOW });
+      const record = await acceptance(`http://127.0.0.1:${port}`, { now: NOW, checkLinks: false });
       expect(record.passed).toBe(false);
       const failed = record.checks.filter((check) => !check.passed).map((check) => check.name);
       expect(failed).toContain('replay-greenwash-trap');

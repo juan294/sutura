@@ -158,6 +158,22 @@ describe('CaseLabResult', () => {
     }))).toThrow('caseFile.stages[0].network must be disabled or enabled');
   });
 
+  it('accepts only https grounding citations and the ATIF trajectory link', () => {
+    const file = recordedCaseFile('repair-off-by-one');
+    const withCitation = (url: string): CaseLabCaseFile => ({
+      ...file,
+      diagnosis: { ...file.diagnosis, grounding: { citations: [{ url, title: 'release note', snippet: '' }], query: 'q', reason: 'ok', skipped: false } },
+    }) as unknown as CaseLabCaseFile;
+    expect(createCaseLabResult(recordedBase({ caseFile: withCitation('https://github.com/node-fetch/node-fetch') })).caseFile?.diagnosis.grounding?.citations)
+      .toHaveLength(1);
+    expect(() => createCaseLabResult(recordedBase({ caseFile: withCitation('javascript:alert(1)') })))
+      .toThrow('caseFile.diagnosis.grounding.citations[0].url must be an https URL');
+    expect(() => createCaseLabResult(recordedBase({ caseFile: withCitation('http://example.com') })))
+      .toThrow('caseFile.diagnosis.grounding.citations[0].url must be an https URL');
+    const result = createCaseLabResult(recordedBase({ links: { atifTrajectory: 'https://github.com/juan294/sutura/blob/develop/docs/demo/sutura-trajectory-v1.atif.json' } }));
+    expect(result.links.atifTrajectory).toContain('atif.json');
+  });
+
   it('labels the three modes with fixed strings', () => {
     expect(modeLabel('live')).toBe('Live run');
     expect(modeLabel('replay')).toBe('Deterministic replay');

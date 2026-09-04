@@ -8,6 +8,8 @@ import { CASE_LAB_CASES, caseLabCase } from './cases.js';
 import { CASE_LAB_LIMITS } from './limits.js';
 import { PACKAGE_DIR } from './replay.js';
 import {
+  MODE_LABELS,
+  OUTCOME_LABELS,
   renderIndexBody,
   renderPage,
   renderPendingBody,
@@ -114,6 +116,7 @@ export async function buildSite(options: BuildSiteOptions): Promise<string[]> {
     schemaVersion: 'sutura-case-lab-catalog-v1',
     release: options.release,
     limits: CASE_LAB_LIMITS,
+    labels: { mode: MODE_LABELS, outcome: OUTCOME_LABELS },
     cases: cards.map(({ item, result }) => ({
       id: item.id,
       title: item.title,

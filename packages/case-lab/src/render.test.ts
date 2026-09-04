@@ -81,6 +81,27 @@ describe('renderResultBody', () => {
     expect(html).toContain('&quot;quoted&quot; &amp; &lt;b&gt;');
   });
 
+  it('never turns a non-https citation or link into an href', () => {
+    const base = byId('javascript-repair');
+    const file = base.caseFile!;
+    const poisoned = {
+      ...base,
+      caseFile: {
+        ...file,
+        diagnosis: {
+          ...file.diagnosis,
+          grounding: { citations: [{ url: 'javascript:alert(1)', title: 'bad', snippet: '' }], query: 'q', reason: 'r', skipped: false },
+        },
+      },
+      links: { ...base.links, workflowRun: 'javascript:alert(2)' },
+    } as unknown as CaseLabResult;
+    const html = renderResultBody(poisoned, caseLabCase('javascript-repair'));
+    expect(html).not.toContain('href="javascript:');
+    expect(html).toContain('link withheld: not an https URL');
+    const pending = renderPendingBody({ requestId: 'cl-1788198872643-48b5c5d4', caseTitle: undefined, status: 's', runUrl: 'data:text/html,x' });
+    expect(pending).not.toContain('href="data:');
+  });
+
   it('renders a result without a case file honestly', () => {
     const base = byId('flaky-failure');
     const bare = createCaseLabResult({
