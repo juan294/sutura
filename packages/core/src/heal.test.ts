@@ -373,6 +373,86 @@ describe('healCase', () => {
     )).toHaveLength(0);
   });
 
+  it('replays run 33836899254: one completion limit among applied proposals continues to depth 2', async () => {
+    const executor = new InMemoryExecutor((command, _parent, _callIndex, opts) => {
+      if (
+        command.includes('corepack pnpm install --frozen-lockfile') ||
+        command.includes('git init --quiet')
+      ) return result(0);
+      if (command.includes('git apply - && git diff')) {
+        if (opts?.operationId?.startsWith('search-004-')) return result(1);
+        const operationId = opts?.operationId ?? 'repair';
+        const distinctDiff = [
+          'diff --git a/page-count.js b/page-count.js',
+          '--- a/page-count.js',
+          '+++ b/page-count.js',
+          '@@ -1 +1,2 @@',
+          '-export function pageCount(items, size) { return Math.floor(items / size) + 1; }',
+          '+export function pageCount(items, size) { return Math.ceil(items / size); }',
+          `+// ${operationId}`,
+        ].join('\n') + '\n';
+        return { ...result(0), stdout: distinctDiff };
+      }
+      return result(1);
+    }, { operationLimit: 4 });
+    const value = context('repair-off-by-one', [], 'test-assertion', {
+      executor,
+      search: { initialBranches: 4, beamWidth: 2, maximumDepth: 2, maximumTotalBranches: 12 },
+    });
+    let superCalls = 0;
+    value.chat.mockImplementation(async (tier: 'nano' | 'super' | 'ultra') => {
+      if (tier === 'nano') return { text: JSON.stringify(diagnosis('test-assertion')) };
+      if (tier === 'super') {
+        superCalls += 1;
+        return superCalls === 3
+          ? { text: '{"replacement":"', finishReason: 'length' as const, usd: 0.001 }
+          : repairProposalReply(
+              { id: `repair-${superCalls}`, rationale: 'Apply a distinct repair.', diff: HONEST_DIFF },
+              `${HONEST_REPLACEMENT.trimEnd()}\n// distinct repair ${superCalls}\n`,
+            );
+      }
+      return { text: JSON.stringify({ approved: true, reasoning: 'unused' }) };
+    });
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(superCalls).toBeGreaterThanOrEqual(5);
+    const completionLimits = caseFile.search?.filter(
+      ({ terminalReason }) => terminalReason === 'completion-limit',
+    ) ?? [];
+    expect(completionLimits).toHaveLength(1);
+    expect(caseFile.search?.slice(0, 4)).toEqual([
+      expect.objectContaining({ nodeId: 'search-001', depth: 1, changedFiles: 1 }),
+      expect.objectContaining({ nodeId: 'search-002', depth: 1, changedFiles: 1 }),
+      expect.objectContaining({ nodeId: 'search-003', depth: 1, terminalReason: 'completion-limit' }),
+      expect.objectContaining({ nodeId: 'search-004', depth: 1, terminalReason: 'failed' }),
+    ]);
+    const depthTwoNodes = caseFile.search?.filter(({ depth }) => depth === 2) ?? [];
+    expect(depthTwoNodes.length).toBeGreaterThan(0);
+    expect(depthTwoNodes.every(({ parentNodeId }) =>
+      parentNodeId !== completionLimits[0]?.nodeId,
+    )).toBe(true);
+    expect(depthTwoNodes.every(({ parentNodeId }) =>
+      parentNodeId === 'search-001' || parentNodeId === 'search-002',
+    )).toBe(true);
+    const depthOneDecisions = caseFile.trace?.flatMap((entry) => {
+      if (
+        entry.type !== 'search-decision' ||
+        !['search-001', 'search-002', 'search-003', 'search-004'].includes(entry.childNodeId ?? '') ||
+        (!entry.summary.startsWith('Retain') && !entry.summary.startsWith('Branch terminal'))
+      ) return [];
+      return [[entry.childNodeId, entry.summary]];
+    });
+    expect(depthOneDecisions).toEqual([
+      ['search-001', 'Retain branch in frontier'],
+      ['search-002', 'Retain branch in frontier'],
+      ['search-003', 'Branch terminal: completion-limit'],
+      ['search-004', 'Branch terminal: failed'],
+    ]);
+    expect(caseFile.stages.some(({ note }) => note?.includes('Cancellation requested'))).toBe(false);
+  });
+
   it.each([
     ['tool calls', { toolCalls: 2 }],
     ['inference cost', { inferenceCostUsd: 0.01 }],

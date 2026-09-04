@@ -75,14 +75,10 @@ export interface AdaptiveSearchResult {
   terminalReason: 'candidate-found' | 'frontier-exhausted' | 'branch-budget' | 'operation-capacity' | 'depth' | 'completion-limit';
 }
 
-function isGlobalTerminal(reason: SearchNode['terminalReason']): reason is 'completion-limit' {
-  return reason === 'completion-limit';
-}
-
 function isEvidenceTerminal(
   reason: SearchNode['terminalReason'],
 ): reason is 'cancelled' | 'completion-limit' {
-  return reason === 'cancelled' || isGlobalTerminal(reason);
+  return reason === 'cancelled' || reason === 'completion-limit';
 }
 
 function limit(value: number | undefined, fallback: number, name: string): number {
@@ -100,6 +96,8 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
   const maximumTotalBranches = limit(options.maximumTotalBranches, DEFAULT_SEARCH_LIMITS.maximumTotalBranches, 'maximumTotalBranches');
   const nodes: SearchNode[] = [];
   const visited = new Set<string>();
+  let appliedProposals = 0;
+  let completionLimits = 0;
   let frontier: Array<SearchNode | undefined> = Array.from({ length: Math.min(initialBranches, maximumTotalBranches) });
 
   for (let depth = 1; depth <= maximumDepth && frontier.length > 0; depth += 1) {
@@ -141,7 +139,7 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
         const passed = expansion.policyEvidence.valid &&
           expansion.testEvidence.exitCode === 0 &&
           expansion.candidate !== undefined;
-        if (!cancellationStarted && (passed || isGlobalTerminal(expansion.terminalReason))) {
+        if (!cancellationStarted && passed) {
           cancellationStarted = true;
           await Promise.all(ids.flatMap((otherId, otherIndex) => {
             if (otherIndex === index || settled[otherIndex]) return [];
@@ -188,8 +186,13 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
         ...(parent === undefined ? {} : { parentNodeId: parent.id }),
       });
       }
+      const batchChildren = children.slice(-expansions.length);
+      for (const child of batchChildren) {
+        if (child.policyEvidence.changedFiles.length > 0) appliedProposals += 1;
+        if (child.terminalReason === 'completion-limit') completionLimits += 1;
+      }
       if (children.some(({ terminalReason }) => terminalReason === 'passed')) break;
-      if (children.some(({ terminalReason }) => isGlobalTerminal(terminalReason))) {
+      if (completionLimits > appliedProposals) {
         nodes.push(...children);
         return { nodes, candidates: [], terminalReason: 'completion-limit' };
       }

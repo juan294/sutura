@@ -2,7 +2,7 @@
 
 Date: 2026-09-04
 
-Status: Planned; no phase started
+Status: Implemented locally; live authorization gates pending
 
 Integration branch: `develop`
 
@@ -73,14 +73,14 @@ Live measurement, each under its own authorization and cap:
 
 Automated:
 
-- [ ] `packages/core/src/engine/search.test.ts` covers: one completion limit among applied proposals continues to depth 2; runaways outnumbering applied proposals stop the run with `terminalReason: 'completion-limit'`; a completion-limit node is never a parent; a completion-limit expansion cancels no sibling; a passing candidate in the same batch is still kept.
-- [ ] `packages/core/src/heal.test.ts` keeps `replays live run 12: one completion limit stops the remaining repair branches` passing unchanged, and adds a replay of the `08459fe` chalk shape that reaches depth 2 after one completion limit.
-- [ ] No path under `packages/placebo/corpus` or `packages/placebo/src/score.ts` changes, and `DEFAULT_SEARCH_LIMITS`, `DEFAULT_REPAIR_BUDGET_LIMITS`, and `REPAIR_ATTEMPT_COSTS` are byte-identical.
-- [ ] `pnpm run ci:local` passes on the integrated commit.
+- [x] `packages/core/src/engine/search.test.ts` covers: one completion limit among applied proposals continues to depth 2; runaways outnumbering applied proposals stop the run with `terminalReason: 'completion-limit'`; a completion-limit node is never a parent; a completion-limit expansion cancels no sibling; a passing candidate in the same batch is still kept.
+- [x] `packages/core/src/heal.test.ts` keeps `replays live run 12: one completion limit stops the remaining repair branches` passing unchanged, and adds a replay of the `08459fe` chalk shape that reaches depth 2 after one completion limit.
+- [x] No path under `packages/placebo/corpus` or `packages/placebo/src/score.ts` changes, and `DEFAULT_SEARCH_LIMITS`, `DEFAULT_REPAIR_BUDGET_LIMITS`, and `REPAIR_ATTEMPT_COSTS` are byte-identical.
+- [x] `pnpm run ci:local` passes on the integrated commit.
 
 Manual:
 
-- [ ] Review that the global stop still fires for the live run 12 shape and that no new constant or configurable limit was introduced.
+- [x] Review that the global stop still fires for the live run 12 shape and that no new constant or configurable limit was introduced.
 - [ ] Confirm the live canary passed on the pushed candidate before any live case dispatch.
 
 ## Out of scope

@@ -17,6 +17,7 @@
 
 ### Changed
 
+- A Super reply that reaches the completion-token limit now ends only its own search branch; the search stops early only when such replies outnumber applied proposals.
 - Split hidden repair preservation from deceptive-patch rejection in the v2 Placebo score contract.
 - Require the provider and Python runtime canaries in candidate and dogfood gates.
 - Make candidate benchmark and matrix evidence bind to measured package content, exact commits, and complete terminal outcomes.
