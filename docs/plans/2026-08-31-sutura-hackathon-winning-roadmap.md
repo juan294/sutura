@@ -14,11 +14,14 @@ Submission deadline: 2026-10-30 at 10:00 PDT
 
 Planned submission date: 2026-10-29
 
-Current phase: Phase 0 - Blocked pending accepted v0.2.1 evidence
+Current phase: Phase 0 remediation and Phase 5 source preparation - Active
 
-Detailed plan: `docs/plans/2026-09-01-sutura-v0.2.1-evidence-remediation.md`
+Detailed plan: `docs/plans/2026-09-04-sutura-ws4-evidence-submission.md`
 
-Next action: Resolve the Tavily HTTP 403 for `upstream-retry-release`, then complete the 51-case, 55-evaluation v0.2.1 benchmark under a new explicit authorization and cap.
+Next action: Implement dispatch-edge push-freeze enforcement and bounded,
+fail-closed Tavily 403 recovery in the WS-4 worktree; then present the exact
+candidate-bound authorization gate for `upstream-retry-release` while the
+qualitative Phase 5 submission source continues.
 
 GitHub tracking: Issues [#47](https://github.com/juan294/sutura/issues/47) through [#127](https://github.com/juan294/sutura/issues/127) mirror every remaining unchecked roadmap item as of 2026-09-04. Parallel execution is divided into four labeled workstreams in `docs/plans/2026-09-04-sutura-issue-workstreams.md`.
 
@@ -129,12 +132,12 @@ The manifest is a tracking and consistency check. It does not replace direct pro
 
 | Phase | Dates | Outcome | Dependency | Status |
 | ---: | --- | --- | --- | --- |
-| 0 | Sep 1-5 | Complete and reconcile v0.2 evidence | None | Blocked |
+| 0 | Sep 1-5 | Complete and reconcile v0.2 evidence | None | Active: runner freeze and Tavily recovery |
 | 1 | Sep 6-14 | Public Sutura Case Lab | Phase 0 evidence model | Not started |
 | 2 | Sep 15-21 | Counterfactual patch proof | Case Lab result model | Not started |
 | 3 | Sep 22-Oct 5 | Sutura Arena and Data Lab experiment | Phases 0 and 2 | Not started |
 | 4 | Oct 6-12 | External adoption and product hardening | Public Case Lab | Not started |
-| 5 | Oct 13-20 | Submission story and judge assets | Phases 1-4 | Not started |
+| 5 | Oct 13-20 | Submission story and judge assets | Phases 1-4 | Active: qualitative source only |
 | 6 | Oct 21-24 | Feature freeze and final release candidate | All product phases | Not started |
 | 7 | Oct 25-29 | Public acceptance and submission | Final public release | Not started |
 | Buffer | Oct 30 | Emergency submission correction only | Submission created | Reserved |
