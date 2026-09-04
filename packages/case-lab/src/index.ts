@@ -83,3 +83,38 @@ export type {
   CaseLabHttpResponse,
   ReleaseIdentity,
 } from './dispatcher.js';
+export {
+  CaseLabEvidenceError,
+  RECORDED_LEDGER_FILE,
+  RECORDED_RESULT_FILE,
+  loadRecordedEvidence,
+  recordedEvaluation,
+} from './evidence.js';
+export type {
+  RecordedEvaluation,
+  RecordedEvidence,
+  RecordedLedgerEntry,
+  RecordedLedgerFile,
+  RecordedResultFile,
+} from './evidence.js';
+export {
+  CaseLabReplayError,
+  PACKAGE_DIR,
+  REPLAY_DIR,
+  REPOSITORY_ROOT,
+  caseFileCost,
+  deterministicResult,
+  loadRelease,
+  plainCaseFile,
+  readReplayBundleFile,
+  recordedResult,
+  replayCatalog,
+  replayedResult,
+} from './replay.js';
+export type {
+  RecordedResultOptions,
+  ReplayCatalogOptions,
+  ReplayedResultOptions,
+} from './replay.js';
+export { CaseLabCliError, USAGE, runCaseLabCli, valueAfter, writeNew } from './cli.js';
+export type { CliDependencies, CliIo } from './cli.js';

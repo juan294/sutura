@@ -1,8 +1,3 @@
-const USAGE = [
-  'Usage:',
-  '  case-lab catalog --out <dir>',
-  '  case-lab replay <case-id> [--out <file>]',
-].join('\n');
+import { runCaseLabCli } from './cli.js';
 
-process.stderr.write(`${USAGE}\n`);
-process.exit(2);
+process.exitCode = await runCaseLabCli(process.argv.slice(2));
