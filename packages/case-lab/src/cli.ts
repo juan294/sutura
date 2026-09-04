@@ -1,12 +1,22 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { execFile } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { promisify } from 'node:util';
 
 import { acceptance } from './acceptance.js';
-import { CASE_LAB_CASES, CaseLabRequestError } from './cases.js';
+import { CASE_LAB_CASES, CaseLabRequestError, caseLabCase } from './cases.js';
 import { canonicalJson } from './canonical.js';
-import { deterministicResult, loadRelease, replayCatalog, PACKAGE_DIR, type ReplayCatalogOptions } from './replay.js';
+import { DEMO_REPOSITORY } from './dispatcher.js';
+import { CaseLabPinError, DEMO_WORKFLOW_FILE, verifyPin, withControllerSha } from './pin.js';
+import { publishResult } from './publish.js';
+import { deterministicResult, loadRelease, replayCatalog, replayedResult, PACKAGE_DIR, REPLAY_DIR, type ReplayCatalogOptions } from './replay.js';
+import { CaseLabResultError, validateCaseLabResult } from './result.js';
 import { createStaticServer, listen } from './serve.js';
 import { buildSite } from './site.js';
+
+const execFileAsync = promisify(execFile);
+const RESULTS_BASE = 'https://raw.githubusercontent.com/juan294/sutura-demo/case-lab-results/results/';
 
 export const USAGE = [
   'Usage:',
@@ -15,7 +25,13 @@ export const USAGE = [
   '  case-lab build-site [--out <dir>] [--api-base <origin or empty>] [--site-root </>]',
   '  case-lab serve [--dir <dir>] [--port <port>]',
   '  case-lab acceptance --base-url <url> [--check-links] [--live-result <request-id>] [--out <file>]',
+  '  case-lab verify-pin [--tag <tag>] [--workflow <file>] [--set-controller <sha>]',
+  '  case-lab dispatch --base-url <url> --case <case-id>',
+  '  case-lab capture-replay --request-id <id> [--out <dir>]',
+  '  case-lab publish-result --request-id <id> --case <case-id> --outcome <outcome> --demo-sha <sha> --controller-sha <sha> --workflow-run-url <url> [--ci-run-url <url>] [--pull-request-url <url>] [--repair-pull-request-url <url>] [--check-url <url>] [--refusal-comment-url <url>] [--case-file-artifact-url <url>] [--replay-artifact-url <url>] [--case-file <file>] [--replay <file>] --out <file>',
 ].join('\n');
+
+export const DEMO_WORKFLOW_COPY = resolve(PACKAGE_DIR, 'demo/case-lab.yml');
 
 export const DEFAULT_SITE_DIR = resolve(PACKAGE_DIR, 'dist/site');
 
@@ -27,6 +43,25 @@ export interface CliIo {
 export interface CliDependencies {
   readonly io?: CliIo;
   readonly catalog?: ReplayCatalogOptions;
+  readonly gh?: (args: readonly string[]) => Promise<string>;
+  readonly fetch?: typeof fetch;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+}
+
+async function ghDefault(args: readonly string[]): Promise<string> {
+  const { stdout } = await execFileAsync('gh', [...args], { encoding: 'utf8', maxBuffer: 20 * 1_024 * 1_024, timeout: 120_000 });
+  return stdout.trim();
+}
+
+function optionalLink(args: readonly string[], flag: string): string | undefined {
+  const value = valueAfter(args, flag);
+  return value === undefined || value === '' ? undefined : value;
+}
+
+function runIdFromUrl(url: string | undefined, label: string): string {
+  const match = /\/actions\/runs\/(\d+)$/u.exec(url ?? '');
+  if (!match?.[1]) throw new CaseLabCliError(`${label} must be a GitHub Actions run URL`);
+  return match[1];
 }
 
 export class CaseLabCliError extends Error {
@@ -122,12 +157,125 @@ export async function runCaseLabCli(argv: readonly string[], dependencies: CliDe
         for (const check of record.checks) io.writeError(`${check.passed ? 'PASS' : 'FAIL'} ${check.name}: ${check.detail}\n`);
         return record.passed ? 0 : 1;
       }
+      case 'verify-pin': {
+        const gh = dependencies.gh ?? ghDefault;
+        const workflowPath = resolve(valueAfter(args, '--workflow') ?? DEMO_WORKFLOW_COPY);
+        const release = dependencies.catalog?.release ?? loadRelease();
+        const setController = valueAfter(args, '--set-controller');
+        if (setController !== undefined) {
+          writeFileSync(workflowPath, withControllerSha(readFileSync(workflowPath, 'utf8'), setController), 'utf8');
+          io.write(`${workflowPath}: SUTURA_CONTROLLER_SHA set to ${setController}\n`);
+        }
+        const text = readFileSync(workflowPath, 'utf8');
+        const pins = verifyPin(text, release, workflowPath);
+        io.write(`PASS action pin ${pins.usesSha} equals release.json ${release.version}\n`);
+        const tag = valueAfter(args, '--tag');
+        if (tag !== undefined) {
+          let sha = JSON.parse(await gh(['api', `repos/juan294/sutura/git/ref/tags/${tag}`])) as { object: { sha: string; type: string } };
+          if (sha.object.type === 'tag') {
+            sha = { object: (JSON.parse(await gh(['api', `repos/juan294/sutura/git/tags/${sha.object.sha}`])) as { object: { sha: string; type: string } }).object };
+          }
+          if (sha.object.sha !== release.actionSha) {
+            throw new CaseLabPinError(`tag ${tag} points to ${sha.object.sha} but release.json names ${release.actionSha}`);
+          }
+          io.write(`PASS tag ${tag} points to ${release.actionSha}\n`);
+          const commit = JSON.parse(await gh(['api', `repos/juan294/sutura/commits/${pins.controllerSha}`])) as { sha: string };
+          if (commit.sha !== pins.controllerSha) throw new CaseLabPinError(`controller commit ${pins.controllerSha} is not on juan294/sutura`);
+          await gh(['api', `repos/juan294/sutura/contents/packages/case-lab/release.json?ref=${pins.controllerSha}`]);
+          io.write(`PASS controller ${pins.controllerSha} exists and contains packages/case-lab\n`);
+          const remote = JSON.parse(await gh(['api', `repos/${DEMO_REPOSITORY}/contents/${DEMO_WORKFLOW_FILE}?ref=main`])) as { content: string; encoding: string };
+          const remoteText = Buffer.from(remote.content, remote.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
+          if (remoteText !== text) throw new CaseLabPinError(`${DEMO_REPOSITORY} ${DEMO_WORKFLOW_FILE} on main differs from ${workflowPath}`);
+          io.write(`PASS ${DEMO_REPOSITORY} ${DEMO_WORKFLOW_FILE} is byte-identical to the committed copy\n`);
+        }
+        return 0;
+      }
+      case 'dispatch': {
+        const baseUrl = requireValue(args, '--base-url').replace(/\/$/u, '');
+        const item = caseLabCase(requireValue(args, '--case'));
+        const response = await (dependencies.fetch ?? fetch)(`${baseUrl}/api/dispatch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ caseId: item.id }),
+        });
+        const body = await response.text();
+        io.write(`${response.status} ${body}\n`);
+        return response.status === 202 ? 0 : 1;
+      }
+      case 'capture-replay': {
+        const gh = dependencies.gh ?? ghDefault;
+        const requestId = requireValue(args, '--request-id');
+        const outDir = resolve(valueAfter(args, '--out') ?? REPLAY_DIR);
+        const response = await (dependencies.fetch ?? fetch)(`${RESULTS_BASE}${requestId}.json`);
+        if (response.status !== 200) throw new CaseLabCliError(`no published result for ${requestId} (HTTP ${response.status})`);
+        const result = validateCaseLabResult(await response.json());
+        if (result.mode !== 'live') throw new CaseLabCliError(`${requestId} is not a live result`);
+        const runId = runIdFromUrl(result.links.workflowRun, 'links.workflowRun');
+        const ciRunId = runIdFromUrl(result.links.ciRun, 'links.ciRun');
+        const directory = mkdtempSync(join(tmpdir(), 'case-lab-capture-'));
+        try {
+          await gh(['run', 'download', runId, '-R', DEMO_REPOSITORY, '--name', `sutura-replay-${ciRunId}.json`, '--dir', directory]);
+          const files = readdirSync(directory, { recursive: true, encoding: 'utf8' }).filter((name) => name.endsWith('.json'));
+          if (files.length !== 1) throw new CaseLabCliError(`replay download must contain one JSON file, found ${files.length}`);
+          const bytes = readFileSync(join(directory, files[0]!));
+          const bundle = JSON.parse(bytes.toString('utf8')) as unknown;
+          const item = caseLabCase(result.caseId);
+          const { createHash } = await import('node:crypto');
+          const sha256 = createHash('sha256').update(bytes).digest('hex');
+          const replayed = await replayedResult(item, bundle, {
+            release: dependencies.catalog?.release ?? loadRelease(),
+            now: dependencies.catalog?.now ?? (() => new Date()),
+            bundleSha256: sha256,
+            ...(dependencies.catalog?.replay === undefined ? {} : { replay: dependencies.catalog.replay }),
+          });
+          if (replayed.outcome !== result.outcome) throw new CaseLabCliError(`replayed outcome ${replayed.outcome} differs from the live outcome ${result.outcome}`);
+          mkdirSync(outDir, { recursive: true, mode: 0o755 });
+          writeNew(join(outDir, `${item.id}.json`), `${JSON.stringify(bundle)}\n`);
+          io.write(`${item.id}\t${sha256}\t${join(outDir, `${item.id}.json`)}\n`);
+        } finally {
+          rmSync(directory, { recursive: true, force: true });
+        }
+        return 0;
+      }
+      case 'publish-result': {
+        const env = dependencies.env ?? process.env;
+        const elapsed = valueAfter(args, '--elapsed-ms');
+        const result = publishResult({
+          requestId: requireValue(args, '--request-id'),
+          caseId: requireValue(args, '--case'),
+          outcome: valueAfter(args, '--outcome') ?? '',
+          demoSha: requireValue(args, '--demo-sha'),
+          controllerSha: requireValue(args, '--controller-sha'),
+          ...(optionalLink(args, '--case-file') === undefined ? {} : { caseFilePath: optionalLink(args, '--case-file')! }),
+          ...(optionalLink(args, '--replay') === undefined ? {} : { replayBundlePath: optionalLink(args, '--replay')! }),
+          links: {
+            ...(optionalLink(args, '--workflow-run-url') === undefined ? {} : { workflowRun: optionalLink(args, '--workflow-run-url')! }),
+            ...(optionalLink(args, '--ci-run-url') === undefined ? {} : { ciRun: optionalLink(args, '--ci-run-url')! }),
+            ...(optionalLink(args, '--pull-request-url') === undefined ? {} : { pullRequest: optionalLink(args, '--pull-request-url')! }),
+            ...(optionalLink(args, '--repair-pull-request-url') === undefined ? {} : { repairPullRequest: optionalLink(args, '--repair-pull-request-url')! }),
+            ...(optionalLink(args, '--check-url') === undefined ? {} : { check: optionalLink(args, '--check-url')! }),
+            ...(optionalLink(args, '--refusal-comment-url') === undefined ? {} : { refusalComment: optionalLink(args, '--refusal-comment-url')! }),
+            ...(optionalLink(args, '--case-file-artifact-url') === undefined ? {} : { caseFileArtifact: optionalLink(args, '--case-file-artifact-url')! }),
+            ...(optionalLink(args, '--replay-artifact-url') === undefined ? {} : { replayBundleArtifact: optionalLink(args, '--replay-artifact-url')! }),
+          },
+          ...(elapsed === undefined ? {} : { elapsedMs: Number(elapsed) }),
+          ...(dependencies.catalog?.release === undefined ? {} : { release: dependencies.catalog.release }),
+          ...(dependencies.catalog?.now === undefined ? {} : { now: dependencies.catalog.now }),
+          secrets: [env.NEBIUS_API_KEY, env.TAVILY_API_KEY, env.CONTREE_TOKEN, env.CASE_LAB_GITHUB_TOKEN],
+        });
+        const text = `${canonicalJson(result)}\n`;
+        const out = valueAfter(args, '--out');
+        if (out === undefined) io.write(text);
+        else writeNew(resolve(out), text);
+        io.writeError(`${result.requestId} ${result.caseId} ${result.outcome} (${result.caseFile === undefined ? 'no case file' : 'case file attached'})\n`);
+        return 0;
+      }
       default:
         io.writeError(`${USAGE}\n`);
         return 2;
     }
   } catch (error) {
-    if (error instanceof CaseLabCliError || error instanceof CaseLabRequestError) {
+    if (error instanceof CaseLabCliError || error instanceof CaseLabRequestError || error instanceof CaseLabPinError || error instanceof CaseLabResultError) {
       io.writeError(`${error.message}\n`);
       return 2;
     }

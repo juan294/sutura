@@ -140,3 +140,7 @@ export type { CatalogCard, IndexOptions, PageShellOptions, PendingState } from '
 export { createStaticServer, listen } from './serve.js';
 export { buildSite, bundleClient } from './site.js';
 export type { BuildSiteOptions } from './site.js';
+export { CaseLabPinError, DEMO_WORKFLOW_FILE, parseDemoWorkflowPins, verifyPin, withControllerSha } from './pin.js';
+export type { DemoWorkflowPins } from './pin.js';
+export { normalizeOutcome, publishResult } from './publish.js';
+export type { PublishInputs } from './publish.js';
