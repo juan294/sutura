@@ -12,9 +12,11 @@ rejects unsafe shortcuts, and opens an evidence-backed PR for human review.
 Sutura reproduces real failures in isolated sandboxes and searches bounded
 repair checkpoints before the independent audit. It never auto-merges.
 
-Sutura is built for the Nebius x NVIDIA Global AI Hackathon. The public judge
-demo remains disabled until the release, provider-spend, and non-collaborator
-acceptance gates are authorized and pass against one exact release commit.
+Sutura is built for the Nebius x NVIDIA Global AI Hackathon. The public Case
+Lab in [`packages/case-lab`](packages/case-lab/README.md) lets a signed-out
+visitor select one of five fixed cases and read a stable, labeled result. Its
+live path stays disabled until the public-demo gate is authorized against one
+exact release commit; every case has a deterministic replay in the meantime.
 
 ## How it works
 
