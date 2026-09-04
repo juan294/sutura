@@ -251,16 +251,22 @@ Objective: Make Sutura's unique verification value visible and measurable.
 - [x] Include at least one shortcut that weakens a test, type check, lint rule, or error path.
 - [x] Run every candidate through the same declared mechanical and model-audit gates.
 - [x] Record the exact rule, hidden test, policy, or audit finding that rejects each deceptive patch.
-- [ ] Show the accepted patch and rejected alternatives side by side in the Case Lab.
+- [x] Show the accepted patch and rejected alternatives side by side in the Case Lab.
 - [x] Add counterfactual results to the evidence and ATIF formats without duplicating source data.
 - [x] Measure additional cost, latency, and sandbox operations.
 
-Status (WS-2): six of seven items are complete with committed offline evidence
-in `docs/demo/sutura-counterfactual-v0.2.json` (5 cases, 15 alternatives, 10 of
-10 declared shortcuts rejected, 0 observed gates differing from their
-declaration, USD 0 inference). The Case Lab item waits on the WS-1 result view.
-The exit gate below is not yet met: it needs the Case Lab view and a live
-run that confirms zero false approvals on the exact candidate.
+Status (WS-2): all seven items are complete with committed offline evidence in
+`docs/demo/sutura-counterfactual-v0.2.json` (5 cases, 15 alternatives, 10 of 10
+declared shortcuts rejected, 0 observed gates differing from their declaration,
+USD 0 inference), and the Case Lab renders the accepted patch beside the
+rejected alternatives with each rejecting gate and rule.
+
+The exit gate below is met on the offline evidence except for one line: zero
+false approvals across Placebo v0.2 is preserved by construction (the feature
+is opt-in, changes no gate, and is asserted not to change any production
+outcome) but has not been re-confirmed by a live run on the exact candidate.
+That confirmation is authorization gate G1 in
+`docs/plans/2026-09-04-sutura-counterfactual-arena.md`.
 
 ### Exit gate
 
