@@ -55,3 +55,31 @@ export type {
   CaseLabResultBase,
   CaseLabResultLinks,
 } from './result.js';
+export {
+  GitHubDispatchError,
+  createGitHubDispatchClient,
+} from './github.js';
+export type {
+  FetchLike,
+  GitHubDispatchClient,
+  GitHubDispatchClientOptions,
+  WorkflowRunSummary,
+} from './github.js';
+export {
+  CASE_LAB_WORKFLOW_FILE,
+  CASE_LAB_WORKFLOW_REF,
+  CaseLabConfigurationError,
+  DEMO_REPOSITORY,
+  FORBIDDEN_DISPATCHER_ENV,
+  caseLabEnvironment,
+  createCaseLabHandler,
+  liveRequestId,
+} from './dispatcher.js';
+export type {
+  CaseLabEnvironment,
+  CaseLabHandler,
+  CaseLabHandlerDependencies,
+  CaseLabHttpRequest,
+  CaseLabHttpResponse,
+  ReleaseIdentity,
+} from './dispatcher.js';
