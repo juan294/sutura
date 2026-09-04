@@ -14,11 +14,13 @@ Submission deadline: 2026-10-30 at 10:00 PDT
 
 Planned submission date: 2026-10-29
 
-Current phase: Phase 0 - Blocked by v0.2.0 evidence defects
+Current phase: Phase 0 - Blocked pending accepted v0.2.1 evidence
 
-Detailed plan: `docs/plans/2026-08-31-sutura-phase-0-evidence-baseline.md`
+Detailed plan: `docs/plans/2026-09-01-sutura-v0.2.1-evidence-remediation.md`
 
-Next action: Review and authorize Phase 1 of `docs/plans/2026-09-01-sutura-v0.2.1-evidence-remediation.md`. Do not start a new paid run, release, or remote mutation until its exact candidate and authority are recorded.
+Next action: Resolve the Tavily HTTP 403 for `upstream-retry-release`, then complete the 51-case, 55-evaluation v0.2.1 benchmark under a new explicit authorization and cap.
+
+GitHub tracking: Issues [#47](https://github.com/juan294/sutura/issues/47) through [#127](https://github.com/juan294/sutura/issues/127) mirror every remaining unchecked roadmap item as of 2026-09-04.
 
 ## Purpose
 
@@ -79,7 +81,7 @@ These scores are internal planning estimates. They are not official scores and d
 - [ ] Complete live Placebo v0.2 benchmark.
 - [ ] Candidate eight-case external matrix.
 - [ ] Public eight-case external matrix.
-- [ ] Dogfood executable-equivalence proof between `a99e23199a80ae6ee51fe1680afb74188416160c` and the v0.2.0 release commit.
+- [x] Dogfood executable-equivalence proof between `a99e23199a80ae6ee51fe1680afb74188416160c` and the v0.2.0 release commit.
 - [ ] Current public demo that a signed-out non-collaborator can use.
 - [ ] Demo pinned to the exact submitted release.
 - [ ] Real sanitized Data Lab import and batch experiment.
