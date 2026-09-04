@@ -1,5 +1,5 @@
 import { CASE_LAB_CASES } from './cases.js';
-import { MODE_LABELS } from './render.js';
+import { MODE_LABELS } from './labels.js';
 import { validateCaseLabResult, type CaseLabResult } from './result.js';
 
 export const ACCEPTANCE_SCHEMA_VERSION = 'sutura-case-lab-acceptance-v1' as const;

@@ -1,3 +1,5 @@
+import { isRecord } from './util.js';
+
 const API_BASE = 'https://api.github.com';
 const API_VERSION = '2022-11-28';
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -44,10 +46,6 @@ export interface GitHubDispatchClientOptions {
   readonly token: string;
   readonly fetch?: FetchLike;
   readonly timeoutMs?: number;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function summarize(value: unknown): WorkflowRunSummary {

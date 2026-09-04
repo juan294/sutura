@@ -1,8 +1,9 @@
 import { caseLabCase, CaseLabRequestError, type CaseLabCaseId } from './cases.js';
+import { isRecord } from './util.js';
 
-/** A request is one small JSON object. Anything larger is not a case selection. */
+/** A request is one small JSON text. Anything larger is not a case selection. */
 export const MAX_REQUEST_BYTES = 256;
-/** Longer than any server-defined id; checked before the id is compared. */
+/** Longer than any server-defined id; the object form is bounded here before the id is compared. */
 export const MAX_CASE_ID_LENGTH = 64;
 
 export interface CaseLabRequest {
@@ -10,7 +11,7 @@ export interface CaseLabRequest {
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (!isRecord(value)) return false;
   const prototype = Object.getPrototypeOf(value) as unknown;
   return prototype === Object.prototype || prototype === null;
 }
@@ -31,8 +32,8 @@ export function parseCaseLabRequest(body: unknown): CaseLabRequest {
   if (typeof body.caseId !== 'string') {
     throw new CaseLabRequestError('caseId must be a string');
   }
-  if (body.caseId.length > MAX_CASE_ID_LENGTH || Buffer.byteLength(JSON.stringify(body), 'utf8') > MAX_REQUEST_BYTES) {
-    throw new CaseLabRequestError(`request exceeds ${MAX_REQUEST_BYTES} bytes`);
+  if (body.caseId.length > MAX_CASE_ID_LENGTH) {
+    throw new CaseLabRequestError(`caseId exceeds ${MAX_CASE_ID_LENGTH} characters`);
   }
   return { caseId: caseLabCase(body.caseId).id };
 }

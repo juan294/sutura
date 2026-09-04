@@ -4,29 +4,10 @@
  * types and uses no Node API.
  */
 import type { CaseLabCase, CaseLabOutcome } from './cases.js';
-import type { CaseLabCaseFile, CaseLabMode, CaseLabResult, CaseLabResultLinks } from './result.js';
+import { MODES, MODE_LABELS, OUTCOME_LABELS, isPublicHttpsUrl, type CaseLabMode } from './labels.js';
+import type { CaseLabCaseFile, CaseLabResult, CaseLabResultLinks } from './result.js';
 
-export const MODE_LABELS: Readonly<Record<CaseLabMode, string>> = Object.freeze({
-  live: 'Live run',
-  replay: 'Deterministic replay',
-  recorded: 'Recorded live result',
-});
-
-export const OUTCOME_LABELS: Readonly<Record<CaseLabOutcome, string>> = Object.freeze({
-  fixed: 'Fixed',
-  'flaky-no-patch': 'Flaky, no patch',
-  refused: 'Refused',
-  'gave-up': 'Gave up',
-  'infra-stop': 'Infrastructure stop',
-});
-
-const MODE_NOTES: Readonly<Record<CaseLabMode, string>> = Object.freeze({
-  live: 'This result was produced by a live run through the public Case Lab path.',
-  replay: 'This result was reproduced offline from a complete replay bundle captured on a live run, with no provider or sandbox access.',
-  recorded: 'This result is a recorded live benchmark evaluation of the released Sutura version, not a run started from this page.',
-});
-
-export const LIVE_REQUEST_ID = /^cl-[0-9]{13}-[a-f0-9]{8}$/u;
+export { LIVE_REQUEST_ID_PATTERN as LIVE_REQUEST_ID, MODE_LABELS, OUTCOME_LABELS } from './labels.js';
 
 export function escapeHtml(value: string): string {
   return value.replace(
@@ -58,9 +39,9 @@ function shortSha(sha: string): string {
   return sha.slice(0, 12);
 }
 
-/** Only https URLs become hrefs; anything else is rendered as inert text. */
+/** Only public https URLs become hrefs; anything else is rendered as inert text. */
 export function safeHref(url: string): string | undefined {
-  return /^https:\/\/[^\s"'<>]+$/u.test(url) ? escapeHtml(url) : undefined;
+  return isPublicHttpsUrl(url) ? escapeHtml(url) : undefined;
 }
 
 function anchor(url: string, label: string): string {
@@ -116,7 +97,7 @@ function renderHeader(result: CaseLabResult, item: CaseLabCase): string {
   <p class="eyebrow">Sutura Case Lab · ${escapeHtml(item.scenario)}</p>
   <h1>${escapeHtml(item.title)}</h1>
   <p class="badges">${modeBadge(result.mode)} ${outcomeBadge(result.outcome)}</p>
-  <p class="mode-note">${escapeHtml(MODE_NOTES[result.mode])}</p>
+  <p class="mode-note">${escapeHtml(MODES[result.mode].note)}</p>
   <p class="expectation">${escapeHtml(expectation)}</p>
   <dl class="identity">
     <dt>Release</dt><dd>v${escapeHtml(result.release.version)} · Action <code>${escapeHtml(result.release.actionSha)}</code></dd>
@@ -386,9 +367,7 @@ ${options.cards.map((card) => renderCaseCard(card, options.siteRoot)).join('\n')
 <section class="sheet" aria-labelledby="labels-title">
   <h2 id="labels-title">How results are labeled</h2>
   <dl>
-    <dt>${escapeHtml(MODE_LABELS.live)}</dt><dd>${escapeHtml(MODE_NOTES.live)}</dd>
-    <dt>${escapeHtml(MODE_LABELS.replay)}</dt><dd>${escapeHtml(MODE_NOTES.replay)}</dd>
-    <dt>${escapeHtml(MODE_LABELS.recorded)}</dt><dd>${escapeHtml(MODE_NOTES.recorded)}</dd>
+${Object.values(MODES).map((mode) => `    <dt>${escapeHtml(mode.label)}</dt><dd>${escapeHtml(mode.note)}</dd>`).join('\n')}
   </dl>
   <p>The Case Lab accepts only these five server-defined cases. It never accepts arbitrary repositories, refs, commands, patches, or text.</p>
 </section>`;

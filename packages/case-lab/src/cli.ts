@@ -58,6 +58,11 @@ function optionalLink(args: readonly string[], flag: string): string | undefined
   return value === undefined || value === '' ? undefined : value;
 }
 
+/** Drop undefined values so an optional field is absent rather than present-and-undefined. */
+function definedEntries<T extends Record<string, string | undefined>>(value: T): { [K in keyof T]?: string } {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as { [K in keyof T]?: string };
+}
+
 function runIdFromUrl(url: string | undefined, label: string): string {
   const match = /\/actions\/runs\/(\d+)$/u.exec(url ?? '');
   if (!match?.[1]) throw new CaseLabCliError(`${label} must be a GitHub Actions run URL`);
@@ -240,24 +245,27 @@ export async function runCaseLabCli(argv: readonly string[], dependencies: CliDe
       case 'publish-result': {
         const env = dependencies.env ?? process.env;
         const elapsed = valueAfter(args, '--elapsed-ms');
+        const caseFilePath = optionalLink(args, '--case-file');
+        const replayBundlePath = optionalLink(args, '--replay');
+        const links = definedEntries({
+          workflowRun: optionalLink(args, '--workflow-run-url'),
+          ciRun: optionalLink(args, '--ci-run-url'),
+          pullRequest: optionalLink(args, '--pull-request-url'),
+          repairPullRequest: optionalLink(args, '--repair-pull-request-url'),
+          check: optionalLink(args, '--check-url'),
+          refusalComment: optionalLink(args, '--refusal-comment-url'),
+          caseFileArtifact: optionalLink(args, '--case-file-artifact-url'),
+          replayBundleArtifact: optionalLink(args, '--replay-artifact-url'),
+        });
         const result = publishResult({
           requestId: requireValue(args, '--request-id'),
           caseId: requireValue(args, '--case'),
           outcome: valueAfter(args, '--outcome') ?? '',
           demoSha: requireValue(args, '--demo-sha'),
           controllerSha: requireValue(args, '--controller-sha'),
-          ...(optionalLink(args, '--case-file') === undefined ? {} : { caseFilePath: optionalLink(args, '--case-file')! }),
-          ...(optionalLink(args, '--replay') === undefined ? {} : { replayBundlePath: optionalLink(args, '--replay')! }),
-          links: {
-            ...(optionalLink(args, '--workflow-run-url') === undefined ? {} : { workflowRun: optionalLink(args, '--workflow-run-url')! }),
-            ...(optionalLink(args, '--ci-run-url') === undefined ? {} : { ciRun: optionalLink(args, '--ci-run-url')! }),
-            ...(optionalLink(args, '--pull-request-url') === undefined ? {} : { pullRequest: optionalLink(args, '--pull-request-url')! }),
-            ...(optionalLink(args, '--repair-pull-request-url') === undefined ? {} : { repairPullRequest: optionalLink(args, '--repair-pull-request-url')! }),
-            ...(optionalLink(args, '--check-url') === undefined ? {} : { check: optionalLink(args, '--check-url')! }),
-            ...(optionalLink(args, '--refusal-comment-url') === undefined ? {} : { refusalComment: optionalLink(args, '--refusal-comment-url')! }),
-            ...(optionalLink(args, '--case-file-artifact-url') === undefined ? {} : { caseFileArtifact: optionalLink(args, '--case-file-artifact-url')! }),
-            ...(optionalLink(args, '--replay-artifact-url') === undefined ? {} : { replayBundleArtifact: optionalLink(args, '--replay-artifact-url')! }),
-          },
+          ...(caseFilePath === undefined ? {} : { caseFilePath }),
+          ...(replayBundlePath === undefined ? {} : { replayBundlePath }),
+          links,
           ...(elapsed === undefined ? {} : { elapsedMs: Number(elapsed) }),
           ...(dependencies.catalog?.release === undefined ? {} : { release: dependencies.catalog.release }),
           ...(dependencies.catalog?.now === undefined ? {} : { now: dependencies.catalog.now }),

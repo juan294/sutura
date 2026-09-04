@@ -8,24 +8,11 @@ import {
   isCaseLabCaseId,
   isCaseLabOutcome,
 } from './cases.js';
+import { LIVE_REQUEST_ID_PATTERN, isCaseLabMode, isPublicHttpsUrl, type CaseLabMode } from './labels.js';
+import { SHA256_PATTERN, SHA_PATTERN, isRecord, stringLeaves } from './util.js';
 
 export const CASE_LAB_RESULT_SCHEMA_VERSION = 'sutura-case-lab-result-v1' as const;
 export const MAX_RESULT_BYTES = 4 * 1_024 * 1_024;
-export const LIVE_REQUEST_ID_PATTERN = /^cl-[0-9]{13}-[a-f0-9]{8}$/u;
-const SHA_PATTERN = /^[a-f0-9]{40}$/u;
-const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
-
-export type CaseLabMode = 'live' | 'replay' | 'recorded';
-
-export const CASE_LAB_MODE_LABELS: Readonly<Record<CaseLabMode, string>> = Object.freeze({
-  live: 'Live run',
-  replay: 'Deterministic replay',
-  recorded: 'Recorded live result',
-});
-
-export function modeLabel(mode: CaseLabMode): string {
-  return CASE_LAB_MODE_LABELS[mode];
-}
 
 /** A case file as stored in JSON: the same shape as `CaseFile` without the ledger method. */
 export type CaseLabCaseFile = Omit<CaseFile, 'cost' | 'trace'> & {
@@ -94,12 +81,8 @@ const LINK_KEYS = Object.freeze([
   'check', 'caseFileArtifact', 'replayBundleArtifact', 'evidence', 'atifTrajectory',
 ] as const);
 
-/** Matched against canonical JSON, where a backslash is escaped, so Windows paths allow one or two. */
-const FORBIDDEN_PUBLIC_TEXT = /(?:\/Users\/|[A-Z]:\\{1,2}Users\\{1,2}|Authorization:\s*(?:Bearer|Basic)|github_pat_|ghp_|sk-[A-Za-z0-9]{20,})/u;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
+/** Matched against every decoded string value and key of the document. */
+const FORBIDDEN_PUBLIC_TEXT = /(?:\/Users\/|[A-Z]:\\Users\\|Authorization:\s*(?:Bearer|Basic)|github_pat_|ghp_|sk-[A-Za-z0-9]{20,})/u;
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!isRecord(value)) throw new CaseLabResultError(`${label} must be an object`);
@@ -153,18 +136,12 @@ function array(value: unknown, label: string, maximum: number): unknown[] {
   return value;
 }
 
-/** Only public GitHub URLs, with no embedded credentials, query, or fragment. */
+/** Only public GitHub URLs: the shared https rule plus an allowed host and no query. */
 export function publicGitHubUrl(value: unknown, label: string): string {
   const raw = text(value, label, 512);
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new CaseLabResultError(`${label} must be a public https://github.com URL`);
-  }
-  const host = url.hostname;
-  const allowedHost = host === 'github.com' || host === 'raw.githubusercontent.com';
-  if (url.protocol !== 'https:' || !allowedHost || url.username || url.password || url.hash) {
+  const host = isPublicHttpsUrl(raw) ? new URL(raw).hostname : undefined;
+  const url = host === undefined ? undefined : new URL(raw);
+  if (url === undefined || (host !== 'github.com' && host !== 'raw.githubusercontent.com') || url.search !== '') {
     throw new CaseLabResultError(`${label} must be a public https://github.com URL`);
   }
   return url.toString();
@@ -178,7 +155,7 @@ function outcome(value: unknown, label: string): CaseLabOutcome {
 }
 
 function mode(value: unknown): CaseLabMode {
-  if (value === 'live' || value === 'replay' || value === 'recorded') return value;
+  if (isCaseLabMode(value)) return value;
   throw new CaseLabResultError('mode must be live, replay, or recorded');
 }
 
@@ -237,7 +214,7 @@ export function validateCaseLabCaseFile(value: unknown, expectedOutcome: CaseLab
       const citation = record(entry, `caseFile.diagnosis.grounding.citations[${index}]`);
       text(citation.title, `caseFile.diagnosis.grounding.citations[${index}].title`, 512);
       const url = text(citation.url, `caseFile.diagnosis.grounding.citations[${index}].url`, 2_048);
-      if (!/^https:\/\/[^\s"'<>]+$/u.test(url)) {
+      if (!isPublicHttpsUrl(url)) {
         throw new CaseLabResultError(`caseFile.diagnosis.grounding.citations[${index}].url must be an https URL`);
       }
     }
@@ -383,21 +360,24 @@ function base(value: unknown): CaseLabResultBase {
   return result;
 }
 
-/** Reject any text a public artifact must never carry. */
+/** Reject any text a public artifact must never carry, scanning decoded strings rather than escaped JSON. */
 export function assertCaseLabResultPublicSafe<T>(value: T, secrets: readonly (string | undefined)[] = []): T {
-  const serialized = canonicalJson(value);
-  if (FORBIDDEN_PUBLIC_TEXT.test(serialized)) {
-    throw new CaseLabResultError('result contains a credential or private local path');
-  }
-  for (const secret of secrets) {
-    if (typeof secret !== 'string' || secret.length === 0) continue;
-    // The serialized text is JSON-escaped, so match the escaped form as well as the raw one.
-    const escaped = JSON.stringify(secret).slice(1, -1);
-    if (serialized.includes(secret) || serialized.includes(escaped)) {
+  const known = secrets.filter((secret): secret is string => typeof secret === 'string' && secret.length > 0);
+  for (const leaf of stringLeaves(value)) {
+    if (FORBIDDEN_PUBLIC_TEXT.test(leaf) || known.some((secret) => leaf.includes(secret))) {
       throw new CaseLabResultError('result contains a credential or private local path');
     }
   }
   return value;
+}
+
+/** One pass: size cap on the canonical form, then the public-safety scan. */
+function finish(validated: CaseLabResultBase, resultHash: string, secrets: readonly (string | undefined)[]): CaseLabResult {
+  const result: CaseLabResult = { ...validated, resultHash };
+  if (Buffer.byteLength(canonicalJson(result), 'utf8') > MAX_RESULT_BYTES) {
+    throw new CaseLabResultError(`result exceeds ${MAX_RESULT_BYTES} bytes`);
+  }
+  return assertCaseLabResultPublicSafe(result, secrets);
 }
 
 export function createCaseLabResult(
@@ -405,8 +385,7 @@ export function createCaseLabResult(
   secrets: readonly (string | undefined)[] = [],
 ): CaseLabResult {
   const validated = base(input);
-  const result = { ...validated, resultHash: contentHash(validated) };
-  return validateCaseLabResult(result, secrets);
+  return finish(validated, contentHash(validated), secrets);
 }
 
 export function validateCaseLabResult(
@@ -419,9 +398,5 @@ export function validateCaseLabResult(
   if (raw.resultHash !== expectedHash) {
     throw new CaseLabResultError('resultHash does not match the result content');
   }
-  const result: CaseLabResult = { ...validated, resultHash: expectedHash };
-  if (Buffer.byteLength(canonicalJson(result), 'utf8') > MAX_RESULT_BYTES) {
-    throw new CaseLabResultError(`result exceeds ${MAX_RESULT_BYTES} bytes`);
-  }
-  return assertCaseLabResultPublicSafe(result, secrets);
+  return finish(validated, expectedHash, secrets);
 }

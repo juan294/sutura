@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
@@ -18,6 +18,7 @@ import {
   type CaseLabCaseFile,
   type CaseLabResult,
 } from './result.js';
+import { SHA_PATTERN, isRecord, readBoundedJson } from './util.js';
 
 export const PACKAGE_DIR = resolve(import.meta.dirname, '..');
 export const REPOSITORY_ROOT = resolve(PACKAGE_DIR, '../..');
@@ -33,16 +34,11 @@ export class CaseLabReplayError extends Error {
 }
 
 export function loadRelease(packageDir = PACKAGE_DIR): ReleaseIdentity {
-  const value = JSON.parse(readFileSync(resolve(packageDir, 'release.json'), 'utf8')) as unknown;
-  if (
-    value === null || typeof value !== 'object'
-    || typeof (value as { version?: unknown }).version !== 'string'
-    || !/^[a-f0-9]{40}$/u.test(String((value as { actionSha?: unknown }).actionSha))
-  ) {
+  const { value } = readBoundedJson(resolve(packageDir, 'release.json'), 4_096, 'release.json', (message) => new CaseLabReplayError(message));
+  if (!isRecord(value) || typeof value.version !== 'string' || typeof value.actionSha !== 'string' || !SHA_PATTERN.test(value.actionSha)) {
     throw new CaseLabReplayError('release.json must contain a version and an exact 40-character actionSha');
   }
-  const { version, actionSha } = value as { version: string; actionSha: string };
-  return { version, actionSha };
+  return { version: value.version, actionSha: value.actionSha };
 }
 
 /** Strip the ledger method and the trace so the case file is plain JSON data. */
@@ -157,14 +153,41 @@ export interface ReplayCatalogOptions {
 }
 
 export function readReplayBundleFile(path: string): { value: unknown; sha256: string } {
-  const bytes = readFileSync(path);
-  if (bytes.byteLength > MAX_BUNDLE_BYTES) {
-    throw new CaseLabReplayError(`replay bundle ${path} exceeds ${MAX_BUNDLE_BYTES} bytes`);
-  }
+  const { value, bytes } = readBoundedJson(path, MAX_BUNDLE_BYTES, `replay bundle ${path}`, (message) => new CaseLabReplayError(message));
+  return { value, sha256: createHash('sha256').update(bytes).digest('hex') };
+}
+
+interface ResolvedCatalogOptions {
+  readonly release: ReleaseIdentity;
+  readonly now: () => Date;
+  readonly replayDir: string;
+  readonly rootDir: string;
+  readonly replay: ReplayedResultOptions['replay'];
+  /** Loaded and hash-verified once per catalog, on first use. */
+  evidence?: RecordedEvidence;
+}
+
+function resolveOptions(options: ReplayCatalogOptions): ResolvedCatalogOptions {
   return {
-    value: JSON.parse(bytes.toString('utf8')) as unknown,
-    sha256: createHash('sha256').update(bytes).digest('hex'),
+    release: options.release ?? loadRelease(),
+    now: options.now ?? (() => new Date()),
+    replayDir: options.replayDir ?? REPLAY_DIR,
+    rootDir: options.rootDir ?? REPOSITORY_ROOT,
+    replay: options.replay,
   };
+}
+
+async function resultFor(item: CaseLabCase, resolved: ResolvedCatalogOptions): Promise<CaseLabResult> {
+  const bundlePath = resolve(resolved.replayDir, `${item.id}.json`);
+  if (existsSync(bundlePath)) {
+    const { value, sha256 } = readReplayBundleFile(bundlePath);
+    return replayedResult(item, value, {
+      release: resolved.release, now: resolved.now, bundleSha256: sha256,
+      ...(resolved.replay === undefined ? {} : { replay: resolved.replay }),
+    });
+  }
+  resolved.evidence ??= loadRecordedEvidence(resolved.rootDir);
+  return recordedResult(item, resolved.evidence, { release: resolved.release, now: resolved.now });
 }
 
 /** One deterministic result for one case: a complete replay bundle when present, else the recorded live result. */
@@ -172,26 +195,13 @@ export async function deterministicResult(
   caseId: CaseLabCaseId | string,
   options: ReplayCatalogOptions = {},
 ): Promise<CaseLabResult> {
-  const item = caseLabCase(caseId);
-  const release = options.release ?? loadRelease();
-  const now = options.now ?? (() => new Date());
-  const bundlePath = resolve(options.replayDir ?? REPLAY_DIR, `${item.id}.json`);
-  if (existsSync(bundlePath)) {
-    const { value, sha256 } = readReplayBundleFile(bundlePath);
-    return replayedResult(item, value, {
-      release, now, bundleSha256: sha256,
-      ...(options.replay === undefined ? {} : { replay: options.replay }),
-    });
-  }
-  const evidence = loadRecordedEvidence(options.rootDir ?? REPOSITORY_ROOT);
-  return recordedResult(item, evidence, { release, now });
+  return resultFor(caseLabCase(caseId), resolveOptions(options));
 }
 
-/** Every case, in the roadmap order, each validated. */
+/** Every case, in the roadmap order, each validated; the recorded evidence is read once. */
 export async function replayCatalog(options: ReplayCatalogOptions = {}): Promise<CaseLabResult[]> {
+  const resolved = resolveOptions(options);
   const results: CaseLabResult[] = [];
-  for (const item of CASE_LAB_CASES) {
-    results.push(await deterministicResult(item.id, options));
-  }
+  for (const item of CASE_LAB_CASES) results.push(await resultFor(item, resolved));
   return results;
 }

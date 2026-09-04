@@ -7,9 +7,8 @@ import { canonicalJson } from './canonical.js';
 import { CASE_LAB_CASES, caseLabCase } from './cases.js';
 import { CASE_LAB_LIMITS } from './limits.js';
 import { PACKAGE_DIR } from './replay.js';
+import { MODE_LABELS, OUTCOME_LABELS } from './labels.js';
 import {
-  MODE_LABELS,
-  OUTCOME_LABELS,
   renderIndexBody,
   renderPage,
   renderPendingBody,
@@ -17,7 +16,7 @@ import {
   resultPageTitle,
   type CatalogCard,
 } from './render.js';
-import { validateCaseLabResult, type CaseLabResult } from './result.js';
+import type { CaseLabResult } from './result.js';
 
 export interface BuildSiteOptions {
   readonly outDir: string;
@@ -79,7 +78,7 @@ export async function buildSite(options: BuildSiteOptions): Promise<string[]> {
   const cards: CatalogCard[] = CASE_LAB_CASES.map((item) => {
     const result = options.catalog.find((candidate) => candidate.caseId === item.id);
     if (!result) throw new Error(`catalog is missing ${item.id}`);
-    return { item, result: validateCaseLabResult(result) };
+    return { item, result };
   });
   const css = readFileSync(options.cssPath ?? resolve(PACKAGE_DIR, 'assets/case-lab.css'), 'utf8');
   const client = options.clientBundle ?? await bundleClient();

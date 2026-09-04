@@ -247,13 +247,13 @@ describe('createCaseLabHandler', () => {
 });
 
 describe('Vercel adapters', () => {
-  it('import only the package build, release.json, and node modules', () => {
-    for (const file of ['dispatch.js', 'health.js']) {
+  it('import only the shared adapter module, the package build, release.json, and node modules', () => {
+    for (const file of ['_handler.js', 'dispatch.js', 'health.js']) {
       const source = readFileSync(resolve(import.meta.dirname, '../api', file), 'utf8');
       const specifiers = [...source.matchAll(/from\s+'([^']+)'/gu)].map((match) => match[1]);
       expect(specifiers.length).toBeGreaterThan(0);
       for (const specifier of specifiers) {
-        expect(['../dist/index.js', '../release.json'].includes(specifier ?? '') || specifier?.startsWith('node:')).toBe(true);
+        expect(['../dist/index.js', '../release.json', './_handler.js'].includes(specifier ?? '') || specifier?.startsWith('node:')).toBe(true);
       }
       expect(source).not.toMatch(/NEBIUS|CONTREE|TAVILY/u);
     }

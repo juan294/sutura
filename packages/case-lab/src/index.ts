@@ -36,25 +36,32 @@ export type {
   RunTimestamp,
 } from './limits.js';
 export {
-  CASE_LAB_MODE_LABELS,
   CASE_LAB_RESULT_SCHEMA_VERSION,
   CaseLabResultError,
-  LIVE_REQUEST_ID_PATTERN,
   MAX_RESULT_BYTES,
   assertCaseLabResultPublicSafe,
   createCaseLabResult,
-  modeLabel,
   publicGitHubUrl,
   validateCaseLabCaseFile,
   validateCaseLabResult,
 } from './result.js';
 export type {
   CaseLabCaseFile,
-  CaseLabMode,
   CaseLabResult,
   CaseLabResultBase,
   CaseLabResultLinks,
 } from './result.js';
+export {
+  LIVE_REQUEST_ID_PATTERN,
+  MODES,
+  MODE_LABELS,
+  OUTCOME_LABELS,
+  isCaseLabMode,
+  isPublicHttpsUrl,
+  modeLabel,
+} from './labels.js';
+export type { CaseLabMode, ModeDescription } from './labels.js';
+export { SHA256_PATTERN, SHA_PATTERN, isRecord, readBoundedJson, stringLeaves } from './util.js';
 export {
   GitHubDispatchError,
   createGitHubDispatchClient,
@@ -121,9 +128,6 @@ export type { CliDependencies, CliIo } from './cli.js';
 export { ACCEPTANCE_SCHEMA_VERSION, acceptance } from './acceptance.js';
 export type { AcceptanceCheck, AcceptanceOptions, AcceptanceRecord } from './acceptance.js';
 export {
-  LIVE_REQUEST_ID,
-  MODE_LABELS,
-  OUTCOME_LABELS,
   escapeHtml,
   isRenderableResult,
   modeBadge,

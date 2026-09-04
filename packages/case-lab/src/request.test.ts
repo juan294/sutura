@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CaseLabRequestError } from './cases.js';
-import { MAX_REQUEST_BYTES, parseCaseLabRequest, parseCaseLabRequestText } from './request.js';
+import { MAX_CASE_ID_LENGTH, MAX_REQUEST_BYTES, parseCaseLabRequest, parseCaseLabRequestText } from './request.js';
 
 describe('parseCaseLabRequest', () => {
   it('accepts exactly one server-defined case id', () => {
@@ -46,8 +46,8 @@ describe('parseCaseLabRequest', () => {
   });
 
   it('rejects an oversized case id in the object form before comparing it', () => {
-    expect(() => parseCaseLabRequest({ caseId: 'a'.repeat(10_000) })).toThrow(`request exceeds ${MAX_REQUEST_BYTES} bytes`);
-    expect(() => parseCaseLabRequest({ caseId: 'a'.repeat(65) })).toThrow(`request exceeds ${MAX_REQUEST_BYTES} bytes`);
+    expect(() => parseCaseLabRequest({ caseId: 'a'.repeat(10_000) })).toThrow(`caseId exceeds ${MAX_CASE_ID_LENGTH} characters`);
+    expect(() => parseCaseLabRequest({ caseId: 'a'.repeat(65) })).toThrow(`caseId exceeds ${MAX_CASE_ID_LENGTH} characters`);
   });
 
   it('rejects oversized and non-JSON text before parsing', () => {

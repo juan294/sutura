@@ -4,11 +4,11 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { contentHash } from './canonical.js';
+import { modeLabel } from './labels.js';
 import {
   CaseLabResultError,
   assertCaseLabResultPublicSafe,
   createCaseLabResult,
-  modeLabel,
   publicGitHubUrl,
   validateCaseLabResult,
   type CaseLabCaseFile,
@@ -113,7 +113,7 @@ describe('CaseLabResult', () => {
       .toContain('raw.githubusercontent.com');
     for (const value of [
       'http://github.com/juan294/sutura', 'https://user:pw@github.com/juan294/sutura', 'https://example.com/x',
-      'https://github.com.evil.com/x', 'https://github.com/x#frag', 'ftp://github.com/x', '', 42,
+      'https://github.com.evil.com/x', 'https://github.com/x#frag', 'https://github.com/x?query=1', 'ftp://github.com/x', '', 42,
     ]) {
       expect(() => publicGitHubUrl(value, 'link')).toThrow(CaseLabResultError);
     }

@@ -95,29 +95,32 @@ function siteRoot(): string {
   return document.querySelector('main')?.dataset.siteRoot ?? '/';
 }
 
-async function loadLiveResult(requestId: string, main: HTMLElement): Promise<void> {
-  const { status, body } = await fetchJson(`${RESULTS_BASE}${requestId}.json`);
-  if (status !== 200) return;
+/** Returns true once the final result has been rendered. */
+async function loadLiveResult(requestId: string, main: HTMLElement): Promise<boolean> {
+  let fetched: { status: number; body: unknown };
+  try {
+    fetched = await fetchJson(`${RESULTS_BASE}${requestId}.json`);
+  } catch {
+    return false;
+  }
+  if (fetched.status !== 200) return false;
+  const { body } = fetched;
   if (!isRenderableResult(body, CASE_LAB_CASE_IDS) || body.requestId !== requestId || body.mode !== 'live') {
     setStatus('A result was published but it is not a valid live Case Lab result for this request.');
-    return;
+    return false;
   }
   const item = caseById(body.caseId);
-  if (!item) return;
+  if (!item) return false;
   main.innerHTML = renderResultBody(body, item);
   document.title = resultPageTitle(body, item);
-  throw new Error('done');
+  return true;
 }
 
 async function pollRun(requestId: string, main: HTMLElement): Promise<void> {
   let runUrl: string | undefined;
   let caseTitle: string | undefined;
   for (let attempt = 0; attempt < MAX_POLLS; attempt += 1) {
-    try {
-      await loadLiveResult(requestId, main);
-    } catch (error) {
-      if (error instanceof Error && error.message === 'done') return;
-    }
+    if (await loadLiveResult(requestId, main)) return;
     let statusText = 'Waiting for the workflow to publish the result…';
     try {
       const { status, body } = await fetchJson(RUNS_API);

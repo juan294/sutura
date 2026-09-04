@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-
 import { parseReplayBundle } from '@sutura/core';
 
 import { CaseLabRequestError, caseLabCase, isCaseLabOutcome, type CaseLabOutcome } from './cases.js';
@@ -12,6 +10,7 @@ import {
   type CaseLabResult,
   type CaseLabResultLinks,
 } from './result.js';
+import { readBoundedJson } from './util.js';
 
 export interface PublishInputs {
   readonly requestId: string;
@@ -38,9 +37,7 @@ export function normalizeOutcome(value: string): CaseLabOutcome {
 }
 
 function readCaseFile(path: string, outcome: CaseLabOutcome): CaseLabCaseFile {
-  const bytes = readFileSync(path);
-  if (bytes.byteLength > MAX_CASE_FILE_BYTES) throw new CaseLabRequestError(`case file ${path} exceeds ${MAX_CASE_FILE_BYTES} bytes`);
-  const value = JSON.parse(bytes.toString('utf8')) as unknown;
+  const { value } = readBoundedJson(path, MAX_CASE_FILE_BYTES, `case file ${path}`, (message) => new CaseLabRequestError(message));
   return validateCaseLabCaseFile(plainCaseFile(value as CaseLabCaseFile), outcome);
 }
 

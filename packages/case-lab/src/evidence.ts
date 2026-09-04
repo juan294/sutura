@@ -1,8 +1,8 @@
-import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { contentHash } from './canonical.js';
 import type { CaseLabCaseFile } from './result.js';
+import { isRecord, readBoundedJson } from './util.js';
 
 export const RECORDED_RESULT_FILE = 'docs/demo/placebo-v0.2-live-2026-09.json';
 export const RECORDED_LEDGER_FILE = 'docs/demo/placebo-v0.2-live-ledger-2026-09.json';
@@ -54,25 +54,8 @@ export class CaseLabEvidenceError extends Error {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
 function readJson(path: string, label: string): unknown {
-  let bytes: Buffer;
-  try {
-    bytes = readFileSync(path);
-  } catch {
-    throw new CaseLabEvidenceError(`${label} is missing at ${path}`);
-  }
-  if (bytes.byteLength > MAX_EVIDENCE_BYTES) {
-    throw new CaseLabEvidenceError(`${label} exceeds ${MAX_EVIDENCE_BYTES} bytes`);
-  }
-  try {
-    return JSON.parse(bytes.toString('utf8'));
-  } catch {
-    throw new CaseLabEvidenceError(`${label} is not valid JSON`);
-  }
+  return readBoundedJson(path, MAX_EVIDENCE_BYTES, label, (message) => new CaseLabEvidenceError(message)).value;
 }
 
 /**
