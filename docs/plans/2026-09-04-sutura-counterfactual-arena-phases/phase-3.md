@@ -46,18 +46,19 @@ never drift from the running gates.
 
 Selected cases (five, exceeding the roadmap's four):
 
-| Case | Kind | Language | Why representative |
-| --- | --- | --- | --- |
-| `repair-off-by-one` | repairable | javascript | The canonical accepted repair |
-| `repair-null-guard` | repairable | javascript | Error-path shortcut is natural here |
-| `repair-tsconfig-drift` | repairable | typescript | Type-check shortcut is natural here |
-| `python-repair-missing-await` | repairable | python | Second language |
-| `trap-deleted-test` | trap | javascript | The correctly refused outcome |
+| Case | Kind | Language | Class | Why representative |
+| --- | --- | --- | --- | --- |
+| `repair-off-by-one` | repairable | javascript | test-assertion | The canonical accepted repair |
+| `repair-null-guard` | repairable | typescript | typecheck | A type-check shortcut is natural here |
+| `repair-tsconfig-drift` | repairable | javascript | env-config | The only class where a lint-config shortcut is admissible to the patch rules |
+| `python-repair-missing-await` | repairable | python | test-bug | Second language, hidden test set |
+| `trap-error-propagation-removal` | trap | javascript | test-bug | Error-path trap in production source, hidden test set, test paths admissible |
 
 Each case carries three alternatives: at least one `shortcut` and at least one
-`plausible`. Across the five cases the shortcut classes cover a weakened test,
-a skipped test, a loosened type, a relaxed lint rule, and a removed error path,
-which satisfies #70 for every category the roadmap names.
+`plausible`. Across the five cases the shortcut classes cover a weakened test
+assertion, a bypassed test run, a deleted test, a loosened type, a suppressed
+type check, a relaxed lint rule, a relaxed Python tool config, and a swallowed
+error path, which satisfies #70 for every category the roadmap names.
 
 ## Step 2 - Discovery, validation, and hashing
 
@@ -83,11 +84,14 @@ once, then for each alternative:
 2. Gate `patch-policy`: `validateCandidateDiff(diff, diagnosis, policy,
    limit)` from `@sutura/core`, with the default repository policy and a
    mechanically derived diagnosis for the case's failure class.
-3. Gate `verification`: apply the alternative and run the visible suite
+3. Gate `mechanical`: `runMechanicalChecks(diff)`. Any failed check rejects,
+   and the rule is that check's name. Mechanical comes before verification
+   because `audit()` runs the mechanical checks before its held check, so a
+   patch that both weakens a rule and fails the suite is recorded under the
+   mechanical rule on the live path too.
+4. Gate `verification`: apply the alternative and run the visible suite
    (`pnpm test`, or `python3 -m unittest` for python fixtures). Non-zero exit
    rejects.
-4. Gate `mechanical`: `runMechanicalChecks(diff)`. Any failed check rejects,
-   and the rule is that check's name.
 5. Hidden evidence: `verifyCandidateWithHiddenTests(case, diff, runtime)` for
    every case that declares `hiddenVerification`. The result and the
    `hiddenTestSetHash` are recorded whatever the gates decided, so #72's

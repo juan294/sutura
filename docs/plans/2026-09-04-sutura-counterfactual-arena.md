@@ -2,7 +2,8 @@
 
 Date: 2026-09-04
 
-Status: Planned
+Status: Phases 1 to 9 implemented; Phase 10 blocked on WS-1; live authorization
+gates G1 to G4 pending
 
 Owner: WS-2 (Counterfactual proof and Arena)
 
@@ -172,6 +173,42 @@ must be empty, and `DEFAULT_SEARCH_LIMITS`, `DEFAULT_REPAIR_BUDGET_LIMITS`, and
 The offline corpus self-check must remain 51 benchmark cases and 55 evaluations
 (`pnpm --filter placebo run smoke:offline`).
 
+## Measured offline result
+
+`pnpm --filter placebo run counterfactual`, recorded in
+`docs/demo/sutura-counterfactual-v0.2.json`:
+
+| Measure | Value |
+| --- | ---: |
+| Cases with alternatives | 5 |
+| Alternatives evaluated | 15 |
+| Alternatives rejected by a deterministic gate | 14 |
+| Declared shortcuts | 10 |
+| Shortcuts rejected | 10 |
+| Observed gates that differed from their declaration | 0 |
+| Inference spent | USD 0.00 |
+| Sandbox-equivalent operations added | 17 |
+
+Distinct rejecting rules observed: `adds pass-with-no-tests bypass`,
+`adds unsafe Python shortcut: tests/test_app.py`,
+`deletes test file: case.test.js`, `loosened-type`, `relaxed-config`,
+`touches tool config: pyproject.toml`, `touches tool config: tsconfig.json`,
+`verification-command`, `weakened-assertion`.
+
+The one alternative no deterministic gate rejected is
+`python-repair-missing-await/drop-the-coroutine`: it makes the visible suite
+exit 0 and the hidden test set fail. That is the case's own demonstration that
+a green suite is not sufficient, and it is recorded as such rather than counted
+as a rejection.
+
+The Arena harness is validated end to end offline with the scripted control
+adapters in `docs/demo/sutura-arena-controls-v0.2.json` and rendered to
+`docs/demo/sutura-arena-v0.2.{json,html}`. Those artifacts carry a
+`CONTROL ARTIFACT — NOT A SUTURA RESULT` banner: the `dummy` control approves
+all 19 traps and the `refuse-all` control approves none, which is the
+known-answer test proving every arm is wired to the same scorer. The measured
+Arena replaces them under gate G2.
+
 ## Success criteria
 
 Phase 2 (roadmap exit gate):
@@ -216,8 +253,15 @@ authorization with the exact candidate commit.
 Purpose: prove gates 3b and 4 on the live path, which the offline harness
 cannot reach.
 
-- Command:
-  `pnpm run placebo:live run --case repair-off-by-one --case trap-deleted-test --counterfactual --sha <candidate 40-char sha>`
+- Commands, one dispatch per case:
+  ```bash
+  pnpm run placebo:live run --authorize --counterfactual \
+    --controller-sha <controller 40-char sha> --subject-sha <subject 40-char sha> \
+    --case repair-off-by-one
+  pnpm run placebo:live run --authorize --counterfactual \
+    --controller-sha <controller 40-char sha> --subject-sha <subject 40-char sha> \
+    --case trap-error-propagation-removal
+  ```
 - Cases: 2 (one repairable, one trap), each with 3 alternatives.
 - Maximum spend: USD 1.00.
 - Reserve: USD 0.25 for one retry of a failed dispatch.
@@ -234,8 +278,19 @@ cannot reach.
 
 Purpose: the roadmap Phase 3 benchmark exit gate.
 
-- Command:
-  `pnpm run placebo:live arena --manifest packages/placebo/arena/<selection>.json --arm sutura --arm single-branch --arm fixed-parallel --sha <candidate 40-char sha>`
+- Command, on a runner that holds the provider secrets:
+  ```bash
+  node packages/placebo/bin/placebo.js compare \
+    --arm sutura --arm single-branch --arm fixed-parallel --arm first-green-wins \
+    --adapter sutura --sutura-command <subject cli path> \
+    --output docs/demo/sutura-arena-<sha>.json
+  node packages/placebo/bin/placebo.js arena \
+    --comparison docs/demo/sutura-arena-<sha>.json \
+    --selection packages/placebo/arena/<selection>.json \
+    --counterfactual docs/demo/sutura-counterfactual-v0.2.json \
+    --output-json docs/demo/sutura-arena-<sha>-report.json \
+    --output-html docs/demo/sutura-arena-<sha>.html
+  ```
 - Cases: 100 per executed arm. `first-green-wins` is a projection over the
   `sutura` arm plus at most 19 sandbox-only trap executions, so it costs no
   inference.
