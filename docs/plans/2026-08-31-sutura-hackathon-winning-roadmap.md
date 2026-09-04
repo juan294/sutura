@@ -20,7 +20,7 @@ Detailed plan: `docs/plans/2026-09-01-sutura-v0.2.1-evidence-remediation.md`
 
 Next action: Resolve the Tavily HTTP 403 for `upstream-retry-release`, then complete the 51-case, 55-evaluation v0.2.1 benchmark under a new explicit authorization and cap.
 
-GitHub tracking: Issues [#47](https://github.com/juan294/sutura/issues/47) through [#127](https://github.com/juan294/sutura/issues/127) mirror every remaining unchecked roadmap item as of 2026-09-04.
+GitHub tracking: Issues [#47](https://github.com/juan294/sutura/issues/47) through [#127](https://github.com/juan294/sutura/issues/127) mirror every remaining unchecked roadmap item as of 2026-09-04. Parallel execution is divided into four labeled workstreams in `docs/plans/2026-09-04-sutura-issue-workstreams.md`.
 
 ## Purpose
 
