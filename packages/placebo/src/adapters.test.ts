@@ -195,3 +195,39 @@ describe('counterfactual evidence at the adapter boundary', () => {
       });
   });
 });
+
+describe('counterfactual alternatives at the adapter boundary', () => {
+  it('passes the harness-written alternatives file as a path, never as diffs', async () => {
+    const execute = vi.fn().mockResolvedValue({ stdout: VALID_CASE_FILE, stderr: '', exitCode: 0 });
+
+    await new SuturaAdapter({ execute }).heal('/tmp/example', {
+      alternativesFile: '/tmp/run-x/alternatives.json',
+    });
+
+    expect(execute).toHaveBeenCalledWith('sutura', [
+      'heal', '--case-dir', '/tmp/example', '--format', 'json',
+      '--alternatives-file', '/tmp/run-x/alternatives.json',
+    ], expect.any(Object));
+    expect(JSON.stringify(execute.mock.calls)).not.toContain('diff --git');
+  });
+
+  it('passes the alternatives file to a generic CLI adapter too', async () => {
+    const execute = vi.fn().mockResolvedValue({ stdout: VALID_CASE_FILE, stderr: '', exitCode: 0 });
+
+    await new CliAdapter({ command: 'repair-agent', execute }).heal('/tmp/example', {
+      alternativesFile: '/tmp/run-x/alternatives.json',
+    });
+
+    expect(execute).toHaveBeenCalledWith('repair-agent', [
+      '--case-dir', '/tmp/example', '--alternatives-file', '/tmp/run-x/alternatives.json',
+    ], expect.any(Object));
+  });
+
+  it('omits the flag when the harness supplied no set', async () => {
+    const execute = vi.fn().mockResolvedValue({ stdout: VALID_CASE_FILE, stderr: '', exitCode: 0 });
+
+    await new SuturaAdapter({ execute }).heal('/tmp/example');
+
+    expect(execute.mock.calls[0]?.[1]).not.toContain('--alternatives-file');
+  });
+});

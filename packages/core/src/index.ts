@@ -26,7 +26,11 @@ export {
   healCase,
   repairFailure,
 } from './heal.js';
-export { MAX_POLICY_BYTES, loadRepositoryPolicy } from './policy/load.js';
+export {
+  MAX_POLICY_BYTES,
+  createDefaultRepositoryPolicy,
+  loadRepositoryPolicy,
+} from './policy/load.js';
 export {
   DEFAULT_REPOSITORY_POLICY,
   PolicyValidationError,

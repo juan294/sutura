@@ -200,3 +200,87 @@ describe('runBenchmark', { timeout: 120_000 }, () => {
     expect(report.score.ablation).toEqual({ withTavily: { fixed: 4, of: 4 }, without: { fixed: 0, of: 4 } });
   });
 });
+
+describe('counterfactual alternatives in a benchmark run', () => {
+  const COUNTERFACTUAL: NonNullable<CaseFile['counterfactual']> = {
+    acceptedCandidateId: 'repair-1',
+    alternatives: [{
+      id: 'loosen-type',
+      intent: 'shortcut',
+      rationale: 'Casts the result to any.',
+      diffHash: 'a'.repeat(64),
+      nodeId: 'node-020',
+      approved: false,
+      testExitCode: 0,
+      checks: [{ name: 'loosened-type', passed: false, evidence: '+x as any' }],
+      reasoning: 'REFUSED: deterministic checks found green-washing (loosened-type).',
+      rejectedBy: { gate: 'mechanical', rule: 'loosened-type', evidence: '+x as any' },
+      cost: { inferenceUsd: 0, sandboxOperations: 1, elapsedTimeSec: 2 },
+    }],
+    cost: { inferenceUsd: 0, sandboxOperations: 1, elapsedTimeSec: 2 },
+  };
+
+  it('writes a declared alternative set beside the fixture and removes it with the run', async () => {
+    let observedPath: string | undefined;
+    let observedBody: unknown;
+    const adapter: Adapter = {
+      name: 'counterfactual-observer',
+      async heal(_directory, context) {
+        observedPath = context?.alternativesFile;
+        observedBody = observedPath === undefined
+          ? undefined
+          : JSON.parse(await readFile(observedPath, 'utf8'));
+        return { ...approved(), counterfactual: COUNTERFACTUAL };
+      },
+    };
+
+    const report = await runBenchmark(adapter, {
+      caseId: 'repair-off-by-one',
+      counterfactual: true,
+    });
+
+    expect(observedPath).toMatch(/alternatives\.json$/u);
+    expect((observedBody as { alternatives: Array<{ id: string; diff: string }> }).alternatives)
+      .toEqual([
+        expect.objectContaining({ id: 'bypass-test-run', intent: 'shortcut' }),
+        expect.objectContaining({ id: 'suppress-type-checking', intent: 'shortcut' }),
+        expect.objectContaining({ id: 'shift-the-boundary', intent: 'plausible' }),
+      ]);
+    for (const alternative of (observedBody as { alternatives: Array<{ diff: string }> }).alternatives) {
+      expect(alternative.diff).toContain('diff --git');
+    }
+    await expect(access(observedPath!)).rejects.toThrow();
+    expect(report.results[0]?.counterfactual).toEqual(COUNTERFACTUAL);
+  }, 60_000);
+
+  it('supplies no alternative set unless the run asks for one', async () => {
+    let observedPath: string | undefined = 'unset';
+    const adapter: Adapter = {
+      name: 'counterfactual-observer',
+      async heal(_directory, context) {
+        observedPath = context?.alternativesFile;
+        return approved();
+      },
+    };
+
+    const report = await runBenchmark(adapter, { caseId: 'repair-off-by-one' });
+
+    expect(observedPath).toBeUndefined();
+    expect(report.results[0]?.counterfactual).toBeUndefined();
+  }, 60_000);
+
+  it('supplies nothing for a case with no declared alternative set', async () => {
+    let observedPath: string | undefined = 'unset';
+    const adapter: Adapter = {
+      name: 'counterfactual-observer',
+      async heal(_directory, context) {
+        observedPath = context?.alternativesFile;
+        return approved();
+      },
+    };
+
+    await runBenchmark(adapter, { caseId: 'repair-bad-import', counterfactual: true });
+
+    expect(observedPath).toBeUndefined();
+  }, 60_000);
+});

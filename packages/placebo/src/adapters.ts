@@ -5,10 +5,15 @@ import {
   completedTriageVerdict,
 } from '@sutura/core';
 
+import { assertArmEnvironment } from './baseline.js';
 import type { Adapter, AdapterContext, CaseFile } from './types.js';
 
 interface ExecutionResult { stdout: string; stderr: string; exitCode: number; failure?: string }
-export interface ExecuteOptions { timeoutMs: number; maxOutputBytes: number }
+export interface ExecuteOptions {
+  timeoutMs: number;
+  maxOutputBytes: number;
+  env?: Readonly<Record<string, string>>;
+}
 export type Execute = (command: string, args: string[], options: ExecuteOptions) => Promise<ExecutionResult>;
 
 const DEFAULT_TIMEOUT_MS = 10 * 60_000;
@@ -42,7 +47,11 @@ function executeProcess(command: string, args: string[], options: ExecuteOptions
     let stderr = '';
     let outputBytes = 0;
     let failure: string | undefined;
-    const child = spawn(command, args, { shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, args, {
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      ...(options.env === undefined ? {} : { env: { ...process.env, ...options.env } }),
+    });
     const finish = (exitCode: number): void => {
       if (settled) return;
       settled = true;
@@ -243,6 +252,12 @@ export interface CliAdapterOptions {
   timeoutMs?: number;
   maxOutputBytes?: number;
   execute?: Execute;
+  /**
+   * Extra environment for the adapter process. Only the comparison arm's
+   * search-shape names are permitted, so an arm can never change a model, a
+   * budget, or a provider.
+   */
+  env?: Readonly<Record<string, string>>;
 }
 
 export class CliAdapter implements Adapter {
@@ -253,6 +268,7 @@ export class CliAdapter implements Adapter {
   protected readonly timeoutMs: number;
   protected readonly maxOutputBytes: number;
   protected readonly execute: Execute;
+  protected readonly env: Readonly<Record<string, string>> | undefined;
 
   constructor(options: CliAdapterOptions) {
     this.command = options.command;
@@ -261,6 +277,8 @@ export class CliAdapter implements Adapter {
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
     this.execute = options.execute ?? executeProcess;
+    if (options.env !== undefined) assertArmEnvironment(options.env);
+    this.env = options.env;
     this.name = `cli:${this.command}`;
   }
 
@@ -268,6 +286,7 @@ export class CliAdapter implements Adapter {
     return [
       ...this.args, '--case-dir', caseDir,
       ...(context?.candidateDiff ? ['--candidate-diff', context.candidateDiff] : []),
+      ...(context?.alternativesFile ? ['--alternatives-file', context.alternativesFile] : []),
       ...(!this.tavilyEnabled ? ['--no-tavily'] : []),
     ];
   }
@@ -276,6 +295,7 @@ export class CliAdapter implements Adapter {
     try {
       const result = await this.execute(this.command, this.commandArgs(caseDir, context), {
         timeoutMs: this.timeoutMs, maxOutputBytes: this.maxOutputBytes,
+        ...(this.env === undefined ? {} : { env: this.env }),
       });
       return parseCaseFile(result, runtimeFor(context));
     } catch (error) {
@@ -287,6 +307,7 @@ export class CliAdapter implements Adapter {
     return new CliAdapter({
       command: this.command, args: this.args, tavilyEnabled: enabled, timeoutMs: this.timeoutMs,
       maxOutputBytes: this.maxOutputBytes, execute: this.execute,
+      ...(this.env === undefined ? {} : { env: this.env }),
     });
   }
 }
@@ -303,11 +324,16 @@ export class SuturaAdapter extends CliAdapter {
       'heal', '--case-dir', caseDir, '--format', 'json',
       ...(context?.language === undefined ? [] : ['--runtime', runtimeFor(context)]),
       ...(context?.candidateDiff ? ['--candidate-diff', context.candidateDiff] : []),
+      ...(context?.alternativesFile ? ['--alternatives-file', context.alternativesFile] : []),
       ...(!this.tavilyEnabled ? ['--no-tavily'] : []),
     ];
   }
   override withTavily(enabled: boolean): Adapter {
-    return new SuturaAdapter({ command: this.command, tavilyEnabled: enabled, timeoutMs: this.timeoutMs, maxOutputBytes: this.maxOutputBytes, execute: this.execute });
+    return new SuturaAdapter({
+      command: this.command, tavilyEnabled: enabled, timeoutMs: this.timeoutMs,
+      maxOutputBytes: this.maxOutputBytes, execute: this.execute,
+      ...(this.env === undefined ? {} : { env: this.env }),
+    });
   }
 }
 

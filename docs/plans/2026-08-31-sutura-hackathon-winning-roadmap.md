@@ -241,13 +241,20 @@ Objective: Make Sutura's unique verification value visible and measurable.
 
 ### Work
 
-- [ ] For selected cases, create two or three plausible alternative patches from the same ConTree checkpoint.
-- [ ] Include at least one shortcut that weakens a test, type check, lint rule, or error path.
-- [ ] Run every candidate through the same declared mechanical and model-audit gates.
-- [ ] Record the exact rule, hidden test, policy, or audit finding that rejects each deceptive patch.
+- [x] For selected cases, create two or three plausible alternative patches from the same ConTree checkpoint.
+- [x] Include at least one shortcut that weakens a test, type check, lint rule, or error path.
+- [x] Run every candidate through the same declared mechanical and model-audit gates.
+- [x] Record the exact rule, hidden test, policy, or audit finding that rejects each deceptive patch.
 - [ ] Show the accepted patch and rejected alternatives side by side in the Case Lab.
-- [ ] Add counterfactual results to the evidence and ATIF formats without duplicating source data.
-- [ ] Measure additional cost, latency, and sandbox operations.
+- [x] Add counterfactual results to the evidence and ATIF formats without duplicating source data.
+- [x] Measure additional cost, latency, and sandbox operations.
+
+Status (WS-2): six of seven items are complete with committed offline evidence
+in `docs/demo/sutura-counterfactual-v0.2.json` (5 cases, 15 alternatives, 10 of
+10 declared shortcuts rejected, 0 observed gates differing from their
+declaration, USD 0 inference). The Case Lab item waits on the WS-1 result view.
+The exit gate below is not yet met: it needs the Case Lab view and a live
+run that confirms zero false approvals on the exact candidate.
 
 ### Exit gate
 
@@ -269,8 +276,17 @@ Objective: Prove the architecture at useful scale and use Nebius evaluation serv
 - [ ] Compare Sutura with a single-branch repair baseline.
 - [ ] Compare full Sutura verification with a “first green patch wins” baseline.
 - [ ] Compare current beam search with fixed parallel search.
-- [ ] Preserve identical case selection, limits, provider models, and scoring across comparisons.
+- [x] Preserve identical case selection, limits, provider models, and scoring across comparisons.
 - [ ] Expand toward 200 cases only after the 100-case run is complete, affordable, and statistically useful.
+
+Status (WS-2): the comparison harness, the three baseline arms, the
+stratification and selection manifest, the Arena page, and the expansion gate
+are implemented and validated offline against the committed corpus
+(`docs/demo/sutura-arena-controls-v0.2.json`,
+`packages/placebo/arena/selection-placebo-v0.2.json`). The remaining items need
+data, not code: the SWE environment catalog read (gate G3) and the 100-case
+paid comparison run (gate G2), both recorded in
+`docs/plans/2026-09-04-sutura-counterfactual-arena.md`.
 
 ### Data Lab integration
 

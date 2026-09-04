@@ -10,15 +10,28 @@
   "exports": {
     ".": "./dist/index.js"
   },
-  "files": ["bin", "corpus", "dist", "scripts", "vendor", "README.md"],
+  "files": [
+    "bin",
+    "corpus",
+    "counterfactual",
+    "dist",
+    "scripts",
+    "vendor",
+    "README.md"
+  ],
   "dependencies": {
     "@sutura/core": "workspace:*",
     "@sutura/evaluation": "workspace:*"
   },
   "scripts": {
+    "arena": "node bin/placebo.js arena",
+    "arena:controls": "node scripts/generate-control-arena.mjs",
     "build": "tsc -p tsconfig.build.json",
+    "compare": "node bin/placebo.js compare",
+    "counterfactual": "node bin/placebo.js counterfactual",
     "lint": "eslint src bin scripts",
     "manifest:v02": "node scripts/generate-v02-manifests.mjs",
+    "select": "node bin/placebo.js select",
     "self-check": "vitest run src/corpus.test.ts",
     "smoke:offline": "node scripts/verify-test-runtime.mjs && node scripts/smoke-offline-runtime.mjs",
     "test": "vitest run src --no-file-parallelism",

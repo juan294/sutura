@@ -4,6 +4,7 @@ import { access, cp, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { runMechanicalChecks } from '@sutura/core';
 
 import { applyPatch, createCorpusManifest, discoverBenchmarkCases, discoverCases, prepareFixture, selfCheckCorpus, verifyCandidateWithHiddenTests } from './corpus.js';
@@ -118,6 +119,16 @@ describe('Placebo v0.2 corpus', () => {
     expect(first.corpusHash).toMatch(/^[a-f0-9]{64}$/);
     expect(first.cases.every(({ contentHash }) => /^[a-f0-9]{64}$/u.test(contentHash))).toBe(true);
     expect(first.cases.filter(({ hiddenTestSetHash }) => hiddenTestSetHash !== undefined)).toHaveLength(15);
+  });
+
+  it('keeps the frozen v0.2 corpus hash byte-identical to the committed manifest', async () => {
+    const committed: unknown = JSON.parse(await readFile(
+      fileURLToPath(new URL('../../../docs/demo/placebo-v0.2-corpus.json', import.meta.url)),
+      'utf8',
+    ));
+
+    expect((await createCorpusManifest()).corpusHash)
+      .toBe((committed as { corpusHash: string }).corpusHash);
   });
 
   it('keeps every corpus file public-safe and the network simulator outbound-free', async () => {

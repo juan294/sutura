@@ -194,17 +194,25 @@ async function isPythonFixture(fixtureDirectory: string): Promise<boolean> {
   }
 }
 
-async function runFixture(
+/** Runs the fixture's declared visible suite and returns its exit code. */
+export async function runFixtureSuite(
   fixtureDirectory: string,
   extraEnv: Readonly<Record<string, string>> = {},
-): Promise<boolean> {
+): Promise<number> {
   if (await isPythonFixture(fixtureDirectory)) {
     return (await run('python3', ['-B', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py'], fixtureDirectory, {
       PYTHONDONTWRITEBYTECODE: '1',
       ...extraEnv,
-    })).exitCode === 0;
+    })).exitCode;
   }
-  return (await run('pnpm', ['test'], fixtureDirectory, extraEnv)).exitCode === 0;
+  return (await run('pnpm', ['test'], fixtureDirectory, extraEnv)).exitCode;
+}
+
+async function runFixture(
+  fixtureDirectory: string,
+  extraEnv: Readonly<Record<string, string>> = {},
+): Promise<boolean> {
+  return (await runFixtureSuite(fixtureDirectory, extraEnv)) === 0;
 }
 
 async function hiddenTestSetHash(directory: string): Promise<string> {
