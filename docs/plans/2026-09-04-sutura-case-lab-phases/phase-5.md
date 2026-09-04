@@ -81,7 +81,7 @@ node packages/case-lab/bin/case-lab.js acceptance --base-url http://127.0.0.1:41
 
 ## Success criteria
 
-- [ ] Every result URL is a stable GET that re-renders after refresh.
-- [ ] Eleven result sections render from the catalog for all five cases.
-- [ ] Acceptance script passes locally and is documented for WS-4.
-- [ ] Manual mobile and desktop review recorded in the notes file.
+- [x] Every result URL is a stable GET that re-renders after refresh.
+- [x] Eleven result sections render from the catalog for all five cases.
+- [x] Acceptance script passes locally and is documented for WS-4.
+- [x] Manual mobile and desktop review recorded in the notes file.

@@ -70,6 +70,6 @@ Chose: 404 for unknown paths, 405 for a wrong method, 415 for a wrong content ty
 
 ## Verification record
 
-- Phases 2 to 6: `pnpm --filter @sutura/case-lab test` 103 tests, `pnpm run typecheck`, `pnpm run lint`, `pnpm run build` green at each phase commit.
+- Phases 2 to 6: `pnpm --filter @sutura/case-lab test` 107 tests, `pnpm run typecheck`, `pnpm run lint`, `pnpm run build` green at each phase commit.
 - Demo repository: `pnpm test` 24 tests, `pnpm run lint`, `pnpm run typecheck`, `pnpm run verify:readme` green at the demo commit.
 - Manual: desktop 1280 px and mobile 375 px review of `/`, `/replay/javascript-repair/`, `/replay/greenwash-trap/` on the local build, 2026-09-04.

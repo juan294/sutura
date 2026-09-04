@@ -27,6 +27,6 @@ No public document tells a visitor to run a `workflow_dispatch` workflow that re
 
 ## Success criteria
 
-- [ ] `sutura-demo/README.md` has no instruction to run a workflow manually.
-- [ ] `README.md` describes the Case Lab and the gate honestly.
-- [ ] Both README checks pass.
+- [x] `sutura-demo/README.md` has no instruction to run a workflow manually.
+- [x] `README.md` describes the Case Lab and the gate honestly.
+- [x] Both README checks pass.

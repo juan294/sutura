@@ -73,6 +73,6 @@ node packages/case-lab/bin/case-lab.js catalog --out /tmp/case-lab-catalog   # f
 
 ## Success criteria
 
-- [ ] Every case has a tested deterministic result source.
-- [ ] Replay bundles are bound to the release sha and fail closed when partial or drifted.
-- [ ] `mode` and its three labels are the single source of truth for live versus replay.
+- [x] Every case has a tested deterministic result source.
+- [x] Replay bundles are bound to the release sha and fail closed when partial or drifted.
+- [x] `mode` and its three labels are the single source of truth for live versus replay.

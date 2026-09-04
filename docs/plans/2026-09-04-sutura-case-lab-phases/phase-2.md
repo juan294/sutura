@@ -87,7 +87,7 @@ pnpm --filter @sutura/case-lab test && pnpm run typecheck && pnpm run lint && pn
 
 ## Success criteria
 
-- [ ] Package builds, lints, typechecks, and tests pass under `pnpm -r`.
-- [ ] `parseCaseLabRequest` accepts exactly `{ caseId: <one of five> }` and nothing else.
-- [ ] `caseLabDispatchDecision` is total, ordered, and fail-closed on invalid counts.
-- [ ] `validateCaseLabResult` round-trips `createCaseLabResult` and rejects a tampered hash.
+- [x] Package builds, lints, typechecks, and tests pass under `pnpm -r`.
+- [x] `parseCaseLabRequest` accepts exactly `{ caseId: <one of five> }` and nothing else.
+- [x] `caseLabDispatchDecision` is total, ordered, and fail-closed on invalid counts.
+- [x] `validateCaseLabResult` round-trips `createCaseLabResult` and rejects a tampered hash.

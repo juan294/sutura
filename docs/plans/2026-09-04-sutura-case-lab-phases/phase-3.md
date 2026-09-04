@@ -72,6 +72,6 @@ pnpm --filter @sutura/case-lab test && pnpm run typecheck && pnpm run lint && pn
 
 ## Success criteria
 
-- [ ] All four limits and the disable switch are enforced before the dispatch call, with tests.
-- [ ] The dispatcher's environment allowlist excludes provider secrets, with tests.
-- [ ] README documents the exact token permissions and the workflow permission set.
+- [x] All four limits and the disable switch are enforced before the dispatch call, with tests.
+- [x] The dispatcher's environment allowlist excludes provider secrets, with tests.
+- [x] README documents the exact token permissions and the workflow permission set.
