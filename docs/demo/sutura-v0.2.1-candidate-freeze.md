@@ -43,9 +43,19 @@ caps in the WS-4 plan.
 ## Gate state at freeze
 
 - Feature freeze and admission policy: active.
-- Sequential local CI: pending on the first operative candidate containing this
-  record.
-- Candidate install and external-matrix contract: pending after local CI.
+- Sequential local CI: passed on exact candidate
+  `75a2810fb4586cd36238dedd630303799e706c7a` after admitted demo-blocking
+  commit `622feea40f56b2455a5effd8daeee5acbd9730a1` reset the earlier pass.
+  The suite included 179 Placebo tests in 674.00 seconds and packed
+  `sutura@0.2.1` with the exact Action SHA.
+- Candidate install: passed for `sutura@0.2.1`, Action commit
+  `75a2810fb4586cd36238dedd630303799e706c7a`, and package content hash
+  `dc33f1a985190a336f040165aa982ae4bad4da9fdbf2eb68cc90dc1376887ec6`;
+  setup and doctor completed without failures, unclear instructions, or manual
+  intervention.
+- External-matrix and release-workflow contracts: 16 tests passed on the same
+  candidate. The live candidate matrix and ConTree-bearing release-candidate
+  workflow remain gated; no live workflow was dispatched.
 - Provider and ConTree canaries: blocked at G4 authorization.
 - Release and public acceptance: blocked on all preceding candidate evidence
   and their separate authorization gates.

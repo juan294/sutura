@@ -20,11 +20,10 @@ provider and ConTree canary authorization
 
 Detailed plan: `docs/plans/2026-09-04-sutura-ws4-evidence-submission.md`
 
-Next action: Complete the sequential local candidate and installation gates on
-the frozen line, then authorize and run G4 once to produce the provider-contract
-and runtime-image canary artifacts. After G4, run the read-only Placebo gate and
-present G1 for the single `upstream-retry-release` proof. No paid dispatch has
-been authorized.
+Next action: Authorize and run G4 once on the current exact frozen candidate to
+produce the provider-contract and runtime-image canary artifacts. After G4, run
+the read-only Placebo gate and present G1 for the single
+`upstream-retry-release` proof. No paid dispatch has been authorized.
 
 GitHub tracking: Issues [#47](https://github.com/juan294/sutura/issues/47) through [#127](https://github.com/juan294/sutura/issues/127) mirror every remaining unchecked roadmap item as of 2026-09-04. Parallel execution is divided into four labeled workstreams in `docs/plans/2026-09-04-sutura-issue-workstreams.md`.
 
@@ -141,7 +140,7 @@ The manifest is a tracking and consistency check. It does not replace direct pro
 | 3 | Sep 22-Oct 5 | Sutura Arena and Data Lab experiment | Phases 0 and 2 | Implementation and control artifacts merged; live evidence gated |
 | 4 | Oct 6-12 | External adoption and product hardening | Public Case Lab | Not started |
 | 5 | Oct 13-20 | Submission story and judge assets | Phases 1-4 | Active: qualitative source complete; measured evidence blocked |
-| 6 | Oct 21-24 | Feature freeze and final release candidate | All product phases | Active: feature freeze on integrated candidate line; local gates next |
+| 6 | Oct 21-24 | Feature freeze and final release candidate | All product phases | Active: exact local CI and install contracts complete; G4 next |
 | 7 | Oct 25-29 | Public acceptance and submission | Final public release | Not started |
 | Buffer | Oct 30 | Emergency submission correction only | Submission created | Reserved |
 
@@ -408,7 +407,9 @@ Objective: Freeze one submission candidate and prove its complete local and publ
   from integrated candidate base `096a48e7ffb5e95103ee91746644386bba1a0c12`.
 - [x] Accept only security, release, evidence, and demo-blocking fixes after the
   freeze; each admitted fix replaces the candidate and resets its gates.
-- [ ] Run `pnpm run ci:local` sequentially on the exact candidate.
+- [x] Run `pnpm run ci:local` sequentially on exact candidate
+  `75a2810fb4586cd36238dedd630303799e706c7a` after admitted demo-blocking
+  commit `622feea40f56b2455a5effd8daeee5acbd9730a1` reset the earlier pass.
 - [ ] Run candidate installation and external matrix checks.
 - [ ] Run live provider and ConTree contract canaries under an authorized cap.
 - [ ] Review code reuse, quality, and efficiency with `codex-simplify`.
