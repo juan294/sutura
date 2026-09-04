@@ -18,10 +18,10 @@ Current phase: Phase 0 remediation and Phase 5 source preparation - Active
 
 Detailed plan: `docs/plans/2026-09-04-sutura-ws4-evidence-submission.md`
 
-Next action: Implement dispatch-edge push-freeze enforcement and bounded,
-fail-closed Tavily 403 recovery in the WS-4 worktree; then present the exact
-candidate-bound authorization gate for `upstream-retry-release` while the
-qualitative Phase 5 submission source continues.
+Next action: Integrate the locally verified WS-4 runner, Tavily, and qualitative
+submission changes on `develop`, confirm remote CI, then present authorization
+gate G1 for the exact `upstream-retry-release` candidate. No paid dispatch has
+been authorized.
 
 GitHub tracking: Issues [#47](https://github.com/juan294/sutura/issues/47) through [#127](https://github.com/juan294/sutura/issues/127) mirror every remaining unchecked roadmap item as of 2026-09-04. Parallel execution is divided into four labeled workstreams in `docs/plans/2026-09-04-sutura-issue-workstreams.md`.
 
@@ -341,13 +341,13 @@ Objective: Convert the verified product into a complete, coherent submission.
 
 ### Devpost package
 
-- [ ] Project title and one-sentence value statement.
-- [ ] Problem, audience, and why existing “fix CI” tools are insufficient.
-- [ ] Product workflow with one clear architecture diagram.
-- [ ] Direct explanation of Nano, Super, Ultra, Token Factory, ConTree, Data Lab, and NVIDIA ATIF or NeMo use.
+- [x] Project title and one-sentence value statement.
+- [x] Problem, audience, and why existing “fix CI” tools are insufficient.
+- [x] Product workflow with one clear architecture diagram.
+- [x] Direct explanation of Nano, Super, Ultra, Token Factory, ConTree, Data Lab, and NVIDIA ATIF or NeMo use.
 - [ ] Measured Placebo, dogfood, Arena, cost, and external-user results.
-- [ ] Significant work completed after the submission period started.
-- [ ] Nebius and NVIDIA product feedback.
+- [x] Significant work completed after the submission period started.
+- [x] Nebius and NVIDIA product feedback.
 - [ ] Public repository, working demo, release, Marketplace, benchmark, and evidence links.
 
 ### Video plan
@@ -492,9 +492,9 @@ Update this table only when the direct evidence exists. Link the evidence and re
 | Data Lab batch experiment | Not started | Phase 3 | Local export only; upload disabled |
 | External installs | Not started | Phase 4 | Three accepted records required |
 | Marketplace evidence | Not started | Phase 4 and Phase 6 | No accepted current record |
-| Nebius feedback | Not started | Phase 5 | Final measured report required |
+| Nebius feedback | Active | Phase 5 | Qualitative draft in `docs/feedback/2026-10-sutura-nebius-feedback.md`; final measured report remains gated |
 | Public video | Not started | Phase 5 | Public YouTube URL required |
-| Devpost submission | Not started | Phase 7 | Explicit submission authorization required |
+| Devpost submission | Active | Phase 7 | Qualitative source and video script in `docs/devpost/`; measured assembly and update remain gated |
 
 ## Cost and authorization ledger
 

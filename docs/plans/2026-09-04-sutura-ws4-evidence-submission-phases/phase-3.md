@@ -1,6 +1,6 @@
 # Phase 3: Phase 5 qualitative submission source
 
-Status: Ready after Phase 1
+Status: Locally verified; integration pending
 
 Issues: #99, #100, #101, #102, #105, #104, draft #56 and #57
 

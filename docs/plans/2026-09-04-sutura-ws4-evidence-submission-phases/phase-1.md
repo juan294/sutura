@@ -1,6 +1,6 @@
 # Phase 1: dispatch freeze and Tavily recovery
 
-Status: Active
+Status: Locally verified; integration pending
 
 Issues prepared: #47
 
