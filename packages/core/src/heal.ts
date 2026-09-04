@@ -44,6 +44,10 @@ import {
 } from './engine/repair-budget.js';
 import { adaptiveSearch, DEFAULT_SEARCH_LIMITS, type SearchNode } from './engine/search.js';
 import type { SearchLimits } from './config.js';
+import {
+  sandboxExecutableCommand,
+  sandboxTargetCommand,
+} from './engine/sandbox-command.js';
 import { shellQuote } from './engine/shell.js';
 import { triage } from './engine/triage.js';
 import { notRunTriageVerdict } from './engine/triage.js';
@@ -64,9 +68,14 @@ import type { CapacitySnapshot } from './llm/types.js';
 import type { ChatMessage, ChatOptions, TierLlm } from './llm/types.js';
 import type { ModelTier } from './llm/cost.js';
 import { createHash } from 'node:crypto';
+import { enforceRepositoryPolicy } from './audit/repository-policy.js';
+import { evaluateCounterfactuals } from './counterfactual/evaluate.js';
+import type {
+  CounterfactualAlternative,
+  CounterfactualEvidence,
+} from './counterfactual/types.js';
 import {
   evaluatePatchPolicy,
-  evaluateResourceThresholds,
   filterPolicyDeniedText,
 } from './policy/evaluate.js';
 import { createDefaultRepositoryPolicy } from './policy/load.js';
@@ -105,6 +114,7 @@ export interface RepairFailureContext {
   lockfileDiff?: string;
   dependencyHints?: readonly string[];
   candidateDiff?: string;
+  counterfactuals?: readonly CounterfactualAlternative[];
   policy?: RepositoryPolicy;
   policyEvidence?: PolicyEvidence;
   stageLedger?: StageLedger;
@@ -558,13 +568,7 @@ export async function prepareSandbox(
   return { ok: true, imageId: initialized.imageId };
 }
 
-export function sandboxTargetCommand(command: string, runtime: RuntimeAdapter = NODE_RUNTIME): string {
-  return `sh -lc ${shellQuote(sandboxExecutableCommand(command, runtime))}`;
-}
-
-export function sandboxExecutableCommand(command: string, runtime: RuntimeAdapter = NODE_RUNTIME): string {
-  return runtime.normalizeCommand(command);
-}
+export { sandboxExecutableCommand, sandboxTargetCommand };
 
 const PNPM_RECURSIVE_TEST_COMMAND = /^pnpm\s+(?:-r|--recursive)\s+test$/u;
 const PNPM_WORKSPACE_TEST_FAILURE = /\b(packages\/[A-Za-z0-9_@./-]+)\s+test:.*(?:\bFAIL\b|AssertionError|\bfailed\b)/iu;
@@ -629,6 +633,7 @@ function makeCaseFile(
   auditVerdict?: CaseFile['audit'],
   search?: SearchEvidence[],
   selectedCandidate?: Candidate,
+  counterfactual?: CounterfactualEvidence,
 ): CaseFile {
   const trace = ctx.traceRecorder;
   if (auditVerdict !== undefined) {
@@ -662,6 +667,7 @@ function makeCaseFile(
     policy: policyEvidenceFor(ctx),
     stages: ctx.stageLedger?.entries() ?? [],
     ...(search === undefined ? {} : { search }),
+    ...(counterfactual === undefined ? {} : { counterfactual }),
     ...(trace === undefined ? {} : { trace: trace.events() }),
   };
 }
@@ -675,75 +681,61 @@ function policyVerdict(
   return builtIn.ok ? evaluatePatchPolicy(candidate.diff, policy) : builtIn;
 }
 
-async function enforceWinnerPolicy(
+function enforceWinnerPolicy(
   ctx: RepairFailureContext,
   winner: RaceResult,
   ledger: StageLedger,
   auditVerdict: NonNullable<CaseFile['audit']>,
 ): Promise<NonNullable<CaseFile['audit']>> {
-  if (!auditVerdict.approved) return auditVerdict;
+  return enforceRepositoryPolicy(
+    {
+      executor: ctx.executor,
+      baselineImageId: ctx.failingImage,
+      policy: policyFor(ctx),
+      runtime: ctx.runtime ?? NODE_RUNTIME,
+      observe: ({ attempt, result, parentImageId, note }) => {
+        ledger.record({
+          stage: 'audit',
+          attempt,
+          network: 'disabled',
+          result,
+          parentImageId,
+          note,
+        });
+      },
+    },
+    winner,
+    auditVerdict,
+  );
+}
+
+async function counterfactualEvidence(
+  ctx: RepairFailureContext,
+  ledger: StageLedger,
+  diagnosis: Diagnosis,
+  providerLog: string,
+  verificationCommand: string,
+  acceptedCandidateId?: string,
+): Promise<CounterfactualEvidence | undefined> {
+  const alternatives = ctx.counterfactuals;
+  if (alternatives === undefined || alternatives.length === 0) return undefined;
   const policy = policyFor(ctx);
-  const checks = [...auditVerdict.checks];
-  const commandFailures: string[] = [];
-  const resourceFailures: string[] = [];
-  for (const [index, command] of policy.requiredCommands.entries()) {
-    const executable = sandboxTargetCommand(command, ctx.runtime ?? NODE_RUNTIME);
-    const baseline = await ctx.executor.run(ctx.failingImage, executable, {
-      cwd: SNAPSHOT_CWD,
-    });
-    ledger.record({
-      stage: 'audit',
-      attempt: index * 2 + 2,
-      network: 'disabled',
-      result: baseline,
-      parentImageId: ctx.failingImage,
-      note: `Required command ${index + 1} baseline`,
-    });
-    const candidate = await ctx.executor.run(winner.imageId, executable, {
-      cwd: SNAPSHOT_CWD,
-    });
-    ledger.record({
-      stage: 'audit',
-      attempt: index * 2 + 3,
-      network: 'disabled',
-      result: candidate,
-      parentImageId: winner.imageId,
-      note: `Required command ${index + 1} candidate`,
-    });
-    if (candidate.exitCode !== 0) {
-      commandFailures.push(`required command ${index + 1} exited ${candidate.exitCode}`);
-    }
-    resourceFailures.push(...evaluateResourceThresholds(
-      `required command ${index + 1}`,
-      baseline.metrics,
-      candidate.metrics,
-      policy.resourceLimits,
-    ));
-  }
-  checks.push({
-    name: 'policy-required-command',
-    passed: commandFailures.length === 0,
-    evidence: commandFailures.length === 0
-      ? `Passed ${policy.requiredCommands.length} repository policy commands`
-      : commandFailures.join('; '),
+  return evaluateCounterfactuals({
+    executor: ctx.executor,
+    llm: ctx.llm,
+    baselineImageId: ctx.failingImage,
+    diagnosis,
+    policy,
+    runtime: ctx.runtime ?? NODE_RUNTIME,
+    beforeLog: providerLog,
+    verificationCommand,
+    diffBytesLimit: policy.maxDiffBytes,
+    alternatives,
+    ...(acceptedCandidateId === undefined ? {} : { acceptedCandidateId }),
+    cost: ctx.cost,
+    ledger,
+    ...(ctx.traceRecorder === undefined ? {} : { trace: ctx.traceRecorder }),
   });
-  if (Object.keys(policy.resourceLimits).length > 0) {
-    checks.push({
-      name: 'policy-resource-limit',
-      passed: resourceFailures.length === 0,
-      evidence: resourceFailures.length === 0
-        ? 'Paired resource thresholds passed'
-        : resourceFailures.join('; '),
-    });
-  }
-  const violations = [...commandFailures, ...resourceFailures];
-  return violations.length === 0
-    ? { ...auditVerdict, checks }
-    : {
-        approved: false,
-        checks,
-        reasoning: `REFUSED: repository policy failed (${violations.join('; ')})`,
-      };
 }
 
 export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile> {
@@ -1125,7 +1117,10 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
     });
     const searchEvidence = publicSearchEvidence(result.nodes);
     if (result.candidates.length === 0) {
-      return makeCaseFile(fullContext, diagnosis, triageVerdict, [], 'gave-up', undefined, searchEvidence);
+      return makeCaseFile(
+        fullContext, diagnosis, triageVerdict, [], 'gave-up', undefined, searchEvidence, undefined,
+        await counterfactualEvidence(fullContext, ledger, diagnosis, providerLog, verificationCommand),
+      );
     }
     const raceResults: RaceResult[] = result.candidates.map((node) => ({
       candidate: node.candidate!, imageId: node.imageId, nodeId: node.id,
@@ -1146,15 +1141,19 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
       note: 'Fresh suite rerun',
     }));
     auditVerdict = await enforceWinnerPolicy(fullContext, winner, ledger, auditVerdict);
+    const outcome = auditVerdict.approved ? 'fixed' as const : 'refused' as const;
     return makeCaseFile(
       fullContext,
       diagnosis,
       triageVerdict,
       raceResults,
-      auditVerdict.approved ? 'fixed' : 'refused',
+      outcome,
       auditVerdict,
       searchEvidence,
       winner.candidate,
+      await counterfactualEvidence(
+        fullContext, ledger, diagnosis, providerLog, verificationCommand, winner.candidate.id,
+      ),
     );
   }
 
@@ -1184,6 +1183,11 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
           ],
           reasoning: `REFUSED: ${evidence}`,
         },
+        undefined,
+        undefined,
+        await counterfactualEvidence(
+          fullContext, ledger, diagnosis, providerLog, verificationCommand,
+        ),
       );
     }
   }
@@ -1249,9 +1253,17 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
           }],
           reasoning: `REFUSED: ${evidence}`,
         },
+        undefined,
+        undefined,
+        await counterfactualEvidence(
+          fullContext, ledger, diagnosis, providerLog, verificationCommand,
+        ),
       );
     }
-    return makeCaseFile(fullContext, diagnosis, triageVerdict, raceResults, 'gave-up');
+    return makeCaseFile(
+      fullContext, diagnosis, triageVerdict, raceResults, 'gave-up', undefined, undefined, undefined,
+      await counterfactualEvidence(fullContext, ledger, diagnosis, providerLog, verificationCommand),
+    );
   }
 
   let auditVerdict = await audit(ctx.executor, fullContext.llm, winner, {
@@ -1276,6 +1288,9 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
     auditVerdict,
     undefined,
     winner.candidate,
+    await counterfactualEvidence(
+      fullContext, ledger, diagnosis, providerLog, verificationCommand, winner.candidate.id,
+    ),
   );
 }
 
@@ -1370,6 +1385,7 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     ...(ctx.lockfileDiff === undefined ? {} : { lockfileDiff: ctx.lockfileDiff }),
     ...(ctx.dependencyHints === undefined ? {} : { dependencyHints: ctx.dependencyHints }),
     ...(ctx.candidateDiff === undefined ? {} : { candidateDiff: ctx.candidateDiff }),
+    ...(ctx.counterfactuals === undefined ? {} : { counterfactuals: ctx.counterfactuals }),
     ...(ctx.policy === undefined ? {} : { policy: ctx.policy }),
     ...(ctx.policyEvidence === undefined ? {} : { policyEvidence: ctx.policyEvidence }),
     ...(ctx.repairBudgets === undefined ? {} : { repairBudgets: ctx.repairBudgets }),

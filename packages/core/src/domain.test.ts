@@ -120,6 +120,7 @@ describe('domain model', () => {
       policy: PolicyEvidence;
       stages: StageEvidence[];
       search?: SearchEvidence[];
+      counterfactual?: import('./counterfactual/types.js').CounterfactualEvidence;
       trace?: import('./trace/types.js').TraceEvent[];
       selectedCandidate?: {
         id: string;

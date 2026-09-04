@@ -69,6 +69,19 @@ export {
   ground,
 } from './diagnose/tavily.js';
 export { audit } from './audit/audit.js';
+export { enforceRepositoryPolicy } from './audit/repository-policy.js';
+export { evaluateCounterfactuals } from './counterfactual/evaluate.js';
+export {
+  CounterfactualValidationError,
+  validateCounterfactualAlternatives,
+} from './counterfactual/validate.js';
+export {
+  COUNTERFACTUAL_GATES,
+  COUNTERFACTUAL_INTENTS,
+  MAX_COUNTERFACTUAL_ALTERNATIVES,
+  MAX_COUNTERFACTUAL_DIFF_BYTES,
+  MIN_COUNTERFACTUAL_ALTERNATIVES,
+} from './counterfactual/types.js';
 export {
   ADVERSARIAL_AUDIT_PROMPT,
   adjudicate,
@@ -237,6 +250,23 @@ export type {
 export type { DependencyPreparation, RuntimeAdapter, RuntimeEvidence, RuntimeId } from './runtime/types.js';
 export type { ExactImageReference, PythonImageProof } from './runtime/python-image-proof.js';
 export type { AuditContext, AuditLlm } from './audit/audit.js';
+export type {
+  RepositoryPolicyGateInput,
+  RepositoryPolicyGateObservation,
+} from './audit/repository-policy.js';
+export type {
+  CounterfactualEvaluationInput,
+  CounterfactualStageLedger,
+} from './counterfactual/evaluate.js';
+export type {
+  CounterfactualAlternative,
+  CounterfactualCost,
+  CounterfactualEvidence,
+  CounterfactualGate,
+  CounterfactualIntent,
+  CounterfactualRejection,
+  CounterfactualResult,
+} from './counterfactual/types.js';
 export type {
   AdjudicationContext,
   AdjudicationLlm,

@@ -1,6 +1,7 @@
 import type { CaseFile } from '../domain.js';
 import {
   aggregateStageEvidence,
+  counterfactualLede,
   diffSummary,
   escapeHtml,
   formatConfidence,
@@ -183,6 +184,37 @@ function renderPathology(caseFile: CaseFile): string {
   </section>`;
 }
 
+function renderCounterfactual(caseFile: CaseFile): string {
+  const evidence = caseFile.counterfactual;
+  if (!evidence || evidence.alternatives.length === 0) return '';
+  const rows = evidence.alternatives.map((item) => `<tr>
+        <th scope="row"><code>${escapeHtml(item.id)}</code></th>
+        <td>${escapeHtml(item.intent)}</td>
+        <td><span class="mini-verdict ${item.approved ? 'pass' : 'fail'}">${item.approved ? 'ACCEPTED' : 'REJECTED'}</span></td>
+        <td>${escapeHtml(item.rejectedBy?.gate ?? '—')}</td>
+        <td><code>${escapeHtml(item.rejectedBy?.rule ?? '—')}</code></td>
+        <td>${escapeHtml(item.rejectedBy?.evidence ?? item.reasoning)}</td>
+        <td>${item.testExitCode}</td>
+        <td>${item.cost.sandboxOperations}</td>
+        <td>${item.cost.elapsedTimeSec.toFixed(3)}</td>
+        <td>${formatUsd(item.cost.inferenceUsd)}</td>
+      </tr>`).join('');
+
+  return `<section class="sheet counterfactual" aria-labelledby="counterfactual-title">
+    <div class="section-label"><span>C</span><h2 id="counterfactual-title">Counterfactual</h2></div>
+    <div class="section-body">
+      <p class="triage-reading">${escapeHtml(counterfactualLede(caseFile))}</p>
+      <p class="micro-label">Alternatives from the same baseline checkpoint</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Alternative</th><th>Intent</th><th>Verdict</th><th>Gate</th><th>Rule</th><th>Evidence</th><th>Test exit</th><th>Sandbox ops</th><th>Elapsed s</th><th>Inference</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <p class="micro-label">Additional cost of this comparison</p>
+      <p>${evidence.cost.sandboxOperations} sandbox operations · ${evidence.cost.elapsedTimeSec.toFixed(3)} s elapsed · ${formatUsd(evidence.cost.inferenceUsd)} inference${evidence.acceptedCandidateId ? ` · accepted patch <code>${escapeHtml(evidence.acceptedCandidateId)}</code>` : ''}</p>
+    </div>
+  </section>`;
+}
+
 function renderDischarge(caseFile: CaseFile): string {
   const ledgerRows = caseFile.cost.entries
     .map(
@@ -342,8 +374,8 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
 export function renderCaseFile(caseFile: CaseFile): string {
   const patchSections =
     caseFile.outcome === 'flaky-no-patch' || caseFile.outcome === 'infra-stop'
-      ? renderDischarge(caseFile)
-      : `${renderProcedure(caseFile)}${renderPathology(caseFile)}${renderDischarge(caseFile)}`;
+      ? `${renderCounterfactual(caseFile)}${renderDischarge(caseFile)}`
+      : `${renderProcedure(caseFile)}${renderPathology(caseFile)}${renderCounterfactual(caseFile)}${renderDischarge(caseFile)}`;
   const risk =
     caseFile.outcome === 'fixed'
       ? 'Merge risk: pathology passed. Human review remains required.'

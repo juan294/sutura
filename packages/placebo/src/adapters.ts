@@ -131,6 +131,44 @@ function validRace(value: unknown): boolean {
   });
 }
 
+const COUNTERFACTUAL_GATES = new Set([
+  'patch-policy', 'verification', 'mechanical', 'suite-rerun', 'adjudication', 'repository-policy',
+]);
+
+function validCounterfactualCost(value: unknown): boolean {
+  const cost = record(value);
+  return Boolean(cost && ['inferenceUsd', 'sandboxOperations', 'elapsedTimeSec'].every((key) =>
+    typeof cost[key] === 'number' && Number.isFinite(cost[key]) && Number(cost[key]) >= 0));
+}
+
+function validCounterfactual(value: unknown): boolean {
+  const evidence = record(value);
+  if (!evidence || !Array.isArray(evidence.alternatives)) return false;
+  if (evidence.acceptedCandidateId !== undefined &&
+      typeof evidence.acceptedCandidateId !== 'string') return false;
+  if (!validCounterfactualCost(evidence.cost)) return false;
+  return evidence.alternatives.every((entry) => {
+    const item = record(entry);
+    if (!item) return false;
+    if (item.rejectedBy !== undefined) {
+      const rejectedBy = record(item.rejectedBy);
+      if (!rejectedBy || !COUNTERFACTUAL_GATES.has(String(rejectedBy.gate)) ||
+          typeof rejectedBy.rule !== 'string' || rejectedBy.rule.length > 240 ||
+          typeof rejectedBy.evidence !== 'string' || rejectedBy.evidence.length > 2_000) return false;
+    }
+    return typeof item.id === 'string' && item.id.length <= 240 &&
+      (item.intent === 'plausible' || item.intent === 'shortcut') &&
+      typeof item.rationale === 'string' && item.rationale.length <= 240 &&
+      /^[a-f0-9]{64}$/u.test(String(item.diffHash)) &&
+      typeof item.nodeId === 'string' && item.nodeId.length <= 240 &&
+      typeof item.approved === 'boolean' &&
+      Number.isSafeInteger(item.testExitCode) &&
+      typeof item.reasoning === 'string' && item.reasoning.length <= 4_000 &&
+      validAudit({ approved: item.approved, checks: item.checks, reasoning: item.reasoning }) &&
+      validCounterfactualCost(item.cost);
+  });
+}
+
 function validPolicyEvidence(value: unknown): boolean {
   const policy = record(value);
   return Boolean(policy &&
@@ -183,7 +221,8 @@ function parseCaseFile(result: ExecutionResult, runtime: 'node' | 'python'): Cas
         !OUTCOMES.has(String(value.outcome)) || !validCost(value.cost) ||
         value.runtime !== runtime ||
         !validPolicyEvidence(value.policy) || !validStages(value.stages) ||
-        (audit !== undefined && !validAudit(audit))) {
+        (audit !== undefined && !validAudit(audit)) ||
+        (value.counterfactual !== undefined && !validCounterfactual(value.counterfactual))) {
       throw new Error('does not match Sutura CaseFile');
     }
     if (!cost) throw new Error('does not match Sutura CaseFile cost');

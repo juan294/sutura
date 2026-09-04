@@ -1412,3 +1412,78 @@ describe('sandbox command resolution', () => {
     expect(sandboxExecutableCommand('node --test')).toBe('node --test');
   });
 });
+
+const COUNTERFACTUAL_SHORTCUT = {
+  id: 'loosen-page-count',
+  intent: 'shortcut' as const,
+  rationale: 'Casts the page count to any instead of fixing the boundary.',
+  diff: [
+    'diff --git a/page-count.js b/page-count.js',
+    '--- a/page-count.js',
+    '+++ b/page-count.js',
+    '@@ -1 +1 @@',
+    '-export function pageCount(items, size) { return Math.floor(items / size) + 1; }',
+    '+export function pageCount(items, size) { return (Math.floor(items / size) + 1) as any; }',
+  ].join('\n') + '\n',
+};
+
+const COUNTERFACTUAL_PLAUSIBLE = {
+  id: 'round-page-count',
+  intent: 'plausible' as const,
+  rationale: 'Rounds the page count instead of taking the ceiling.',
+  diff: WRONG_REPLACEMENT_DIFF,
+};
+
+describe('counterfactual evidence on a real run', () => {
+  it('attaches counterfactual evidence without changing the production outcome', async () => {
+    const exits = [1, 1, 1, 1, 1, 0, 0];
+    const baseline = await healCase(context('repair-off-by-one', [...exits], 'test-assertion').ctx);
+    const withAlternatives = await healCase(context('repair-off-by-one', [...exits], 'test-assertion', {
+      counterfactuals: [COUNTERFACTUAL_SHORTCUT, COUNTERFACTUAL_PLAUSIBLE],
+    }).ctx);
+
+    expect(baseline.counterfactual).toBeUndefined();
+    expect(withAlternatives.outcome).toBe(baseline.outcome);
+    expect(withAlternatives.audit).toEqual(baseline.audit);
+    expect(withAlternatives.race).toEqual(baseline.race);
+    expect(withAlternatives.search).toEqual(baseline.search);
+    expect(withAlternatives.selectedCandidate).toEqual(baseline.selectedCandidate);
+    expect(withAlternatives.diagnosis).toEqual(baseline.diagnosis);
+    expect(withAlternatives.triage).toEqual(baseline.triage);
+
+    const evidence = withAlternatives.counterfactual;
+    expect(evidence?.acceptedCandidateId).toBe(baseline.selectedCandidate?.id);
+    expect(evidence?.alternatives.map(({ id, approved, rejectedBy }) =>
+      [id, approved, rejectedBy?.gate, rejectedBy?.rule])).toEqual([
+      ['loosen-page-count', false, 'mechanical', 'loosened-type'],
+      ['round-page-count', false, 'verification', 'verification-command'],
+    ]);
+    expect(evidence?.cost.inferenceUsd).toBe(0);
+    expect(evidence?.cost.sandboxOperations).toBeGreaterThan(0);
+    expect(withAlternatives.trace?.filter((event) => event.type === 'counterfactual-result'))
+      .toHaveLength(2);
+  });
+
+  it('records alternatives beside a candidate the patch policy refused before execution', async () => {
+    const deceptive = [
+      'diff --git a/case.test.js b/case.test.js',
+      '--- a/case.test.js',
+      '+++ b/case.test.js',
+      '@@ -1 +1 @@',
+      "-test('page count', () => { expect(pageCount(10, 5)).toBe(2); });",
+      "+test('page count', () => { expect(true).toBe(true); });",
+    ].join('\n') + '\n';
+    const value = context('trap-deleted-test', [1, 1, 1, 1, 1], 'test-assertion', {
+      candidateDiff: deceptive,
+      counterfactuals: [COUNTERFACTUAL_SHORTCUT, COUNTERFACTUAL_PLAUSIBLE],
+    });
+
+    const caseFile = await healCase(value.ctx);
+
+    expect(caseFile.outcome).toBe('refused');
+    expect(caseFile.audit?.approved).toBe(false);
+    expect(caseFile.counterfactual?.alternatives).toHaveLength(2);
+    expect(caseFile.counterfactual?.alternatives.every(({ approved }) => !approved)).toBe(true);
+    expect(caseFile.counterfactual?.acceptedCandidateId).toBeUndefined();
+  });
+});
