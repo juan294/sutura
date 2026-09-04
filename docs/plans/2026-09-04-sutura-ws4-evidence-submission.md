@@ -232,6 +232,7 @@ in GitHub Actions.
 - Exact command:
 
   ```bash
+  set -euo pipefail
   git fetch origin develop
   CANDIDATE_SHA="$(git rev-parse refs/remotes/origin/develop)"
   test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
@@ -239,14 +240,46 @@ in GitHub Actions.
   pnpm run push-freeze on --reason "WS-4 #47 provider and ConTree canaries on $CANDIDATE_SHA; expected 15 minutes"
   gh issue comment 47 --body "Starting one authorized provider/ConTree prerequisite canary on \`$CANDIDATE_SHA\`. Expected duration: 15 minutes. Expected cost: USD 0.10; reserve: USD 0.10; cap: USD 0.25. Stop after the one workflow is terminal, or immediately on contract mismatch, image mismatch, provider error, missing artifact, identity drift, or timeout."
   pnpm run push-freeze status
-  trap 'pnpm run push-freeze off' EXIT INT TERM
+  DISPATCHED=false
+  TERMINAL=false
+  cleanup_freeze() {
+    if [ "$DISPATCHED" = false ] || [ "$TERMINAL" = true ]; then
+      pnpm run push-freeze off
+    else
+      echo "Freeze remains active: the dispatched run is not proven terminal." >&2
+    fi
+  }
+  trap cleanup_freeze EXIT INT TERM
+  DISPATCHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   gh workflow run provider-contract-canary.yml --ref develop
+  DISPATCHED=true
+  RUN_ID=""
+  for attempt in {1..30}; do
+    RUN_ID="$(gh api --method GET \
+      'repos/{owner}/{repo}/actions/workflows/provider-contract-canary.yml/runs?event=workflow_dispatch&branch=develop&per_page=20' \
+      --jq ".workflow_runs | map(select(.head_sha == \"$CANDIDATE_SHA\" and .created_at >= \"$DISPATCHED_AT\")) | sort_by(.created_at) | last | .id // empty")"
+    test -n "$RUN_ID" && break
+    sleep 2
+  done
+  test -n "$RUN_ID"
+  RUN_RESULT=0
+  gh run watch "$RUN_ID" --exit-status || RUN_RESULT=$?
+  TERMINAL=true
   pnpm run push-freeze off
   trap - EXIT INT TERM
+  test "$RUN_RESULT" -eq 0
+  CANARY_DIR="$(mktemp -d)"
+  gh run download "$RUN_ID" --name provider-contract-canary --dir "$CANARY_DIR/provider"
+  gh run download "$RUN_ID" --name runtime-image-canary --dir "$CANARY_DIR/runtime"
+  test -f "$CANARY_DIR/provider/provider-contract-canary-$CANDIDATE_SHA.json"
+  test -f "$CANARY_DIR/runtime/runtime-image-canary-$CANDIDATE_SHA.json"
   ```
 
-  `develop` is the workflow-dispatch ref; the freeze keeps it at the printed
-  exact candidate until both canary artifacts are terminal and downloaded.
+  `develop` is the workflow-dispatch ref. The command resolves the dispatched
+  exact-SHA run, watches it to a terminal conclusion, and removes the freeze at
+  that terminal boundary before downloading both exact-SHA artifacts. If the
+  dispatch is accepted but the run cannot be resolved or proven terminal, the
+  cleanup deliberately leaves the freeze active for manual recovery.
 - Maximum operations: one Token Factory contract call and one ConTree image
   proof operation in one workflow; no retry.
 - Cap: USD 0.25. Reserve: USD 0.10.
