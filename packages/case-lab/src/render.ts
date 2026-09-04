@@ -5,7 +5,13 @@
  */
 import type { CaseLabCase, CaseLabOutcome } from './cases.js';
 import { MODES, MODE_LABELS, OUTCOME_LABELS, isPublicHttpsUrl, type CaseLabMode } from './labels.js';
-import type { CaseLabCaseFile, CaseLabResult, CaseLabResultLinks } from './result.js';
+import type {
+  CaseLabCaseFile,
+  CaseLabCounterfactual,
+  CaseLabCounterfactualAlternative,
+  CaseLabResult,
+  CaseLabResultLinks,
+} from './result.js';
 
 export { LIVE_REQUEST_ID_PATTERN as LIVE_REQUEST_ID, MODE_LABELS, OUTCOME_LABELS } from './labels.js';
 
@@ -82,11 +88,77 @@ export function outcomeBadge(outcome: CaseLabOutcome): string {
   return badge(`outcome-${outcome}`, OUTCOME_LABELS[outcome]);
 }
 
-/** Extension point for WS-2 issue #73: renders nothing until a case file carries counterfactual evidence. */
+function intentBadge(intent: CaseLabCounterfactualAlternative['intent']): string {
+  return badge(`intent-${intent}`, intent === 'shortcut' ? 'shortcut' : 'plausible');
+}
+
+/**
+ * States why a green suite is not sufficient, from the recorded gates alone.
+ * Never asserts a claim the evidence does not carry.
+ */
+export function counterfactualLede(evidence: CaseLabCounterfactual): string {
+  const rejected = evidence.alternatives.filter((item) => !item.approved);
+  if (rejected.length === 0) {
+    return `All ${evidence.alternatives.length} alternatives passed the same gates as the accepted patch.`;
+  }
+  const gates = [...new Set(rejected.flatMap((item) => item.rejectedBy ? [item.rejectedBy.gate] : []))].sort();
+  const shortcuts = rejected.filter((item) => item.intent === 'shortcut').length;
+  const greenButRejected = rejected.filter(
+    (item) => item.testExitCode === 0 && item.rejectedBy?.gate !== 'verification',
+  ).length;
+  return `${rejected.length} of ${evidence.alternatives.length} alternative patches were rejected`
+    + `${shortcuts === 0 ? '' : `, including ${shortcuts} declared shortcut${shortcuts === 1 ? '' : 's'}`}`
+    + `${gates.length === 0 ? '' : `, by ${gates.join(', ')}`}.`
+    + `${greenButRejected === 0 ? '' : ` ${greenButRejected} of them made the diagnosed command exit 0 and were still refused.`}`;
+}
+
+/**
+ * Shows the accepted or correctly refused outcome beside the rejected
+ * alternatives, each with the exact gate and rule that rejected it. Renders
+ * nothing when a case carries no counterfactual evidence.
+ */
 export function renderCounterfactual(caseFile: CaseLabCaseFile | undefined): string {
-  const counterfactual = (caseFile as { counterfactual?: unknown } | undefined)?.counterfactual;
-  if (counterfactual === undefined) return '';
-  return '';
+  const evidence = caseFile?.counterfactual;
+  if (evidence === undefined || evidence.alternatives.length === 0) return '';
+
+  const acceptedId = evidence.acceptedCandidateId ?? caseFile?.selectedCandidate?.id;
+  const accepted = caseFile?.race.find((entry) => entry.candidate.id === acceptedId);
+  const approvedByAudit = caseFile?.audit?.approved === true;
+  const acceptedBody = accepted === undefined
+    ? `<p class="empty">No candidate patch was accepted. ${
+      caseFile?.audit?.approved === false
+        ? escapeHtml(`The audit correctly refused this run: ${caseFile.audit.reasoning}`)
+        : 'Sutura produced no patch for this run.'
+    }</p>`
+    : `<p>${escapeHtml(accepted.candidate.rationale)}</p>
+<p>Test exit ${accepted.exitCode} · ${accepted.held ? 'held its result' : 'did not hold'}${
+      caseFile?.audit === undefined
+        ? ''
+        : ` · audit ${caseFile.audit.approved ? 'approved' : 'refused'}`
+    }</p>
+<pre class="diff"><code>${escapeHtml(accepted.candidate.diff)}</code></pre>`;
+
+  const alternatives = evidence.alternatives.map((item) => `<article class="counterfactual-alternative${item.approved ? '' : ' rejected'}">
+  <h4><code>${escapeHtml(item.id)}</code> ${intentBadge(item.intent)}</h4>
+  <p>${escapeHtml(item.rationale)}</p>
+  <p>${item.approved ? 'Accepted by every gate' : `Rejected at <strong>${escapeHtml(item.rejectedBy?.gate ?? 'an unrecorded gate')}</strong> by rule <code>${escapeHtml(item.rejectedBy?.rule ?? 'unrecorded')}</code>`} · test exit ${item.testExitCode}</p>
+  ${item.rejectedBy === undefined ? '' : `<p class="evidence">${escapeHtml(item.rejectedBy.evidence)}</p>`}
+</article>`).join('\n');
+
+  const totals = `<p class="counterfactual-cost">Comparing these alternatives added ${evidence.cost.sandboxOperations} sandbox operation${evidence.cost.sandboxOperations === 1 ? '' : 's'}, ${evidence.cost.elapsedTimeSec.toFixed(1)} s, and ${usd(evidence.cost.inferenceUsd)} of inference.</p>`;
+
+  return section('counterfactual', 'Accepted patch beside rejected alternatives', `<p class="counterfactual-lede">${escapeHtml(counterfactualLede(evidence))}</p>
+<div class="counterfactual">
+  <div class="counterfactual-accepted">
+    <h3>${approvedByAudit ? 'Accepted patch' : 'Outcome Sutura reached'}</h3>
+${acceptedBody}
+  </div>
+  <div class="counterfactual-rejected">
+    <h3>Rejected alternatives</h3>
+${alternatives}
+  </div>
+</div>
+${totals}`);
 }
 
 function renderHeader(result: CaseLabResult, item: CaseLabCase): string {
