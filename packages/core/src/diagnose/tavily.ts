@@ -21,6 +21,8 @@ const PACKAGE_VERSION_VALUE = new RegExp(
 );
 const MAX_QUERY_CHARACTERS = 2_000;
 const MAX_ERROR_QUERY_CHARACTERS = 1_000;
+const MAX_RELEASE_CITATION_TITLE_CHARACTERS = 255;
+const MAX_RELEASE_CITATION_SNIPPET_CHARACTERS = 2_000;
 
 export type TavilyHttpResponse = Pick<HttpResponse, 'ok' | 'status' | 'json'>;
 export type TavilyHttpRequestInit = Omit<HttpRequestInit, 'body'> & { body?: string };
@@ -150,22 +152,33 @@ export class TavilyClient implements TavilySearch {
       throw new RangeError('query must not be empty');
     }
 
+    const searchEndpoint = endpoint(this.baseUrl);
+    const request: TavilyHttpRequestInit = {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query: normalizedQuery,
+        max_results: maxResults,
+        search_depth: 'basic',
+        include_answer: false,
+      }),
+    };
     let response: TavilyHttpResponse;
     try {
-      response = await this.fetch(endpoint(this.baseUrl), {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: normalizedQuery,
-          max_results: maxResults,
-          search_depth: 'basic',
-          include_answer: false,
-        }),
-      });
-    } catch {
+      response = await this.fetch(searchEndpoint, request);
+      if (response.status === 403) {
+        const forbidden = new TavilyRequestError(
+          'Tavily search request failed with status 403',
+          403,
+        );
+        response = await this.fetch(searchEndpoint, request);
+        if (response.status === 403) throw forbidden;
+      }
+    } catch (error) {
+      if (error instanceof TavilyRequestError) throw error;
       throw new TavilyRequestError('Tavily search request failed');
     }
 
@@ -261,7 +274,7 @@ export class TavilyClient implements TavilySearch {
       .map((result) => ({
         title: `GitHub release: ${new URL(result.url).pathname.split('/').at(-1) ?? 'release'}`,
         url: result.url,
-        snippet: result.raw_content.trim().slice(0, 2_000),
+        snippet: result.raw_content.trim().slice(0, MAX_RELEASE_CITATION_SNIPPET_CHARACTERS),
       }));
   }
 
@@ -411,6 +424,39 @@ function packageNameAndVersion(hint: string): { name: string; version: string } 
     : null;
 }
 
+function exactPublicGithubRepository(value: string): string | null {
+  const normalized = githubRepository(value);
+  return normalized === value ? normalized : null;
+}
+
+function isExactReleaseCitation(
+  value: unknown,
+  releaseUrls: readonly string[],
+): value is TavilyCitation {
+  if (typeof value !== 'object' || value === null) return false;
+  const citation = value as Record<string, unknown>;
+  if (
+    typeof citation.title !== 'string' ||
+    citation.title.trim().length === 0 ||
+    citation.title.length > MAX_RELEASE_CITATION_TITLE_CHARACTERS ||
+    typeof citation.url !== 'string' ||
+    !releaseUrls.includes(citation.url) ||
+    typeof citation.snippet !== 'string' ||
+    citation.snippet.trim().length === 0 ||
+    citation.snippet.length > MAX_RELEASE_CITATION_SNIPPET_CHARACTERS
+  ) return false;
+  try {
+    const url = new URL(citation.url);
+    return url.protocol === 'https:' &&
+      url.hostname === 'github.com' &&
+      url.username === '' &&
+      url.password === '' &&
+      url.port === '';
+  } catch {
+    return false;
+  }
+}
+
 async function addRegistryVerifiedReleaseCitations(
   tavily: TavilySearch,
   citations: TavilyCitation[],
@@ -427,10 +473,12 @@ async function addRegistryVerifiedReleaseCitations(
         dependency.version,
       );
       if (!repository) continue;
+      const verifiedRepository = exactPublicGithubRepository(repository);
+      if (!verifiedRepository) continue;
       const major = dependency.version.split('.')[0];
       const releaseUrls = [
-        `${repository}/releases/tag/v${dependency.version}`,
-        ...(major ? [`${repository}/blob/main/docs/v${major}-UPGRADE-GUIDE.md`] : []),
+        `${verifiedRepository}/releases/tag/v${dependency.version}`,
+        ...(major ? [`${verifiedRepository}/blob/main/docs/v${major}-UPGRADE-GUIDE.md`] : []),
       ];
       const extracted = await tavily.extract(
         releaseUrls,
@@ -438,7 +486,8 @@ async function addRegistryVerifiedReleaseCitations(
           `${dependency.name} ${dependency.version} breaking changes migration`,
         ).text,
       );
-      additions.push(...extracted);
+      additions.push(...extracted.filter((citation) =>
+        isExactReleaseCitation(citation, releaseUrls)));
     } catch {
       // The primary search remains useful when optional release extraction is unavailable.
     }
@@ -468,11 +517,20 @@ export async function ground(
     options.dependencyHints,
   );
   const safeQuery = redactExternalText(query).text;
-  const searched = await tavily.search(safeQuery, { maxResults: 5 });
+  const relevantHints = relevantDependencyHints(diagnosis, options.dependencyHints);
+  let searched: TavilyCitation[];
+  try {
+    searched = await tavily.search(safeQuery, { maxResults: 5 });
+  } catch (error) {
+    if (!(error instanceof TavilyRequestError) || error.status !== 403) throw error;
+    const extracted = await addRegistryVerifiedReleaseCitations(tavily, [], relevantHints);
+    if (extracted.length === 0) throw error;
+    return { query: safeQuery, citations: extracted, skipped: false };
+  }
   const citations = await addRegistryVerifiedReleaseCitations(
     tavily,
     searched,
-    relevantDependencyHints(diagnosis, options.dependencyHints),
+    relevantHints,
   );
   return { query: safeQuery, citations, skipped: false };
 }
