@@ -14,14 +14,15 @@ Submission deadline: 2026-10-30 at 10:00 PDT
 
 Planned submission date: 2026-10-29
 
-Current phase: Phase 0 remediation and Phase 5 source preparation - Active
+Current phase: Phase 0 - Blocked at provider and ConTree canary authorization;
+Phase 5 qualitative source complete
 
 Detailed plan: `docs/plans/2026-09-04-sutura-ws4-evidence-submission.md`
 
-Next action: Integrate the locally verified WS-4 runner, Tavily, and qualitative
-submission changes on `develop`, confirm remote CI, then present authorization
-gate G1 for the exact `upstream-retry-release` candidate. No paid dispatch has
-been authorized.
+Next action: On the next settled exact `origin/develop` candidate, authorize and
+run G4 once to produce the provider-contract and runtime-image canary artifacts;
+then run the read-only Placebo gate and present G1 for the single
+`upstream-retry-release` proof. No paid dispatch has been authorized.
 
 GitHub tracking: Issues [#47](https://github.com/juan294/sutura/issues/47) through [#127](https://github.com/juan294/sutura/issues/127) mirror every remaining unchecked roadmap item as of 2026-09-04. Parallel execution is divided into four labeled workstreams in `docs/plans/2026-09-04-sutura-issue-workstreams.md`.
 
@@ -132,12 +133,12 @@ The manifest is a tracking and consistency check. It does not replace direct pro
 
 | Phase | Dates | Outcome | Dependency | Status |
 | ---: | --- | --- | --- | --- |
-| 0 | Sep 1-5 | Complete and reconcile v0.2 evidence | None | Active: runner freeze and Tavily recovery |
+| 0 | Sep 1-5 | Complete and reconcile v0.2 evidence | None | Blocked: provider/ConTree canary authorization |
 | 1 | Sep 6-14 | Public Sutura Case Lab | Phase 0 evidence model | Not started |
 | 2 | Sep 15-21 | Counterfactual patch proof | Case Lab result model | Not started |
 | 3 | Sep 22-Oct 5 | Sutura Arena and Data Lab experiment | Phases 0 and 2 | Not started |
 | 4 | Oct 6-12 | External adoption and product hardening | Public Case Lab | Not started |
-| 5 | Oct 13-20 | Submission story and judge assets | Phases 1-4 | Active: qualitative source only |
+| 5 | Oct 13-20 | Submission story and judge assets | Phases 1-4 | Active: qualitative source complete; measured evidence blocked |
 | 6 | Oct 21-24 | Feature freeze and final release candidate | All product phases | Not started |
 | 7 | Oct 25-29 | Public acceptance and submission | Final public release | Not started |
 | Buffer | Oct 30 | Emergency submission correction only | Submission created | Reserved |
@@ -213,16 +214,16 @@ For each scenario, the result view shows:
 
 ### Safety and reliability
 
-- [ ] Accept only server-defined case identifiers.
-- [ ] Reject arbitrary repository names, refs, commands, patches, and free text.
-- [ ] Apply request throttling, concurrency limits, a daily spend stop, and an emergency disable control.
-- [ ] Use a protected service identity with minimum GitHub permissions.
-- [ ] Keep provider secrets outside ConTree.
-- [ ] Provide a deterministic replay for every case.
-- [ ] Clearly label live runs and replayed runs.
-- [ ] Return stable result URLs that survive a page refresh.
-- [ ] Make the main result readable on desktop and mobile.
-- [ ] Remove the old instruction that asks visitors to run a collaborator-only `workflow_dispatch` action.
+- [x] Accept only server-defined case identifiers.
+- [x] Reject arbitrary repository names, refs, commands, patches, and free text.
+- [x] Apply request throttling, concurrency limits, a daily spend stop, and an emergency disable control.
+- [x] Use a protected service identity with minimum GitHub permissions.
+- [x] Keep provider secrets outside ConTree.
+- [x] Provide a deterministic replay for every case.
+- [x] Clearly label live runs and replayed runs.
+- [x] Return stable result URLs that survive a page refresh.
+- [x] Make the main result readable on desktop and mobile.
+- [x] Remove the old instruction that asks visitors to run a collaborator-only `workflow_dispatch` action.
 
 ### Nebius deployment decision
 
@@ -230,11 +231,11 @@ Evaluate Nebius Serverless Jobs and Serverless Endpoints for the public control 
 
 ### Exit gate
 
-- A signed-out non-collaborator selects each allowlisted case and receives a stable result.
-- At least one live repair and one refusal complete through the public path.
-- Every case has a tested replay fallback.
-- The demo is pinned to the exact current public Sutura release.
-- Security tests prove that arbitrary input and unauthorized repository access fail closed.
+- A signed-out non-collaborator selects each allowlisted case and receives a stable result. (Built and locally accepted; public enablement is Gate A in `docs/plans/2026-09-04-sutura-case-lab.md`.)
+- At least one live repair and one refusal complete through the public path. (Gate B in the same plan.)
+- Every case has a tested replay fallback. (Done: `packages/case-lab`, five recorded results validated in CI.)
+- The demo is pinned to the exact current public Sutura release. (Done: `packages/case-lab/release.json` names v0.2.0; `case-lab verify-pin` proves the demo workflow and tag agree.)
+- Security tests prove that arbitrary input and unauthorized repository access fail closed. (Done: `packages/case-lab/src/request.test.ts`, `dispatcher.test.ts`, `demo-workflow.test.ts`.)
 
 ## Phase 2 - Add counterfactual patch proof
 
