@@ -61,7 +61,7 @@ jobs:
           version=$(node --print "require('./packages/cli/package.json').version")
           echo "sutura@$version is already published."
       - name: Verify public npm and Action artifacts
-        run: node scripts/test-public-install.mjs > "$RUNNER_TEMP/public-install-evidence.json"
+        run: node scripts/test-public-install.mjs --candidate-evidence "$RUNNER_TEMP/candidate-install-evidence.json" > "$RUNNER_TEMP/public-install-evidence.json"
       - name: Compare candidate and public artifacts
         run: |
           test "$(jq -r .packageVersion "$RUNNER_TEMP/candidate-install-evidence.json")" = "$(jq -r .packageVersion "$RUNNER_TEMP/public-install-evidence.json")"

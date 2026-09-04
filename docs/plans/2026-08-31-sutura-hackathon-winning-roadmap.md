@@ -277,12 +277,12 @@ Objective: Prove the architecture at useful scale and use Nebius evaluation serv
 
 ### Data Lab integration
 
-- [ ] Define and test the redaction boundary before any upload.
+- [x] Define and test the redaction boundary before any upload.
 - [ ] Upload only sanitized, public-safe evaluation records after explicit authorization.
 - [ ] Record Data Lab dataset identifiers, versions, input hashes, and output hashes.
 - [ ] Use batch inference for at least one model, router, or prompt comparison.
 - [ ] Publish the winning and losing configurations with cost, latency, and quality results.
-- [ ] Document Zero Data Retention behavior and what the explicit dataset import changes.
+- [x] Document Zero Data Retention behavior and what the explicit dataset import changes.
 
 ### Public Arena view
 
@@ -323,7 +323,7 @@ Objective: Prove that Sutura solves a real developer problem outside its own rep
 - [ ] Correct every release-blocking installation, documentation, permission, and result-clarity defect.
 - [ ] Collect short, attributable feedback only with participant permission.
 - [ ] Complete the Marketplace listing and verify installation from it.
-- [ ] Update the provider privacy, retention, and threat-model documentation.
+- [x] Update the provider privacy, retention, and threat-model documentation.
 
 ### Exit gate
 

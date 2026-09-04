@@ -159,8 +159,9 @@ The public dogfood record starts with [PR #18](https://github.com/juan294/sutura
 Treat every generated patch as untrusted until its audit and repository checks
 pass. Keep branch protection and human merge review enabled.
 
-Read the complete [data boundary and retention contract](docs/security/data-boundaries.md)
-and [private repository threat model](docs/security/private-repositories.md)
+Read the complete [data boundary and retention contract](docs/security/data-boundaries.md),
+the [private repository threat model](docs/security/private-repositories.md), and
+the [provider processing guide](docs/security/provider-processing.md)
 before enabling Sutura on confidential source.
 
 ## Install Sutura
@@ -195,6 +196,18 @@ The installer resolves the `v0.2.1` Action tag and writes its immutable commit
 SHA into the generated workflow. `doctor` resolves the tag again and verifies
 the pin. Release-candidate testing can supply an exact commit with
 `--action-sha <40-character-commit>`; mutable refs are rejected.
+
+Maintainers verify the published npm package and independently resolved immutable
+Action tag from a fresh temporary consumer with:
+
+```bash
+node scripts/test-public-install.mjs --release 0.2.1
+```
+
+The command installs only that exact public npm version, disables lifecycle
+scripts, removes provider credentials from the child environment, runs the
+installed `init`, `doctor`, and version commands, and records package and Action
+identity hashes. It never substitutes `latest` or a mutable Action ref.
 
 The generated workflow uses the repository's automatic GitHub token. It stores
 provider keys as GitHub secrets. It stores `CONTREE_PROJECT` as a repository
@@ -331,8 +344,19 @@ with `uv 0.12.7`:
 uv run --project packages/evaluation python packages/evaluation/scripts/validate-atif.py docs/demo/sutura-trajectory-v1.atif.json
 ```
 
-Data Lab upload remains disabled. JSONL is a local, explicit export only. Sutura
-does not change the account Zero Data Retention setting.
+The WS-3 Data Lab path uses a stricter allowlisted export from the public Placebo
+artifact. Prepare the reviewable request without provider access or spending:
+
+```bash
+pnpm --filter @sutura/evaluation build
+node scripts/datalab-experiment.mjs prepare --source docs/demo/placebo-v0.2-live-2026-09.json --dataset-output docs/datalab/sutura-placebo-v0.2-live-data-lab-v1.jsonl --request-output docs/datalab/sutura-placebo-v0.2-live-dataset-request-v1.json
+```
+
+Data Lab upload and batch dispatch remain disabled unless their separate literal
+authorization tokens are supplied. Sutura does not change the account Zero Data
+Retention setting. ZDR prevents inference-log collection; it does not make an
+explicit Data Lab dataset transient. Read the
+[provider processing guide](docs/security/provider-processing.md) before upload.
 
 ## GitHub Action configuration
 

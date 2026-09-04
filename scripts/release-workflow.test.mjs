@@ -57,7 +57,7 @@ test('publication validates tag and bundle before publish, then verifies public 
   assert.match(workflow, /actions\/workflows\/ci\.yml\/runs/u);
   assert.match(workflow, /\.head_branch == \\"main\\" and \.event == \\"push\\"/u);
   assert.match(workflow, /npm publish --access public/u);
-  assert.match(workflow, /test-public-install\.mjs/u);
+  assert.match(workflow, /test-public-install\.mjs --candidate-evidence "\$RUNNER_TEMP\/candidate-install-evidence\.json"/u);
   assert.match(workflow, /packageContentHash/u);
   assert.match(workflow, /upload-artifact/u);
   assert.match(workflow, /id-token: write/u);

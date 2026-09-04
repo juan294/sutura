@@ -9,6 +9,17 @@ import { packedFilename, verifyInstall } from './install-test-lib.mjs';
 
 const ACTION_SHA = 'a'.repeat(40);
 
+function doctorOutput(commit) {
+  return [
+    'Sutura workflow exists.', `Workflow uses juan294/sutura@${commit}.`,
+    'Workflow grants checks: write.', 'Workflow wires github-token.',
+    'Workflow wires run-id.', 'Workflow wires runtime.',
+    'Workflow wires nebius-api-key.', 'Workflow wires contree-token.',
+    'Workflow wires contree-project.', 'GitHub secret NEBIUS_API_KEY is configured.',
+    'GitHub secret CONTREE_TOKEN is configured.', 'GitHub variable CONTREE_PROJECT is configured.',
+  ].map((line) => `[PASS] ${line}`).join('\n');
+}
+
 test('candidate pack accepts npm 11 and npm 12 JSON output only when one package is present', () => {
   assert.equal(packedFilename('[{"filename":"sutura-0.2.1.tgz"}]'), 'sutura-0.2.1.tgz');
   assert.equal(packedFilename('{"filename":"sutura-0.2.1.tgz"}'), 'sutura-0.2.1.tgz');
@@ -49,10 +60,10 @@ test('candidate install uses the local tarball and exact candidate Action SHA wi
           if (args[0] === 'init') {
             await mkdir(join(consumer, '.github', 'workflows'), { recursive: true });
             await writeFile(join(consumer, '.github', 'workflows', 'sutura.yml'),
-              `uses: juan294/sutura@${ACTION_SHA}\n`);
+              `jobs:\n  repair:\n    steps:\n      - uses: juan294/sutura@${ACTION_SHA}\n`);
             return '';
           }
-          if (args[0] === 'doctor') return '[PASS] candidate\n';
+          if (args[0] === 'doctor') return doctorOutput(ACTION_SHA);
           if (args[0] === '--version') return '0.2.1\n';
           throw new Error(`unexpected invocation ${args.join(' ')}`);
         },
