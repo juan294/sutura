@@ -21,7 +21,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@sutura/core": "workspace:*"
+    "@sutura/core": "workspace:*",
+    "esbuild": "^0.28.2"
   },
   "devDependencies": {
     "typescript": "^6.0.3"

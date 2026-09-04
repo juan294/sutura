@@ -66,6 +66,9 @@ importers:
       '@sutura/core':
         specifier: workspace:*
         version: link:../core
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
     devDependencies:
       typescript:
         specifier: ^6.0.3

@@ -118,3 +118,25 @@ export type {
 } from './replay.js';
 export { CaseLabCliError, USAGE, runCaseLabCli, valueAfter, writeNew } from './cli.js';
 export type { CliDependencies, CliIo } from './cli.js';
+export { ACCEPTANCE_SCHEMA_VERSION, acceptance } from './acceptance.js';
+export type { AcceptanceCheck, AcceptanceOptions, AcceptanceRecord } from './acceptance.js';
+export {
+  LIVE_REQUEST_ID,
+  MODE_LABELS,
+  OUTCOME_LABELS,
+  escapeHtml,
+  isRenderableResult,
+  modeBadge,
+  outcomeBadge,
+  renderCaseCard,
+  renderCounterfactual,
+  renderIndexBody,
+  renderPage,
+  renderPendingBody,
+  renderResultBody,
+  resultPageTitle,
+} from './render.js';
+export type { CatalogCard, IndexOptions, PageShellOptions, PendingState } from './render.js';
+export { createStaticServer, listen } from './serve.js';
+export { buildSite, bundleClient } from './site.js';
+export type { BuildSiteOptions } from './site.js';
