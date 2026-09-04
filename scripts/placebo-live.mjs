@@ -573,7 +573,7 @@ async function findArtifactJson(directory) {
   return files[0];
 }
 
-async function runRemoteCase({ controllerSha, subjectSha, caseId, skipGate = false }) {
+async function runRemoteCase({ controllerSha, subjectSha, caseId, skipGate = false, counterfactual = false }) {
   if (!skipGate) await gatePlaceboLive(controllerSha, subjectSha);
   const corpus = loadCorpusSync();
   corpusCase(corpus, caseId);
@@ -582,6 +582,7 @@ async function runRemoteCase({ controllerSha, subjectSha, caseId, skipGate = fal
     'workflow', 'run', 'placebo-live-case.yml', '--ref', 'develop',
     '-f', `controller-sha=${controllerSha}`, '-f', `subject-sha=${subjectSha}`,
     '-f', `case-id=${caseId}`, '-f', `controller-id=${controllerId}`,
+    '-f', `counterfactual=${counterfactual ? 'true' : 'false'}`,
   ]);
   const run = await pollRun(controllerId, caseId, controllerSha);
   const expectedArtifactName = `sutura-placebo-${controllerId}-${caseId}`;
@@ -666,6 +667,7 @@ export async function main(args = process.argv.slice(2)) {
     if (!args.includes('--authorize')) throw new Error('Placebo live run requires literal --authorize');
     return withLock(() => runRemoteCase({
       controllerSha, subjectSha, caseId: valueAfter(args, '--case'),
+      counterfactual: args.includes('--counterfactual'),
     }));
   }
   if (commandName === 'streak') {
