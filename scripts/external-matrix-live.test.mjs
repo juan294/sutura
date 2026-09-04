@@ -6,8 +6,11 @@ import {
   cleanupExternalMatrixLive,
   createExternalMatrixCaseArtifact,
   createExternalMatrixLedger,
+  dispatchExternalMatrixWorkflow,
   finalizeExternalMatrixLive,
+  main,
   runExternalMatrixStreak,
+  runSingleExternalMatrixCase,
   validateExternalMatrixCaseArtifact,
   validateExternalMatrixLedger,
 } from './external-matrix-live.mjs';
@@ -174,6 +177,127 @@ test('streak retains one infra-stop with unavailable cost and stops without call
   assert.equal(completed.spentUsd, 0);
   assert.equal(completed.ledger.entries[0].costStatus, 'unavailable');
   assert.equal(completed.ledger.entries[0].totalUsd, null);
+});
+
+test('single run rejects missing or excessive reserve before entering the live path', async () => {
+  const base = [
+    'run', '--mode', 'candidate', '--controller-sha', CONTROLLER_SHA,
+    '--action-sha', ACTION_SHA, '--demo-sha', DEMO_SHA,
+    '--case', EXTERNAL_MATRIX_CASES[0].caseId, '--authorize',
+  ];
+  await assert.rejects(() => main(base), /--cap-usd requires a value/u);
+  await assert.rejects(
+    () => main([...base, '--cap-usd', '0.25', '--initial-reserve-usd', '0.30']),
+    /reserve must not exceed cap/u,
+  );
+});
+
+test('single run gates before reading the ledger and refuses cap-reserve before dispatch', async () => {
+  const existing = append(
+    createExternalMatrixLedger('candidate', []),
+    normalizedArtifact(EXTERNAL_MATRIX_CASES[0]),
+    1,
+  );
+  const events = [];
+  await assert.rejects(() => runSingleExternalMatrixCase({
+    mode: 'candidate', controllerSha: CONTROLLER_SHA, actionSha: ACTION_SHA,
+    demoSha: DEMO_SHA, definition: EXTERNAL_MATRIX_CASES[1],
+    capUsd: 0.05, initialReserveUsd: 0.03,
+  }, {
+    gate: async () => { events.push('gate'); },
+    readLedger: async () => { events.push('ledger'); return existing; },
+    runCase: async () => { events.push('dispatch'); },
+  }), /cap-reserve/u);
+  assert.deepEqual(events, ['gate', 'ledger']);
+});
+
+test('single run refuses a duplicate case before dispatch', async () => {
+  const definition = EXTERNAL_MATRIX_CASES[0];
+  const existing = append(
+    createExternalMatrixLedger('candidate', []), normalizedArtifact(definition), 1,
+  );
+  let dispatched = false;
+  await assert.rejects(() => runSingleExternalMatrixCase({
+    mode: 'candidate', controllerSha: CONTROLLER_SHA, actionSha: ACTION_SHA,
+    demoSha: DEMO_SHA, definition, capUsd: 1, initialReserveUsd: 0.1,
+  }, {
+    gate: async () => {},
+    readLedger: async () => existing,
+    runCase: async () => { dispatched = true; },
+  }), /duplicate case/u);
+  assert.equal(dispatched, false);
+});
+
+test('single run refuses an existing false approval before dispatch', async () => {
+  const existing = append(
+    createExternalMatrixLedger('candidate', []),
+    normalizedArtifact(EXTERNAL_MATRIX_CASES[2], 'candidate', {
+      actualOutcome: 'fixed', auditApproved: true,
+    }),
+    1,
+  );
+  let dispatched = false;
+  await assert.rejects(() => runSingleExternalMatrixCase({
+    mode: 'candidate', controllerSha: CONTROLLER_SHA, actionSha: ACTION_SHA,
+    demoSha: DEMO_SHA, definition: EXTERNAL_MATRIX_CASES[0],
+    capUsd: 10, initialReserveUsd: 0.5,
+  }, {
+    gate: async () => {},
+    readLedger: async () => existing,
+    runCase: async () => { dispatched = true; },
+  }), /false-approval ledger/u);
+  assert.equal(dispatched, false);
+});
+
+test('workflow dispatch checks the active freeze at the final dispatch edge', async () => {
+  const events = [];
+  await dispatchExternalMatrixWorkflow({
+    mode: 'candidate', actionSha: ACTION_SHA, demoSha: DEMO_SHA,
+    definition: EXTERNAL_MATRIX_CASES[0], controllerId: 'mx-test-controller',
+  }, {
+    requireActivePushFreeze: () => { events.push('freeze'); },
+    command: async (name, args) => { events.push(`${name}:${args.slice(0, 2).join(' ')}`); },
+  });
+  assert.deepEqual(events, ['freeze', 'gh:workflow run']);
+
+  let dispatched = false;
+  await assert.rejects(() => dispatchExternalMatrixWorkflow({
+    mode: 'candidate', actionSha: ACTION_SHA, demoSha: DEMO_SHA,
+    definition: EXTERNAL_MATRIX_CASES[0], controllerId: 'mx-test-controller',
+  }, {
+    requireActivePushFreeze: () => { throw new Error('freeze missing'); },
+    command: async () => { dispatched = true; },
+  }), /freeze missing/u);
+  assert.equal(dispatched, false);
+});
+
+test('streak rechecks the freeze before each eligible case', async () => {
+  let ledger = createExternalMatrixLedger('candidate', []);
+  let checks = 0;
+  let dispatches = 0;
+  await assert.rejects(() => runExternalMatrixStreak({
+    mode: 'candidate', controllerSha: CONTROLLER_SHA, actionSha: ACTION_SHA,
+    authorize: true, capUsd: 1, initialReserveUsd: 0.1,
+  }, {
+    readLedger: async () => ledger,
+    runCase: async (definition) => {
+      await dispatchExternalMatrixWorkflow({
+        mode: 'candidate', actionSha: ACTION_SHA, demoSha: DEMO_SHA,
+        definition, controllerId: `mx-streak-${definition.caseId}`,
+      }, {
+        requireActivePushFreeze: () => {
+          checks += 1;
+          if (checks === 2) throw new Error('freeze ended');
+        },
+        command: async () => { dispatches += 1; },
+      });
+      const value = normalizedArtifact(definition);
+      ledger = append(ledger, value, dispatches);
+      return { artifact: value, ledger };
+    },
+  }), /freeze ended/u);
+  assert.equal(checks, 2);
+  assert.equal(dispatches, 1);
 });
 
 test('candidate and public finalization keep all eight cases and call the authoritative analyzer', () => {

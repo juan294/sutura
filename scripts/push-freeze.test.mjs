@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import test from 'node:test';
 
-import { freezeFilePath, run } from './push-freeze.mjs';
+import { freezeFilePath, requireActivePushFreeze, run } from './push-freeze.mjs';
 
 const execFileAsync = promisify(execFile);
 const ROOT = resolve(import.meta.dirname, '..');
@@ -59,6 +59,41 @@ test('on, check, status, and off follow the freeze lifecycle', async () => {
     assert.equal(existsSync(file), false);
     assert.equal(run(['check'], io), 0);
     assert.equal(run(['off'], io), 0, 'off is idempotent');
+  });
+});
+
+test('paid dispatch assertion requires one valid active freeze record', async () => {
+  await withTempDirectory(async (directory) => {
+    const file = join(directory, 'freeze.json');
+    const env = { SUTURA_PUSH_FREEZE_FILE: file };
+
+    assert.throws(
+      () => requireActivePushFreeze(env, ROOT),
+      /requires an active push freeze/u,
+    );
+
+    await writeFile(file, '{not-json');
+    assert.throws(
+      () => requireActivePushFreeze(env, ROOT),
+      /marker is malformed/u,
+    );
+
+    await writeFile(file, `${JSON.stringify({
+      reason: 'v0.2.1 paid evidence',
+      startedAt: '2026-09-04T10:00:00.000Z',
+      by: 'WS-4',
+    })}\n`);
+    assert.deepEqual(requireActivePushFreeze(env, ROOT), {
+      reason: 'v0.2.1 paid evidence',
+      startedAt: '2026-09-04T10:00:00.000Z',
+      by: 'WS-4',
+    });
+
+    await writeFile(file, `${JSON.stringify({ reason: 'missing timestamp' })}\n`);
+    assert.throws(
+      () => requireActivePushFreeze(env, ROOT),
+      /marker is malformed/u,
+    );
   });
 });
 

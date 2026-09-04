@@ -13,6 +13,7 @@ import {
   canonicalJson, contentHash, exactSha, publicGitHubUrl, SHA256_PATTERN,
 } from './evidence-contract.mjs';
 import { RELEASE_VERSION } from './install-test-lib.mjs';
+import { requireActivePushFreeze } from './push-freeze.mjs';
 
 const execFileAsync = promisify(execFile);
 const ROOT = resolve(import.meta.dirname, '..');
@@ -34,6 +35,14 @@ function boundedUsd(value, label) {
     throw new Error(`${label} must be a bounded nonnegative USD amount`);
   }
   return value;
+}
+
+export function validateLiveSpendBounds(capUsd, initialReserveUsd, label) {
+  const cap = boundedUsd(capUsd, `${label} cap`);
+  const reserve = boundedUsd(initialReserveUsd, `${label} initial reserve`);
+  if (reserve <= 0) throw new Error(`${label} initial reserve must be greater than zero`);
+  if (reserve > cap) throw new Error(`${label} initial reserve must not exceed cap`);
+  return { capUsd: cap, initialReserveUsd: reserve };
 }
 
 function exactSha256(value, label) {
@@ -397,9 +406,9 @@ export async function runPlaceboStreak(options, dependencies) {
   if (options.authorize !== true) throw new Error('Placebo live streak requires literal --authorize');
   exactSha(options.controllerSha, 'Placebo controller');
   exactSha(options.subjectSha, 'Placebo subject');
-  const capUsd = boundedUsd(options.capUsd, 'Placebo cap');
-  const initialReserveUsd = boundedUsd(options.initialReserveUsd, 'Placebo initial reserve');
-  if (initialReserveUsd <= 0) throw new Error('Placebo initial reserve must be greater than zero');
+  const { capUsd, initialReserveUsd } = validateLiveSpendBounds(
+    options.capUsd, options.initialReserveUsd, 'Placebo',
+  );
   let ledger = validatePlaceboLedger(await dependencies.readLedger());
   if (ledger.entries.some((entry) => entry.controllerSha !== options.controllerSha ||
       entry.subjectSha !== options.subjectSha)) {
@@ -426,6 +435,40 @@ export async function runPlaceboStreak(options, dependencies) {
   return {
     ledger, spentUsd, reserveUsd: Math.max(initialReserveUsd, observedMaximumUsd), stoppedFor,
   };
+}
+
+export async function runSinglePlaceboCase(options, dependencies) {
+  const { capUsd, initialReserveUsd } = validateLiveSpendBounds(
+    options.capUsd, options.initialReserveUsd, 'Placebo',
+  );
+  await dependencies.gate(options.controllerSha, options.subjectSha);
+  const ledger = validatePlaceboLedger(await dependencies.readLedger());
+  if (ledger.entries.some((entry) => entry.controllerSha !== options.controllerSha ||
+      entry.subjectSha !== options.subjectSha)) {
+    throw new Error('Placebo ledger identity differs from requested identity');
+  }
+  if (ledger.entries.some(({ caseId }) => caseId === options.caseId)) {
+    throw new Error(`Placebo single run refuses duplicate case: ${options.caseId}`);
+  }
+  if (ledger.entries.some((entry) => entry.outcomes.includes('infra-stop'))) {
+    throw new Error('Placebo single run refuses to continue an infrastructure-stop ledger');
+  }
+  const corpus = loadCorpusSync();
+  if (ledger.entries.some((entry) =>
+    corpusCase(corpus, entry.caseId).metadata.kind === 'trap' &&
+    entry.outcomes.includes('fixed'))) {
+    throw new Error('Placebo single run refuses to continue a false-approval ledger');
+  }
+  const spentUsd = ledger.entries.reduce((sum, entry) => sum + entry.totalUsd, 0);
+  const observedMaximumUsd = ledger.entries.reduce(
+    (maximum, entry) => Math.max(maximum, entry.totalUsd),
+    0,
+  );
+  const decision = placeboSpendDecision({
+    spentUsd, observedMaximumUsd, initialReserveUsd, capUsd,
+  });
+  if (!decision.mayDispatch) throw new Error('Placebo single run stopped for cap-reserve');
+  return dependencies.runCase(options.caseId);
 }
 
 export async function finalizePlaceboEvidence(ledgerInput, artifactInputs, options = {}) {
@@ -573,16 +616,23 @@ async function findArtifactJson(directory) {
   return files[0];
 }
 
+export async function dispatchPlaceboWorkflow(input, dependencies = {}) {
+  const assertFreeze = dependencies.requireActivePushFreeze ?? requireActivePushFreeze;
+  const runCommand = dependencies.command ?? command;
+  await assertFreeze();
+  return runCommand('gh', [
+    'workflow', 'run', 'placebo-live-case.yml', '--ref', 'develop',
+    '-f', `controller-sha=${input.controllerSha}`, '-f', `subject-sha=${input.subjectSha}`,
+    '-f', `case-id=${input.caseId}`, '-f', `controller-id=${input.controllerId}`,
+  ]);
+}
+
 async function runRemoteCase({ controllerSha, subjectSha, caseId, skipGate = false }) {
   if (!skipGate) await gatePlaceboLive(controllerSha, subjectSha);
   const corpus = loadCorpusSync();
   corpusCase(corpus, caseId);
   const controllerId = `pl-${Date.now()}-${randomUUID().slice(0, 8)}`;
-  await command('gh', [
-    'workflow', 'run', 'placebo-live-case.yml', '--ref', 'develop',
-    '-f', `controller-sha=${controllerSha}`, '-f', `subject-sha=${subjectSha}`,
-    '-f', `case-id=${caseId}`, '-f', `controller-id=${controllerId}`,
-  ]);
+  await dispatchPlaceboWorkflow({ controllerSha, subjectSha, caseId, controllerId });
   const run = await pollRun(controllerId, caseId, controllerSha);
   const expectedArtifactName = `sutura-placebo-${controllerId}-${caseId}`;
   const directory = await mkdtemp(join(tmpdir(), 'sutura-placebo-live-'));
@@ -664,8 +714,15 @@ export async function main(args = process.argv.slice(2)) {
   if (commandName === 'gate') return gatePlaceboLive(controllerSha, subjectSha);
   if (commandName === 'run') {
     if (!args.includes('--authorize')) throw new Error('Placebo live run requires literal --authorize');
-    return withLock(() => runRemoteCase({
-      controllerSha, subjectSha, caseId: valueAfter(args, '--case'),
+    const caseId = valueAfter(args, '--case');
+    const capUsd = Number(valueAfter(args, '--cap-usd'));
+    const initialReserveUsd = Number(valueAfter(args, '--initial-reserve-usd'));
+    return withLock(() => runSinglePlaceboCase({
+      controllerSha, subjectSha, caseId, capUsd, initialReserveUsd,
+    }, {
+      gate: gatePlaceboLive,
+      readLedger: readLedgerDefault,
+      runCase: () => runRemoteCase({ controllerSha, subjectSha, caseId, skipGate: true }),
     }));
   }
   if (commandName === 'streak') {

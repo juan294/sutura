@@ -33,6 +33,28 @@ export function readFreeze(file) {
   }
 }
 
+export function requireActivePushFreeze(env = process.env, cwd = process.cwd()) {
+  const file = freezeFilePath(env, cwd);
+  if (!existsSync(file)) {
+    throw new Error(`Paid live dispatch requires an active push freeze (${file})`);
+  }
+  let state;
+  try {
+    state = JSON.parse(readFileSync(file, 'utf8'));
+  } catch {
+    throw new Error(`Active push freeze marker is malformed (${file})`);
+  }
+  const startedAt = typeof state?.startedAt === 'string' ? new Date(state.startedAt) : null;
+  if (state === null || typeof state !== 'object' || Array.isArray(state) ||
+      typeof state.reason !== 'string' || state.reason.trim().length === 0 ||
+      state.reason.length > 500 || startedAt === null || Number.isNaN(startedAt.valueOf()) ||
+      startedAt.toISOString() !== state.startedAt ||
+      (state.by !== null && (typeof state.by !== 'string' || state.by.length > 200))) {
+    throw new Error(`Active push freeze marker is malformed (${file})`);
+  }
+  return state;
+}
+
 function gitUser(cwd) {
   try {
     return execFileSync('git', ['config', 'user.name'], { cwd, encoding: 'utf8' }).trim() || null;

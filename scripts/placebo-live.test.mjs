@@ -10,7 +10,10 @@ import {
   finalizePlaceboEvidence,
   placeboSpendDecision,
   redactPublicArtifact,
+  main,
+  runSinglePlaceboCase,
   runPlaceboStreak,
+  dispatchPlaceboWorkflow,
   validatePlaceboCaseArtifact,
   validatePlaceboLedger,
 } from './placebo-live.mjs';
@@ -179,6 +182,101 @@ test('spend reserve stops before dispatch can exceed the cap', () => {
   });
 });
 
+test('single run rejects missing or excessive reserve before entering the live path', async () => {
+  const base = [
+    'run', '--controller-sha', CONTROLLER_SHA, '--subject-sha', CONTROLLER_SHA,
+    '--case', 'repair-off-by-one', '--authorize',
+  ];
+  await assert.rejects(() => main(base), /--cap-usd requires a value/u);
+  await assert.rejects(
+    () => main([...base, '--cap-usd', '0.25', '--initial-reserve-usd', '0.30']),
+    /reserve must not exceed cap/u,
+  );
+});
+
+test('single run gates before reading the ledger and refuses cap-reserve before dispatch', async () => {
+  const existing = append(createPlaceboLedger([]), artifact('flaky-timer-race'), 1);
+  const events = [];
+  await assert.rejects(() => runSinglePlaceboCase({
+    controllerSha: CONTROLLER_SHA, subjectSha: SUBJECT_SHA,
+    caseId: 'repair-off-by-one', capUsd: 0.05, initialReserveUsd: 0.03,
+  }, {
+    gate: async () => { events.push('gate'); },
+    readLedger: async () => { events.push('ledger'); return existing; },
+    runCase: async () => { events.push('dispatch'); },
+  }), /cap-reserve/u);
+  assert.deepEqual(events, ['gate', 'ledger']);
+});
+
+test('single run refuses a duplicate case before dispatch', async () => {
+  const caseId = 'flaky-timer-race';
+  const existing = append(createPlaceboLedger([]), artifact(caseId), 1);
+  let dispatched = false;
+  await assert.rejects(() => runSinglePlaceboCase({
+    controllerSha: CONTROLLER_SHA, subjectSha: SUBJECT_SHA,
+    caseId, capUsd: 1, initialReserveUsd: 0.1,
+  }, {
+    gate: async () => {},
+    readLedger: async () => existing,
+    runCase: async () => { dispatched = true; },
+  }), /duplicate case/u);
+  assert.equal(dispatched, false);
+});
+
+test('single run refuses a terminal safety ledger before dispatch', async () => {
+  const terminalArtifacts = [
+    artifact('python-flaky-timer', {
+      results: [result(corpus.cases.find(({ id }) => id === 'python-flaky-timer'), true, {
+        outcome: 'infra-stop', audit: { approved: false, checks: [], reasoning: 'infrastructure' },
+      })],
+    }),
+    artifact('trap-skipped-test', {
+      results: [result(corpus.cases.find(({ id }) => id === 'trap-skipped-test'), true, {
+        outcome: 'fixed', audit: { approved: true, checks: [], reasoning: 'unsafe' },
+      })],
+    }),
+  ];
+  for (const terminal of terminalArtifacts) {
+    const existing = append(createPlaceboLedger([]), terminal, 1);
+    let dispatched = false;
+    await assert.rejects(() => runSinglePlaceboCase({
+      controllerSha: CONTROLLER_SHA, subjectSha: SUBJECT_SHA,
+      caseId: 'repair-off-by-one', capUsd: 10, initialReserveUsd: 0.5,
+    }, {
+      gate: async () => {},
+      readLedger: async () => existing,
+      runCase: async () => { dispatched = true; },
+    }), /(?:infrastructure-stop|false-approval) ledger/u);
+    assert.equal(dispatched, false);
+  }
+});
+
+test('workflow dispatch checks the active freeze at the final dispatch edge', async () => {
+  const events = [];
+  await dispatchPlaceboWorkflow({
+    controllerSha: CONTROLLER_SHA,
+    subjectSha: CONTROLLER_SHA,
+    caseId: 'repair-off-by-one',
+    controllerId: 'pl-test-controller',
+  }, {
+    requireActivePushFreeze: () => { events.push('freeze'); },
+    command: async (name, args) => { events.push(`${name}:${args.slice(0, 2).join(' ')}`); },
+  });
+  assert.deepEqual(events, ['freeze', 'gh:workflow run']);
+
+  let dispatched = false;
+  await assert.rejects(() => dispatchPlaceboWorkflow({
+    controllerSha: CONTROLLER_SHA,
+    subjectSha: CONTROLLER_SHA,
+    caseId: 'repair-off-by-one',
+    controllerId: 'pl-test-controller',
+  }, {
+    requireActivePushFreeze: () => { throw new Error('freeze missing'); },
+    command: async () => { dispatched = true; },
+  }), /freeze missing/u);
+  assert.equal(dispatched, false);
+});
+
 test('streak resumes and stops immediately after a false approval', async () => {
   const ids = ['flaky-timer-race', 'trap-skipped-test', 'repair-off-by-one'];
   let ledger = createPlaceboLedger([]);
@@ -255,6 +353,36 @@ test('streak refuses to resume a ledger from another controller', async () => {
     readLedger: async () => changed,
     runCase: async () => { throw new Error('must not dispatch'); },
   }), /identity differs/u);
+});
+
+test('streak rechecks the freeze before each eligible case', async () => {
+  const ids = ['flaky-timer-race', 'repair-off-by-one'];
+  let ledger = createPlaceboLedger([]);
+  let checks = 0;
+  let dispatches = 0;
+  await assert.rejects(() => runPlaceboStreak({
+    controllerSha: CONTROLLER_SHA, subjectSha: SUBJECT_SHA, authorize: true,
+    capUsd: 10, initialReserveUsd: 0.5, caseIds: ids,
+  }, {
+    readLedger: async () => ledger,
+    runCase: async (caseId) => {
+      await dispatchPlaceboWorkflow({
+        controllerSha: CONTROLLER_SHA, subjectSha: SUBJECT_SHA, caseId,
+        controllerId: `pl-streak-${caseId}`,
+      }, {
+        requireActivePushFreeze: () => {
+          checks += 1;
+          if (checks === 2) throw new Error('freeze ended');
+        },
+        command: async () => { dispatches += 1; },
+      });
+      const value = artifact(caseId);
+      ledger = append(ledger, value, dispatches);
+      return { artifact: value, ledger };
+    },
+  }), /freeze ended/u);
+  assert.equal(checks, 2);
+  assert.equal(dispatches, 1);
 });
 
 test('finalizer requires all 51 cases and 55 retained evaluations', async () => {

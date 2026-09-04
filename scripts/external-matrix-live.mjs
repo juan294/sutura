@@ -12,8 +12,9 @@ import {
   canonicalJson, contentHash, exactSha, publicGitHubUrl, SHA256_PATTERN,
 } from './evidence-contract.mjs';
 import {
-  assertPublicArtifactSafe, gatePlaceboLive, placeboSpendDecision,
+  assertPublicArtifactSafe, gatePlaceboLive, placeboSpendDecision, validateLiveSpendBounds,
 } from './placebo-live.mjs';
+import { requireActivePushFreeze } from './push-freeze.mjs';
 import {
   EXTERNAL_MATRIX_CASES, EXTERNAL_MATRIX_RELEASE_VERSION,
   createExternalMatrixManifest, validateExternalMatrixResult,
@@ -217,6 +218,9 @@ export async function runExternalMatrixStreak(options, dependencies) {
   const selectedMode = mode(options.mode);
   exactSha(options.controllerSha, 'External matrix controller');
   exactSha(options.actionSha, 'External matrix Action');
+  const { capUsd, initialReserveUsd } = validateLiveSpendBounds(
+    options.capUsd, options.initialReserveUsd, 'External matrix',
+  );
   let ledger = validateExternalMatrixLedger(await dependencies.readLedger());
   if (ledger.mode !== selectedMode) throw new Error('External matrix ledger mode differs from requested mode');
   if (ledger.entries.some((entry) => entry.controllerSha !== options.controllerSha ||
@@ -230,7 +234,7 @@ export async function runExternalMatrixStreak(options, dependencies) {
     if (ledger.entries.some(({ caseId }) => caseId === definition.caseId)) continue;
     const decision = placeboSpendDecision({
       spentUsd, observedMaximumUsd: maximumUsd,
-      initialReserveUsd: options.initialReserveUsd, capUsd: options.capUsd,
+      initialReserveUsd, capUsd,
     });
     if (!decision.mayDispatch) { stoppedFor = 'cap-reserve'; break; }
     const completed = await dependencies.runCase(definition);
@@ -245,7 +249,39 @@ export async function runExternalMatrixStreak(options, dependencies) {
     if (artifact.falseApproval) { stoppedFor = 'false-approval'; break; }
     if (artifact.actualOutcome === 'infra-stop') { stoppedFor = 'infra-stop'; break; }
   }
-  return { ledger, spentUsd, reserveUsd: Math.max(options.initialReserveUsd, maximumUsd), stoppedFor };
+  return { ledger, spentUsd, reserveUsd: Math.max(initialReserveUsd, maximumUsd), stoppedFor };
+}
+
+export async function runSingleExternalMatrixCase(options, dependencies) {
+  const selectedMode = mode(options.mode);
+  const { capUsd, initialReserveUsd } = validateLiveSpendBounds(
+    options.capUsd, options.initialReserveUsd, 'External matrix',
+  );
+  await dependencies.gate(options);
+  const ledger = validateExternalMatrixLedger(await dependencies.readLedger());
+  if (ledger.mode !== selectedMode) {
+    throw new Error('External matrix ledger mode differs from requested mode');
+  }
+  if (ledger.entries.some((entry) => entry.controllerSha !== options.controllerSha ||
+      entry.actionSha !== options.actionSha)) {
+    throw new Error('External matrix ledger identity differs from requested identity');
+  }
+  if (ledger.entries.some(({ caseId }) => caseId === options.definition.caseId)) {
+    throw new Error(`External matrix single run refuses duplicate case: ${options.definition.caseId}`);
+  }
+  if (ledger.entries.some(({ falseApproval }) => falseApproval)) {
+    throw new Error('External matrix single run refuses to continue a false-approval ledger');
+  }
+  const spentUsd = ledger.entries.reduce((sum, entry) => sum + (entry.totalUsd ?? 0), 0);
+  const observedMaximumUsd = ledger.entries.reduce(
+    (maximum, entry) => Math.max(maximum, entry.totalUsd ?? 0),
+    0,
+  );
+  const decision = placeboSpendDecision({
+    spentUsd, observedMaximumUsd, initialReserveUsd, capUsd,
+  });
+  if (!decision.mayDispatch) throw new Error('External matrix single run stopped for cap-reserve');
+  return dependencies.runCase(options.definition);
 }
 
 export function finalizeExternalMatrixLive(ledgerInput, artifactsInput, options) {
@@ -429,14 +465,21 @@ async function findJson(directory) {
   return files[0];
 }
 
-async function runRemoteCase(options) {
-  const controllerId = `mx-${Date.now()}-${randomUUID().slice(0, 8)}`;
-  await command('gh', [
+export async function dispatchExternalMatrixWorkflow(options, dependencies = {}) {
+  const assertFreeze = dependencies.requireActivePushFreeze ?? requireActivePushFreeze;
+  const runCommand = dependencies.command ?? command;
+  await assertFreeze();
+  return runCommand('gh', [
     'workflow', 'run', 'matrix-case.yml', '-R', DEMO_REPOSITORY, '--ref', 'main',
     '-f', `demo-sha=${options.demoSha}`, '-f', `mode=${options.mode}`,
     '-f', `case-id=${options.definition.caseId}`, '-f', `action-sha=${options.actionSha}`,
-    '-f', `controller-id=${controllerId}`,
+    '-f', `controller-id=${options.controllerId}`,
   ]);
+}
+
+async function runRemoteCase(options) {
+  const controllerId = `mx-${Date.now()}-${randomUUID().slice(0, 8)}`;
+  await dispatchExternalMatrixWorkflow({ ...options, controllerId });
   const run = await pollRun(controllerId, options.mode, options.definition.caseId, options.demoSha);
   const name = `sutura-matrix-${controllerId}-${options.definition.caseId}`;
   const directory = await mkdtemp(join(tmpdir(), 'sutura-matrix-live-'));
@@ -531,10 +574,15 @@ export async function main(args = process.argv.slice(2)) {
     if (!args.includes('--authorize')) throw new Error('External matrix run requires literal --authorize');
     const definition = EXTERNAL_MATRIX_CASES.find(({ caseId }) => caseId === valueAfter(args, '--case'));
     if (!definition) throw new Error('External matrix case is not allowlisted');
-    return withLock(paths.lock, async () => {
-      await gateExternalMatrixLive(identity);
-      return runRemoteCase({ ...identity, definition });
-    });
+    const capUsd = Number(valueAfter(args, '--cap-usd'));
+    const initialReserveUsd = Number(valueAfter(args, '--initial-reserve-usd'));
+    return withLock(paths.lock, () => runSingleExternalMatrixCase({
+      ...identity, definition, capUsd, initialReserveUsd,
+    }, {
+      gate: gateExternalMatrixLive,
+      readLedger: () => readLedgerDefault(selectedMode),
+      runCase: () => runRemoteCase({ ...identity, definition }),
+    }));
   }
   if (commandName === 'streak') {
     return withLock(paths.lock, async () => {
