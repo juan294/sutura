@@ -5,9 +5,9 @@ Issue: #73
 Depends on: WS-1 #66 (stable result URLs) and #67 (readable main result) merged
 to `develop`.
 
-Status: Blocked on a cross-stream dependency, by the coordination rule in
-`docs/plans/2026-09-04-sutura-issue-workstreams.md:49`. WS-2 does #73 last in
-Phase 2 and skips it until the WS-1 result view is on `develop`.
+Status: Complete. The WS-1 result view landed on `develop` at `8d60f32`, which
+unblocked this phase; the side-by-side view merged at `c0440b8` under freeze
+admission category 4.
 
 ## Goal
 

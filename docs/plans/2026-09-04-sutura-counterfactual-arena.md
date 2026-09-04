@@ -2,8 +2,8 @@
 
 Date: 2026-09-04
 
-Status: Phases 1 to 9 implemented; Phase 10 blocked on WS-1; live authorization
-gates G1 to G4 pending
+Status: Phases 1 to 10 implemented and on `develop`; live authorization gates
+G1 to G4 pending
 
 Owner: WS-2 (Counterfactual proof and Arena)
 
@@ -44,7 +44,7 @@ page with a downloadable machine-readable report.
 | 4 | #72 | Record the exact rule, hidden test, policy, or audit finding | 1, 3 |
 | 5 | #75 | Measure additional cost, latency, and sandbox operations | 1, 3 |
 | 6 | #74 | Counterfactual results in the evidence and ATIF formats | 2 |
-| 7 | #73 | Side-by-side view in the Case Lab | 10 (blocked on WS-1) |
+| 7 | #73 | Side-by-side view in the Case Lab | 10 |
 | 8 | #81 | Identical selection, limits, models, and scoring across comparisons | 5 |
 | 9 | #78 | Single-branch repair baseline | 6 |
 | 10 | #79 | "First green patch wins" baseline | 6 |
@@ -150,7 +150,7 @@ class. Every new field is additive and optional.
 | 7 | Arena case selection manifest | 76, 77 | `packages/placebo/src/selection.ts`, `packages/placebo/arena/**` | None | `[batch-eligible]` with 5 |
 | 8 | Arena report page and machine-readable report | 53 | `packages/placebo/src/arena.ts`, `packages/placebo/src/cli.ts`, `docs/demo/sutura-arena-*.{json,html}` | 5, 6, 7 | Not batch-eligible |
 | 9 | Expansion readiness gate | 82 | `packages/placebo/src/comparison.ts`, this plan | 8 | Not batch-eligible |
-| 10 | Case Lab side-by-side view | 73 | WS-1 Case Lab result view | WS-1 #66, #67 on `develop` | Blocked |
+| 10 | Case Lab side-by-side view | 73 | `packages/case-lab/src/render.ts`, `result.ts` | WS-1 #66, #67 on `develop` | Done |
 
 Phase files live in `docs/plans/2026-09-04-sutura-counterfactual-arena-phases/`.
 
