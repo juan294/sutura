@@ -23,6 +23,7 @@ author, Node 24 bundle, and supported `activity`/`red` branding.
 - [ ] Open `action.yml` on GitHub and choose **Draft a release**.
 - [ ] Check **Publish this Action to the GitHub Marketplace**.
 - [ ] Resolve every metadata warning until GitHub reports that the metadata passes.
+- [ ] Listing description links to the Case Lab URL, `https://sutura-case-lab.vercel.app/`.
 - [ ] Confirm GitHub reports that the Marketplace name is unique.
 - [ ] Select primary category **Utilities**.
 - [ ] Retain the already-approved release tag; do not move or create a tag here.
