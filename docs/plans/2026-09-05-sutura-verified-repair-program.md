@@ -1,8 +1,10 @@
 # Sutura verified repair program
 
-Date: 2026-09-05. Owner: Juan. Status: planned; implementation not started.
+Date: 2026-09-05. Owner: Juan. Status: implementation in progress; phase 1 implemented and under full local verification.
 
 Planning source: local `develop` at `369c972777eea3c80b698db61165f07ba46e6b13`. Integration: `develop`; releases: `main`; implementation: isolated worktrees. This document records the user's approval of the **full recommended product scope**, not authorization for spending, outreach, publication or deployment. Stop after every implementation phase unless Juan explicitly authorizes continuation.
+
+Implementation authorization: on September 5 Juan requested all phases continuously, followed by a local merge to `develop` and worktree cleanup. This overrides the per-phase stop instructions. Paid runs, outreach, public releases and future judging observations retain their separately stated dependencies and authorization requirements.
 
 ## Product outcome
 
@@ -73,7 +75,7 @@ Windows are targets for planning, not evidence of completion or guaranteed effor
 
 | Phase | Deliverable | Depends on | Target window | Status |
 | --- | --- | --- | --- | --- |
-| [1](2026-09-05-sutura-verified-repair-program-phases/phase-1.md) | Truthful baseline, pagination regression, contracts and probe adapter proof | This plan | Sep 5–8 | Planned |
+| [1](2026-09-05-sutura-verified-repair-program-phases/phase-1.md) | Truthful baseline, pagination regression, contracts and probe adapter proof | This plan | Sep 5–8 | Implemented; full local verification running |
 | [2](2026-09-05-sutura-verified-repair-program-phases/phase-2.md) | Bounded diagnosis recovery | 1 | Sep 8–12 | Planned |
 | [3](2026-09-05-sutura-verified-repair-program-phases/phase-3.md) | Atomic two-file and grounded migration repairs | 2 | Sep 12–17 | Planned |
 | [4](2026-09-05-sutura-verified-repair-program-phases/phase-4.md) | Shared verifier and independent regression probes | 3 | Sep 17–23 | Planned |
