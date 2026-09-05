@@ -128,6 +128,12 @@ export type { CliDependencies, CliIo } from './cli.js';
 export { ACCEPTANCE_SCHEMA_VERSION, acceptance } from './acceptance.js';
 export type { AcceptanceCheck, AcceptanceOptions, AcceptanceRecord } from './acceptance.js';
 export {
+  CONSENT_STORAGE_KEY,
+  PRIVACY_DESCRIPTION,
+  PRIVACY_PATH,
+  PRIVACY_TITLE,
+  consentTools,
+  cookielessIdentifiers,
   escapeHtml,
   isRenderableResult,
   modeBadge,
@@ -137,13 +143,16 @@ export {
   renderIndexBody,
   renderPage,
   renderPendingBody,
+  renderPrivacyBody,
   renderResultBody,
   resultPageTitle,
 } from './render.js';
-export type { CatalogCard, IndexOptions, PageShellOptions, PendingState } from './render.js';
+export type { CatalogCard, ConsentTool, IndexOptions, PageShellOptions, PendingState, SiteIdentifiers } from './render.js';
 export { createStaticServer, listen } from './serve.js';
 export { buildSite, bundleClient } from './site.js';
 export type { BuildSiteOptions } from './site.js';
+export { SITE_CONFIG_FILE, SITE_CONFIG_SCHEMA_VERSION, loadSiteConfig } from './site-config.js';
+export type { SiteConfig } from './site-config.js';
 export { CaseLabPinError, DEMO_WORKFLOW_FILE, parseDemoWorkflowPins, verifyPin, withControllerSha } from './pin.js';
 export type { DemoWorkflowPins } from './pin.js';
 export { normalizeOutcome, publishResult } from './publish.js';

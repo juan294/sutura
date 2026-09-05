@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -69,5 +69,63 @@ describe('case-lab CLI', () => {
     expect(code).toBe(1);
     expect(bad.err.join('')).toContain('siteUrl must not end with /');
     expect(existsSync(join(outDir, 'index.html'))).toBe(false);
+  });
+
+  it('reads --site-config for the default site URL and the identifiers, and lets --site-url win', { timeout: 120_000 }, async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'case-lab-cli-config-'));
+    const configPath = join(dir, 'site.json');
+    writeFileSync(configPath, JSON.stringify({
+      schemaVersion: 'sutura-case-lab-site-v1',
+      siteUrl: 'https://config.example.test',
+      googleSiteVerification: 'google-token-for-tests_0123456789',
+      ga4MeasurementId: 'G-CLI12345',
+      vercelAnalytics: 'false',
+    }));
+    const outDir = join(dir, 'site');
+    const fromConfig = io();
+    expect(await runCaseLabCli(['build-site', '--out', outDir, '--site-config', configPath], {
+      io: fromConfig.io, catalog: { replayDir: EMPTY_REPLAY_DIR, now: NOW },
+    })).toBe(0);
+    const index = readFileSync(join(outDir, 'index.html'), 'utf8');
+    expect(index).toContain('<link rel="canonical" href="https://config.example.test/">');
+    expect(index).toContain('<meta name="google-site-verification" content="google-token-for-tests_0123456789">');
+    expect(index).toContain('gtag/js?id=G-CLI12345');
+    expect(index).not.toContain('msvalidate.01');
+    expect(index).not.toContain('clarity');
+    expect(index).not.toContain('_vercel/insights');
+    const overridden = io();
+    expect(await runCaseLabCli(['build-site', '--out', outDir, '--site-config', configPath, '--site-url', 'https://flag.example.test'], {
+      io: overridden.io, catalog: { replayDir: EMPTY_REPLAY_DIR, now: NOW },
+    })).toBe(0);
+    expect(readFileSync(join(outDir, 'index.html'), 'utf8')).toContain('<link rel="canonical" href="https://flag.example.test/">');
+    const malformedPath = join(dir, 'bad.json');
+    writeFileSync(malformedPath, JSON.stringify({ schemaVersion: 'sutura-case-lab-site-v1', ga4MeasurementId: 'UA-1' }));
+    const malformed = io();
+    expect(await runCaseLabCli(['build-site', '--out', join(dir, 'never'), '--site-config', malformedPath], {
+      io: malformed.io, catalog: { replayDir: EMPTY_REPLAY_DIR, now: NOW },
+    })).toBe(1);
+    expect(malformed.err.join('')).toBe(`${malformedPath}: ga4MeasurementId must be a Google Analytics 4 measurement id starting with G-, received "UA-1"\n`);
+    expect(existsSync(join(dir, 'never'))).toBe(false);
+    const missing = io();
+    expect(await runCaseLabCli(['build-site', '--out', join(dir, 'never'), '--site-config', join(dir, 'absent.json')], {
+      io: missing.io, catalog: { replayDir: EMPTY_REPLAY_DIR, now: NOW },
+    })).toBe(1);
+    expect(missing.err.join('')).toBe(`${join(dir, 'absent.json')} is missing at ${join(dir, 'absent.json')}\n`);
+  });
+
+  it('builds from the committed site.json by default with the public identifiers', { timeout: 120_000 }, async () => {
+    const outDir = join(mkdtempSync(join(tmpdir(), 'case-lab-cli-default-')), 'site');
+    const run = io();
+    expect(await runCaseLabCli(['build-site', '--out', outDir, '--api-base', ''], {
+      io: run.io, catalog: { replayDir: EMPTY_REPLAY_DIR, now: NOW },
+    })).toBe(0);
+    const index = readFileSync(join(outDir, 'index.html'), 'utf8');
+    expect(index).toContain('<link rel="canonical" href="https://sutura-case-lab.vercel.app/">');
+    expect(index).toContain('<meta name="google-site-verification" content="f7PZNffeQUHV6bvX9Pzff2dL0yT9iyxDqT83uHy3Dfg">');
+    expect(index).toContain('<meta name="msvalidate.01" content="9E58012EFDC70E5C8289C62F90BD646F">');
+    expect(index).toContain('gtag/js?id=G-Z65T5Y173D');
+    expect(index).toContain("'clarity', 'script', \"ydi0lx4kw6\")");
+    expect(index).toContain('/_vercel/insights/script.js');
+    expect(index).toContain('data-api-base="" data-consent="ga4,clarity"');
   });
 });

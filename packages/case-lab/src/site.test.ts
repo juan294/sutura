@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { acceptance } from './acceptance.js';
 import { CASE_LAB_CASES } from './cases.js';
-import { MODE_LABELS } from './render.js';
+import { MODE_LABELS, type SiteIdentifiers } from './render.js';
 import { replayCatalog } from './replay.js';
 import { validateCaseLabResult, type CaseLabResult } from './result.js';
 import { createStaticServer, listen } from './serve.js';
@@ -15,19 +15,34 @@ import { buildSite } from './site.js';
 const RELEASE = { version: '0.2.0', actionSha: 'a943ded4c734aed75c5c63f2b2dd63a2f44556c2' };
 const SITE_URL = 'https://sutura-case-lab.vercel.app';
 const NOW = () => new Date('2026-09-04T12:00:00.000Z');
+const FULL_IDENTIFIERS: SiteIdentifiers = {
+  googleSiteVerification: 'google-token-for-tests_0123456789',
+  bingSiteVerification: '0123456789ABCDEF0123456789ABCDEF',
+  ga4MeasurementId: 'G-TEST1234',
+  clarityProjectId: 'abc123def4',
+  vercelAnalytics: true,
+};
+/** Markup that only an identifier can produce; none of it may appear in a build without identifiers. */
+const IDENTIFIER_MARKERS = ['google-site-verification', 'msvalidate.01', 'googletagmanager.com', 'gtag(', 'clarity.ms', 'clarity(', '_vercel/insights', 'window.va', 'data-consent'];
 
 let catalog: CaseLabResult[] = [];
 let outDir = '';
+let fullDir = '';
 
 beforeAll(async () => {
   catalog = await replayCatalog({ replayDir: mkdtempSync(join(tmpdir(), 'case-lab-site-replay-')), now: NOW });
   outDir = join(mkdtempSync(join(tmpdir(), 'case-lab-site-')), 'site');
   await buildSite({ outDir, catalog, release: RELEASE, apiBase: '', siteUrl: SITE_URL });
+  fullDir = join(mkdtempSync(join(tmpdir(), 'case-lab-site-full-')), 'site');
+  await buildSite({
+    outDir: fullDir, catalog, release: RELEASE, apiBase: '', siteUrl: SITE_URL, identifiers: FULL_IDENTIFIERS,
+    clientBundle: readFileSync(join(outDir, 'case-lab.js'), 'utf8'),
+  });
 }, 120_000);
 
-function walk(dir: string): string[] {
+function walk(dir: string, root = outDir): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
-    entry.isDirectory() ? walk(join(dir, entry.name)) : [relative(outDir, join(dir, entry.name))]);
+    entry.isDirectory() ? walk(join(dir, entry.name), root) : [relative(root, join(dir, entry.name))]);
 }
 
 function jsonLdBlocks(html: string): Record<string, unknown>[] {
@@ -35,7 +50,13 @@ function jsonLdBlocks(html: string): Record<string, unknown>[] {
     .map((match) => JSON.parse(match[1]!) as Record<string, unknown>);
 }
 
-const HTML_PAGES = ['index.html', 'result/index.html', ...CASE_LAB_CASES.map((item) => `replay/${item.id}/index.html`)];
+function head(html: string): string {
+  return html.slice(0, html.indexOf('</head>'));
+}
+
+const REPLAY_PAGES = CASE_LAB_CASES.map((item) => `replay/${item.id}/index.html`);
+const HTML_PAGES = ['index.html', 'result/index.html', 'privacy/index.html', ...REPLAY_PAGES];
+const INDEXED_PAGES = HTML_PAGES.filter((file) => file !== 'result/index.html');
 
 describe('buildSite', () => {
   it('writes the complete file set with validated result documents', () => {
@@ -45,6 +66,7 @@ describe('buildSite', () => {
       'catalog.json',
       'favicon.svg',
       'index.html',
+      'privacy/index.html',
       'replay/flaky-failure/index.html',
       'replay/flaky-failure/result.json',
       'replay/greenwash-trap/index.html',
@@ -89,6 +111,91 @@ describe('buildSite', () => {
     expect(script).toContain('function escapeHtml');
   });
 
+  it('ships the consent banner in the bundle: stored choice, consent update, and the privacy link', () => {
+    const script = readFileSync(join(outDir, 'case-lab.js'), 'utf8');
+    expect(script).toContain('"sutura-consent"');
+    expect(script).toContain('"Cookie consent"');
+    expect(script).toContain('"consent", "update", { analytics_storage: "granted" }');
+    expect(script).toContain('window.clarity?.("consent")');
+    expect(script).toContain('privacy/');
+    expect(script).not.toContain('ad_storage');
+  });
+
+  it('carries no verification or analytics markup and no privacy tool names without identifiers', () => {
+    for (const file of HTML_PAGES) {
+      const html = readFileSync(join(outDir, file), 'utf8');
+      for (const marker of IDENTIFIER_MARKERS) expect(html, `${file} ${marker}`).not.toContain(marker);
+      expect(html, file).toContain('· <a href="/privacy/">Privacy</a></footer>');
+    }
+    for (const file of REPLAY_PAGES) expect(readFileSync(join(outDir, file), 'utf8'), file).not.toContain('case-lab.js');
+    const privacy = readFileSync(join(outDir, 'privacy/index.html'), 'utf8');
+    expect(privacy).toContain('<title>Privacy · Sutura Case Lab</title>');
+    expect(privacy).toContain('<meta name="description" content="What the Sutura Case Lab measures and how to opt out.">');
+    expect(privacy).toContain('This build of the Case Lab carries no analytics. Nothing is measured.');
+    expect(privacy).not.toContain('Google Analytics');
+    expect(privacy).not.toContain('Clarity');
+    expect(privacy).not.toContain('Vercel');
+    expect(privacy).not.toContain('name="robots"');
+    expect(privacy).toContain(`<link rel="canonical" href="${SITE_URL}/privacy/">`);
+  });
+
+  it('renders every verification and analytics tag from a full config, with the consent default before the loader', () => {
+    const index = readFileSync(join(fullDir, 'index.html'), 'utf8');
+    const indexHead = head(index);
+    expect(indexHead).toContain('<meta name="google-site-verification" content="google-token-for-tests_0123456789">');
+    expect(indexHead).toContain('<meta name="msvalidate.01" content="0123456789ABCDEF0123456789ABCDEF">');
+    const consentDefault = indexHead.indexOf("gtag('consent', 'default', {'ad_storage': 'denied', 'analytics_storage': 'denied', 'ad_user_data': 'denied', 'ad_personalization': 'denied', 'wait_for_update': 500})");
+    const loader = indexHead.indexOf('<script async src="https://www.googletagmanager.com/gtag/js?id=G-TEST1234"></script>');
+    const config = indexHead.indexOf("gtag('js', new Date());gtag('config', \"G-TEST1234\", {'anonymize_ip': true});");
+    expect(consentDefault).toBeGreaterThan(-1);
+    expect(loader).toBeGreaterThan(consentDefault);
+    expect(config).toBeGreaterThan(loader);
+    expect(indexHead).not.toContain('granted');
+    expect(indexHead).toContain('t.src="https://www.clarity.ms/tag/"+i;');
+    expect(indexHead).toContain("'clarity', 'script', \"abc123def4\");window.clarity('consent', false);");
+    expect(indexHead).toContain('<script>window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };</script>');
+    expect(indexHead).toContain('<script defer src="/_vercel/insights/script.js"></script>');
+    expect(index).toContain('<main id="main" class="case-lab" data-page="index" data-site-root="/" data-api-base="" data-consent="ga4,clarity">');
+    for (const file of INDEXED_PAGES) {
+      const html = readFileSync(join(fullDir, file), 'utf8');
+      expect(html, file).toContain('gtag/js?id=G-TEST1234');
+      expect(html, file).toContain("window.clarity('consent', false)");
+      expect(html, file).toContain('data-consent="ga4,clarity"');
+      expect(html, file).toContain('<script src="/case-lab.js" defer></script>');
+      expect(html, file).toContain('<meta name="google-site-verification"');
+    }
+  });
+
+  it('keeps the live page free of GA4 and Clarity while carrying verification and the cookieless script', () => {
+    const live = readFileSync(join(fullDir, 'result/index.html'), 'utf8');
+    for (const marker of ['googletagmanager.com', 'gtag(', 'clarity.ms', 'clarity(', 'data-consent']) expect(live, marker).not.toContain(marker);
+    expect(live).toContain('<meta name="google-site-verification" content="google-token-for-tests_0123456789">');
+    expect(live).toContain('<meta name="msvalidate.01" content="0123456789ABCDEF0123456789ABCDEF">');
+    expect(live).toContain('<script defer src="/_vercel/insights/script.js"></script>');
+    expect(live).toContain('<meta name="robots" content="noindex, nofollow">');
+  });
+
+  it('names each configured tool on the privacy page and lists it in the sitemap', () => {
+    const privacy = readFileSync(join(fullDir, 'privacy/index.html'), 'utf8');
+    expect(privacy).toContain('<dt>Google Analytics 4</dt><dd>After you choose Accept it stores <code>_ga</code> cookies and pseudonymous usage data');
+    expect(privacy).toContain('<dt>Microsoft Clarity</dt><dd>After you choose Accept it records sessions and heatmaps with typed input masked.');
+    expect(privacy).toContain('<dt>Vercel Web Analytics</dt><dd>Counts page views in aggregate without cookies');
+    expect(privacy).toContain('Google Analytics and Microsoft Clarity do not set a cookie or record anything identifying before you choose Accept');
+    expect(privacy).toContain('Choose Decline in the banner, or clear this site');
+    expect(privacy).toContain('<code>sutura-consent</code>');
+    expect(privacy).not.toContain('name="robots"');
+    const sitemap = readFileSync(join(fullDir, 'sitemap.xml'), 'utf8');
+    expect(sitemap).toContain(`<loc>${SITE_URL}/privacy/</loc>`);
+    const ga4Only = join(mkdtempSync(join(tmpdir(), 'case-lab-site-ga4-')), 'site');
+    return buildSite({ outDir: ga4Only, catalog, release: RELEASE, clientBundle: '', identifiers: { ga4MeasurementId: 'G-ONLY1' } }).then(() => {
+      const page = readFileSync(join(ga4Only, 'privacy/index.html'), 'utf8');
+      expect(page).toContain('Google Analytics does not set a cookie or record anything identifying before you choose Accept in the banner at the bottom of the page. Choose Decline to keep it off.');
+      expect(page).not.toContain('Clarity');
+      expect(page).not.toContain('Vercel');
+      expect(readFileSync(join(ga4Only, 'index.html'), 'utf8')).toContain('data-consent="ga4"');
+    });
+  });
+
   it('carries canonical, social, icon, and structured data on every page and noindex only on the live page', () => {
     for (const file of HTML_PAGES) {
       const page = readFileSync(join(outDir, file), 'utf8');
@@ -128,15 +235,16 @@ describe('buildSite', () => {
     expect(jsonLdBlocks(readFileSync(join(outDir, 'result/index.html'), 'utf8'))).toEqual([]);
   });
 
-  it('writes robots.txt and a six-entry sitemap that reference each other', () => {
+  it('writes robots.txt and a seven-entry sitemap that reference each other', () => {
     const robots = readFileSync(join(outDir, 'robots.txt'), 'utf8');
     expect(robots.split('\n')).toEqual(['User-agent: *', 'Allow: /', 'Disallow: /result/', 'Disallow: /api/', `Sitemap: ${SITE_URL}/sitemap.xml`, '']);
     const sitemap = readFileSync(join(outDir, 'sitemap.xml'), 'utf8');
     const locs = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/gu)].map((match) => match[1]);
-    expect(locs).toEqual([`${SITE_URL}/`, ...CASE_LAB_CASES.map((item) => `${SITE_URL}/replay/${item.id}/`)]);
-    expect(sitemap.match(/<lastmod>/gu)).toHaveLength(6);
+    expect(locs).toEqual([`${SITE_URL}/`, ...CASE_LAB_CASES.map((item) => `${SITE_URL}/replay/${item.id}/`), `${SITE_URL}/privacy/`]);
+    expect(sitemap.match(/<lastmod>/gu)).toHaveLength(7);
     const newest = catalog.map((result) => result.createdAt).sort().at(-1);
     expect(sitemap).toContain(`<loc>${SITE_URL}/</loc><lastmod>${newest}</lastmod>`);
+    expect(sitemap).toContain(`<loc>${SITE_URL}/privacy/</loc><lastmod>${newest}</lastmod>`);
   });
 
   it('omits canonical, absolute Open Graph URLs, and the sitemap without a site URL', async () => {
@@ -192,8 +300,13 @@ describe('static server and acceptance', () => {
       'canonical',
       'result-noindex',
       'social-card',
+      'privacy-page',
+      'verification-tags',
       'links-public',
     ]);
+    const byName = Object.fromEntries(record.checks.map((check) => [check.name, check.detail]));
+    expect(byName['verification-tags']).toBe('skipped: site.json defines no verification token');
+    expect(byName['privacy-page']).toBe(`${baseUrl}privacy/ answers 200 and names its subject`);
     const traversal = await fetch(`${baseUrl}..%2F..%2Fpackage.json`);
     expect([403, 404]).toContain(traversal.status);
     const missing = await fetch(`${baseUrl}nope.html`);
@@ -219,8 +332,33 @@ describe('static server and acceptance', () => {
       expect(failed['robots-txt']).toContain(`http://127.0.0.1:${port}/robots.txt: Sitemap line missing`);
       expect(failed['sitemap-xml']).toContain(`http://127.0.0.1:${port}/sitemap.xml: status 404`);
       expect(failed.canonical).toContain(`http://127.0.0.1:${port}/replay/flaky-failure/: canonical missing`);
+      expect(failed.canonical).toContain(`http://127.0.0.1:${port}/privacy/: canonical missing`);
     } finally {
       plainServer.close();
+    }
+  });
+
+  it('passes the verification check only when the served index carries both expected tokens', { timeout: 60_000 }, async () => {
+    const fullServer = createStaticServer(fullDir);
+    const port = await listen(fullServer, 0);
+    const base = `http://127.0.0.1:${port}/`;
+    try {
+      const matching = await acceptance(base, {
+        now: NOW, checkLinks: false, verification: { google: FULL_IDENTIFIERS.googleSiteVerification!, bing: FULL_IDENTIFIERS.bingSiteVerification! },
+      });
+      expect(matching.passed).toBe(true);
+      expect(matching.checks.find((check) => check.name === 'verification-tags')?.detail).toBe(`${base} carries google-site-verification and msvalidate.01`);
+      expect(matching.checks.find((check) => check.name === 'sitemap-xml')?.detail).toBe(`${base}sitemap.xml lists 7 pages`);
+      const mismatched = await acceptance(base, {
+        now: NOW, checkLinks: false, verification: { google: 'another-token-for-tests', bing: FULL_IDENTIFIERS.bingSiteVerification! },
+      });
+      expect(mismatched.passed).toBe(false);
+      expect(mismatched.checks.find((check) => check.name === 'verification-tags')?.detail)
+        .toBe(`${base}: google-site-verification meta tag missing or not another-token-for-tests`);
+      const plain = await acceptance(baseUrl, { now: NOW, checkLinks: false, verification: { bing: FULL_IDENTIFIERS.bingSiteVerification! } });
+      expect(plain.checks.find((check) => check.name === 'verification-tags')?.passed).toBe(false);
+    } finally {
+      fullServer.close();
     }
   });
 

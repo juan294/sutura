@@ -1,17 +1,29 @@
 /// <reference lib="dom" />
 /**
- * Browser entry for the Case Lab. It runs on the index page (live dispatch)
- * and on the result page (live result lookup). Everything it renders goes
+ * Browser entry for the Case Lab. It runs on the index page (live dispatch),
+ * on the result page (live result lookup), and on every page that carries a
+ * consent-gated tracker (the consent banner). Everything it renders goes
  * through the escaping renderer; it never inserts unescaped input.
  */
 import { CASE_LAB_CASES, CASE_LAB_CASE_IDS, type CaseLabCase } from './cases.js';
 import {
+  CONSENT_STORAGE_KEY,
+  PRIVACY_PATH,
+  PRIVACY_TITLE,
   isRenderableResult,
   LIVE_REQUEST_ID,
   renderPendingBody,
   renderResultBody,
   resultPageTitle,
+  type ConsentTool,
 } from './render.js';
+
+declare global {
+  interface Window {
+    gtag?: (...args: unknown[]) => void;
+    clarity?: (...args: unknown[]) => void;
+  }
+}
 
 const RESULTS_BASE = 'https://raw.githubusercontent.com/juan294/sutura-demo/case-lab-results/results/';
 const RUNS_API = 'https://api.github.com/repos/juan294/sutura-demo/actions/workflows/case-lab.yml/runs?per_page=30';
@@ -153,9 +165,80 @@ async function pollRun(requestId: string, main: HTMLElement): Promise<void> {
   setStatus('Stopped waiting. Refresh this page later; the address stays valid.');
 }
 
+type ConsentChoice = 'granted' | 'denied';
+
+const TOOL_NAMES: Readonly<Record<ConsentTool, string>> = Object.freeze({ ga4: 'Google Analytics', clarity: 'Microsoft Clarity' });
+
+function storedConsent(): ConsentChoice | undefined {
+  try {
+    const value = window.localStorage.getItem(CONSENT_STORAGE_KEY);
+    return value === 'granted' || value === 'denied' ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function storeConsent(choice: ConsentChoice): void {
+  try {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, choice);
+  } catch {
+    // Storage can be unavailable; the choice then lasts for this page only.
+  }
+}
+
+/** Upgrade the consent defaults declared in the head. Only analytics storage is ever granted. */
+function grantConsent(tools: readonly ConsentTool[]): void {
+  if (tools.includes('ga4')) window.gtag?.('consent', 'update', { analytics_storage: 'granted' });
+  if (tools.includes('clarity')) window.clarity?.('consent');
+}
+
+function consentButton(label: string, onClick: () => void): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'button';
+  button.textContent = label;
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+function renderConsentBanner(tools: readonly ConsentTool[]): void {
+  const banner = document.createElement('aside');
+  banner.className = 'consent';
+  banner.setAttribute('role', 'region');
+  banner.setAttribute('aria-label', 'Cookie consent');
+  const text = document.createElement('p');
+  text.textContent = `This site uses ${tools.map((tool) => TOOL_NAMES[tool]).join(' and ')} to count visits and see how the Case Lab is used. Nothing is stored before you accept.`;
+  const actions = document.createElement('p');
+  actions.className = 'actions';
+  const close = (choice: ConsentChoice): void => {
+    storeConsent(choice);
+    if (choice === 'granted') grantConsent(tools);
+    banner.remove();
+  };
+  const privacy = document.createElement('a');
+  privacy.href = `${siteRoot()}${PRIVACY_PATH}`;
+  privacy.textContent = PRIVACY_TITLE;
+  actions.append(consentButton('Accept', () => close('granted')), consentButton('Decline', () => close('denied')), privacy);
+  banner.append(text, actions);
+  document.body.append(banner);
+}
+
+/** Runs on every page that carries a consent-gated tracker; no-op elsewhere. */
+function setupConsent(root: HTMLElement): void {
+  const tools = (root.dataset.consent ?? '').split(',').filter((tool): tool is ConsentTool => tool === 'ga4' || tool === 'clarity');
+  if (tools.length === 0) return;
+  const stored = storedConsent();
+  if (stored === 'granted') {
+    grantConsent(tools);
+    return;
+  }
+  if (stored === undefined) renderConsentBanner(tools);
+}
+
 function main(): void {
   const root = document.querySelector('main');
   if (!root) return;
+  setupConsent(root);
   const page = root.dataset.page;
   const apiBase = root.dataset.apiBase;
   if (page === 'index') {

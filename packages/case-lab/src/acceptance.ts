@@ -1,5 +1,6 @@
 import { CASE_LAB_CASES } from './cases.js';
 import { MODE_LABELS } from './labels.js';
+import { escapeHtml } from './render.js';
 import { validateCaseLabResult, type CaseLabResult } from './result.js';
 
 export const ACCEPTANCE_SCHEMA_VERSION = 'sutura-case-lab-acceptance-v1' as const;
@@ -25,9 +26,13 @@ export interface AcceptanceOptions {
   /** Check that every GitHub link in the results answers without authentication. Defaults to true; false keeps the run offline. */
   readonly checkLinks?: boolean;
   readonly liveResultId?: string;
+  /** Expected verification tokens from site.json. Empty or absent: the check is skipped with a named reason. */
+  readonly verification?: { readonly google?: string; readonly bing?: string };
   readonly fetch?: typeof fetch;
   readonly now?: () => Date;
 }
+
+const PRIVACY_PATH = 'privacy/';
 
 /** Signed-out requests only: no cookies, no authorization header, nothing cached. */
 async function get(fetchImpl: typeof fetch, url: string, method: 'GET' | 'HEAD' = 'GET'): Promise<Response> {
@@ -151,7 +156,7 @@ export async function acceptance(baseUrl: string, options: AcceptanceOptions = {
   }
 
   const origin = expectedOrigin(base);
-  const indexedPages = ['', ...CASE_LAB_CASES.map((item) => `replay/${item.id}/`)].map((path) => new URL(path, base));
+  const indexedPages = ['', ...CASE_LAB_CASES.map((item) => `replay/${item.id}/`), PRIVACY_PATH].map((path) => new URL(path, base));
 
   const robotsUrl = `${base}robots.txt`;
   try {
@@ -232,6 +237,43 @@ export async function acceptance(baseUrl: string, options: AcceptanceOptions = {
       : `${cardUrl}: status ${response.status}; content type ${type}; ${bytes} bytes`);
   } catch (error) {
     record('social-card', false, `${cardUrl}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const privacyUrl = `${base}${PRIVACY_PATH}`;
+  try {
+    const response = await get(fetchImpl, privacyUrl);
+    const html = await response.text();
+    const problems: string[] = [];
+    if (response.status !== 200) problems.push(`status ${response.status}`);
+    if (!/\bPrivacy\b/u.test(html)) problems.push('the word Privacy is missing');
+    problems.push(...signedOutHeaders(response));
+    record('privacy-page', problems.length === 0, problems.length === 0
+      ? `${privacyUrl} answers 200 and names its subject`
+      : `${privacyUrl}: ${problems.join('; ')}`);
+  } catch (error) {
+    record('privacy-page', false, `${privacyUrl}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const expectedTags = [
+    ...(options.verification?.google === undefined ? [] : [{ name: 'google-site-verification', content: options.verification.google }]),
+    ...(options.verification?.bing === undefined ? [] : [{ name: 'msvalidate.01', content: options.verification.bing }]),
+  ];
+  if (expectedTags.length === 0) {
+    record('verification-tags', true, 'skipped: site.json defines no verification token');
+  } else {
+    try {
+      const response = await get(fetchImpl, base);
+      const html = await response.text();
+      const problems = expectedTags
+        .filter((tag) => !html.includes(`<meta name="${tag.name}" content="${escapeHtml(tag.content)}">`))
+        .map((tag) => `${tag.name} meta tag missing or not ${tag.content}`);
+      if (response.status !== 200) problems.unshift(`status ${response.status}`);
+      record('verification-tags', problems.length === 0, problems.length === 0
+        ? `${base} carries ${expectedTags.map((tag) => tag.name).join(' and ')}`
+        : `${base}: ${problems.join('; ')}`);
+    } catch (error) {
+      record('verification-tags', false, `${base}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   if (options.checkLinks !== false) {

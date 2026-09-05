@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm --filter @sutura/core build && pnpm --filter @sutura/case-lab build && node bin/case-lab.js build-site --site-url https://sutura-case-lab.vercel.app",
+  "buildCommand": "pnpm --filter @sutura/core build && pnpm --filter @sutura/case-lab build && node bin/case-lab.js build-site --api-base \"\" --site-url https://sutura-case-lab.vercel.app",
   "outputDirectory": "dist/site",
   "framework": null,
   "cleanUrls": false,

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -14,6 +14,7 @@ import { deterministicResult, loadRelease, replayCatalog, replayedResult, PACKAG
 import { CaseLabResultError, validateCaseLabResult } from './result.js';
 import { createStaticServer, listen } from './serve.js';
 import { buildSite } from './site.js';
+import { SITE_CONFIG_FILE, loadSiteConfig, type SiteConfig } from './site-config.js';
 
 const execFileAsync = promisify(execFile);
 const RESULTS_BASE = 'https://raw.githubusercontent.com/juan294/sutura-demo/case-lab-results/results/';
@@ -22,9 +23,9 @@ export const USAGE = [
   'Usage:',
   '  case-lab catalog --out <dir>',
   '  case-lab replay <case-id> [--out <file>]',
-  '  case-lab build-site [--out <dir>] [--api-base <origin or empty>] [--site-root </>] [--site-url <https origin>]',
+  '  case-lab build-site [--out <dir>] [--api-base <origin or empty>] [--site-root </>] [--site-url <https origin>] [--site-config <file>]',
   '  case-lab serve [--dir <dir>] [--port <port>]',
-  '  case-lab acceptance --base-url <url> [--offline] [--live-result <request-id>] [--out <file>]',
+  '  case-lab acceptance --base-url <url> [--offline] [--live-result <request-id>] [--site-config <file>] [--out <file>]',
   '  case-lab verify-pin [--tag <tag>] [--workflow <file>] [--set-controller <sha>]',
   '  case-lab dispatch --base-url <url> --case <case-id>',
   '  case-lab capture-replay --request-id <id> [--out <dir>]',
@@ -90,6 +91,13 @@ function requireValue(args: readonly string[], flag: string): string {
   return value;
 }
 
+/** `--site-config <file>` must exist; the package default is optional so a checkout without site.json still builds. */
+function siteConfigFor(args: readonly string[]): SiteConfig {
+  const explicit = valueAfter(args, '--site-config');
+  if (explicit !== undefined) return loadSiteConfig(resolve(explicit));
+  return existsSync(SITE_CONFIG_FILE) ? loadSiteConfig(SITE_CONFIG_FILE) : {};
+}
+
 /** Write a public document without ever overwriting an existing file. */
 export function writeNew(path: string, content: string): void {
   writeFileSync(path, content, { encoding: 'utf8', flag: 'wx', mode: 0o644 });
@@ -128,13 +136,15 @@ export async function runCaseLabCli(argv: readonly string[], dependencies: CliDe
       case 'build-site': {
         const outDir = resolve(valueAfter(args, '--out') ?? DEFAULT_SITE_DIR);
         const apiBase = args.includes('--api-base') ? (valueAfter(args, '--api-base') ?? '') : undefined;
-        const siteUrl = valueAfter(args, '--site-url');
+        const { siteUrl: configuredSiteUrl, ...identifiers } = siteConfigFor(args);
+        const siteUrl = valueAfter(args, '--site-url') ?? configuredSiteUrl;
         const catalog = await replayCatalog(dependencies.catalog);
         const written = await buildSite({
           outDir,
           catalog,
           release: dependencies.catalog?.release ?? loadRelease(),
           siteRoot: valueAfter(args, '--site-root') ?? '/',
+          identifiers,
           ...(apiBase === undefined ? {} : { apiBase }),
           ...(siteUrl === undefined ? {} : { siteUrl }),
         });
@@ -153,9 +163,14 @@ export async function runCaseLabCli(argv: readonly string[], dependencies: CliDe
       case 'acceptance': {
         const baseUrl = requireValue(args, '--base-url');
         const liveResultId = valueAfter(args, '--live-result');
+        const { googleSiteVerification, bingSiteVerification } = siteConfigFor(args);
         const record = await acceptance(baseUrl, {
           checkLinks: !args.includes('--offline'),
           ...(liveResultId === undefined ? {} : { liveResultId }),
+          verification: {
+            ...(googleSiteVerification === undefined ? {} : { google: googleSiteVerification }),
+            ...(bingSiteVerification === undefined ? {} : { bing: bingSiteVerification }),
+          },
         });
         const text = `${canonicalJson(record)}\n`;
         const out = valueAfter(args, '--out');
