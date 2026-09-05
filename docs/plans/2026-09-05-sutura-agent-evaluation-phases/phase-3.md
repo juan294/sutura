@@ -191,3 +191,5 @@ independent factual review. Remaining video/transcript, public acceptance and
 final identity/pinning belong to WS-4; optional website exports belong to the
 discoverability workstream. The comparison remains bound to `b810c032` even though
 closeout metadata is committed later.
+
+Phase 3 completion commit: `2cca707a0b457c9889ba34195279ad851dd9be05`. The final committed-only archive passed all 11 focused contracts without installation. This completed commit, including the unchanged measured public documents, is the Phase 3 integration deliverable.

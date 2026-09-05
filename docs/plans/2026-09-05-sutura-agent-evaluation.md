@@ -139,8 +139,8 @@ Semantic correctness remains a source-review responsibility.
 | Phase | Deliverable | Files | Depends on | Status |
 | --- | --- | --- | --- | --- |
 | [1](2026-09-05-sutura-agent-evaluation-phases/phase-1.md) | Current guide, architecture cards, and content/link contract | New `docs/evaluation/README.md`, `docs/evaluation/architecture.md`; extend `scripts/submission-contract.test.mjs` | This plan | Complete; `e2441e4` locally integrated |
-| [2](2026-09-05-sutura-agent-evaluation-phases/phase-2.md) | Discoverable entry links, concise docs index, consistency corrections | `README.md`, `AGENTS.md`, `CLAUDE.md`, new `docs/README.md`; extend same test file | Phase 1 | Complete locally at `b526d3b`; final integration pending |
-| [3](2026-09-05-sutura-agent-evaluation-phases/phase-3.md) | Bounded fresh-reader comparison and final source review | Ignored `docs/agents/agent-evaluation-comparison.md` and trial outputs; scoped corrections to Phases 1–2 files if supported | Phase 2 | Complete: eight readers assessed; documentation snapshot `b810c03` |
+| [2](2026-09-05-sutura-agent-evaluation-phases/phase-2.md) | Discoverable entry links, concise docs index, consistency corrections | `README.md`, `AGENTS.md`, `CLAUDE.md`, new `docs/README.md`; extend same test file | Phase 1 | Complete at `b526d3b`; included in final integration |
+| [3](2026-09-05-sutura-agent-evaluation-phases/phase-3.md) | Bounded fresh-reader comparison and final source review | Ignored `docs/agents/agent-evaluation-comparison.md` and trial outputs; scoped corrections to Phases 1–2 files if supported | Phase 2 | Complete at `2cca707`; measured docs `b810c03` |
 
 All phases are sequential. None is batch eligible: Phase 2 requires Phase 1's
 destinations and shares its test file; Phase 3 evaluates their combined output.
@@ -279,3 +279,5 @@ original phase stops and remote-publication exclusion. Production deployment,
 preview deployment, release pinning, video/transcript and public acceptance remain
 separate work. Vercel Git integration was inspected and is absent; current
 workflow triggers and push-freeze admission were checked before publication.
+
+Phase 3 completion commit: `2cca707a0b457c9889ba34195279ad851dd9be05`. The final committed-only archive passed all 11 focused contracts without installation. This completed commit, including the unchanged measured public documents, is the Phase 3 integration deliverable.
