@@ -108,7 +108,9 @@ export {
   CaseLabReplayError,
   PACKAGE_DIR,
   REPLAY_DIR,
+  REPLAY_FIXTURE_SCHEMA_VERSION,
   REPOSITORY_ROOT,
+  parseReplayFixture,
   caseFileCost,
   deterministicResult,
   loadRelease,
@@ -121,6 +123,7 @@ export {
 export type {
   RecordedResultOptions,
   ReplayCatalogOptions,
+  ReplayFixture,
   ReplayedResultOptions,
 } from './replay.js';
 export { CaseLabCliError, USAGE, runCaseLabCli, valueAfter, writeNew } from './cli.js';

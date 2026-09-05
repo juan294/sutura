@@ -14,6 +14,7 @@ import {
   type CorpusCase,
   type CorpusManifest,
   type ExpectedOutcome,
+  type FixtureLanguage,
   type HiddenVerificationResult,
 } from './types.js';
 
@@ -194,13 +195,26 @@ async function isPythonFixture(fixtureDirectory: string): Promise<boolean> {
   }
 }
 
+const PYTHON_SUITE_ARGS = ['-B', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py'];
+
+/**
+ * The visible suite command per fixture language, as one shell line. The
+ * harness hands it to the adapter so the agent reproduces the same failure the
+ * hidden verification measures.
+ */
+export function fixtureTestCommand(language: FixtureLanguage): string {
+  return language === 'python'
+    ? `python3 ${PYTHON_SUITE_ARGS.map((arg) => (arg.includes('*') ? `'${arg}'` : arg)).join(' ')}`
+    : 'pnpm test';
+}
+
 /** Runs the fixture's declared visible suite and returns its exit code. */
 export async function runFixtureSuite(
   fixtureDirectory: string,
   extraEnv: Readonly<Record<string, string>> = {},
 ): Promise<number> {
   if (await isPythonFixture(fixtureDirectory)) {
-    return (await run('python3', ['-B', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py'], fixtureDirectory, {
+    return (await run('python3', PYTHON_SUITE_ARGS, fixtureDirectory, {
       PYTHONDONTWRITEBYTECODE: '1',
       ...extraEnv,
     })).exitCode;

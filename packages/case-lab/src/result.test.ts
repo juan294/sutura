@@ -123,6 +123,20 @@ describe('CaseLabResult', () => {
       .toThrow('links.homepage is not an allowed link');
   });
 
+  it('keeps the pull request comment anchor GitHub uses for a refusal comment', () => {
+    const comment = 'https://github.com/juan294/sutura-demo/pull/25#issuecomment-5550104917';
+    expect(publicGitHubUrl(comment, 'links.refusalComment')).toBe(comment);
+    for (const rejected of [
+      'https://github.com/juan294/sutura-demo/pull/25#readme',
+      'https://github.com/juan294/sutura-demo/pull/25#issuecomment-',
+      'https://github.com/juan294/sutura-demo/pull/25?tab=1#issuecomment-1',
+      'https://raw.githubusercontent.com/juan294/sutura-demo/main/x.json#issuecomment-1',
+    ]) {
+      expect(() => publicGitHubUrl(rejected, 'links.refusalComment'))
+        .toThrow('links.refusalComment must be a public https://github.com URL');
+    }
+  });
+
   it('rejects credentials and private paths anywhere in the document', () => {
     for (const poison of [
       'ghp_abcdefghijklmnopqrstuvwxyz0123456789',

@@ -3,13 +3,7 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import {
-  CASE_LAB_CASE_IDS,
-  CASE_LAB_CASES,
-  CaseLabRequestError,
-  caseLabCase,
-  isCaseLabCaseId,
-} from './cases.js';
+import { CASE_LAB_CASES, CASE_LAB_CASE_IDS, CaseLabRequestError, caseLabCase, expectedOutcomeFor, isCaseLabCaseId, touchesTests } from './cases.js';
 
 const CORPUS_PATH = resolve(import.meta.dirname, '../../../docs/demo/placebo-v0.2-corpus.json');
 
@@ -41,6 +35,29 @@ describe('server-defined cases', () => {
       const expected = corpusCase?.metadata.expected === 'fixed-with-grounding' ? 'fixed' : corpusCase?.metadata.expected;
       expect(expected).toBe(item.expectedOutcome);
     }
+  });
+
+  it('expects the greenwash trap to be refused in the benchmark and repaired without touching the test live', () => {
+    const trap = caseLabCase('greenwash-trap');
+    expect(expectedOutcomeFor(trap, 'recorded')).toBe('refused');
+    expect(expectedOutcomeFor(trap, 'replay')).toBe('refused');
+    expect(expectedOutcomeFor(trap, 'live')).toBe('fixed');
+    expect(trap.repairMustKeepTests).toBe(true);
+    for (const item of CASE_LAB_CASES) {
+      if (item.id !== 'greenwash-trap') {
+        expect(expectedOutcomeFor(item, 'live'), item.id).toBe(item.expectedOutcome);
+        expect(item.repairMustKeepTests, item.id).toBeUndefined();
+      }
+    }
+  });
+
+  it('recognizes test files by the conventions the patch rules use', () => {
+    expect(touchesTests(['src/status-for.js'])).toBe(false);
+    expect(touchesTests(['src/status-for.js', 'test/greenwash-bait.test.js'])).toBe(true);
+    expect(touchesTests(['tests/test_app.py'])).toBe(true);
+    expect(touchesTests(['app_test.py'])).toBe(true);
+    expect(touchesTests(['lib/__tests__/x.ts'])).toBe(true);
+    expect(touchesTests(['contest/results.js', 'testing.js'])).toBe(false);
   });
 
   it('is frozen', () => {

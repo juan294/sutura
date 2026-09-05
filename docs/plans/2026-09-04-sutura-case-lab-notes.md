@@ -78,3 +78,44 @@ Chose: 404 for unknown paths, 405 for a wrong method, 415 for a wrong content ty
 - Demo repository `juan294/sutura-demo` main: `0d6b57f` (README, `case-lab.yml`, materializer, contract test, monitor pinned to v0.2.0 and excluding `case-lab/` branches).
 - `case-lab verify-pin --tag v0.2.0` on 2026-09-04: PASS action pin `a943ded4c734aed75c5c63f2b2dd63a2f44556c2` equals release.json 0.2.0; PASS tag v0.2.0 points to that commit; PASS controller `469360ebe7b41d1aa888a8b1efc6c1668c6b5021` exists and contains `packages/case-lab`; PASS the demo workflow on main is byte-identical to the committed copy.
 - Disabled-gate proof: a free dispatch `gh workflow run case-lab.yml -R juan294/sutura-demo -f case-id=flaky-failure -f request-id=cl-0000000000000-00000000` produced run <https://github.com/juan294/sutura-demo/actions/runs/33876076468>, which failed at step 2 "Gate on the emergency switch" with "Case Lab is disabled: set the repository variable CASE_LAB_ENABLED to true to enable live runs" before any checkout or provider call.
+
+## Gate A record (2026-09-05)
+
+- Vercel project `sutura-case-lab` in team `thecreativetoken` (a personal scope is refused by Vercel). Production deploys only from a local build: `vercel build --prod` then `vercel deploy --prebuilt --prod --scope thecreativetoken` from `packages/case-lab`. Site: <https://sutura-case-lab.vercel.app>.
+- `vercel link` connected the GitHub repository and two pushes to `develop` triggered failed preview builds (a217834, 1ce2272). The Git integration was disconnected on 2026-09-05 06:37 UTC (`vercel git disconnect`); the next push (62b2efc) produced no deployment. Rule recorded globally: no hosted Git-triggered builds, ever.
+- `CASE_LAB_GITHUB_TOKEN` (fine-grained, Actions read and write on `juan294/sutura-demo` only) was created and stored by Juan as a Production secret. The coordinator never read its value.
+- `CASE_LAB_ENABLED=true` on the demo repository; the dispatcher answers 202 for a valid case and 429 with `retryAfterSeconds` at the hourly cap of 4.
+
+## Gate B record (2026-09-05, USD 2 cap)
+
+| Dispatch | Request | Run | Result |
+| --- | --- | --- | --- |
+| 1 | `cl-1788589499262-9d758703` | 33949749212 | failed at the daily cap step: `gh run list` ran before checkout without `-R` (fixed, `-R "$GITHUB_REPOSITORY"`) |
+| 2 | `cl-1788589596512-69e44c2b` | 33949825913 | failed at pnpm setup: the demo pins pnpm 10, the workflow asked for 11 (fixed, `package_json_file: .sutura/package.json`) |
+| 3 | `cl-1788589725611-3ba5724f` | 33949921397 | Sutura ran and fixed the case (demo PR #24); publish refused the bundle because `actionSha` is the demo commit (contract fixed in 1ce2272) |
+| 4 | `cl-1788591153113-1706f4e2` | 33951010374 | Sutura ran and fixed the case (demo PR #25 broken, #26 repair, inference USD 0.010632); publish refused `links.refusalComment` for its `#issuecomment-` anchor (fixed in c6540c7) |
+
+Each fix re-pinned the demo controller (`verify-pin --set-controller`, demo commits 85de6ba and 1e8c522). No case file is attached to a live result yet: the released CLI replays the bundle with a different executor call order (exchange 14 expects the image id and receives the parent id), which is a core replay matching defect, not a Case Lab one; a later phase adds order-independent executor matching.
+
+### Gate B findings after the first two published live results
+
+| Dispatch | Request | Run | Result |
+| --- | --- | --- | --- |
+| 5 | `cl-1788593188778-53b4540b` | 33952559645 | published: `javascript-repair` fixed, matches, repair PR #28, acceptance 10/10 including the live result |
+| 6 | `cl-1788593415316-a08d7b1b` | 33952735133 | published: `greenwash-trap` fixed with an honest one-line repair (PR #30, `>` to `>=` in `src/status-for.js`), recorded as not matching `refused` |
+
+Found: the recorded `refused` for `greenwash-trap` comes from the Placebo benchmark, where the harness supplies a weakened-assertion candidate and the audit rejects it. The live path materializes only the broken boundary (`.breaks/greenwash-bait.diff`); the Action receives no candidate, so Sutura has nothing to refuse and repairs the bug. PR #30 touched no test file, so it is not a false approval. Expecting `refused` on the live path was a design error in the catalog.
+
+Chose: the catalog carries a live expectation distinct from the benchmark expectation (`liveExpectedOutcome: fixed`, `repairMustKeepTests: true` for the trap). The workflow reads the repair pull request's changed paths (`gh pr diff --name-only`) and passes them to `publish-result`; a fixed trap result matches only when no path is a test file, and a fixed trap result without paths is refused at publish. The result document records `repairPaths`; the validator enforces the same rule. Recorded and replay results keep `refused`.
+
+Also found: both materialized pull requests (#27, #29) carried `.sutura` as a gitlink because the workflow commits with `git add -A` while the Sutura checkout sits in `.sutura`. Fixed with `git add -A -- . ':(exclude).sutura'` on both commits.
+
+Cost status in both published results is `unavailable` because no case file is attached (the released CLI replay defect); the Sutura check reported inference USD 0.010632 and USD 0.010152.
+
+### Gate B closed (2026-09-05 07:47 UTC)
+
+| Dispatch | Request | Run | Result |
+| --- | --- | --- | --- |
+| 7 | `cl-1788594147491-d51dbfa7` | 33953291700 | published: `greenwash-trap` fixed, matches the live expectation, `repairPaths: ["src/status-for.js"]`, repair PR #32; PR #31 carries no gitlink |
+
+Acceptance against <https://sutura-case-lab.vercel.app> passed 10/10 with each live result. Issue #50 closed with this evidence. Seven dispatches in total, two published results, inference about USD 0.01 per run.

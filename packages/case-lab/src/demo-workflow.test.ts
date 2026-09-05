@@ -51,7 +51,7 @@ describe('demo case-lab.yml contract', () => {
     expect(names[3]).toBe('Check out the trusted demo default branch');
     expect(steps[0]?.body).toContain('if [ "$CASE_LAB_ENABLED" != "true" ]');
     expect(steps[0]?.body).toContain('exit 1');
-    expect(steps[2]?.body).toContain('gh run list --workflow case-lab.yml --created ">=$since"');
+    expect(steps[2]?.body).toContain('gh run list -R "$GITHUB_REPOSITORY" --workflow case-lab.yml --created ">=$since"');
     expect(steps[2]?.body).toContain('if [ "$count" -gt "$CASE_LAB_DAILY_RUN_CAP" ]');
     expect(WORKFLOW).toContain("CASE_LAB_DAILY_RUN_CAP: '8'");
   });

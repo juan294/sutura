@@ -41,6 +41,24 @@ describe('runBenchmark', { timeout: 120_000 }, () => {
     expect(report.score.fixRate).toMatchObject({ fixed: 0, of: 18 });
   }, 300_000);
 
+  it.each([
+    ['python-repair-missing-await', "python3 -B -m unittest discover -s tests -p 'test_*.py'"],
+    ['repair-off-by-one', 'pnpm test'],
+  ])('hands %s the visible suite command its hidden verification runs', async (caseId, expected) => {
+    const commands: Array<string | undefined> = [];
+    const adapter: Adapter = {
+      name: 'recording',
+      async heal(_directory, context) {
+        commands.push(context?.failingCommand);
+        return approved();
+      },
+    };
+
+    await runBenchmark(adapter, { caseId });
+
+    expect(commands).toEqual([expected]);
+  });
+
   it('selects one exact canonical case before adapter or runtime work', async () => {
     const heal = vi.fn(async () => approved());
     const adapter: Adapter = { name: 'recording', heal };

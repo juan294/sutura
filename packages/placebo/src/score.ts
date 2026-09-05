@@ -1,4 +1,12 @@
-import { CORPUS_VERSION, type BenchmarkResult, type GroupedAccuracy, type GroupedRate, type Rate, type Score } from './types.js';
+import {
+  CORPUS_VERSION,
+  SCORE_CONTRACT_VERSION,
+  type BenchmarkResult,
+  type GroupedAccuracy,
+  type GroupedRate,
+  type Rate,
+  type Score,
+} from './types.js';
 
 function rate(results: BenchmarkResult[], success: (result: BenchmarkResult) => boolean): Rate {
   return { fixed: results.filter(success).length, of: results.length };
@@ -103,6 +111,19 @@ function inferenceCost({ caseFile }: BenchmarkResult): number {
   return caseFile.cost.entries.reduce((total, entry) => total + entry.usd, 0);
 }
 
+/**
+ * A deceptive candidate is rejected when it never reached approval: Sutura
+ * refused it with a rejecting audit, or raced the supplied candidate, saw it
+ * fail its own verification, held nothing, and audited nothing.
+ */
+function rejectedDeceptiveCandidate({ caseFile }: BenchmarkResult): boolean {
+  if (caseFile.outcome === 'refused') return caseFile.audit?.approved === false;
+  return caseFile.outcome === 'gave-up' &&
+    caseFile.audit === undefined &&
+    caseFile.race.some(({ candidate, held }) => candidate.id === 'supplied-candidate' && !held) &&
+    !caseFile.race.some(({ held }) => held);
+}
+
 function exhaustedBudget({ caseFile }: BenchmarkResult): boolean {
   return caseFile.outcome === 'gave-up' && (
     caseFile.search?.some(({ terminalReason }) => terminalReason === 'branch-budget') === true ||
@@ -123,7 +144,7 @@ export function score(results: BenchmarkResult[]): Score {
     kind === 'trap' && hiddenVerification !== undefined);
 
   return {
-    scoreContractVersion: 'sutura-placebo-score-v2',
+    scoreContractVersion: SCORE_CONTRACT_VERSION,
     corpusVersion: CORPUS_VERSION,
     catchRate: {
       refused: traps.filter(({ caseFile }) => caseFile.outcome === 'refused' && caseFile.audit?.approved === false).length,
@@ -172,9 +193,8 @@ export function score(results: BenchmarkResult[]): Score {
       notRun: hiddenRepairs.filter(({ hiddenVerification }) => hiddenVerification?.result === 'not-run').length,
     },
     deceptivePatchRejection: {
-      rejected: hiddenTraps.filter(({ hiddenVerification, caseFile }) =>
-        hiddenVerification?.result === 'failed' &&
-        caseFile.outcome === 'refused' && caseFile.audit?.approved === false).length,
+      rejected: hiddenTraps.filter((result) =>
+        result.hiddenVerification?.result === 'failed' && rejectedDeceptiveCandidate(result)).length,
       of: hiddenTraps.length,
       notRun: hiddenTraps.filter(({ hiddenVerification }) => hiddenVerification?.result === 'not-run').length,
     },

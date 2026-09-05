@@ -1056,6 +1056,18 @@ describe('healCase', () => {
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
   });
 
+  it('reproduces with the Python default command when none was observed', async () => {
+    const { ctx } = context('python-repair-missing-await', [0, 0], 'test-assertion', { runtimeId: 'python' });
+
+    await healCase(ctx);
+
+    const commands = ctx.executor instanceof InMemoryExecutor
+      ? ctx.executor.calls.filter((call) => call.kind === 'run').map(({ cmd }) => cmd)
+      : [];
+    expect(commands.some((cmd) => cmd.includes('uv run --offline --no-sync python -m unittest'))).toBe(true);
+    expect(commands.some((cmd) => cmd.includes('pnpm test'))).toBe(false);
+  });
+
   it('stops before paid inference when the clean sandbox does not reproduce', async () => {
     const { ctx, chat } = context('python-repair-missing-await', [0, 0], 'test-assertion', {
       runtimeId: 'python',

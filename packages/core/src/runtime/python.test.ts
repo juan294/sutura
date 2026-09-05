@@ -89,6 +89,11 @@ describe('PYTHON_RUNTIME', () => {
     ['python -m pytest -q', 'uv run --offline --no-sync python -m pytest -q'],
     ['python3 -m ruff check .', 'uv run --offline --no-sync python3 -m ruff check .'],
     ['python3.13 -m mypy src', 'uv run --offline --no-sync python3.13 -m mypy src'],
+    ['python -m unittest', 'uv run --offline --no-sync python -m unittest'],
+    [
+      "python3 -B -m unittest discover -s tests -p 'test_*.py'",
+      "uv run --offline --no-sync python3 -B -m unittest discover -s tests -p 'test_*.py'",
+    ],
   ])('normalizes module invocation %s through the offline prepared environment', (command, expected) => {
     expect(PYTHON_RUNTIME.normalizeCommand(command)).toBe(expected);
   });

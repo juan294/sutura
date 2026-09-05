@@ -380,7 +380,10 @@ output and GitHub Check.
 Runtime detection is automatic for single-runtime repositories. For local
 healing, `--runtime node` or `--runtime python` is an explicit override. The
 Action `runtime` input accepts `auto`, `node`, or `python`. Prefer the protected
-`.sutura.json` field for a persistent polyglot repository choice.
+`.sutura.json` field for a persistent polyglot repository choice. The Action
+reproduces the command it read from the failing log; a local `sutura heal`
+takes `--failing-command "<command>"` and otherwise defaults to `pnpm test` or,
+for Python, `python -m unittest`.
 
 ### Reduced-assurance audit-only mode
 

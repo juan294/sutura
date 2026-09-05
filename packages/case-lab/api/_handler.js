@@ -1,6 +1,9 @@
 // Shared by api/dispatch.js and api/health.js. Vercel does not route files that start with an underscore.
 import release from '../release.json' with { type: 'json' };
-import { caseLabEnvironment, createCaseLabHandler, createGitHubDispatchClient, DEMO_REPOSITORY } from '../dist/index.js';
+// Import the dispatcher modules directly, not the package barrel: the barrel
+// re-exports the site builder, which would drag esbuild into the function bundle.
+import { caseLabEnvironment, createCaseLabHandler, DEMO_REPOSITORY } from '../dist/dispatcher.js';
+import { createGitHubDispatchClient } from '../dist/github.js';
 
 let cached;
 

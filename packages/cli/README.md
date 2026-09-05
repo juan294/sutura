@@ -25,6 +25,10 @@ polyglot repository, or pass `--runtime node|python` to a local `sutura heal`
 run. Python preparation requires `uv.lock` or exact hash-locked binary
 requirements and never runs repository source with network access.
 
+A local `sutura heal` reproduces `pnpm test` (Node) or `python -m unittest`
+(Python) unless `--failing-command "<command>"` names the command CI ran. The
+Action always passes the command it extracted from the failing log.
+
 For a local review that does not use ConTree, run:
 
 ```text

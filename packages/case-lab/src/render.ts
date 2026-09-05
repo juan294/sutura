@@ -3,7 +3,7 @@
  * generation) and in the browser (live result page), so it imports only
  * types and uses no Node API.
  */
-import type { CaseLabCase, CaseLabOutcome } from './cases.js';
+import { expectedOutcomeFor, touchesTests, type CaseLabCase, type CaseLabOutcome } from './cases.js';
 import { MODES, MODE_LABELS, OUTCOME_LABELS, isPublicHttpsUrl, type CaseLabMode } from './labels.js';
 import type {
   CaseLabCaseFile,
@@ -164,7 +164,9 @@ ${totals}`);
 function renderHeader(result: CaseLabResult, item: CaseLabCase): string {
   const expectation = result.matchesExpectation
     ? 'Outcome matches the expected outcome.'
-    : `Expected ${OUTCOME_LABELS[result.expectedOutcome]}; this result does not match. The failure is kept in the record.`;
+    : result.outcome === result.expectedOutcome && result.repairPaths !== undefined && touchesTests(result.repairPaths)
+      ? `Expected ${OUTCOME_LABELS[result.expectedOutcome]} without touching a test file; the repair changed ${result.repairPaths.filter((path) => touchesTests([path])).join(', ')}. This result does not match. The failure is kept in the record.`
+      : `Expected ${OUTCOME_LABELS[result.expectedOutcome]}; this result does not match. The failure is kept in the record.`;
   return `<header class="docket">
   <p class="eyebrow">Sutura Case Lab · ${escapeHtml(item.scenario)}</p>
   <h1>${escapeHtml(item.title)}</h1>
@@ -724,7 +726,7 @@ export function renderCaseCard(card: CatalogCard, siteRoot: string): string {
   <h2>${escapeHtml(item.title)}</h2>
   <p>${escapeHtml(item.scenario)}</p>
   <p class="badges">${modeBadge(result.mode)} ${outcomeBadge(result.outcome)}</p>
-  <p>Expected: ${escapeHtml(OUTCOME_LABELS[item.expectedOutcome])} · Language: ${escapeHtml(item.language)}</p>
+  <p>Expected: ${escapeHtml(OUTCOME_LABELS[item.expectedOutcome])}${expectedOutcomeFor(item, 'live') === item.expectedOutcome ? '' : ` · Live: ${escapeHtml(OUTCOME_LABELS[expectedOutcomeFor(item, 'live')])} without touching a test`} · Language: ${escapeHtml(item.language)}</p>
   <p class="actions">
     <a class="button" href="${escapeHtml(siteRoot)}replay/${escapeHtml(item.id)}/">Open ${escapeHtml(MODE_LABELS[result.mode].toLowerCase())}</a>
     <button type="button" class="button button-live" data-case-id="${escapeHtml(item.id)}" disabled>Start live run</button>

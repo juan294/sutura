@@ -20,7 +20,13 @@ import { validateCaseLabResult } from './result.js';
 
 const NOW = () => new Date('2026-09-04T12:00:00.000Z');
 const RELEASE = loadRelease();
+const DEMO_SHA = 'a7a3278db7e1185403dc223a97ebb205ccf4c2f7';
+const CAPTURED_RUN_URL = 'https://github.com/juan294/sutura-demo/actions/runs/33949921397';
 const EMPTY_REPLAY_DIR = mkdtempSync(join(tmpdir(), 'case-lab-no-replay-'));
+
+function fixtureFor(bundle: unknown): Record<string, unknown> {
+  return { schemaVersion: 'sutura-case-lab-replay-fixture-v1', release: RELEASE, demoSha: DEMO_SHA, capturedRunUrl: CAPTURED_RUN_URL, bundle };
+}
 
 describe('recorded evidence', () => {
   it('loads the committed live result and ledger after proving their hashes', () => {
@@ -76,42 +82,44 @@ describe('deterministic results', () => {
     expect(result.elapsedMs).toBeCloseTo(72700.26491299999, 3);
   });
 
-  it('replays a complete bundle bound to the release sha', { timeout: 60_000 }, async () => {
-    const bundle = { ...(await createCompleteReplayBundleForTest()), actionSha: RELEASE.actionSha };
-    const result = await replayedResult(caseLabCase('flaky-failure'), bundle, {
-      release: RELEASE, now: NOW, bundleSha256: 'a'.repeat(64),
+  it('replays a complete fixture bound to the release and the demo commit', { timeout: 60_000 }, async () => {
+    const bundle = { ...(await createCompleteReplayBundleForTest()), actionSha: DEMO_SHA };
+    const result = await replayedResult(caseLabCase('flaky-failure'), fixtureFor(bundle), {
+      release: RELEASE, now: NOW, fixtureSha256: 'a'.repeat(64),
     });
     expect(result.mode).toBe('replay');
     expect(result.outcome).toBe('flaky-no-patch');
     expect(result.matchesExpectation).toBe(true);
+    expect(result.identity).toEqual({ controllerSha: RELEASE.actionSha, demoSha: DEMO_SHA });
     expect(result.replayedFrom).toEqual({
       bundleSha256: 'a'.repeat(64),
-      capturedRunUrl: `https://github.com/${bundle.repo}/actions/runs/${bundle.runId}`,
+      capturedRunUrl: CAPTURED_RUN_URL,
       actionSha: RELEASE.actionSha,
     });
+    expect(result.links.ciRun).toBe(`https://github.com/${bundle.repo}/actions/runs/${bundle.runId}`);
     expect(validateCaseLabResult(JSON.parse(JSON.stringify(result)))).toEqual(result);
   });
 
-  it('refuses a bundle from another commit, a partial bundle, and a drifted outcome', { timeout: 60_000 }, async () => {
-    const bundle = await createCompleteReplayBundleForTest();
-    await expect(replayedResult(caseLabCase('flaky-failure'), bundle, { release: RELEASE, now: NOW, bundleSha256: 'a'.repeat(64) }))
-      .rejects.toThrow(`replay bundle actionSha must equal release.json actionSha ${RELEASE.actionSha}`);
-    const partial = {
-      ...bundle,
-      actionSha: RELEASE.actionSha,
-      completeness: { complete: false, overflowedBoundaries: [], pendingBoundaries: ['tavily'] },
-    };
-    await expect(replayedResult(caseLabCase('flaky-failure'), partial, { release: RELEASE, now: NOW, bundleSha256: 'a'.repeat(64) }))
-      .rejects.toThrow(CaseLabReplayError);
-    const drifted = { ...bundle, actionSha: RELEASE.actionSha, outcome: 'fixed' as const };
-    await expect(replayedResult(caseLabCase('flaky-failure'), drifted, { release: RELEASE, now: NOW, bundleSha256: 'a'.repeat(64) }))
+  it('refuses a fixture from another release, a bundle from another demo commit, a partial bundle, and a drifted outcome', { timeout: 60_000 }, async () => {
+    const bundle = { ...(await createCompleteReplayBundleForTest()), actionSha: DEMO_SHA };
+    const options = { release: RELEASE, now: NOW, fixtureSha256: 'a'.repeat(64) };
+    await expect(replayedResult(caseLabCase('flaky-failure'), { ...fixtureFor(bundle), release: { version: '0.1.0', actionSha: 'b'.repeat(40) } }, options))
+      .rejects.toThrow(`replay fixture release actionSha ${'b'.repeat(40)} must equal release.json actionSha ${RELEASE.actionSha}`);
+    await expect(replayedResult(caseLabCase('flaky-failure'), fixtureFor({ ...bundle, actionSha: 'c'.repeat(40) }), options))
+      .rejects.toThrow(`replay bundle actionSha ${'c'.repeat(40)} must equal the fixture demoSha ${DEMO_SHA}`);
+    const partial = { ...bundle, completeness: { complete: false, overflowedBoundaries: [], pendingBoundaries: ['tavily'] } };
+    await expect(replayedResult(caseLabCase('flaky-failure'), fixtureFor(partial), options)).rejects.toThrow(CaseLabReplayError);
+    const drifted = { ...bundle, outcome: 'fixed' as const };
+    await expect(replayedResult(caseLabCase('flaky-failure'), fixtureFor(drifted), options))
       .rejects.toThrow('replay outcome mismatch: recorded fixed, replayed flaky-no-patch');
+    await expect(replayedResult(caseLabCase('flaky-failure'), bundle, options))
+      .rejects.toThrow('replay fixture must be a sutura-case-lab-replay-fixture-v1 document');
   });
 
-  it('prefers a bundle on disk over the recorded result', { timeout: 60_000 }, async () => {
+  it('prefers a fixture on disk over the recorded result', { timeout: 60_000 }, async () => {
     const replayDir = mkdtempSync(join(tmpdir(), 'case-lab-replay-'));
-    const bundle = { ...(await createCompleteReplayBundleForTest()), actionSha: RELEASE.actionSha };
-    writeFileSync(join(replayDir, 'flaky-failure.json'), JSON.stringify(bundle));
+    const bundle = { ...(await createCompleteReplayBundleForTest()), actionSha: DEMO_SHA };
+    writeFileSync(join(replayDir, 'flaky-failure.json'), JSON.stringify(fixtureFor(bundle)));
     const result = await deterministicResult('flaky-failure', { replayDir, now: NOW });
     expect(result.mode).toBe('replay');
     expect(result.replayedFrom?.bundleSha256).toMatch(/^[a-f0-9]{64}$/u);

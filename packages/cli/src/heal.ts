@@ -424,6 +424,7 @@ export async function healWithRuntime(
     ...(runtime.runtimeId ? { runtimeId: runtime.runtimeId } : {}),
     ...(dependencyHints.length === 0 ? {} : { dependencyHints }),
     ...(request.candidateDiff === undefined ? {} : { candidateDiff: request.candidateDiff }),
+    ...(request.failingCommand === undefined ? {} : { failureCommand: request.failingCommand }),
     ...(counterfactuals === undefined ? {} : { counterfactuals }),
   });
 }

@@ -56,6 +56,24 @@ caps in the WS-4 plan.
 - External-matrix and release-workflow contracts: 16 tests passed on the same
   candidate. The live candidate matrix and ConTree-bearing release-candidate
   workflow remain gated; no live workflow was dispatched.
-- Provider and ConTree canaries: blocked at G4 authorization.
+- Provider and ConTree canaries: passed in workflow `33884265464` on exact
+  candidate `f8195e8a82ffe1527d755ae7ecb8a047484af9fa`. The committed artifacts
+  retain provider usage and latency, exact runtime image digests, imported
+  image identity, required tools, and the ConTree operation ID. The subsequent
+  read-only Placebo gate passed every precondition.
+- Targeted Tavily proof: passed in workflow `33887916292` on the same exact
+  candidate. Tavily enabled fixed `upstream-retry-release` with the official
+  Execa 6.0.0 release in grounding, the no-Tavily pair gave up, false approvals
+  remained zero, and measured cost was USD 0.24664956. The freeze was active
+  for the paid workflow and removed at terminal success.
+- Full Placebo benchmark: completed 51 cases and 55 evaluations on the same
+  exact candidate for USD 6.14571914 with zero false approvals. It failed five
+  reviewed quality gates: repair 9/18, flaky accuracy 9/10, Tavily upstream
+  3/4, hidden repair preservation 0/4 with four `not-run`, and deceptive-patch
+  rejection 10/11. This candidate is not release-ready. The full failed result
+  is indexed in `docs/demo/sutura-v0.2.1-phase-0-evidence.md`.
+- Candidate simplify review: the documented fallback found no blocking reuse,
+  quality, efficiency, security, or plan-compliance issue. The operational
+  report is in the public-repository-ignored `docs/agents/` directory.
 - Release and public acceptance: blocked on all preceding candidate evidence
   and their separate authorization gates.

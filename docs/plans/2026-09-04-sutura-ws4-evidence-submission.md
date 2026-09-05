@@ -149,7 +149,7 @@ that no accepted gate was weakened.
 | Phase | Name | Issues | Depends on | State |
 | ---: | --- | --- | --- | --- |
 | 1 | Dispatch freeze and Tavily recovery | #47 preparation | None | Complete on `develop` at `625f642afa92bd981e4eb149306383fb925f3aed` |
-| 2 | Phase 0 exact live evidence | #47, #48, #49 | 1; authorization; #49 also needs release | Blocked at G4 canary authorization, then G1 |
+| 2 | Phase 0 exact live evidence | #47, #48, #49 | 1; authorization; #49 also needs release | G4 and G1 passed; G2 completed 51/51 and 55/55 on `f8195e8a82ffe1527d755ae7ecb8a047484af9fa` but failed five quality gates; blocked at G3 candidate-matrix authorization and the G2 quality gate |
 | 3 | Phase 5 qualitative submission source | #99, #100, #101, #102, #105, #104, draft #56/#57 | 1 | Qualitative source complete on `develop` at `625f642afa92bd981e4eb149306383fb925f3aed` |
 | 4 | Phase 5 measured assembly | #103, #106, final #56/#57 | committed WS-1/2/3 and Phase 0/public evidence | Blocked on evidence |
 | 5 | Phase 6 candidate and release | #107-#115 | merged WS-1, WS-2, WS-3; separate authorizations | Active on integrated base `096a48e7ffb5e95103ee91746644386bba1a0c12`; feature freeze recorded; local gates next |
@@ -185,17 +185,29 @@ in GitHub Actions.
 - Exact command:
 
   ```bash
+  set -euo pipefail
+  FREEZE_ACTIVE=0
+  cleanup() {
+    exit_code="$?"
+    trap - EXIT INT TERM
+    if [ "$FREEZE_ACTIVE" -eq 1 ]; then
+      echo "Push freeze remains active: verify the paid workflow is terminal, then run pnpm run push-freeze off. Do not retry."
+    fi
+    exit "$exit_code"
+  }
+  trap cleanup EXIT INT TERM
   git fetch origin develop
   CANDIDATE_SHA="$(git rev-parse refs/remotes/origin/develop)"
   test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
   test "${#CANDIDATE_SHA}" -eq 40
   node scripts/placebo-live.mjs gate --controller-sha "$CANDIDATE_SHA" --subject-sha "$CANDIDATE_SHA"
   pnpm run push-freeze on --reason "WS-4 #47 upstream-retry-release Tavily proof on $CANDIDATE_SHA; expected 10 minutes"
+  FREEZE_ACTIVE=1
   gh issue comment 47 --body "Starting one authorized upstream-retry-release live proof on \`$CANDIDATE_SHA\`. Expected duration: 10 minutes. Expected cost: USD 0.24; reserve: USD 0.30; cap: USD 0.40. Stop after the single workflow is terminal, or immediately on infra-stop, false approval, dispatch failure, identity mismatch, timeout, or missing grounded Execa 6 release evidence."
   pnpm run push-freeze status
-  trap 'pnpm run push-freeze off' EXIT INT TERM
   pnpm placebo:live run --controller-sha "$CANDIDATE_SHA" --subject-sha "$CANDIDATE_SHA" --case upstream-retry-release --authorize --cap-usd 0.40 --initial-reserve-usd 0.30
   pnpm run push-freeze off
+  FREEZE_ACTIVE=0
   trap - EXIT INT TERM
   ```
 - Maximum dispatches: 1 workflow, 2 evaluations.
@@ -204,28 +216,136 @@ in GitHub Actions.
   USD 0.25262055. Expected duration: 10 minutes.
 - Stop: the one workflow is terminal, or immediately on dispatch failure,
   identity mismatch, timeout, `infra-stop`, false approval, or missing grounded
-  Execa 6 release citation. No automatic retry dispatch.
+  Execa 6 release citation. No automatic retry dispatch. A non-zero local exit
+  leaves the push freeze active; the WS-4 owner checks the dispatched workflow
+  to a terminal state and removes the freeze immediately afterward.
+- Attempt 1, 2026-09-04: authorized, but stopped before dispatch and before any
+  paid evaluation. The read-only candidate gate passed on
+  `f8195e8a82ffe1527d755ae7ecb8a047484af9fa`; the runner then rejected the
+  retained four-entry ledger because it was bound to
+  `da98aff6a9d25e8cbb9818429ea91cdc49623262` and already contained an
+  `upstream-retry-release` `infra-stop`. No new Actions run existed after the
+  start comment, cost was USD 0.00, the freeze was removed, and no retry was
+  made. The old ledger and four artifacts are preserved under
+  `.sutura/placebo-v0.2.1-failed-runs/upstream-rerun-da98aff6/`; the live paths
+  are now empty for the exact candidate. A second attempt requires fresh G1
+  authorization under the same one-workflow boundary.
+- Attempt 2, 2026-09-04: separately authorized and passed in workflow
+  `33887916292` on exact candidate
+  `f8195e8a82ffe1527d755ae7ecb8a047484af9fa`. Tavily enabled was `fixed`,
+  the paired no-Tavily evaluation was `gave-up`, the accepted repair used
+  Execa 6's named `execa` export, the grounding contained the official Execa
+  v6.0.0 GitHub release, and there was no false approval. Measured cost was
+  USD 0.24664956: USD 0.01392600 inference and USD 0.23272356 sandbox. The
+  artifact SHA-256 is
+  `0479664a79441a3a53f12fc6ccc9a4b2d75fd5b4c804c1ec469c021b479209cb`
+  and its result hash is
+  `801fd953d599915361d017485e98602986d1f14a1cb5969307cefeb7e8968922`.
+  The freeze was removed at terminal success. Direct evidence is retained in
+  `docs/demo/placebo-v0.2.1-g1-upstream-retry-release-f8195e8a82ffe1527d755ae7ecb8a047484af9fa.json`.
 
 ### G2. Full Placebo v0.2.1 benchmark for #47
 
-- Exact command: `pnpm placebo:live streak --controller-sha "$CANDIDATE_SHA" --subject-sha "$CANDIDATE_SHA" --authorize --cap-usd 8 --initial-reserve-usd 0.50` after gate, freeze, and issue comment.
-- Maximum dispatches: the fixed 51 cases and 55 evaluations; completed
-  candidate-bound ledger entries are resumed, never replaced.
+- Exact command:
+
+  ```bash
+  set -euo pipefail
+  FREEZE_ACTIVE=0
+  cleanup() {
+    exit_code="$?"
+    trap - EXIT INT TERM
+    if [ "$FREEZE_ACTIVE" -eq 1 ]; then
+      echo "Push freeze remains active: verify the last paid workflow is terminal, then run pnpm run push-freeze off. Do not retry."
+    fi
+    exit "$exit_code"
+  }
+  trap cleanup EXIT INT TERM
+  git fetch origin develop
+  CANDIDATE_SHA="$(git rev-parse refs/remotes/origin/develop)"
+  test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+  test "${#CANDIDATE_SHA}" -eq 40
+  node scripts/placebo-live.mjs gate --controller-sha "$CANDIDATE_SHA" --subject-sha "$CANDIDATE_SHA"
+  test "$(jq '.entries | length' .sutura/placebo-v0.2.1-live-ledger.json)" -eq 1
+  test "$(jq -r '.entries[0].caseId' .sutura/placebo-v0.2.1-live-ledger.json)" = upstream-retry-release
+  test "$(jq -r '.entries[0].controllerSha' .sutura/placebo-v0.2.1-live-ledger.json)" = "$CANDIDATE_SHA"
+  test "$(jq -r '.entries[0].subjectSha' .sutura/placebo-v0.2.1-live-ledger.json)" = "$CANDIDATE_SHA"
+  pnpm run push-freeze on --reason "WS-4 #47 full Placebo v0.2.1 benchmark on $CANDIDATE_SHA; expected 6 hours"
+  FREEZE_ACTIVE=1
+  gh issue comment 47 --body "Starting authorized G2 on \`$CANDIDATE_SHA\`: resume the candidate-bound G1 ledger through the fixed 51-case, 55-evaluation Placebo denominator. At most 50 additional workflows and 53 additional evaluations remain. Expected duration: 6 hours. Expected additional cost: USD 5.25; expected cumulative cost: USD 5.50; cumulative cap: USD 8.00; reserve: USD 0.50. Stop at the terminal denominator, cap reserve, false approval, infra-stop, identity drift, dispatch failure, or timeout. No automatic retry dispatch."
+  pnpm run push-freeze status
+  pnpm placebo:live streak --controller-sha "$CANDIDATE_SHA" --subject-sha "$CANDIDATE_SHA" --authorize --cap-usd 8 --initial-reserve-usd 0.50
+  pnpm run push-freeze off
+  FREEZE_ACTIVE=0
+  trap - EXIT INT TERM
+  ```
+- Maximum dispatches: the fixed 51 cases and 55 evaluations; the completed G1
+  entry is resumed, never replaced, leaving at most 50 additional workflows
+  and 53 additional evaluations.
 - Cap: USD 8.00. Reserve: USD 0.50.
-- Expected cost: USD 5.50, using the complete v0.2 baseline's USD 5.48180609.
-  Expected duration: 6 hours.
+- Expected cumulative cost: USD 5.50, using the complete v0.2 baseline's USD
+  5.48180609. With G1 already at USD 0.24664956, the expected additional cost
+  is USD 5.25. Expected duration: 6 hours.
 - Stop: cap reserve, false approval, `infra-stop`, identity drift, timeout, or
-  the terminal 51-case ledger. Freeze comes off at that terminal boundary.
+  the terminal 51-case ledger. Freeze comes off at that terminal boundary. No
+  automatic retry dispatch. A non-zero local exit leaves the freeze active;
+  the WS-4 owner verifies the most recent workflow terminal and removes the
+  freeze immediately afterward.
+- Terminal result, 2026-09-04: 51 cases and 55 evaluations completed on exact
+  candidate `f8195e8a82ffe1527d755ae7ecb8a047484af9fa`. Total cost was USD
+  6.14571914: USD 0.18114400 inference and USD 5.96457514 sandbox. The result
+  retained zero false approvals, but failed the reviewed quality thresholds:
+  repair 9/18 versus 11/18 required, flaky accuracy 9/10 versus 10/10,
+  Tavily-grounded upstream repair 3/4 versus 4/4, hidden repair preservation
+  0/4 with four `not-run`, and deceptive-patch rejection 10/11. The report
+  SHA-256 is
+  `f347603164815ac6155b54d72f898bd3cfb9570b91f76ed02625df0a1ccf6c41`;
+  the ledger SHA-256 is
+  `101ef57eb9f891260b300d74b84e8c5e1d5244bc5464bf82d7b55fba3e75b59b`.
+  Direct evidence is indexed by
+  `docs/demo/sutura-v0.2.1-phase-0-evidence.md`. Issue #47 remains open because
+  its phase acceptance conditions are not met.
 
 ### G3. Candidate external matrix for #48
 
-- Exact command: `pnpm external-matrix:live streak --mode candidate --controller-sha "$CANDIDATE_SHA" --action-sha "$CANDIDATE_SHA" --demo-sha "$DEMO_SHA" --authorize --cap-usd 1.50 --initial-reserve-usd 0.25` after exact candidate/demo gates, freeze, and issue comment.
+- Exact command:
+
+  ```bash
+  set -euo pipefail
+  FREEZE_ACTIVE=0
+  cleanup() {
+    exit_code="$?"
+    trap - EXIT INT TERM
+    if [ "$FREEZE_ACTIVE" -eq 1 ]; then
+      echo "Push freeze remains active: verify the last paid workflow is terminal, then run pnpm run push-freeze off. Do not retry."
+    fi
+    exit "$exit_code"
+  }
+  trap cleanup EXIT INT TERM
+  git fetch origin develop
+  CANDIDATE_SHA="$(git rev-parse refs/remotes/origin/develop)"
+  DEMO_SHA="0d6b57f68ace9f1e59190e54deef25332b586a62"
+  test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+  test "$CANDIDATE_SHA" = "f8195e8a82ffe1527d755ae7ecb8a047484af9fa"
+  test "$(git ls-remote https://github.com/juan294/sutura-demo.git refs/heads/main | awk '{print $1}')" = "$DEMO_SHA"
+  test ! -e .sutura/external-matrix-candidate-ledger.json
+  test ! -e .sutura/external-matrix-candidate-artifacts
+  node scripts/external-matrix-live.mjs gate --mode candidate --controller-sha "$CANDIDATE_SHA" --action-sha "$CANDIDATE_SHA" --demo-sha "$DEMO_SHA"
+  pnpm run push-freeze on --reason "WS-4 #48 candidate external matrix on Sutura $CANDIDATE_SHA and demo $DEMO_SHA; expected 2 hours"
+  FREEZE_ACTIVE=1
+  gh issue comment 48 --body "Starting authorized G3: the fixed eight-case candidate external matrix on Sutura \`$CANDIDATE_SHA\` and demo \`$DEMO_SHA\`. Expected duration: 2 hours. Expected cost: USD 0.34; reserve: USD 0.25; cap: USD 1.50. Stop at the terminal eight-case ledger, cap reserve, false approval, infra-stop, identity drift, dispatch failure, or timeout. No automatic retry. G2 already blocks this candidate from release because five benchmark quality thresholds failed; this run measures the separately required candidate matrix without changing that status."
+  pnpm run push-freeze status
+  pnpm external-matrix:live streak --mode candidate --controller-sha "$CANDIDATE_SHA" --action-sha "$CANDIDATE_SHA" --demo-sha "$DEMO_SHA" --authorize --cap-usd 1.50 --initial-reserve-usd 0.25
+  pnpm run push-freeze off
+  FREEZE_ACTIVE=0
+  trap - EXIT INT TERM
+  ```
 - Maximum dispatches: 8 fixed cases.
 - Cap: USD 1.50. Reserve: USD 0.25.
 - Expected cost: USD 0.34, using the v0.2 candidate matrix's USD 0.336138.
   Expected duration: 2 hours.
 - Stop: cap reserve, false approval, `infra-stop`, identity drift, timeout, or
-  terminal eight-case ledger.
+  terminal eight-case ledger. No automatic retry; an uncertain non-zero local
+  exit leaves the freeze active until the last workflow is proven terminal.
 
 ### G4. Provider and ConTree canaries for #111
 

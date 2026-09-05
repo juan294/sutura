@@ -7,8 +7,7 @@
   "cleanUrls": false,
   "functions": {
     "api/*.js": {
-      "maxDuration": 15,
-      "includeFiles": "release.json"
+      "maxDuration": 15
     }
   },
   "headers": [

@@ -287,6 +287,7 @@ export class CliAdapter implements Adapter {
       ...this.args, '--case-dir', caseDir,
       ...(context?.candidateDiff ? ['--candidate-diff', context.candidateDiff] : []),
       ...(context?.alternativesFile ? ['--alternatives-file', context.alternativesFile] : []),
+      ...(context?.failingCommand ? ['--failing-command', context.failingCommand] : []),
       ...(!this.tavilyEnabled ? ['--no-tavily'] : []),
     ];
   }
@@ -325,6 +326,7 @@ export class SuturaAdapter extends CliAdapter {
       ...(context?.language === undefined ? [] : ['--runtime', runtimeFor(context)]),
       ...(context?.candidateDiff ? ['--candidate-diff', context.candidateDiff] : []),
       ...(context?.alternativesFile ? ['--alternatives-file', context.alternativesFile] : []),
+      ...(context?.failingCommand ? ['--failing-command', context.failingCommand] : []),
       ...(!this.tavilyEnabled ? ['--no-tavily'] : []),
     ];
   }

@@ -9,7 +9,7 @@ import type {
 } from '@sutura/core';
 import { canonicalJson } from '@sutura/evaluation';
 
-import type { CaseKind, FixtureLanguage, Score } from './types.js';
+import { SCORE_CONTRACT_VERSION, type CaseKind, type FixtureLanguage, type Score } from './types.js';
 
 export const COMPARISON_SCHEMA_VERSION = 'sutura-search-comparison-v1' as const;
 
@@ -25,7 +25,7 @@ export const COMPARISON_ARMS = [
 ] as const;
 export type ComparisonArm = typeof COMPARISON_ARMS[number];
 
-export const SCORE_CONTRACT_VERSION = 'sutura-placebo-score-v2' as const;
+export { SCORE_CONTRACT_VERSION } from './types.js';
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const COMMIT = /^[a-f0-9]{40}$/u;
