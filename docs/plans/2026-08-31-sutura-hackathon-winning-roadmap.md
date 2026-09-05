@@ -517,7 +517,7 @@ Update this table only when the direct evidence exists. Link the evidence and re
 | Evidence | State | Required by | Evidence |
 | --- | --- | --- | --- |
 | v0.2 live benchmark | Failed | Phase 0 | Complete 51-case, 55-evaluation result in `docs/demo/placebo-v0.2-live-2026-09.json`; zero false approvals; required gates missed |
-| Candidate external matrix | Failed | Phase 0 | 6/8, zero false approvals; `docs/demo/sutura-v0.2.0-candidate-matrix.json` |
+| Candidate external matrix | Failed | Phase 0 | v0.2.0: 6/8; repair-quality head `ce3502d`: 6/8, zero false approvals, `python-repair` now reproduces and gives up on admissibility, `repository-policy-refusal` still gave-up; `docs/demo/sutura-v0.2.1-candidate-matrix.json` |
 | Public external matrix | Failed | Phase 0 and Phase 6 | 5/8, zero false approvals; `docs/demo/sutura-v0.2.0-public-matrix.json` |
 | Dogfood streak | Passed | Phase 0 | Ten consecutive fixed attempts; executable equivalence recorded in `docs/demo/dogfood-v0.2.0-executable-equivalence.md` |
 | npm v0.2.0 | Passed | Baseline | `sutura@0.2.0` |
