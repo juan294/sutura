@@ -668,3 +668,11 @@ Separately and independently: route `replay-fetch.ts`'s content mismatches throu
 `RecordedCallCursor.fail` so `rethrowMismatch()` at `replay-orchestrate.ts:149` can surface them,
 instead of letting `classify.ts:200` turn a precise `ReplayMismatchError` into
 `Diagnosis model request failed`.
+
+## Verification after the fix (2026-09-05)
+
+The two-tier executor cursor (positional first, then an exact match among unconsumed executor records; capacity probes and cancellations observational) was applied both to the candidate and, for verification, onto a throwaway checkout of the v0.2.0 release commit `a943ded4`, the version the Case Lab workflow replays with. Both live Case Lab bundles (`sutura-replay-33949944171.json`, `sutura-replay-33951048947.json`) now replay their entire executor stream. The exchange 14 mismatch is gone.
+
+Both then stop at exchange 21, the posted report body, at the search table: the live run recorded `search-003` and `search-004` as `cancelled` because the batch race fired when `search-001` passed, while the replay, whose provider turns resolve from memory, scheduled the batch differently and recorded `frontier` and `failed`. That is the scheduling dependence of cancellation and capacity probes described in section 7: the call set differs, not only its order, so no consumption-side matcher can make the report byte-identical. Making the replayed search follow the recorded schedule (recorded capacity answers in recorded positions, recorded cancellations honored, unrecorded expansions skipped) is a design decision on the production scheduler and is filed as an issue rather than patched here.
+
+The captured dogfood bundle `33323765566` shows the same shift: its replay used to end with an HTTP `sequence exhausted` at 108 because a swallowed executor mismatch sent the pipeline into extra provider turns; it now replays its executor stream and stops at port sequence 18 on report-body drift, the same class as its sibling `33321106629` at 17.

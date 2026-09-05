@@ -127,7 +127,8 @@ export class RecordedCallCursor<T extends SequencedRecord> {
     return found === undefined ? undefined : this.take(found);
   }
 
-  private fail(error: ReplayMismatchError): never {
+  /** Record a mismatch found after a record was served, so `rethrowMismatch` can surface it. */
+  fail(error: ReplayMismatchError): never {
     this.mismatch ??= error;
     throw error;
   }
