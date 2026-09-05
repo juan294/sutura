@@ -362,11 +362,15 @@ export function renderResultBody(result: CaseLabResult, item: CaseLabCase): stri
 }
 
 export const SITE_NAME = 'Sutura Case Lab';
+export const REPOSITORY_URL = 'https://github.com/juan294/sutura';
 export const FAVICON_FILE = 'favicon.svg';
 export const SOCIAL_CARD_FILE = 'social-card.png';
 export const PRIVACY_PATH = 'privacy/';
 export const PRIVACY_TITLE = 'Privacy';
 export const PRIVACY_DESCRIPTION = 'What the Sutura Case Lab measures and how to opt out.';
+export const ABOUT_PATH = 'about/';
+export const ABOUT_TITLE = 'What Sutura verifies';
+export const ABOUT_DESCRIPTION = 'How Sutura reproduces a CI failure, searches repairs in sandboxes, audits the patch, and refuses green-wash fixes.';
 /** `localStorage` key that remembers the visitor's consent choice: `granted` or `denied`. */
 export const CONSENT_STORAGE_KEY = 'sutura-consent';
 /** `--paper` in assets/case-lab.css, light then dark. */
@@ -516,11 +520,11 @@ ${metaTags(options)}
   <link rel="stylesheet" href="${escapeHtml(options.siteRoot)}case-lab.css">${head}
 </head>
 <body>
-  <nav class="site-nav" aria-label="Case Lab"><a href="${escapeHtml(options.siteRoot)}">Sutura Case Lab</a> · <a href="https://github.com/juan294/sutura" rel="noopener">Repository</a></nav>
+  <nav class="site-nav" aria-label="Case Lab"><a href="${escapeHtml(options.siteRoot)}">Sutura Case Lab</a> · <a href="${REPOSITORY_URL}" rel="noopener">Repository</a></nav>
   <main id="main" class="case-lab"${Object.entries(attributes).map(([name, value]) => ` ${escapeHtml(name)}="${escapeHtml(value)}"`).join('')}>
 ${options.body}
   </main>
-  <footer class="site-footer">Sutura verifies the fix. It never merges a generated repair. · <a href="${escapeHtml(options.siteRoot)}${PRIVACY_PATH}">${PRIVACY_TITLE}</a></footer>${options.script === undefined ? '' : `
+  <footer class="site-footer">Sutura verifies the fix. It never merges a generated repair. · <a href="${escapeHtml(options.siteRoot)}${ABOUT_PATH}">About</a> · <a href="${escapeHtml(options.siteRoot)}${PRIVACY_PATH}">${PRIVACY_TITLE}</a> · <a href="${REPOSITORY_URL}" rel="noopener">Repository</a></footer>${options.script === undefined ? '' : `
   <script src="${escapeHtml(options.siteRoot)}${escapeHtml(options.script)}" defer></script>`}
 </body>
 </html>
@@ -577,6 +581,138 @@ export function resultPageTitle(result: CaseLabResult, item: CaseLabCase): strin
   return `${item.title} · ${MODE_LABELS[result.mode]} · ${OUTCOME_LABELS[result.outcome]}`;
 }
 
+/** Internal links that close a replay page: back to the case list and on to the explainer. */
+export function renderPageLinks(siteRoot: string): string {
+  return `<nav class="page-links" aria-label="More"><a href="${escapeHtml(siteRoot)}">Back to cases</a> · <a href="${escapeHtml(siteRoot)}${ABOUT_PATH}">How Sutura verifies</a></nav>`;
+}
+
+const MARKDOWN_HOSTS = Object.freeze(['https://github.com/', 'https://raw.githubusercontent.com/']);
+
+/**
+ * The only hrefs the Markdown subset accepts: the two public GitHub hosts, or
+ * a site-relative path starting with `/`, which is resolved against the site
+ * root. Anything else is a build error that names the URL.
+ */
+export function markdownHref(url: string, siteRoot: string): string {
+  const wellFormed = !/[\s"'<>\\]/u.test(url) && url.length > 0;
+  if (wellFormed && MARKDOWN_HOSTS.some((host) => url.startsWith(host)) && isPublicHttpsUrl(url)) return escapeHtml(url);
+  if (wellFormed && url.startsWith('/') && !url.startsWith('//')) return escapeHtml(`${siteRoot}${url.slice(1)}`);
+  throw new RangeError(`markdown link is not allowed: ${JSON.stringify(url)} (expected ${MARKDOWN_HOSTS.join(', ')}, or a site-relative path starting with /)`);
+}
+
+const INLINE = /`([^`\n]+)`|\[([^\]\n]+)\]\(([^)\s]+)\)|\*\*([^*\n]+)\*\*/gu;
+
+/** Inline Markdown: code spans, links, and bold. Everything is escaped; code and link text carry no nested markup. */
+export function renderInlineMarkdown(text: string, siteRoot: string): string {
+  let html = '';
+  let last = 0;
+  for (const match of text.matchAll(INLINE)) {
+    html += escapeHtml(text.slice(last, match.index));
+    const [, code, label, url, bold] = match;
+    if (code !== undefined) html += `<code>${escapeHtml(code)}</code>`;
+    else if (label !== undefined && url !== undefined) html += `<a href="${markdownHref(url, siteRoot)}"${url.startsWith('/') ? '' : ' rel="noopener"'}>${escapeHtml(label)}</a>`;
+    else if (bold !== undefined) html += `<strong>${escapeHtml(bold)}</strong>`;
+    last = match.index + match[0].length;
+  }
+  return html + escapeHtml(text.slice(last));
+}
+
+const HEADING = /^(#{1,3}) (.+)$/u;
+const ORDERED_ITEM = /^\d+\. (.+)$/u;
+const UNORDERED_ITEM = /^- (.+)$/u;
+const TABLE_ROW = /^\|(.*)\|$/u;
+const TABLE_SEPARATOR_CELL = /^:?-+:?$/u;
+/** Constructs outside the subset fail the build instead of rendering as prose. */
+const UNSUPPORTED = /^(?:```|~~~|>|<|!\[|#{4,} |#{1,3}$|\* |\+ |---$|\*\*\*$|\d+\) |\t| {4})/u;
+
+function tableCells(line: string, lineNumber: number): string[] {
+  const inner = TABLE_ROW.exec(line)?.[1];
+  if (inner === undefined) throw new RangeError(`markdown line ${lineNumber} is not a table row: ${line}`);
+  return inner.split('|').map((cell) => cell.trim());
+}
+
+/**
+ * A minimal Markdown subset for build-time content: `#`, `##`, `###` headings,
+ * paragraphs, ordered and unordered lists (one line per item), tables with a
+ * header row, code spans, links, and bold. No raw HTML, no nesting, no other
+ * construct; anything else throws with the line number.
+ */
+export function renderMarkdown(source: string, siteRoot: string): string {
+  const inline = (text: string): string => renderInlineMarkdown(text, siteRoot);
+  const lines = source.split('\n');
+  const blocks: string[] = [];
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index]!.trimEnd();
+    const lineNumber = index + 1;
+    if (line === '') {
+      index += 1;
+      continue;
+    }
+    if (UNSUPPORTED.test(line)) throw new RangeError(`markdown line ${lineNumber} uses a construct outside the subset: ${line}`);
+    const heading = HEADING.exec(line);
+    if (heading !== null) {
+      const level = heading[1]!.length;
+      blocks.push(`<h${level}>${inline(heading[2]!)}</h${level}>`);
+      index += 1;
+      continue;
+    }
+    if (TABLE_ROW.test(line)) {
+      const header = tableCells(line, lineNumber);
+      const separator = lines[index + 1]?.trimEnd();
+      if (separator === undefined || !TABLE_ROW.test(separator) || !tableCells(separator, lineNumber + 1).every((cell) => TABLE_SEPARATOR_CELL.test(cell))) {
+        throw new RangeError(`markdown line ${lineNumber} starts a table without a header separator row: ${line}`);
+      }
+      const rows: string[][] = [];
+      index += 2;
+      while (index < lines.length && TABLE_ROW.test(lines[index]!.trimEnd())) {
+        const cells = tableCells(lines[index]!.trimEnd(), index + 1);
+        if (cells.length !== header.length) throw new RangeError(`markdown line ${index + 1} has ${cells.length} cells, expected ${header.length}: ${lines[index]}`);
+        rows.push(cells);
+        index += 1;
+      }
+      blocks.push(`<div class="scroll"><table><thead><tr>${header.map((cell) => `<th scope="col">${inline(cell)}</th>`).join('')}</tr></thead><tbody>\n${
+        rows.map((row) => `<tr>${row.map((cell) => `<td>${inline(cell)}</td>`).join('')}</tr>`).join('\n')}\n</tbody></table></div>`);
+      continue;
+    }
+    const listPattern = ORDERED_ITEM.test(line) ? ORDERED_ITEM : UNORDERED_ITEM.test(line) ? UNORDERED_ITEM : undefined;
+    if (listPattern !== undefined) {
+      const items: string[] = [];
+      while (index < lines.length) {
+        const item = listPattern.exec(lines[index]!.trimEnd());
+        if (item === null) break;
+        items.push(`  <li>${inline(item[1]!)}</li>`);
+        index += 1;
+      }
+      const tag = listPattern === ORDERED_ITEM ? 'ol' : 'ul';
+      blocks.push(`<${tag}>\n${items.join('\n')}\n</${tag}>`);
+      continue;
+    }
+    const paragraph: string[] = [];
+    while (index < lines.length) {
+      const next = lines[index]!.trimEnd();
+      if (next === '' || HEADING.test(next) || TABLE_ROW.test(next) || ORDERED_ITEM.test(next) || UNORDERED_ITEM.test(next) || UNSUPPORTED.test(next)) break;
+      paragraph.push(next);
+      index += 1;
+    }
+    blocks.push(`<p>${inline(paragraph.join(' '))}</p>`);
+  }
+  return blocks.join('\n');
+}
+
+/** The explainer page: a docket header and the README-derived Markdown as prose. */
+export function renderAboutBody(markdown: string, siteRoot: string): string {
+  return `<header class="docket">
+  <p class="eyebrow">Sutura Case Lab · About</p>
+  <h1>${ABOUT_TITLE}</h1>
+  <p>${escapeHtml(ABOUT_DESCRIPTION)}</p>
+</header>
+<article class="prose">
+${renderMarkdown(markdown, siteRoot)}
+</article>
+<nav class="page-links" aria-label="More"><a href="${escapeHtml(siteRoot)}">Back to cases</a></nav>`;
+}
+
 export interface CatalogCard {
   readonly item: CaseLabCase;
   readonly result: CaseLabResult;
@@ -609,6 +745,7 @@ export function renderIndexBody(options: IndexOptions): string {
   <p class="eyebrow">Sutura · Verified self-healing CI</p>
   <h1>Sutura Case Lab</h1>
   <p>AI agents make CI green. Sutura proves whether they fixed the problem. Pick one of five fixed cases and read the full verified result: diagnosis, search tree, candidate patches, rejected patches, audit verdict, cost, and links to the GitHub evidence.</p>
+  <p><a href="${escapeHtml(options.siteRoot)}${ABOUT_PATH}">How Sutura verifies a repair</a>: the pipeline from the failed run to the audited patch, the runtime roles, and the five outcomes a run can end in.</p>
   <p class="mode-note">${escapeHtml(liveNote)}</p>
   <p class="identity">Release v${escapeHtml(options.release.version)} · Action <code>${escapeHtml(options.release.actionSha)}</code></p>
   <p id="live-status" class="live-status" role="status" aria-live="polite"></p>

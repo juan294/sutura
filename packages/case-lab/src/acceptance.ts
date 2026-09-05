@@ -33,6 +33,8 @@ export interface AcceptanceOptions {
 }
 
 const PRIVACY_PATH = 'privacy/';
+const ABOUT_PATH = 'about/';
+const ABOUT_TITLE = 'What Sutura verifies';
 
 /** Signed-out requests only: no cookies, no authorization header, nothing cached. */
 async function get(fetchImpl: typeof fetch, url: string, method: 'GET' | 'HEAD' = 'GET'): Promise<Response> {
@@ -156,7 +158,7 @@ export async function acceptance(baseUrl: string, options: AcceptanceOptions = {
   }
 
   const origin = expectedOrigin(base);
-  const indexedPages = ['', ...CASE_LAB_CASES.map((item) => `replay/${item.id}/`), PRIVACY_PATH].map((path) => new URL(path, base));
+  const indexedPages = ['', ...CASE_LAB_CASES.map((item) => `replay/${item.id}/`), ABOUT_PATH, PRIVACY_PATH].map((path) => new URL(path, base));
 
   const robotsUrl = `${base}robots.txt`;
   try {
@@ -252,6 +254,23 @@ export async function acceptance(baseUrl: string, options: AcceptanceOptions = {
       : `${privacyUrl}: ${problems.join('; ')}`);
   } catch (error) {
     record('privacy-page', false, `${privacyUrl}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const aboutUrl = `${base}${ABOUT_PATH}`;
+  try {
+    const response = await get(fetchImpl, aboutUrl);
+    const html = await response.text();
+    const problems: string[] = [];
+    if (response.status !== 200) problems.push(`status ${response.status}`);
+    if (!html.includes(ABOUT_TITLE)) problems.push(`the text ${JSON.stringify(ABOUT_TITLE)} is missing`);
+    const unlinked = CASE_LAB_CASES.filter((item) => !html.includes(`replay/${item.id}/`)).map((item) => item.id);
+    if (unlinked.length > 0) problems.push(`no link to ${unlinked.join(', ')}`);
+    problems.push(...signedOutHeaders(response));
+    record('about-page', problems.length === 0, problems.length === 0
+      ? `${aboutUrl} answers 200, names its subject, and links to all five cases`
+      : `${aboutUrl}: ${problems.join('; ')}`);
+  } catch (error) {
+    record('about-page', false, `${aboutUrl}: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   const expectedTags = [

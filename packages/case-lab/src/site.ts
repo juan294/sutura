@@ -9,17 +9,23 @@ import { CASE_LAB_LIMITS } from './limits.js';
 import { PACKAGE_DIR } from './replay.js';
 import { MODE_LABELS, OUTCOME_LABELS } from './labels.js';
 import {
+  ABOUT_DESCRIPTION,
+  ABOUT_PATH,
+  ABOUT_TITLE,
   FAVICON_FILE,
   PRIVACY_DESCRIPTION,
   PRIVACY_PATH,
   PRIVACY_TITLE,
+  REPOSITORY_URL,
   SITE_NAME,
   SOCIAL_CARD_FILE,
   consentTools,
   cookielessIdentifiers,
   escapeHtml,
+  renderAboutBody,
   renderIndexBody,
   renderPage,
+  renderPageLinks,
   renderPendingBody,
   renderPrivacyBody,
   renderResultBody,
@@ -28,6 +34,11 @@ import {
   type SiteIdentifiers,
 } from './render.js';
 import type { CaseLabResult } from './result.js';
+
+export { REPOSITORY_URL };
+
+/** Source of `/about/`, relative to the package directory. */
+export const ABOUT_SOURCE_FILE = 'content/about.md';
 
 export interface BuildSiteOptions {
   readonly outDir: string;
@@ -45,11 +56,12 @@ export interface BuildSiteOptions {
   readonly assetsDir?: string;
   /** Verification tokens and analytics ids from site.json. Absent or empty: no such markup anywhere. */
   readonly identifiers?: SiteIdentifiers;
+  /** Markdown source of `/about/`. Defaults to `content/about.md` in the package. */
+  readonly aboutPath?: string;
 }
 
 export const SITE_DESCRIPTION = 'Five fixed cases that show how Sutura verifies a CI repair instead of trusting a green result.';
 export const SUTURA_DESCRIPTION = 'AI agents make CI pass. Sutura verifies the fix, filters flaky failures, rejects unsafe shortcuts, and opens evidence-backed pull requests for human review.';
-export const REPOSITORY_URL = 'https://github.com/juan294/sutura';
 const SCHEMA_CONTEXT = 'https://schema.org';
 
 /** Rejects anything but an http(s) origin, optionally with a path, and never a trailing slash. */
@@ -92,13 +104,19 @@ function softwareApplication(url: string | undefined, version: string): object {
   };
 }
 
-function webPage(card: CatalogCard, url: string | undefined, siteUrl: string | undefined): object {
+interface WebPageFields {
+  readonly name: string;
+  readonly description: string;
+  readonly dateModified: string;
+}
+
+function webPage(page: WebPageFields, url: string | undefined, siteUrl: string | undefined): object {
   return {
     '@context': SCHEMA_CONTEXT,
     '@type': 'WebPage',
-    name: resultPageTitle(card.result, card.item),
-    description: card.item.scenario,
-    dateModified: card.result.createdAt,
+    name: page.name,
+    description: page.description,
+    dateModified: page.dateModified,
     isPartOf: { '@type': 'WebSite', name: SITE_NAME, ...(siteUrl === undefined ? {} : { url: siteUrl }) },
     ...(url === undefined ? {} : { url }),
   };
@@ -187,6 +205,10 @@ export async function buildSite(options: BuildSiteOptions): Promise<string[]> {
     return { item, result };
   });
   const css = readFileSync(options.cssPath ?? resolve(PACKAGE_DIR, 'assets/case-lab.css'), 'utf8');
+  const aboutPath = options.aboutPath ?? resolve(PACKAGE_DIR, ABOUT_SOURCE_FILE);
+  if (!existsSync(aboutPath)) throw new Error(`about page source is missing: ${aboutPath}`);
+  const aboutBody = renderAboutBody(readFileSync(aboutPath, 'utf8'), siteRoot);
+  const newest = cards.map((card) => card.result.createdAt).sort().at(-1) ?? new Date(0).toISOString();
   const client = options.clientBundle ?? await bundleClient();
   write(resolve(outDir, 'case-lab.css'), css, written);
   write(resolve(outDir, 'case-lab.js'), client, written);
@@ -217,8 +239,8 @@ export async function buildSite(options: BuildSiteOptions): Promise<string[]> {
       path,
       ogType: 'article',
       attributes: mainAttributes('replay', siteRoot, undefined),
-      jsonLd: [webPage(card, absolute(path), absolute(siteRoot))],
-      body: renderResultBody(card.result, item),
+      jsonLd: [webPage({ name: resultPageTitle(card.result, item), description: item.scenario, dateModified: card.result.createdAt }, absolute(path), absolute(siteRoot))],
+      body: `${renderResultBody(card.result, item)}\n${renderPageLinks(siteRoot)}`,
     }), written);
     write(resolve(outDir, 'replay', item.id, 'result.json'), `${canonicalJson(card.result)}\n`, written);
   }
@@ -234,6 +256,18 @@ export async function buildSite(options: BuildSiteOptions): Promise<string[]> {
     attributes: mainAttributes('result', siteRoot, options.apiBase),
     body: renderPendingBody({ requestId: 'pending', caseTitle: undefined, status: 'Loading the live result…' }),
   }), written);
+  const aboutPagePath = `${siteRoot}${ABOUT_PATH}`;
+  write(resolve(outDir, 'about', 'index.html'), renderPage({
+    ...shell,
+    ...consentScript,
+    title: `${ABOUT_TITLE} · ${SITE_NAME}`,
+    description: ABOUT_DESCRIPTION,
+    path: aboutPagePath,
+    ogType: 'article',
+    attributes: mainAttributes('about', siteRoot, undefined),
+    jsonLd: [webPage({ name: ABOUT_TITLE, description: ABOUT_DESCRIPTION, dateModified: newest }, absolute(aboutPagePath), absolute(siteRoot))],
+    body: aboutBody,
+  }), written);
   const privacyPath = `${siteRoot}${PRIVACY_PATH}`;
   write(resolve(outDir, 'privacy', 'index.html'), renderPage({
     ...shell,
@@ -246,10 +280,10 @@ export async function buildSite(options: BuildSiteOptions): Promise<string[]> {
   }), written);
   write(resolve(outDir, 'robots.txt'), renderRobotsTxt(siteUrl, siteRoot), written);
   if (siteUrl !== undefined) {
-    const newest = cards.map((card) => card.result.createdAt).sort().at(-1) ?? new Date(0).toISOString();
     write(resolve(outDir, 'sitemap.xml'), renderSitemap([
       { url: `${siteUrl}${siteRoot}`, lastmod: newest },
       ...cards.map((card) => ({ url: `${siteUrl}${siteRoot}replay/${card.item.id}/`, lastmod: card.result.createdAt })),
+      { url: `${siteUrl}${aboutPagePath}`, lastmod: newest },
       { url: `${siteUrl}${privacyPath}`, lastmod: newest },
     ]), written);
   }
