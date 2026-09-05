@@ -73,7 +73,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           since="$(date -u +%Y-%m-%dT00:00:00Z)"
-          count="$(gh run list --workflow case-lab.yml --created ">=$since" --limit 100 --json databaseId --jq length)"
+          count="$(gh run list -R "$GITHUB_REPOSITORY" --workflow case-lab.yml --created ">=$since" --limit 100 --json databaseId --jq length)"
           echo "case-lab.yml runs today (including this one): $count"
           if [ "$count" -gt "$CASE_LAB_DAILY_RUN_CAP" ]; then
             echo "Case Lab daily run cap $CASE_LAB_DAILY_RUN_CAP reached; refusing before any provider call" >&2
