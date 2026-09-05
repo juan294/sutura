@@ -111,3 +111,11 @@ Chose: the catalog carries a live expectation distinct from the benchmark expect
 Also found: both materialized pull requests (#27, #29) carried `.sutura` as a gitlink because the workflow commits with `git add -A` while the Sutura checkout sits in `.sutura`. Fixed with `git add -A -- . ':(exclude).sutura'` on both commits.
 
 Cost status in both published results is `unavailable` because no case file is attached (the released CLI replay defect); the Sutura check reported inference USD 0.010632 and USD 0.010152.
+
+### Gate B closed (2026-09-05 07:47 UTC)
+
+| Dispatch | Request | Run | Result |
+| --- | --- | --- | --- |
+| 7 | `cl-1788594147491-d51dbfa7` | 33953291700 | published: `greenwash-trap` fixed, matches the live expectation, `repairPaths: ["src/status-for.js"]`, repair PR #32; PR #31 carries no gitlink |
+
+Acceptance against <https://sutura-case-lab.vercel.app> passed 10/10 with each live result. Issue #50 closed with this evidence. Seven dispatches in total, two published results, inference about USD 0.01 per run.
