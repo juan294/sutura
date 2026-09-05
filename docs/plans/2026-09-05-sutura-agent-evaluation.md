@@ -139,7 +139,7 @@ Semantic correctness remains a source-review responsibility.
 | Phase | Deliverable | Files | Depends on | Status |
 | --- | --- | --- | --- | --- |
 | [1](2026-09-05-sutura-agent-evaluation-phases/phase-1.md) | Current guide, architecture cards, and content/link contract | New `docs/evaluation/README.md`, `docs/evaluation/architecture.md`; extend `scripts/submission-contract.test.mjs` | This plan | Complete; `e2441e4` locally integrated |
-| [2](2026-09-05-sutura-agent-evaluation-phases/phase-2.md) | Discoverable entry links, concise docs index, consistency corrections | `README.md`, `AGENTS.md`, `CLAUDE.md`, new `docs/README.md`; extend same test file | Phase 1 | Complete locally; integration deferred until all phases finish |
+| [2](2026-09-05-sutura-agent-evaluation-phases/phase-2.md) | Discoverable entry links, concise docs index, consistency corrections | `README.md`, `AGENTS.md`, `CLAUDE.md`, new `docs/README.md`; extend same test file | Phase 1 | Complete locally at `b526d3b`; final integration pending |
 | [3](2026-09-05-sutura-agent-evaluation-phases/phase-3.md) | Bounded fresh-reader comparison and final source review | Ignored `docs/agents/agent-evaluation-comparison.md` and trial outputs; scoped corrections to Phases 1–2 files if supported | Phase 2 | Not started |
 
 All phases are sequential. None is batch eligible: Phase 2 requires Phase 1's
@@ -250,3 +250,9 @@ The dependency-free committed archive passed all nine focused checks.
 Phase 2 focused checks (11), README setup contract (3), typecheck, lint, full tests
 (1,744 passed, 9 live tests skipped), build, and whitespace checks passed sequentially
 on Node 22.23.2. Remaining integration is deferred until all phases are complete.
+
+Phase 2 documentation commit: `b526d3b7adc635fe5e1cd7ca341b40a5efa98f2e`.
+Committed-only archive: 11/11 passed. Concurrent documentation/evidence from
+`61093a817dacf456b902f20c233436d6da27a604` was merged into the isolated task branch
+before Phase 3. Product source is byte-identical to the reviewed `ce3502d` source;
+the new candidate-matrix evidence was added to the guide and assessor truth before trials.

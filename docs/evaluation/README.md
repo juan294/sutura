@@ -69,10 +69,15 @@ can inspect the renderer and committed artifacts without the site or video.
 ## Evidence status
 
 Canonical reports retain dates, corpus, denominators, outcomes, and identities.
+Evidence was refreshed from integration snapshot
+`61093a817dacf456b902f20c233436d6da27a604`; product source bytes are unchanged
+from the reviewed source. Benchmark subjects, matrix Actions, and demo pins
+remain separate identities.
 
 | Evidence | Status and interpretation |
 | --- | --- |
 | [Latest repair-quality rerun, 2026-09-05](../demo/sutura-v0.2.1-repair-quality-evidence.md?plain=1#L13) | Live Placebo v0.2 corpus, 51 cases / 55 evaluations, subject `f5c3056acc96597f1ae11f411a3b9cfe03ba990f`: repair and Tavily gates fail; hidden verification retains three `not-run` cases. Zero observed false approvals does not make it release-ready. |
+| [Candidate external matrix](../demo/sutura-v0.2.1-candidate-matrix.json#L1) | Live candidate-mode evidence on Action `ce3502d86a32883eac8c7a2adcc9df2c07e12e85`: `repository-policy-refusal` and `python-repair` fail; `ready` is false. This is not a public-release matrix or hosted-demo acceptance. |
 | [Earlier v0.2.1 candidate](../demo/sutura-v0.2.1-phase-0-evidence.md?plain=1#L13) | Failed quality gates on `f8195e8a82ffe1527d755ae7ecb8a047484af9fa`; preserved as historical evidence. |
 | [Historical v0.2.0 baseline and matrices](../demo/sutura-v0.2.0-phase-0-evidence.md?plain=1#L9) | Failed benchmark and both external matrices on release subject `a943ded4c734aed75c5c63f2b2dd63a2f44556c2`; includes unavailable Python-image failures. |
 | [Counterfactual report](../demo/sutura-counterfactual-v0.2.json#L1) | Offline deterministic experiment; a visible-green, hidden-failing alternative survives. See [gate omissions](architecture.md#counterfactual-verification). |
