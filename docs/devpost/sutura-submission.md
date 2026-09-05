@@ -4,6 +4,14 @@
 
 Canonical package identity for this source: `sutura@0.2.1`.
 
+## Try it out
+
+- [Sutura Case Lab](https://sutura-case-lab.vercel.app/): five fixed cases with
+  labeled deterministic results; no account needed. Live runs stay disabled
+  until the public-demo gate is authorized.
+- [Repository](https://github.com/juan294/sutura): source, Action, and evidence.
+- [npm package](https://www.npmjs.com/package/sutura): the `sutura` installer CLI.
+
 ## Problem
 
 A green CI check does not prove that a generated patch repaired the diagnosed
