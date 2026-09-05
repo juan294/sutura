@@ -45,6 +45,6 @@ If Juan buys a custom domain (Open question 1): add it to the Vercel project, se
 
 ## Success criteria
 
-- [ ] Google and Bing properties verified; sitemap accepted in both.
-- [ ] GA4, Clarity, and Vercel Analytics receive data.
-- [ ] `docs/release/discoverability-playbook.md` records every identifier and date.
+- [x] Google and Bing properties verified; sitemap accepted in both (2026-09-05). Google request-indexing is deferred to 2026-09-06 by quota.
+- [x] GA4, Clarity, and Vercel Analytics receive data (2026-09-05).
+- [x] `docs/release/discoverability-playbook.md` records every identifier and date.

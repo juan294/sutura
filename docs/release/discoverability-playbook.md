@@ -6,11 +6,11 @@ Plan: `docs/plans/2026-09-05-sutura-discoverability.md`. All accounts belong to 
 
 | Service | Entry | Identifier | Created | Status |
 | --- | --- | --- | --- | --- |
-| Google Analytics 4 | Property "Sutura Case Lab" under account "Spoken Letter" (398659195); web stream "Sutura Case Lab", stream 15723700890 | Measurement ID `G-Z65T5Y173D` | 2026-09-05 | Created; time zone Spain, currency USD, enhanced measurement on, Google Signals off |
-| Microsoft Clarity | Project "Sutura Case Lab", industry Technology & Telecommunications | Project ID `ydi0lx4kw6` | 2026-09-05 | Created; not linked to GA4 |
-| Google Search Console | URL-prefix property `https://sutura-case-lab.vercel.app/` | HTML tag `f7PZNffeQUHV6bvX9Pzff2dL0yT9iyxDqT83uHy3Dfg` | 2026-09-05 | Property added; verification pending the Phase 2 deploy |
-| Bing Webmaster Tools | Site `https://sutura-case-lab.vercel.app/`, added manually | Meta tag `msvalidate.01` = `9E58012EFDC70E5C8289C62F90BD646F` | 2026-09-05 | Site added, shown as "Not verified" pending the Phase 2 deploy |
-| Vercel Web Analytics | Project `sutura-case-lab`, team The Creative Token (Pro), included tier | none (script at `/_vercel/insights/script.js`) | 2026-09-05 | Enabled; dashboard shows 0 visitors until the script ships |
+| Google Analytics 4 | Property "Sutura Case Lab" (552890586) under account "Spoken Letter" (398659195); web stream "Sutura Case Lab", stream 15723700890 | Measurement ID `G-Z65T5Y173D` | 2026-09-05 | Receiving data (Realtime showed the first `page_view` on 2026-09-05); time zone Spain, currency USD, enhanced measurement on, Google Signals off |
+| Microsoft Clarity | Project "Sutura Case Lab", industry Technology & Telecommunications | Project ID `ydi0lx4kw6` | 2026-09-05 | Receiving data (2 sessions on 2026-09-05); not linked to GA4 |
+| Google Search Console | URL-prefix property `https://sutura-case-lab.vercel.app/` | HTML tag `f7PZNffeQUHV6bvX9Pzff2dL0yT9iyxDqT83uHy3Dfg` | 2026-09-05 | Ownership auto verified (HTML tag and Google Analytics); sitemap submitted, 8 discovered pages |
+| Bing Webmaster Tools | Site `https://sutura-case-lab.vercel.app/`, added manually | Meta tag `msvalidate.01` = `9E58012EFDC70E5C8289C62F90BD646F` | 2026-09-05 | Verified via meta tag; sitemap submitted (Processing); all 8 URLs submitted through URL Submission |
+| Vercel Web Analytics | Project `sutura-case-lab`, team The Creative Token (Pro), included tier | none (script at `/_vercel/insights/script.js`) | 2026-09-05 | Enabled and receiving data (3 visitors, 5 page views on 2026-09-05) |
 | GitHub repository | `juan294/sutura` | homepage `https://sutura-case-lab.vercel.app`, 12 topics, social preview uploaded from `packages/case-lab/assets/social-card.png` | 2026-09-05 | Done |
 
 A separate Google Analytics account named "Sutura" was not created: a new account requires accepting the Google Analytics Terms of Service, which is Juan's click. The property can be moved to a new account later from Admin → Property → Move.
@@ -43,6 +43,17 @@ node packages/case-lab/bin/case-lab.js acceptance --base-url https://sutura-case
 | Date | Action | Result |
 | --- | --- | --- |
 | 2026-09-05 | Phase 3A: properties created, identifiers collected (table above) | Done |
+| 2026-09-05 | Prebuilt production deploy `dpl_716Ef2zj1SDM7QTLcT7ZFyd1ENzw` from develop `2bec01b` (21 files: 8 pages, sitemap, robots, favicon, social card) | Live; `X-Robots-Tag: noindex` on `/result/` and `/api/` |
+| 2026-09-05 | Google Search Console: verify ownership | Auto verified, methods HTML tag and Google Analytics |
+| 2026-09-05 | Google Search Console: submit `sitemap.xml` | Success, 8 discovered pages |
+| 2026-09-05 | Google Search Console: URL Inspection of `/` | "Discovered - currently not indexed", sitemap noted as source |
+| 2026-09-05 | Google Search Console: Request indexing for the 8 URLs | Refused, "Quota Exceeded" (the account's daily quota was already used). Retry on 2026-09-06 for `/`, `/about/`, and the five replay pages |
+| 2026-09-05 | Bing Webmaster Tools: verify ownership | Verified via `msvalidate.01` meta tag |
+| 2026-09-05 | Bing Webmaster Tools: submit `sitemap.xml` | Accepted, status Processing |
+| 2026-09-05 | Bing Webmaster Tools: URL Submission | All 8 URLs accepted (quota 92 of 100 left) |
+| 2026-09-05 | Google Rich Results Test on `/` | 1 valid item, Software Apps (`SoftwareApplication` "Sutura"); one non-critical note: optional `aggregateRating` absent, left out on purpose |
+| 2026-09-05 | Data check in a browser after Accept | GA4 Realtime 1 active user with `page_view`; Clarity 2 sessions; Vercel Analytics 3 visitors, 5 page views. No cookie before Accept; `sutura-consent=granted` after |
+| 2026-09-05 | Vercel firewall | System DDoS mitigation challenged this machine's IP after a 45 s curl poll loop (13 requests per burst). Temporary and IP-scoped; crawlers unaffected. Poll the live site no more than once a minute |
 
 ## Monitoring cadence
 
@@ -66,3 +77,4 @@ markup change.
 
 | Date | Google indexed | Bing indexed | GA4 users | Clarity rage / dead clicks | Action |
 | --- | ---: | ---: | ---: | --- | --- |
+| 2026-09-05 | 0 (8 discovered from the sitemap, request-indexing quota exhausted) | 0 (sitemap Processing, 8 URLs submitted) | 1 | 0 / 0 (2 sessions) | Request indexing for all 8 URLs on 2026-09-06; next pass 2026-09-12 |
