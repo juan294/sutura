@@ -75,3 +75,9 @@ Rerun after the candidate exists, with the corrected package version and hash co
 - [ ] Phase 1 and Phase 2 tests green; `pnpm run ci:local` green at the integrated commit.
 - [ ] Benchmark rerun terminal with zero false approvals and the four Python repairs no longer `not-run`.
 - [ ] Gates measured and recorded in the roadmap and issue #47, pass or fail.
+
+## Progress record
+
+- Phase 1 committed and green on the full local CI mirror (core 1141 tests, placebo 182, packed CLI installs with the rebuilt Action). The bare `python -m unittest` label in the corpus discovers nothing on the fixtures (no `tests/__init__.py`), so the harness forwards `python3 -B -m unittest discover -s tests -p 'test_*.py'`, the exact command its hidden verification runs; the core default for an unobserved Python command stays `python -m unittest`.
+- Phase 2 committed under score contract v3 with the control evidence regenerated from a path-independent generator (placebo 183 tests, release contracts 130 checks). Juan approved the contract change on 2026-09-05.
+- Phase 3: candidate `f5c3056acc96597f1ae11f411a3b9cfe03ba990f` on `develop` (Phase 1 `c7a01d5`, Phase 2 `9f1ecf8`, hash pin `f5c3056`); package content hash `ef4b0e701ee661b5aab69969bc6272e3c88aa68dbc6f44b5b6f9d98a212625b4`; demo controller pinned at demo commit `5a213f5`. Benchmark rerun runs from the detached worktree `sutura-g2` after CI on the candidate is green.
