@@ -2,7 +2,7 @@
 
 Parent: [Sutura agent-readable evaluation plan](../2026-09-05-sutura-agent-evaluation.md).
 
-Status: Not started. Dependency: Phase 2 accepted locally. Sequential phase.
+Status: Complete locally; all eight trials assessed and final reviews approved. Dependency: Phase 2 accepted locally. Sequential phase.
 
 ## Owned outputs
 
@@ -165,3 +165,29 @@ locally and verify it under the parent Git procedure, clean up only task-owned
 worktrees safely, and update phase/parent status with exact commits and results.
 Report whether discovery improved, stayed unchanged, or regressed under this
 limited comparison. Stop; this phase authorizes no push, publication, or deploy.
+
+## Execution record — 2026-09-05
+
+- [x] Frozen documentation at `b810c0320a2aaacac3581ccb01b0b5c1f77e7c0d`, reviewed product source `ce3502d86a32883eac8c7a2adcc9df2c07e12e85`, integration evidence `61093a817dacf456b902f20c233436d6da27a604`.
+- [x] Exact seven-file treatment difference; product bytes identical; equal exclusions; no Git history. Filtered after export passed 11/11 focused contracts without installation.
+- [x] Eight fresh sessions completed using identical available model/settings, no conversation inheritance, and both instruction modes. Two failed concurrent admissions produced no reader outputs; serial execution repaired the harness without replacing any unfavorable output.
+- [x] All raw outputs retained (542–636 words). Seven readers report 20 content files, one reports 19. Precise elapsed time and central tool traces are unavailable; recorded scheduling observations are not exact execution measurements.
+- [x] Both complete export manifests recomputed unchanged after all trials. No public documentation was tuned or changed during the comparison.
+- [x] Independent final source review approved all six cards and current evidence identities. Separate fresh reuse/quality reviewer approved documentation and scoped checker without findings.
+- [x] Node 22.23.2: focused contracts (11), README tests (3), typecheck, lint, full tests (1,744 passed, 9 live skipped), build and whitespace passed sequentially. Full CI selection, release contracts (146), offline runtime smoke, fresh README setup, package installation, bundle verification, guards (445/445), and core/Action coverage also passed locally.
+- [x] Comparison report reviewed: 17 topic improvements, 29 ties, two regressions, and one unsupported after-reader scope claim retained. No statistical or official-score inference. Completion metadata records the measured documentation snapshot.
+
+Operational evidence, prompts, truth, exact manifests, eight raw reviews, timing
+limitations and review records are retained under ignored `docs/agents/`. Public
+documents do not depend on these private comparison records. The current user
+request overrides the original stop/no-push instruction: complete all phases,
+integrate into develop, push that completed integration once, then verify CI.
+
+The comparison supports limited discovery improvement with mixed results. The
+historical baseline mention regressed in both normal-mode pairs; no reader fully
+retained that failed baseline's subject or all three ConTree branch roles, and
+only one found Arena controls. No documentation correction was needed after the
+independent factual review. Remaining video/transcript, public acceptance and
+final identity/pinning belong to WS-4; optional website exports belong to the
+discoverability workstream. The comparison remains bound to `b810c032` even though
+closeout metadata is committed later.
