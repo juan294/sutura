@@ -6,6 +6,21 @@ import type { RepairSourceExcerpt } from './repair.js';
 const MAX_DEPENDENCY_GROUPS = 24;
 const NODE_STATIC_SPECIFIER = /(?:\b(?:import|export)\s(?:[^'"\n]*\bfrom\s)?\s*|\b(?:import|require)\s*\(\s*)['"](?<specifier>\.{1,2}\/[^'"\n]+)['"]/gu;
 const PYTHON_RELATIVE_IMPORT = /^\s*from\s+(?<dots>\.+)(?<module>[A-Za-z_][A-Za-z0-9_.]*)?\s+import\s+(?<imports>[A-Za-z_][A-Za-z0-9_]*(?:\s+as\s+[A-Za-z_][A-Za-z0-9_]*)?(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*(?:\s+as\s+[A-Za-z_][A-Za-z0-9_]*)?)*)/gmu;
+/**
+ * Absolute imports name a module on `sys.path`. A test run from the repository
+ * root or through unittest discovery resolves them against the root, the
+ * importing file's own directory, or a `src/` layout; every candidate is one
+ * bounded read and an ambiguous module contributes nothing.
+ */
+const PYTHON_ABSOLUTE_IMPORT = /^\s*(?:from\s+(?<fromModule>[A-Za-z_][A-Za-z0-9_.]*)\s+import\s+[^\n]+|import\s+(?<modules>[A-Za-z_][A-Za-z0-9_.]*(?:\s+as\s+[A-Za-z_][A-Za-z0-9_]*)?(?:\s*,\s*[A-Za-z_][A-Za-z0-9_.]*(?:\s+as\s+[A-Za-z_][A-Za-z0-9_]*)?)*))\s*$/gmu;
+/** Standard-library and test-runner modules a repository never defines; probing them wastes the budget. */
+const PYTHON_EXTERNAL_MODULES = new Set([
+  'abc', 'argparse', 'asyncio', 'base64', 'collections', 'concurrent', 'contextlib', 'copy', 'csv',
+  'dataclasses', 'datetime', 'decimal', 'enum', 'functools', 'glob', 'hashlib', 'http', 'importlib',
+  'inspect', 'io', 'itertools', 'json', 'logging', 'math', 'os', 'pathlib', 'pickle', 'platform',
+  'pytest', 'random', 're', 'shutil', 'socket', 'sqlite3', 'string', 'subprocess', 'sys', 'tempfile',
+  'threading', 'time', 'typing', 'unittest', 'urllib', 'uuid', 'warnings',
+]);
 const SAFE_DEPENDENCY_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9_@./-]+$/u;
 
 export interface SourceDependencyGroup {
@@ -63,6 +78,29 @@ function pythonCandidates(sourcePath: string, dots: string, moduleName: string):
   ])].filter((path) => safeNormalizedPath(path) !== undefined);
 }
 
+function pythonAbsoluteCandidates(sourcePath: string, moduleName: string): string[] {
+  const modulePath = moduleName.replaceAll('.', '/');
+  const roots = [...new Set(['.', posix.dirname(sourcePath), 'src'])];
+  return [...new Set(roots.flatMap((root) => {
+    const resolved = safeNormalizedPath(posix.join(root, modulePath));
+    return resolved === undefined
+      ? []
+      : [`${resolved}.py`, `${resolved}.pyi`, `${resolved}/__init__.py`, `${resolved}/__init__.pyi`];
+  }))].filter((path) => safeNormalizedPath(path) !== undefined);
+}
+
+function* pythonAbsoluteImports(source: RepairSourceExcerpt): Generator<{ specifier: string; candidates: string[] }> {
+  for (const match of source.content.matchAll(PYTHON_ABSOLUTE_IMPORT)) {
+    const modules = match.groups?.fromModule !== undefined
+      ? [match.groups.fromModule]
+      : (match.groups?.modules ?? '').split(',').map((entry) => entry.trim().split(/\s/u)[0] ?? '');
+    for (const moduleName of modules) {
+      if (!moduleName || PYTHON_EXTERNAL_MODULES.has(moduleName.split('.')[0] ?? '')) continue;
+      yield { specifier: moduleName, candidates: pythonAbsoluteCandidates(source.path, moduleName) };
+    }
+  }
+}
+
 function* dependencySpecifiers(
   source: RepairSourceExcerpt,
   runtimeId: RuntimeId,
@@ -74,6 +112,7 @@ function* dependencySpecifiers(
     }
     return;
   }
+  yield* pythonAbsoluteImports(source);
   for (const match of source.content.matchAll(PYTHON_RELATIVE_IMPORT)) {
     const dots = match.groups?.dots;
     if (dots === undefined) continue;

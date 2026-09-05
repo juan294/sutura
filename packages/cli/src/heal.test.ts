@@ -377,6 +377,27 @@ describe('CLI runtime configuration and source boundaries', () => {
     expect(context.sources.every(({ path }) => !path.includes('node_modules') && !path.startsWith('.env'))).toBe(true);
   });
 
+  it('follows a Python absolute import from the failing test to the production module', async () => {
+    const fixture = join(CORPUS, 'python-repair-cache-key', 'fixture');
+    const context = await readLocalSourceContext(
+      fixture,
+      [
+        'Traceback (most recent call last):',
+        '  File "/workspace/tests/test_cache.py", line 8, in test_namespaces_keys',
+        '    self.assertNotEqual(cache_key("a", "item"), cache_key("b", "item"))',
+        "AssertionError: 'item' == 'item'",
+        'FAILED (failures=1)',
+      ].join('\n'),
+      {
+        class: 'test-assertion', confidence: 1, signals: [],
+        failingCmd: "python3 -B -m unittest discover -s tests -p 'test_*.py'", errorExcerpt: 'failed',
+      },
+      undefined,
+      'python',
+    );
+    expect(context.sources.map(({ path }) => path)).toEqual(['tests/test_cache.py', 'cache.py']);
+  });
+
   it('uses Python manifest fallbacks after runtime selection', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'sutura-python-source-fallback-'));
     try {
