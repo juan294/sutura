@@ -22,7 +22,7 @@ export const USAGE = [
   'Usage:',
   '  case-lab catalog --out <dir>',
   '  case-lab replay <case-id> [--out <file>]',
-  '  case-lab build-site [--out <dir>] [--api-base <origin or empty>] [--site-root </>]',
+  '  case-lab build-site [--out <dir>] [--api-base <origin or empty>] [--site-root </>] [--site-url <https origin>]',
   '  case-lab serve [--dir <dir>] [--port <port>]',
   '  case-lab acceptance --base-url <url> [--offline] [--live-result <request-id>] [--out <file>]',
   '  case-lab verify-pin [--tag <tag>] [--workflow <file>] [--set-controller <sha>]',
@@ -128,6 +128,7 @@ export async function runCaseLabCli(argv: readonly string[], dependencies: CliDe
       case 'build-site': {
         const outDir = resolve(valueAfter(args, '--out') ?? DEFAULT_SITE_DIR);
         const apiBase = args.includes('--api-base') ? (valueAfter(args, '--api-base') ?? '') : undefined;
+        const siteUrl = valueAfter(args, '--site-url');
         const catalog = await replayCatalog(dependencies.catalog);
         const written = await buildSite({
           outDir,
@@ -135,6 +136,7 @@ export async function runCaseLabCli(argv: readonly string[], dependencies: CliDe
           release: dependencies.catalog?.release ?? loadRelease(),
           siteRoot: valueAfter(args, '--site-root') ?? '/',
           ...(apiBase === undefined ? {} : { apiBase }),
+          ...(siteUrl === undefined ? {} : { siteUrl }),
         });
         io.write(`${written.length} files written to ${outDir}\n`);
         return 0;

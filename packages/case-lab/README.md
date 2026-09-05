@@ -119,7 +119,7 @@ and `NODE_ENV=test` and no credential
 ```text
 case-lab catalog --out <dir>                 write the five deterministic results
 case-lab replay <case-id> [--out <file>]     one deterministic result
-case-lab build-site                          write dist/site
+case-lab build-site [--site-url <origin>]    write dist/site; the origin fills canonicals and the sitemap
 case-lab serve [--port 4177]                 serve dist/site for local review
 case-lab acceptance --base-url <url>         signed-out acceptance record (--offline skips link checks)
 case-lab verify-pin [--tag v0.2.0]           prove release.json, the demo workflow, and the tag agree
@@ -127,6 +127,23 @@ case-lab dispatch --base-url <url> --case <id>
 case-lab capture-replay --request-id <id> --out replay
 case-lab publish-result ...                  used inside the demo workflow
 ```
+
+## Search and social metadata
+
+`build-site --site-url https://sutura-case-lab.vercel.app` (the flag
+`vercel.json` passes) gives every page a canonical link and an absolute
+Open Graph URL, and writes `sitemap.xml` with the index and the five replay
+pages. Without the flag the build still succeeds but carries no canonical and
+no sitemap, and `case-lab acceptance` fails its `robots-txt`, `sitemap-xml`,
+and `canonical` checks against it.
+
+Every build writes `robots.txt` (`/result/` and `/api/` disallowed), copies
+`assets/favicon.svg` and `assets/social-card.png` (1200x630) to the site
+root, and adds Open Graph, Twitter card, theme-color, and JSON-LD tags to each
+page: `WebSite` plus `SoftwareApplication` on the index, `WebPage` on each
+replay. Only `/result/` is `noindex`, by meta tag and by the `X-Robots-Tag`
+header that `vercel.json` sets on `/result*` and `/api/*`; `case-lab serve`
+sends the same headers so the acceptance record means the same thing locally.
 
 ## Deployment
 

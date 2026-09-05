@@ -361,13 +361,57 @@ export function renderResultBody(result: CaseLabResult, item: CaseLabCase): stri
   ].join('\n');
 }
 
+export const SITE_NAME = 'Sutura Case Lab';
+export const FAVICON_FILE = 'favicon.svg';
+export const SOCIAL_CARD_FILE = 'social-card.png';
+/** `--paper` in assets/case-lab.css, light then dark. */
+const THEME_COLORS = Object.freeze({ light: '#fbfbf9', dark: '#121417' });
+
 export interface PageShellOptions {
   readonly title: string;
   readonly siteRoot: string;
+  /** Site-relative path of this page, starting with the site root, for example `/replay/flaky-failure/`. */
+  readonly path: string;
   readonly body: string;
   readonly script?: string;
   readonly description: string;
   readonly attributes?: Readonly<Record<string, string>>;
+  /** Absolute origin without a trailing slash. Absent: no canonical, no absolute Open Graph URL. */
+  readonly siteUrl?: string;
+  /** Default is index; only per-request pages opt out. */
+  readonly robots?: 'index' | 'noindex';
+  readonly ogType?: string;
+  /** One `application/ld+json` block per entry. */
+  readonly jsonLd?: readonly object[];
+}
+
+/** JSON that is safe inside a script element: no `<` can close the tag or open a comment. */
+export function jsonLdScript(entry: object): string {
+  return `<script type="application/ld+json">${JSON.stringify(entry).replace(/</gu, '\\u003c')}</script>`;
+}
+
+function metaTags(options: PageShellOptions): string {
+  const absolute = options.siteUrl === undefined ? undefined : `${options.siteUrl}${options.path}`;
+  const image = `${options.siteUrl ?? ''}${options.siteRoot}${SOCIAL_CARD_FILE}`;
+  const lines = [
+    ...(absolute === undefined ? [] : [`<link rel="canonical" href="${escapeHtml(absolute)}">`]),
+    ...(options.robots === 'noindex' ? ['<meta name="robots" content="noindex, nofollow">'] : []),
+    `<meta property="og:type" content="${escapeHtml(options.ogType ?? 'website')}">`,
+    `<meta property="og:title" content="${escapeHtml(options.title)}">`,
+    `<meta property="og:description" content="${escapeHtml(options.description)}">`,
+    ...(absolute === undefined ? [] : [`<meta property="og:url" content="${escapeHtml(absolute)}">`]),
+    `<meta property="og:image" content="${escapeHtml(image)}">`,
+    `<meta property="og:site_name" content="${escapeHtml(SITE_NAME)}">`,
+    '<meta name="twitter:card" content="summary_large_image">',
+    `<meta name="twitter:title" content="${escapeHtml(options.title)}">`,
+    `<meta name="twitter:description" content="${escapeHtml(options.description)}">`,
+    `<meta name="twitter:image" content="${escapeHtml(image)}">`,
+    `<link rel="icon" href="${escapeHtml(options.siteRoot)}${FAVICON_FILE}" type="image/svg+xml">`,
+    `<meta name="theme-color" media="(prefers-color-scheme: light)" content="${THEME_COLORS.light}">`,
+    `<meta name="theme-color" media="(prefers-color-scheme: dark)" content="${THEME_COLORS.dark}">`,
+    ...(options.jsonLd ?? []).map(jsonLdScript),
+  ];
+  return lines.map((line) => `  ${line}`).join('\n');
 }
 
 export function renderPage(options: PageShellOptions): string {
@@ -379,6 +423,7 @@ export function renderPage(options: PageShellOptions): string {
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="${escapeHtml(options.description)}">
   <title>${escapeHtml(options.title)}</title>
+${metaTags(options)}
   <link rel="stylesheet" href="${escapeHtml(options.siteRoot)}case-lab.css">
 </head>
 <body>

@@ -7,7 +7,14 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = Object.freeze({
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.txt': 'text/plain; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8',
 });
+
+/** Paths that must never be indexed; mirrors the `X-Robots-Tag` rules in vercel.json. */
+const NOINDEX_PREFIXES = Object.freeze(['/result', '/api/']);
 
 /** A minimal static server for local review and the acceptance test. It serves only files under the root. */
 export function createStaticServer(rootDir: string): Server {
@@ -15,6 +22,7 @@ export function createStaticServer(rootDir: string): Server {
   return createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://localhost');
     let pathname = decodeURIComponent(url.pathname);
+    const robots = NOINDEX_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ? { 'X-Robots-Tag': 'noindex' } : {};
     if (pathname.endsWith('/')) pathname += 'index.html';
     const target = resolve(root, `.${pathname}`);
     if (target !== root && !target.startsWith(`${root}${sep}`)) {
@@ -33,7 +41,13 @@ export function createStaticServer(rootDir: string): Server {
       return;
     }
     const type = CONTENT_TYPES[extname(target)] ?? 'application/octet-stream';
-    response.writeHead(200, { 'Content-Type': type, 'Content-Length': size, 'Cache-Control': 'no-store' });
+    response.writeHead(200, {
+      'Content-Type': type,
+      'Content-Length': size,
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      ...robots,
+    });
     if (request.method === 'HEAD') {
       response.end();
       return;
