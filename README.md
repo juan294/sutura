@@ -6,17 +6,20 @@
 ![Node](https://img.shields.io/badge/Node-22%2B-339933)
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB)
 
+Try it: [Sutura Case Lab](https://sutura-case-lab.vercel.app/) — five verified CI repairs, no account needed.
+
 AI agents make CI pass. Sutura verifies the fix, filters flaky failures,
 rejects unsafe shortcuts, and opens an evidence-backed PR for human review.
 
 Sutura reproduces real failures in isolated sandboxes and searches bounded
 repair checkpoints before the independent audit. It never auto-merges.
 
-Sutura is built for the Nebius x NVIDIA Global AI Hackathon. The public Case
-Lab in [`packages/case-lab`](packages/case-lab/README.md) lets a signed-out
-visitor select one of five fixed cases and read a stable, labeled result. Its
-live path stays disabled until the public-demo gate is authorized against one
-exact release commit; every case has a deterministic replay in the meantime.
+The public [Sutura Case Lab](https://sutura-case-lab.vercel.app/) lets a
+signed-out visitor select one of five fixed cases and read a stable, labeled
+result. Its source lives in [`packages/case-lab`](packages/case-lab/README.md).
+Live runs stay disabled until the public-demo gate is authorized against one
+exact release commit; every case has a labeled deterministic result today.
+Sutura is built for the Nebius x NVIDIA Global AI Hackathon.
 
 ## How it works
 
