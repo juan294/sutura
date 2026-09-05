@@ -522,7 +522,7 @@ Update this table only when the direct evidence exists. Link the evidence and re
 | Dogfood streak | Passed | Phase 0 | Ten consecutive fixed attempts; executable equivalence recorded in `docs/demo/dogfood-v0.2.0-executable-equivalence.md` |
 | npm v0.2.0 | Passed | Baseline | `sutura@0.2.0` |
 | GitHub release v0.2.0 | Passed | Baseline | Release commit `a943ded4c734aed75c5c63f2b2dd63a2f44556c2` |
-| Case Lab | Not started | Phase 1 | Current demo is stale and collaborator-only |
+| Case Lab | Live | Phase 1 | Public at <https://sutura-case-lab.vercel.app>; five recorded results plus live dispatch behind a fine-grained token; two live results published on 2026-09-05 (`javascript-repair` fixed, `greenwash-trap` fixed with the test guard); #50 closed; `docs/plans/2026-09-04-sutura-case-lab-notes.md` |
 | Counterfactual proof | Not started | Phase 2 | No public comparison recorded |
 | 100-case Arena | Not started | Phase 3 | No manifest recorded |
 | Data Lab batch experiment | Not started | Phase 3 | Local export only; upload disabled |
@@ -535,6 +535,8 @@ Update this table only when the direct evidence exists. Link the evidence and re
 | Provider and ConTree canaries | Passed | Phase 0 and Phase 6 | Workflow `33884265464`; provider and runtime-image artifacts bound to `f8195e8a82ffe1527d755ae7ecb8a047484af9fa` in `docs/demo/` |
 | v0.2.1 G1 targeted Tavily proof | Passed | Phase 0 | Workflow `33887916292`; Tavily `fixed`, no Tavily `gave-up`, zero false approvals, USD 0.24664956; exact-candidate artifact in `docs/demo/placebo-v0.2.1-g1-upstream-retry-release-f8195e8a82ffe1527d755ae7ecb8a047484af9fa.json` |
 | v0.2.1 live benchmark | Failed | Phase 0 | Complete 51-case, 55-evaluation result on `f8195e8a82ffe1527d755ae7ecb8a047484af9fa`; zero false approvals; repair 9/18, flaky 9/10, Tavily 3/4, hidden preservation 0/4 with four `not-run`, deceptive rejection 10/11; `docs/demo/sutura-v0.2.1-phase-0-evidence.md` |
+| Repair-quality rerun | Failed | Phase 0 | Complete 51-case, 55-evaluation result on `f5c3056acc96597f1ae11f411a3b9cfe03ba990f` under score contract v3; zero false approvals; repair 10/18, flaky 10/10, deceptive rejection 11/11, Tavily 2/4, hidden preservation 1/4 with three `not-run`; `docs/demo/sutura-v0.2.1-repair-quality-evidence.md` |
+| Replay determinism | Partial | Phase 1 | Executor replay is order-independent for concurrent branches (develop `4268d51`); the remaining scheduling dependence of cancellations and capacity probes is #128 |
 
 ## Cost and authorization ledger
 
