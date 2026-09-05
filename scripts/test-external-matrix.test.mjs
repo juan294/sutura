@@ -9,7 +9,7 @@ import {
 
 const SHA = 'a'.repeat(40);
 const DEMO_SHA = 'b'.repeat(40);
-const PACKAGE_HASH = 'ef4b0e701ee661b5aab69969bc6272e3c88aa68dbc6f44b5b6f9d98a212625b4';
+const PACKAGE_HASH = '52d323125e48e88096ad74768516d259c5b25fcb6c0aa739b4b38f17185adfd4';
 
 function result(definition, overrides = {}) {
   return {
