@@ -178,7 +178,7 @@ export function normalizePythonCommand(command: string): string {
   const trimmed = command.trim();
   if (
     /^(?:pytest|ruff|mypy)(?=$|\s)/u.test(trimmed) ||
-    /^python(?:3(?:\.\d+)?)?\s+-m\s+(?:pytest|ruff|mypy)(?=$|\s)/u.test(trimmed)
+    /^python(?:3(?:\.\d+)?)?\s+(?:-B\s+)?-m\s+(?:pytest|ruff|mypy|unittest)(?=$|\s)/u.test(trimmed)
   ) {
     return `uv run --offline --no-sync ${trimmed}`;
   }

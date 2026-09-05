@@ -87,7 +87,14 @@ import { NODE_IMAGE_REF, NODE_RUNTIME, nodePreparationCommand } from './runtime/
 import type { RuntimeAdapter, RuntimeId } from './runtime/types.js';
 
 export const SUTURA_DEFAULT_IMAGE_REF = NODE_IMAGE_REF;
-const DEFAULT_FAILURE_COMMAND = 'pnpm test';
+/**
+ * The command Sutura reproduces when no failing command was observed. The
+ * Action always passes the command extracted from the CI log; the CLI and the
+ * benchmark pass one explicitly or fall back here per runtime.
+ */
+export function defaultFailureCommand(runtimeId: RuntimeId | undefined): string {
+  return runtimeId === 'python' ? 'python -m unittest' : 'pnpm test';
+}
 const DEPENDENCY_INSTALL_COMMAND = /(?:^|(?:&&|;|\|\|)\s*)(?:(?:corepack\s+)?pnpm\s+(?:install|i)\b|npm\s+(?:ci|install|i)\b|(?:corepack\s+)?yarn\s+(?:install\b|--immutable\b))/iu;
 
 export const SUTURA_SANDBOX_ENV = Object.freeze({
@@ -1305,7 +1312,7 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
   if (!ctx.runId.trim() || !ctx.repo.trim() || !ctx.caseDir.trim()) {
     throw new HealCaseError('runId, repo, and caseDir must be non-empty');
   }
-  const command = ctx.failureCommand ?? DEFAULT_FAILURE_COMMAND;
+  const command = ctx.failureCommand ?? defaultFailureCommand(ctx.runtimeId ?? ctx.policy?.runtime);
   if (!command.trim()) throw new HealCaseError('failureCommand must be non-empty');
 
   const trace = ctx.traceRecorder ?? new TraceRecorder(ctx.runId);

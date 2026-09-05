@@ -29,6 +29,11 @@ export interface HealArguments {
   alternativesFile?: string;
   routingProfile?: string;
   runtime?: 'node' | 'python';
+  /**
+   * The failing command to reproduce, exactly as CI ran it. Without it the
+   * core uses its per-runtime default (`pnpm test`, or `python -m unittest`).
+   */
+  failingCommand?: string;
   tavilyEnabled: boolean;
 }
 
@@ -124,11 +129,28 @@ function validateActionSha(value: string): string {
   return value.toLowerCase();
 }
 
+const MAX_FAILING_COMMAND_BYTES = 256;
+
+function validateFailingCommand(value: string): string {
+  const trimmed = value.trim();
+  if (
+    trimmed.length === 0 ||
+    Buffer.byteLength(trimmed, 'utf8') > MAX_FAILING_COMMAND_BYTES ||
+    !/^[\x20-\x7e]+$/u.test(trimmed)
+  ) {
+    throw new CliUsageError(
+      `--failing-command must be printable ASCII on one line, at most ${MAX_FAILING_COMMAND_BYTES} bytes`,
+    );
+  }
+  return trimmed;
+}
+
 function parseHeal(args: readonly string[]): HealArguments {
   let caseDir: string | undefined;
   let format: string | undefined;
   let candidateDiff: string | undefined;
   let alternativesFile: string | undefined;
+  let failingCommand: string | undefined;
   let routingProfile: string | undefined;
   let runtime: 'node' | 'python' | undefined;
   let tavilyEnabled = true;
@@ -136,7 +158,7 @@ function parseHeal(args: readonly string[]): HealArguments {
 
   for (let index = 1; index < args.length; index += 1) {
     const flag = args[index];
-    if (!flag || !['--case-dir', '--format', '--candidate-diff', '--alternatives-file', '--routing-profile', '--runtime', '--no-tavily'].includes(flag)) {
+    if (!flag || !['--case-dir', '--format', '--candidate-diff', '--alternatives-file', '--failing-command', '--routing-profile', '--runtime', '--no-tavily'].includes(flag)) {
       throw new CliUsageError(`Unknown argument: ${flag ?? '(missing)'}`);
     }
     if (seen.has(flag)) throw new CliUsageError(`Duplicate argument: ${flag}`);
@@ -151,6 +173,7 @@ function parseHeal(args: readonly string[]): HealArguments {
     else if (flag === '--format') format = value;
     else if (flag === '--candidate-diff') candidateDiff = value;
     else if (flag === '--alternatives-file') alternativesFile = value;
+    else if (flag === '--failing-command') failingCommand = validateFailingCommand(value);
     else if (flag === '--routing-profile') routingProfile = value;
     else if (value === 'auto') runtime = undefined;
     else if (value === 'node' || value === 'python') runtime = value;
@@ -171,6 +194,7 @@ function parseHeal(args: readonly string[]): HealArguments {
     format: 'json',
     ...(candidateDiff === undefined ? {} : { candidateDiff }),
     ...(alternativesFile === undefined ? {} : { alternativesFile }),
+    ...(failingCommand === undefined ? {} : { failingCommand }),
     ...(routingProfile === undefined ? {} : { routingProfile }),
     ...(runtime === undefined ? {} : { runtime }),
     tavilyEnabled,

@@ -10,6 +10,7 @@ import {
   createPortableTestRuntime,
   createCorpusManifest,
   discoverBenchmarkCases,
+  fixtureTestCommand,
   installFixture,
   verifyCandidateWithHiddenTests,
   type PortableTestRuntime,
@@ -81,6 +82,7 @@ async function evaluate(
     }
     const context = {
       language: benchmarkCase.metadata.language,
+      failingCommand: fixtureTestCommand(benchmarkCase.metadata.language),
       ...(candidateDiff ? { candidateDiff } : {}),
       ...(alternativesFile === undefined ? {} : { alternativesFile }),
     };

@@ -79,6 +79,14 @@ export interface AdapterContext {
    * cross the process boundary as argv values.
    */
   alternativesFile?: string;
+  /**
+   * The command that fails on the broken fixture and passes on the repaired
+   * one, exactly as the harness runs it for hidden verification. The corpus
+   * `expectedChecks` label is not runnable on its own: Python fixtures keep
+   * their tests in `tests/` without a package marker, so bare `python -m
+   * unittest` discovers nothing.
+   */
+  failingCommand?: string;
 }
 
 export interface BenchmarkResult {

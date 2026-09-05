@@ -52,6 +52,18 @@ describe('CLI adapters', () => {
     ], expect.any(Object));
   });
 
+  it('forwards the benchmark failing command to Sutura as one argv value', async () => {
+    const execute = vi.fn().mockResolvedValue({ stdout: VALID_CASE_FILE, stderr: '', exitCode: 0 });
+    const failingCommand = "python3 -B -m unittest discover -s tests -p 'test_*.py'";
+
+    await new SuturaAdapter({ execute }).heal('/tmp/example', { language: 'python', failingCommand });
+
+    expect(execute).toHaveBeenCalledWith('sutura', [
+      'heal', '--case-dir', '/tmp/example', '--format', 'json', '--runtime', 'python',
+      '--failing-command', failingCommand,
+    ], expect.any(Object));
+  });
+
   it('passes a placebo candidate to a generic CLI adapter too', async () => {
     const execute = vi.fn().mockResolvedValue({ stdout: VALID_CASE_FILE, stderr: '', exitCode: 0 });
     const candidateDiff = 'diff --git a/test.js b/test.js\n';
