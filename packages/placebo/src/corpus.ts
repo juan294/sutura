@@ -62,10 +62,34 @@ function parseMetadata(text: string, caseId: string): CaseMetadata {
   if (value.kind === 'upstream' && (!value.releaseFact || value.expectedWithoutTavily === undefined)) {
     throw new Error(`Upstream case ${caseId} must include a release fact and ablation expectation`);
   }
+  const boundedId = (entry: unknown): entry is string =>
+    typeof entry === 'string' && /^[a-z0-9][a-z0-9-]{0,95}$/u.test(entry);
+  if (value.evaluationRevision !== undefined && !boundedId(value.evaluationRevision)) {
+    throw new Error(`Invalid evaluation revision for ${caseId}`);
+  }
+  if (value.lineage !== undefined && (
+    typeof value.lineage !== 'object' || value.lineage === null || Array.isArray(value.lineage) ||
+    !boundedId(value.lineage.rootCaseId) || !boundedId(value.lineage.family) ||
+    Object.keys(value.lineage).some((key) => key !== 'rootCaseId' && key !== 'family')
+  )) throw new Error(`Invalid case lineage for ${caseId}`);
+  if (value.split !== undefined && !['development', 'validation', 'held-out'].includes(value.split)) {
+    throw new Error(`Invalid evaluation split for ${caseId}`);
+  }
+  if (value.evaluationRevision !== undefined && (value.lineage === undefined || value.split === undefined)) {
+    throw new Error(`Versioned case ${caseId} requires lineage and evaluation split`);
+  }
   return value as CaseMetadata;
 }
 
-export async function discoverCases(corpusDirectory = DEFAULT_CORPUS_DIRECTORY): Promise<CorpusCase[]> {
+export interface CorpusSelection {
+  /** Explicitly opt into expanded oracles; the default preserves historical scores. */
+  includeVersionedCases?: boolean;
+}
+
+export async function discoverCases(
+  corpusDirectory = DEFAULT_CORPUS_DIRECTORY,
+  selection: CorpusSelection = {},
+): Promise<CorpusCase[]> {
   const entries = await readdir(corpusDirectory, { withFileTypes: true });
   const cases = await Promise.all(entries.filter((entry) => entry.isDirectory()).map(async ({ name }) => {
     const directory = join(corpusDirectory, name);
@@ -74,13 +98,16 @@ export async function discoverCases(corpusDirectory = DEFAULT_CORPUS_DIRECTORY):
       metadata: parseMetadata(await readFile(join(directory, 'metadata.json'), 'utf8'), name),
     };
   }));
-  return cases.sort((left, right) => left.id.localeCompare(right.id));
+  return cases
+    .filter(({ metadata }) => selection.includeVersionedCases === true || metadata.evaluationRevision === undefined)
+    .sort((left, right) => left.id.localeCompare(right.id));
 }
 
 export async function discoverBenchmarkCases(
   corpusDirectory = DEFAULT_CORPUS_DIRECTORY,
+  selection: CorpusSelection = {},
 ): Promise<CorpusCase[]> {
-  return (await discoverCases(corpusDirectory))
+  return (await discoverCases(corpusDirectory, selection))
     .filter(({ id }) => !NON_BENCHMARK_CASE_IDS.has(id));
 }
 
@@ -352,7 +379,7 @@ export async function selfCheckCorpus(
   corpusDirectory = DEFAULT_CORPUS_DIRECTORY,
   options: SelfCheckOptions = {},
 ): Promise<SelfCheckResult[]> {
-  const cases = await discoverCases(corpusDirectory);
+  const cases = await discoverCases(corpusDirectory, { includeVersionedCases: true });
   const results: SelfCheckResult[] = [];
   const portableRuntime = await createPortableTestRuntime(options.storeDirectory);
   try {

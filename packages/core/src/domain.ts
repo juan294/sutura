@@ -1,6 +1,7 @@
 import type { CounterfactualEvidence } from './counterfactual/types.js';
 import type { RunMetrics } from './executor/types.js';
 import type { TraceEvent } from './trace/types.js';
+import type { VerificationEvidence } from './verification/types.js';
 
 export type FailureClass =
   | 'typecheck'
@@ -166,6 +167,8 @@ export interface CaseFile {
   search?: SearchEvidence[];
   counterfactual?: CounterfactualEvidence;
   trace?: TraceEvent[];
+  /** Absent on legacy records; absence never establishes challenge assurance. */
+  verification?: VerificationEvidence;
 }
 
 export interface AuditFile {

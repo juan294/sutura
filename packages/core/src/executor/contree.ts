@@ -713,6 +713,7 @@ function isDependencyInputPath(
   workspacePatterns: readonly string[],
   localDependencyDirectories: readonly string[] = [],
 ): boolean {
+  if (isSensitiveRepositoryPath(path, { includeDependencies: true })) return false;
   const segments = path.split('/');
   const basename = segments.at(-1) ?? '';
   if (segments.some((segment) => ['node_modules', '.git', 'dist', 'build', '.next'].includes(segment))) {
@@ -720,7 +721,7 @@ function isDependencyInputPath(
   }
   if (localDependencyDirectories.some((directory) =>
     path === directory || path.startsWith(`${directory}/`))) {
-    return !isSensitiveRepositoryPath(path, { includeDependencies: true });
+    return true;
   }
   if (path === 'package.json') return true;
   if (segments.length === 1 && [

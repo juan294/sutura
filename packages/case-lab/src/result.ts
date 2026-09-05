@@ -1,4 +1,4 @@
-import type { CaseFile } from '@sutura/core';
+import { findSelectedCandidate, summarizeVerificationCosts, parseVerificationEvidence, type CaseFile, type VerificationCostSummary } from '@sutura/core';
 
 import { canonicalJson, contentHash } from './canonical.js';
 import {
@@ -69,11 +69,7 @@ export interface CaseLabResultBase {
     readonly capturedRunUrl: string;
     readonly actionSha: string;
   };
-  readonly cost: {
-    readonly inferenceUsd: number;
-    readonly sandboxUsd: number;
-    readonly status: 'observed' | 'unavailable';
-  };
+  readonly cost: Readonly<VerificationCostSummary>;
   readonly elapsedMs?: number;
   readonly createdAt: string;
 }
@@ -367,6 +363,41 @@ export function validateCaseLabCaseFile(value: unknown, expectedOutcome: CaseLab
   }
   if (file.search !== undefined) array(file.search, 'caseFile.search', 256);
   if (file.counterfactual !== undefined) validateCounterfactual(file.counterfactual);
+  const verification = file.verification === undefined ? undefined : parseVerificationEvidence(file.verification);
+  if (verification !== undefined) {
+    const candidateIds = (race as CaseFile['race']).map(({ candidate }) => candidate.id);
+    if (new Set(candidateIds).size !== candidateIds.length) {
+      throw new CaseLabResultError('caseFile.verification cannot bind duplicate candidate ids');
+    }
+    const expectedVerificationOutcome = {
+      fixed: 'repaired', refused: 'refused', 'gave-up': 'insufficient',
+      'flaky-no-patch': 'flaky-no-patch', 'infra-stop': 'infra-stop',
+    }[fileOutcome];
+    if (verification.outcome !== expectedVerificationOutcome) {
+      throw new CaseLabResultError('caseFile.verification outcome differs from the case file');
+    }
+    if (verification.identity.policyBaseSha !== policy.baseSha || verification.identity.policySha256 !== policy.policySha) {
+      throw new CaseLabResultError('caseFile.verification policy identity differs from the case file');
+    }
+    if (fileOutcome === 'fixed' && file.selectedCandidate === undefined) {
+      throw new CaseLabResultError('caseFile.verification repaired outcome requires a selected candidate');
+    }
+    if (file.selectedCandidate !== undefined) {
+      const selected = record(file.selectedCandidate, 'caseFile.selectedCandidate');
+      if (file.counterfactual !== undefined) {
+        const counterfactual = record(file.counterfactual, 'caseFile.counterfactual');
+        if (counterfactual.acceptedCandidateId !== undefined && counterfactual.acceptedCandidateId !== selected.id) {
+          throw new CaseLabResultError('caseFile.verification counterfactual selection differs from verified candidate');
+        }
+      }
+      const selectedIdentity = { id: text(selected.id, 'selectedCandidate.id', 128), diffHash: sha256(selected.diffHash, 'selectedCandidate.diffHash') };
+      if (verification.identity.diffSha256 !== selected.diffHash ||
+          findSelectedCandidate(race as CaseFile['race'], selectedIdentity) === null) {
+        throw new CaseLabResultError('caseFile.verification diff identity differs from the selected candidate');
+      }
+    }
+  }
+
   const rest = Object.fromEntries(
     Object.entries(file).filter(([key]) => key !== 'cost' && key !== 'trace'),
   ) as unknown as Omit<CaseLabCaseFile, 'cost' | 'outcome' | 'runtime'>;
@@ -377,6 +408,7 @@ export function validateCaseLabCaseFile(value: unknown, expectedOutcome: CaseLab
     runtime,
     outcome: fileOutcome,
     cost: { entries: costEntries(cost.entries) },
+    ...(verification === undefined ? {} : { verification }),
   };
 }
 
@@ -411,7 +443,9 @@ function base(value: unknown): CaseLabResultBase {
     throw new CaseLabResultError('matchesExpectation must equal outcome === expectedOutcome with the repair keeping every test file');
   }
   const cost = record(raw.cost, 'cost');
-  if (cost.status !== 'observed' && cost.status !== 'unavailable') {
+  const validatedFile = raw.caseFile === undefined ? undefined : validateCaseLabCaseFile(raw.caseFile, resultOutcome);
+  const verification = validatedFile?.verification;
+  if (cost.status !== 'observed' && cost.status !== 'unavailable' && !(verification && cost.status === 'partial')) {
     throw new CaseLabResultError('cost.status must be observed or unavailable');
   }
   const result: {
@@ -435,13 +469,21 @@ function base(value: unknown): CaseLabResultBase {
     links: links(raw.links),
     ...(repairPaths === undefined ? {} : { repairPaths }),
     cost: {
-      inferenceUsd: nonnegative(cost.inferenceUsd, 'cost.inferenceUsd'),
-      sandboxUsd: nonnegative(cost.sandboxUsd, 'cost.sandboxUsd'),
+      inferenceUsd: verification && cost.inferenceUsd === null ? null : nonnegative(cost.inferenceUsd, 'cost.inferenceUsd'),
+      sandboxUsd: verification && cost.sandboxUsd === null ? null : nonnegative(cost.sandboxUsd, 'cost.sandboxUsd'),
       status: cost.status,
     },
     createdAt: isoTimestamp(raw.createdAt, 'createdAt'),
   };
-  if (raw.caseFile !== undefined) result.caseFile = validateCaseLabCaseFile(raw.caseFile, resultOutcome);
+  if (validatedFile !== undefined) result.caseFile = validatedFile;
+  if (verification !== undefined) {
+    if (verification.identity.sourceSha !== result.identity.demoSha) {
+      throw new CaseLabResultError('caseFile.verification source differs from the displayed source identity');
+    }
+    if (canonicalJson(result.cost) !== canonicalJson(summarizeVerificationCosts(verification.costs))) {
+      throw new CaseLabResultError('cost must match typed verification costs; unknown units are not USD or zero');
+    }
+  }
   if (raw.elapsedMs !== undefined) result.elapsedMs = nonnegative(raw.elapsedMs, 'elapsedMs');
   if (resultMode === 'recorded') {
     const recorded = record(raw.recordedFrom, 'recordedFrom');

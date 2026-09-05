@@ -2,7 +2,7 @@
 
 Date: 2026-08-31
 
-Status: Active
+Status: Historical delivery record; September 5 execution rebaseline below
 
 Owner: Juan
 
@@ -14,26 +14,17 @@ Submission deadline: 2026-10-30 at 10:00 PDT
 
 Planned submission date: 2026-10-29
 
-Current phase: Phase 6 - Feature freeze active from integrated candidate base
-`096a48e7ffb5e95103ee91746644386bba1a0c12`; G4 provider and ConTree canaries
-and G1 targeted Tavily proof passed on exact candidate
-`f8195e8a82ffe1527d755ae7ecb8a047484af9fa`. G2 completed 51/51 cases and
-55/55 evaluations with zero false approvals, but failed five quality gates;
-Phase 0 is blocked at G3 candidate-matrix authorization and the G2 quality gate
+Current phase: Planning complete for the approved full verified-repair scope; implementation begins with Phase 1 of the [September 5 verified repair program](2026-09-05-sutura-verified-repair-program.md).
 
-Detailed plan: `docs/plans/2026-09-04-sutura-ws4-evidence-submission.md`
+Detailed plan: [Verified repair program and fourteen phase files](2026-09-05-sutura-verified-repair-program.md).
 
-Next action: Decide G3 authorization for the fixed eight-case candidate matrix
-on Sutura `f8195e8a82ffe1527d755ae7ecb8a047484af9fa` and demo
-`0d6b57f68ace9f1e59190e54deef25332b586a62`. The matrix is separately
-required, but G2 already prevents release until its measured quality defects
-are resolved on a replacement candidate.
+Next action: Implement the new plan's baseline/pagination/contracts phase in an isolated worktree. The earlier September candidate freeze and G3 next-action text are superseded. Preserve their historical results and authorization records; they do not authorize new paid jobs. Final feature freeze remains targeted for October 21 and submission for October 29.
 
 GitHub tracking: Issues [#47](https://github.com/juan294/sutura/issues/47) through [#127](https://github.com/juan294/sutura/issues/127) mirror every remaining unchecked roadmap item as of 2026-09-04. Parallel execution is divided into four labeled workstreams in `docs/plans/2026-09-04-sutura-issue-workstreams.md`.
 
 ## Purpose
 
-This document is the durable source of truth for Sutura's remaining hackathon work. Use it after a new session, context reset, computer restart, or interrupted operation.
+This document preserves the August/early-September delivery history and standing release obligations. The [September 5 verified repair program](2026-09-05-sutura-verified-repair-program.md) is the current implementation source of truth after approval of the full product-audit recommendations. Below, phase numbers, dated statuses and next actions describe the earlier roadmap unless expressly reconciled with that plan.
 
 The roadmap does not replace the technical decisions in `docs/plans/2026-08-28-sutura-hackathon-improvement.md`. That plan records the completed v0.2 implementation. This roadmap replaces its old delivery calendar and governs the work from the published v0.2.0 release through the final hackathon submission.
 
@@ -69,7 +60,7 @@ The [hackathon overview](https://nebiusglobalaihackathon.devpost.com/) gives equ
 | Potential Impact | 7/10 | 9/10 | Independent installs, unfamiliar repositories, external feedback, public benchmark comparison |
 | Design | 5-6/10 | 9/10 | Public self-service Case Lab, coherent result view, deterministic replay, concise video |
 
-These scores are internal planning estimates. They are not official scores and do not predict placement against unpublished competitors.
+These are historical internal estimates from the August roadmap, not current measured scores or official judging predictions. The September 5 audit and implementation plan replace score-based confidence with criterion-linked acceptance evidence.
 
 ## Baseline on 2026-08-31
 
@@ -624,3 +615,25 @@ Sutura's hackathon work is done only when:
 - No task-owned worktree or local task branch remains.
 
 Until every statement is true, the roadmap remains active.
+
+## Product audit checkpoint — 2026-09-05
+
+The [product and hackathon audit](../research/2026-09-05-sutura-product-hackathon-audit.md)
+reviews source at `369c972777eea3c80b698db61165f07ba46e6b13`, today's evidence,
+the official rules/resources, and the public Case Lab. The assessment is
+complete; existing implementation and release phase states are unchanged.
+
+The audit found a behavioral regression in the approved recorded pagination
+repair, beyond the benchmark's displayed test coverage. Historical measurements
+remain intact. Next planning work should prioritize that verification gap,
+remaining repair failures, independent regression challenges, and maintainer
+evidence, while reconciling this roadmap's older status text with dated reports.
+The audit proposed focused sponsor-stack extensions and an operating period
+through the December 15 judging deadline. No proposed feature or remote action
+was implemented or authorized by this checkpoint.
+
+## Approved implementation rebaseline — 2026-09-05
+
+Juan approved all recommended scope and requested `/plan`. The [verified repair program](2026-09-05-sutura-verified-repair-program.md) carries fourteen phases: truthful baseline, diagnosis recovery, two-file repair, independent contract-backed probes, external verification, Data Lab/NeMo/Arena evaluation, adaptive routing, Case Lab UX, maintainer-study preparation, live measured evidence, pilot release, real trials/fixes, final submission, and judging access through December 15.
+
+No feature implementation, push, deployment, participant outreach or paid run was performed by this planning task. Only phases 6 and 9 are batch eligible. Existing release obligations remain; pilot readiness, final submission readiness and fulfilled judging access are separate states. Consult the new plan for current dependencies and exact phase gates.

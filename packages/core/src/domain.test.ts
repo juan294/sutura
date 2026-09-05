@@ -122,6 +122,7 @@ describe('domain model', () => {
       search?: SearchEvidence[];
       counterfactual?: import('./counterfactual/types.js').CounterfactualEvidence;
       trace?: import('./trace/types.js').TraceEvent[];
+      verification?: import('./verification/types.js').VerificationEvidence;
       selectedCandidate?: {
         id: string;
         diffHash: string;

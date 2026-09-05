@@ -29,7 +29,8 @@ export function escapeHtml(value: string): string {
   );
 }
 
-function usd(value: number): string {
+function usd(value: number | null): string {
+  if (value === null) return 'unknown';
   return `USD ${value.toFixed(6)}`;
 }
 
@@ -306,11 +307,12 @@ function renderCost(result: CaseLabResult): string {
   const rss = stages.reduce((max, stage) => Math.max(max, stage.metrics.maxRssKb ?? 0), 0);
   const operations = stages.filter((stage) => stage.operationId !== undefined).length;
   const statusNote = result.cost.status === 'unavailable'
-    ? '<p class="empty">Cost is unavailable: the run stopped before a ledger was recorded.</p>'
-    : '';
+    ? '<p class="empty">Cost is unavailable: usage or billing information is missing or unconfirmed.</p>'
+    : result.cost.status === 'partial' ? '<p class="empty">Some costs or billing units are unconfirmed.</p>' : '';
+  const rawCosts = file?.verification?.costs.sandbox?.map((entry) => `${entry.rawAmount ?? 'unknown'} (${escapeHtml(entry.rawUnit ?? 'unit unconfirmed')})`).join(', ');
   return section('cost', 'Token cost, provider cost, latency, and sandbox operations', `${statusNote}<dl>
   <dt>Inference cost</dt><dd>${usd(result.cost.inferenceUsd)}</dd>
-  <dt>Sandbox cost</dt><dd>${usd(result.cost.sandboxUsd)}</dd>
+  <dt>Sandbox cost</dt><dd>${usd(result.cost.sandboxUsd)}</dd>${rawCosts ? `<dt>Provider raw amounts</dt><dd>${rawCosts}</dd>` : ''}
   <dt>Elapsed</dt><dd>${seconds(result.elapsedMs)}</dd>
   <dt>CPU time</dt><dd>${cpu.toFixed(2)} s</dd>
   <dt>Peak memory</dt><dd>${rss === 0 ? 'not recorded' : `${Math.round(rss / 1_024)} MiB`}</dd>

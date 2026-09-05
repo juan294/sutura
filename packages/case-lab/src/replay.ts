@@ -4,6 +4,8 @@ import { resolve } from 'node:path';
 
 import {
   parseReplayBundle,
+  summarizeVerificationCosts,
+  type VerificationCostSummary,
   replayBundle,
   type CaseFile,
   type ReplayBundle,
@@ -88,10 +90,11 @@ export function plainCaseFile(caseFile: CaseFile | CaseLabCaseFile): CaseLabCase
   return { ...(withoutTrace as Omit<CaseLabCaseFile, 'cost'>), cost: { entries: cost.entries } };
 }
 
-export function caseFileCost(caseFile: CaseLabCaseFile): { inferenceUsd: number; sandboxUsd: number } {
+export function caseFileCost(caseFile: CaseLabCaseFile): VerificationCostSummary {
+  if (caseFile.verification) return summarizeVerificationCosts(caseFile.verification.costs);
   const inferenceUsd = caseFile.cost.entries.reduce((sum, entry) => sum + entry.usd, 0);
   const sandboxUsd = caseFile.stages.reduce((sum, stage) => sum + (stage.metrics.cost ?? 0), 0);
-  return { inferenceUsd, sandboxUsd };
+  return { inferenceUsd, sandboxUsd, status: 'observed' };
 }
 
 export interface RecordedResultOptions {
@@ -126,7 +129,7 @@ export function recordedResult(
       subjectSha: evidence.result.subjectSha,
       recordedAt: ledgerEntry.recordedAt,
     },
-    cost: { ...cost, status: 'observed' },
+    cost,
     elapsedMs: evaluation.elapsedTimeMs,
     createdAt: options.now().toISOString(),
   });
@@ -185,7 +188,7 @@ export async function replayedResult(
       capturedRunUrl: fixture.capturedRunUrl,
       actionSha: options.release.actionSha,
     },
-    cost: { ...cost, status: 'observed' },
+    cost,
     createdAt: options.now().toISOString(),
   });
 }

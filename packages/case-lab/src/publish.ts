@@ -74,7 +74,7 @@ export function publishResult(inputs: PublishInputs): CaseLabResult {
     : readCaseFile(inputs.caseFilePath, outcome);
   const cost = caseFile === undefined
     ? { inferenceUsd: 0, sandboxUsd: 0, status: 'unavailable' as const }
-    : { ...caseFileCost(caseFile), status: 'observed' as const };
+    : caseFileCost(caseFile);
   const expectedOutcome = expectedOutcomeFor(item, 'live');
   if (item.repairMustKeepTests === true && outcome === 'fixed' && inputs.repairPaths === undefined) {
     throw new CaseLabRequestError(`${item.id} guards its test file: a fixed result needs the repair pull request paths (--repair-paths)`);

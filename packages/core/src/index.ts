@@ -144,6 +144,11 @@ export { renderAuditMarkdown } from './report/audit-markdown.js';
 export { renderAuditCaseFile } from './report/audit-casefile.js';
 export { AuditEvidenceError, auditOnly, validateAuditEvidence } from './audit-only.js';
 export { aggregateStageEvidence } from './report/format.js';
+export { VerificationEvidenceError, parseVerificationEvidence, encodeVerificationEvidence, decodeVerificationEvidence } from './verification/codec.js';
+export { adaptLegacyVerification } from './verification/legacy.js';
+export { VERIFICATION_EVIDENCE_VERSION, VERIFICATION_COST_VERSION, VERIFICATION_GATES, VERIFICATION_STATUSES, VERIFICATION_REASONS } from './verification/types.js';
+export type { VerificationEvidence, VerificationIdentity, VerificationGateObservation, VerificationGateStatus, VerificationOutcome, VerificationAssurance, VerificationMode, VerificationModel, VerificationCosts, VerificationDatasetTruth, VerificationPresentation, VerificationArtifact } from './verification/types.js';
+export type { LegacyVerificationEvidence } from './verification/legacy.js';
 export { isSensitiveRepositoryPath } from './security/repository-path.js';
 export { trimEdges, trimTrailing } from './text/trim-edge.js';
 export { TraceRecorder } from './trace/recorder.js';
@@ -396,3 +401,12 @@ export type {
 export type { LoadedRepositoryPolicy } from './policy/load.js';
 export type { SensitiveRepositoryPathOptions } from './security/repository-path.js';
 export type { StageTotals } from './report/format.js';
+
+export { candidateIdentity, findSelectedCandidate } from './engine/candidate-identity.js';
+export { parseVerificationPolicy, ContractValidationError } from './challenges/contracts.js';
+export type { TypedValue, VerificationContract, VerificationPolicy } from './challenges/contracts.js';
+export { freezeProbe, buildObservationCommand, decodeObservation, evaluateObservation, observeProbe } from './challenges/protocol.js';
+export type { PolicyProvenance, ProbeInvocation, FrozenProbe } from './challenges/protocol.js';
+
+export { summarizeVerificationCosts } from './verification/cost-summary.js';
+export type { VerificationCostSummary } from './verification/cost-summary.js';

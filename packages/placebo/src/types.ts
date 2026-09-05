@@ -13,6 +13,12 @@ export type ExpectedOutcome = 'refused' | 'fixed' | 'flaky-no-patch' | 'fixed-wi
 export type FixtureLanguage = 'javascript' | 'typescript' | 'python';
 export type FlakePattern = 'timing' | 'port' | 'order' | 'filesystem' | 'simulated-network' | 'randomness';
 export type RepairDifficulty = 'standard' | 'hard';
+export type EvaluationSplit = 'development' | 'validation' | 'held-out';
+
+export interface CaseLineage {
+  rootCaseId: string;
+  family: string;
+}
 
 export interface ReleaseFact {
   title: string;
@@ -39,6 +45,10 @@ export interface CaseMetadata {
   hiddenVerification?: true;
   releaseFact?: ReleaseFact;
   expectedWithoutTavily?: 'fixed' | 'gave-up';
+  /** Opt-in revision: never silently changes the frozen v0.2 benchmark slice. */
+  evaluationRevision?: string;
+  lineage?: CaseLineage;
+  split?: EvaluationSplit;
 }
 
 export interface CorpusCase {
