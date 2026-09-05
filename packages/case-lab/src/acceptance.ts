@@ -47,6 +47,31 @@ function signedOutHeaders(response: Response): string[] {
   return problems;
 }
 
+/** Local review servers are plain http; only an https base pins the canonical origin to the base. */
+function expectedOrigin(base: string): string | undefined {
+  const url = new URL(base);
+  return url.protocol === 'https:' ? url.origin : undefined;
+}
+
+function canonicalOf(html: string): string | undefined {
+  return /<link rel="canonical" href="([^"]+)">/u.exec(html)?.[1];
+}
+
+/** Why `value` is not the absolute https address of `expected`, or undefined when it is. */
+function absoluteMismatch(value: string | undefined, expected: URL, origin: string | undefined): string | undefined {
+  if (value === undefined) return 'missing';
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return `${value} is not an absolute URL`;
+  }
+  if (url.protocol !== 'https:') return `${value} is not https`;
+  if (origin !== undefined && url.origin !== origin) return `${value} is not under ${origin}`;
+  if (url.pathname !== expected.pathname) return `${value} does not match the path ${expected.pathname}`;
+  return undefined;
+}
+
 async function mapLimited<T, R>(items: readonly T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = [];
   let index = 0;
@@ -123,6 +148,90 @@ export async function acceptance(baseUrl: string, options: AcceptanceOptions = {
     record('mobile-css', passed, passed ? 'breakpoint and horizontal scroll containers present' : `status ${css.status}`);
   } catch (error) {
     record('mobile-css', false, error instanceof Error ? error.message : String(error));
+  }
+
+  const origin = expectedOrigin(base);
+  const indexedPages = ['', ...CASE_LAB_CASES.map((item) => `replay/${item.id}/`)].map((path) => new URL(path, base));
+
+  const robotsUrl = `${base}robots.txt`;
+  try {
+    const response = await get(fetchImpl, robotsUrl);
+    const text = await response.text();
+    const sitemapLine = /^Sitemap:[ \t]*(\S+)[ \t]*$/mu.exec(text)?.[1];
+    const problems: string[] = [];
+    if (response.status !== 200) problems.push(`status ${response.status}`);
+    if (!/^Disallow:[ \t]*\S*result\/[ \t]*$/mu.test(text)) problems.push('no Disallow line for result/');
+    if (!/^Disallow:[ \t]*\S*api\/[ \t]*$/mu.test(text)) problems.push('no Disallow line for api/');
+    const sitemapProblem = absoluteMismatch(sitemapLine, new URL('sitemap.xml', base), origin);
+    if (sitemapProblem !== undefined) problems.push(`Sitemap line ${sitemapProblem}`);
+    record('robots-txt', problems.length === 0, problems.length === 0
+      ? `${robotsUrl} disallows result/ and api/ and names ${sitemapLine}`
+      : `${robotsUrl}: ${problems.join('; ')}`);
+  } catch (error) {
+    record('robots-txt', false, `${robotsUrl}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const sitemapUrl = `${base}sitemap.xml`;
+  try {
+    const response = await get(fetchImpl, sitemapUrl);
+    const text = await response.text();
+    const locs = [...text.matchAll(/<loc>([^<]+)<\/loc>/gu)].map((match) => match[1]!);
+    const problems: string[] = [];
+    if (response.status !== 200) problems.push(`status ${response.status}`);
+    if (locs.length !== indexedPages.length) problems.push(`${locs.length} <loc> entries, expected ${indexedPages.length}`);
+    for (const page of indexedPages) {
+      if (!locs.some((loc) => absoluteMismatch(loc, page, origin) === undefined)) problems.push(`no <loc> for ${page.pathname}`);
+    }
+    record('sitemap-xml', problems.length === 0, problems.length === 0
+      ? `${sitemapUrl} lists ${locs.length} pages${origin === undefined ? '' : ` under ${origin}`}`
+      : `${sitemapUrl}: ${problems.join('; ')}`);
+  } catch (error) {
+    record('sitemap-xml', false, `${sitemapUrl}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  {
+    const problems: string[] = [];
+    for (const page of indexedPages) {
+      try {
+        const response = await get(fetchImpl, page.href);
+        const html = await response.text();
+        const problem = response.status === 200 ? absoluteMismatch(canonicalOf(html), page, origin) : `status ${response.status}`;
+        if (problem !== undefined) problems.push(`${page.href}: canonical ${problem}`);
+      } catch (error) {
+        problems.push(`${page.href}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    record('canonical', problems.length === 0, problems.length === 0
+      ? `${indexedPages.length} pages carry a canonical that matches their address`
+      : problems.join('; '));
+  }
+
+  const resultUrl = `${base}result/`;
+  try {
+    const response = await get(fetchImpl, resultUrl);
+    const html = await response.text();
+    const problems: string[] = [];
+    if (response.status !== 200) problems.push(`status ${response.status}`);
+    if (!/\bnoindex\b/u.test(response.headers.get('x-robots-tag') ?? '')) problems.push('no X-Robots-Tag: noindex header');
+    if (!html.includes('<meta name="robots" content="noindex, nofollow">')) problems.push('no robots noindex meta tag');
+    record('result-noindex', problems.length === 0, problems.length === 0
+      ? `${resultUrl} is excluded by header and meta tag`
+      : `${resultUrl}: ${problems.join('; ')}`);
+  } catch (error) {
+    record('result-noindex', false, `${resultUrl}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const cardUrl = `${base}social-card.png`;
+  try {
+    const response = await get(fetchImpl, cardUrl);
+    const type = response.headers.get('content-type') ?? 'no content type';
+    const bytes = (await response.arrayBuffer()).byteLength;
+    const passed = response.status === 200 && type.startsWith('image/png') && bytes > 0;
+    record('social-card', passed, passed
+      ? `${cardUrl} is a ${bytes}-byte PNG`
+      : `${cardUrl}: status ${response.status}; content type ${type}; ${bytes} bytes`);
+  } catch (error) {
+    record('social-card', false, `${cardUrl}: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   if (options.checkLinks !== false) {

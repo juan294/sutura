@@ -58,4 +58,16 @@ describe('case-lab CLI', () => {
     expect(await runCaseLabCli(['replay', '--out', 'x'], { io: noCase.io })).toBe(2);
     expect(noCase.err.join('')).toContain('replay requires a case id');
   });
+
+  it('refuses a site URL with a trailing slash before writing the site', { timeout: 60_000 }, async () => {
+    const outDir = join(mkdtempSync(join(tmpdir(), 'case-lab-cli-')), 'site');
+    const bad = io();
+    const code = await runCaseLabCli(['build-site', '--out', outDir, '--site-url', 'https://sutura-case-lab.vercel.app/'], {
+      io: bad.io,
+      catalog: { replayDir: EMPTY_REPLAY_DIR, now: NOW },
+    });
+    expect(code).toBe(1);
+    expect(bad.err.join('')).toContain('siteUrl must not end with /');
+    expect(existsSync(join(outDir, 'index.html'))).toBe(false);
+  });
 });

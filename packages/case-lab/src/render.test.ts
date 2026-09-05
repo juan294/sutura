@@ -245,6 +245,7 @@ describe('pages', () => {
       title: resultPageTitle(result, caseLabCase('greenwash-trap')),
       description: 'x',
       siteRoot: '/',
+      path: '/replay/greenwash-trap/',
       body: '<p>body</p>',
       attributes: { 'data-page': 'replay', 'data-site-root': '/' },
     });
@@ -252,8 +253,40 @@ describe('pages', () => {
     expect(page).toContain('<meta name="viewport" content="width=device-width, initial-scale=1">');
     expect(page).toContain('<main id="main" class="case-lab" data-page="replay" data-site-root="/">');
     expect(page).not.toContain('<script');
-    const scripted = renderPage({ title: 't', description: 'd', siteRoot: '/x/', body: '', script: 'case-lab.js' });
+    expect(page).not.toContain('rel="canonical"');
+    expect(page).not.toContain('og:url');
+    expect(page).not.toContain('name="robots"');
+    expect(page).toContain('<meta property="og:image" content="/social-card.png">');
+    expect(page).toContain('<link rel="icon" href="/favicon.svg" type="image/svg+xml">');
+    const scripted = renderPage({ title: 't', description: 'd', siteRoot: '/x/', path: '/x/', body: '', script: 'case-lab.js' });
     expect(scripted).toContain('<script src="/x/case-lab.js" defer></script>');
+  });
+
+  it('emits canonical, social, robots, and escaped structured data when a site URL is known', () => {
+    const page = renderPage({
+      title: 'A "quoted" <title>',
+      description: 'd & e',
+      siteRoot: '/',
+      path: '/result/',
+      siteUrl: 'https://example.test',
+      robots: 'noindex',
+      ogType: 'article',
+      body: '',
+      jsonLd: [{ '@context': 'https://schema.org', '@type': 'WebPage', name: '</script><script>alert(1)</script>' }],
+    });
+    expect(page).toContain('<link rel="canonical" href="https://example.test/result/">');
+    expect(page).toContain('<meta name="robots" content="noindex, nofollow">');
+    expect(page).toContain('<meta property="og:type" content="article">');
+    expect(page).toContain('<meta property="og:title" content="A &quot;quoted&quot; &lt;title&gt;">');
+    expect(page).toContain('<meta property="og:url" content="https://example.test/result/">');
+    expect(page).toContain('<meta property="og:image" content="https://example.test/social-card.png">');
+    expect(page).toContain('<meta name="twitter:card" content="summary_large_image">');
+    expect(page).toContain('<meta name="twitter:description" content="d &amp; e">');
+    expect(page).toContain('<meta name="theme-color" media="(prefers-color-scheme: light)" content="#fbfbf9">');
+    expect(page).not.toContain('</script><script>alert(1)');
+    const block = /<script type="application\/ld\+json">(.*?)<\/script>/u.exec(page)?.[1];
+    expect(block).toContain('\\u003c/script>');
+    expect(JSON.parse(block ?? '')).toEqual({ '@context': 'https://schema.org', '@type': 'WebPage', name: '</script><script>alert(1)</script>' });
   });
 
   it('renders the index with five cards and the three labels', () => {
