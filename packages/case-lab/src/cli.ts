@@ -28,7 +28,7 @@ export const USAGE = [
   '  case-lab verify-pin [--tag <tag>] [--workflow <file>] [--set-controller <sha>]',
   '  case-lab dispatch --base-url <url> --case <case-id>',
   '  case-lab capture-replay --request-id <id> [--out <dir>]',
-  '  case-lab publish-result --request-id <id> --case <case-id> --outcome <outcome> --demo-sha <sha> --controller-sha <sha> --workflow-run-url <url> [--ci-run-url <url>] [--pull-request-url <url>] [--repair-pull-request-url <url>] [--check-url <url>] [--refusal-comment-url <url>] [--case-file-artifact-url <url>] [--replay-artifact-url <url>] [--case-file <file>] [--replay <file>] --out <file>',
+  '  case-lab publish-result --request-id <id> --case <case-id> --outcome <outcome> --demo-sha <sha> --controller-sha <sha> --workflow-run-url <url> [--ci-run-url <url>] [--pull-request-url <url>] [--repair-pull-request-url <url>] [--check-url <url>] [--refusal-comment-url <url>] [--case-file-artifact-url <url>] [--replay-artifact-url <url>] [--case-file <file>] [--replay <file>] [--repair-paths <newline-separated paths>] --out <file>',
 ].join('\n');
 
 export const DEMO_WORKFLOW_COPY = resolve(PACKAGE_DIR, 'demo/case-lab.yml');
@@ -261,6 +261,10 @@ export async function runCaseLabCli(argv: readonly string[], dependencies: CliDe
         const elapsed = valueAfter(args, '--elapsed-ms');
         const caseFilePath = optionalLink(args, '--case-file');
         const replayBundlePath = optionalLink(args, '--replay');
+        const repairPathsText = valueAfter(args, '--repair-paths');
+        const repairPaths = repairPathsText === undefined
+          ? undefined
+          : repairPathsText.split(/\r?\n/u).map((line) => line.trim()).filter((line) => line.length > 0);
         const links = definedEntries({
           workflowRun: optionalLink(args, '--workflow-run-url'),
           ciRun: optionalLink(args, '--ci-run-url'),
@@ -279,6 +283,7 @@ export async function runCaseLabCli(argv: readonly string[], dependencies: CliDe
           controllerSha: requireValue(args, '--controller-sha'),
           ...(caseFilePath === undefined ? {} : { caseFilePath }),
           ...(replayBundlePath === undefined ? {} : { replayBundlePath }),
+          ...(repairPaths === undefined ? {} : { repairPaths }),
           links,
           ...(elapsed === undefined ? {} : { elapsedMs: Number(elapsed) }),
           ...(dependencies.catalog?.release === undefined ? {} : { release: dependencies.catalog.release }),

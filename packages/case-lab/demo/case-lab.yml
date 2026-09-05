@@ -145,7 +145,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           gh auth setup-git
           git switch -c "$branch"
-          git add -A
+          # The Sutura checkout lives in .sutura; it must never enter the demo commit as a gitlink.
+          git add -A -- . ':(exclude).sutura'
           git commit -m "case-lab(${REQUEST_ID}): materialize ${CASE_ID}"
           git push --set-upstream origin "$branch"
           pr_url="$(gh pr create --base main --head "$branch" --title "Case Lab ${CASE_ID} (${REQUEST_ID})" --body "Public Case Lab request \`${REQUEST_ID}\`: injected Placebo case for \`${CASE_ID}\`. Sutura reports on this pull request and never merges a repair.")"
@@ -206,6 +207,8 @@ jobs:
           done
           replay="$(find "$RUNNER_TEMP/replay" -type f -name '*.json' -print -quit || true)"
           repair_pr="$(gh pr list --head "sutura/fix-${CI_RUN_ID}" --state all --json url --jq '.[0].url // ""')"
+          repair_paths=""
+          if [ -n "$repair_pr" ]; then repair_paths="$(gh pr diff "$repair_pr" --name-only)"; fi
           check_url="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${FIXTURE_SHA}/check-runs" --jq ".check_runs[] | select(.external_id == \"sutura:${GITHUB_REPOSITORY}:workflow-run:${CI_RUN_ID}\") | .html_url" | head -n 1)"
           pr_number="${PR_URL##*/}"
           comment_url="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments" --jq '[.[] | select(.user.login == "github-actions[bot]")] | last | .html_url // ""')"
@@ -214,6 +217,9 @@ jobs:
           {
             echo "replay=$replay"
             echo "repair-pr=$repair_pr"
+            echo "repair-paths<<CASE_LAB_EOF"
+            echo "$repair_paths"
+            echo "CASE_LAB_EOF"
             echo "check-url=$check_url"
             echo "comment-url=$comment_url"
             echo "case-artifact-url=${case_artifact_id:+https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts/${case_artifact_id}}"
@@ -245,6 +251,7 @@ jobs:
           CI_RUN_URL: ${{ steps.failed-ci.outputs.run-url }}
           PR_URL: ${{ steps.fixture.outputs.pr-url }}
           REPAIR_PR_URL: ${{ steps.collect.outputs.repair-pr }}
+          REPAIR_PATHS: ${{ steps.collect.outputs.repair-paths }}
           CHECK_URL: ${{ steps.collect.outputs.check-url }}
           COMMENT_URL: ${{ steps.collect.outputs.comment-url }}
           CASE_ARTIFACT_URL: ${{ steps.collect.outputs.case-artifact-url }}
@@ -257,7 +264,7 @@ jobs:
             --ci-run-url "$CI_RUN_URL" --pull-request-url "$PR_URL" \
             --repair-pull-request-url "$REPAIR_PR_URL" --check-url "$CHECK_URL" --refusal-comment-url "$COMMENT_URL" \
             --case-file-artifact-url "$CASE_ARTIFACT_URL" --replay-artifact-url "$REPLAY_ARTIFACT_URL" \
-            --case-file "$CASE_FILE" --replay "$REPLAY" \
+            --case-file "$CASE_FILE" --replay "$REPLAY" --repair-paths "$REPAIR_PATHS" \
             --out "$RUNNER_TEMP/result.json"
 
       - name: Commit the result to the public results branch
@@ -278,7 +285,7 @@ jobs:
           mkdir -p results
           test ! -e "results/${REQUEST_ID}.json"
           cp "$RUNNER_TEMP/result.json" "results/${REQUEST_ID}.json"
-          git add -A
+          git add -A -- . ':(exclude).sutura'
           git commit -m "case-lab: publish ${REQUEST_ID}"
           git push origin "HEAD:${RESULTS_BRANCH}"
 

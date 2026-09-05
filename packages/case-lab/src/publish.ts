@@ -1,10 +1,11 @@
 import { parseReplayBundle } from '@sutura/core';
 
-import { CaseLabRequestError, caseLabCase, isCaseLabOutcome, type CaseLabOutcome } from './cases.js';
+import { CaseLabRequestError, caseLabCase, expectedOutcomeFor, isCaseLabOutcome, type CaseLabOutcome } from './cases.js';
 import type { ReleaseIdentity } from './dispatcher.js';
 import { caseFileCost, loadRelease, plainCaseFile, readReplayBundleFile } from './replay.js';
 import {
   createCaseLabResult,
+  expectationMet,
   validateCaseLabCaseFile,
   type CaseLabCaseFile,
   type CaseLabResult,
@@ -22,6 +23,8 @@ export interface PublishInputs {
   readonly caseFilePath?: string;
   readonly replayBundlePath?: string;
   readonly links: CaseLabResultLinks;
+  /** Paths the repair pull request changed; required when the case guards its tests and the outcome is fixed. */
+  readonly repairPaths?: readonly string[];
   readonly elapsedMs?: number;
   readonly release?: ReleaseIdentity;
   readonly now?: () => Date;
@@ -72,6 +75,10 @@ export function publishResult(inputs: PublishInputs): CaseLabResult {
   const cost = caseFile === undefined
     ? { inferenceUsd: 0, sandboxUsd: 0, status: 'unavailable' as const }
     : { ...caseFileCost(caseFile), status: 'observed' as const };
+  const expectedOutcome = expectedOutcomeFor(item, 'live');
+  if (item.repairMustKeepTests === true && outcome === 'fixed' && inputs.repairPaths === undefined) {
+    throw new CaseLabRequestError(`${item.id} guards its test file: a fixed result needs the repair pull request paths (--repair-paths)`);
+  }
   return createCaseLabResult({
     schemaVersion: 'sutura-case-lab-result-v1',
     requestId: inputs.requestId,
@@ -80,9 +87,10 @@ export function publishResult(inputs: PublishInputs): CaseLabResult {
     release,
     identity: { controllerSha: inputs.controllerSha, demoSha: inputs.demoSha },
     outcome,
-    expectedOutcome: item.expectedOutcome,
-    matchesExpectation: outcome === item.expectedOutcome,
+    expectedOutcome,
+    matchesExpectation: expectationMet(item.id, outcome, expectedOutcome, inputs.repairPaths),
     links: withoutEmpty(inputs.links),
+    ...(inputs.repairPaths === undefined ? {} : { repairPaths: inputs.repairPaths }),
     ...(caseFile === undefined ? {} : { caseFile }),
     cost,
     ...(inputs.elapsedMs === undefined ? {} : { elapsedMs: inputs.elapsedMs }),

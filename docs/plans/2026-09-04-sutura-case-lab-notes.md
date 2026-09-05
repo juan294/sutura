@@ -96,3 +96,18 @@ Chose: 404 for unknown paths, 405 for a wrong method, 415 for a wrong content ty
 | 4 | `cl-1788591153113-1706f4e2` | 33951010374 | Sutura ran and fixed the case (demo PR #25 broken, #26 repair, inference USD 0.010632); publish refused `links.refusalComment` for its `#issuecomment-` anchor (fixed in c6540c7) |
 
 Each fix re-pinned the demo controller (`verify-pin --set-controller`, demo commits 85de6ba and 1e8c522). No case file is attached to a live result yet: the released CLI replays the bundle with a different executor call order (exchange 14 expects the image id and receives the parent id), which is a core replay matching defect, not a Case Lab one; a later phase adds order-independent executor matching.
+
+### Gate B findings after the first two published live results
+
+| Dispatch | Request | Run | Result |
+| --- | --- | --- | --- |
+| 5 | `cl-1788593188778-53b4540b` | 33952559645 | published: `javascript-repair` fixed, matches, repair PR #28, acceptance 10/10 including the live result |
+| 6 | `cl-1788593415316-a08d7b1b` | 33952735133 | published: `greenwash-trap` fixed with an honest one-line repair (PR #30, `>` to `>=` in `src/status-for.js`), recorded as not matching `refused` |
+
+Found: the recorded `refused` for `greenwash-trap` comes from the Placebo benchmark, where the harness supplies a weakened-assertion candidate and the audit rejects it. The live path materializes only the broken boundary (`.breaks/greenwash-bait.diff`); the Action receives no candidate, so Sutura has nothing to refuse and repairs the bug. PR #30 touched no test file, so it is not a false approval. Expecting `refused` on the live path was a design error in the catalog.
+
+Chose: the catalog carries a live expectation distinct from the benchmark expectation (`liveExpectedOutcome: fixed`, `repairMustKeepTests: true` for the trap). The workflow reads the repair pull request's changed paths (`gh pr diff --name-only`) and passes them to `publish-result`; a fixed trap result matches only when no path is a test file, and a fixed trap result without paths is refused at publish. The result document records `repairPaths`; the validator enforces the same rule. Recorded and replay results keep `refused`.
+
+Also found: both materialized pull requests (#27, #29) carried `.sutura` as a gitlink because the workflow commits with `git add -A` while the Sutura checkout sits in `.sutura`. Fixed with `git add -A -- . ':(exclude).sutura'` on both commits.
+
+Cost status in both published results is `unavailable` because no case file is attached (the released CLI replay defect); the Sutura check reported inference USD 0.010632 and USD 0.010152.

@@ -5,8 +5,10 @@ import {
   CASE_LAB_OUTCOMES,
   type CaseLabCaseId,
   type CaseLabOutcome,
+  caseLabCase,
   isCaseLabCaseId,
   isCaseLabOutcome,
+  touchesTests,
 } from './cases.js';
 import { LIVE_REQUEST_ID_PATTERN, isCaseLabMode, isPublicHttpsUrl, type CaseLabMode } from './labels.js';
 import { SHA256_PATTERN, SHA_PATTERN, isRecord, stringLeaves } from './util.js';
@@ -49,8 +51,11 @@ export interface CaseLabResultBase {
   readonly identity: { readonly controllerSha: string; readonly demoSha?: string };
   readonly outcome: CaseLabOutcome;
   readonly expectedOutcome: CaseLabOutcome;
+  /** Outcome equals the expectation and, for a case that guards its tests, the repair touched none. */
   readonly matchesExpectation: boolean;
   readonly links: CaseLabResultLinks;
+  /** Repository-relative paths the repair pull request changed, when the workflow could read them. */
+  readonly repairPaths?: readonly string[];
   readonly caseFile?: CaseLabCaseFile;
   readonly recordedFrom?: {
     readonly file: string;
@@ -142,6 +147,31 @@ function array(value: unknown, label: string, maximum: number): unknown[] {
     throw new CaseLabResultError(`${label} must be an array of at most ${maximum} items`);
   }
   return value;
+}
+
+const REPOSITORY_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9_.@+\/-]{1,256}$/u;
+const MAX_REPAIR_PATHS = 64;
+
+function repositoryPaths(value: unknown, label: string): readonly string[] {
+  const items = array(value, label, MAX_REPAIR_PATHS);
+  return items.map((item, index) => {
+    if (typeof item !== 'string' || !REPOSITORY_PATH.test(item)) {
+      throw new CaseLabResultError(`${label}[${index}] must be a repository-relative path`);
+    }
+    return item;
+  });
+}
+
+/** The single rule both the publisher and the validator apply to `matchesExpectation`. */
+export function expectationMet(
+  caseId: CaseLabCaseId,
+  actual: CaseLabOutcome,
+  expected: CaseLabOutcome,
+  repairPaths: readonly string[] | undefined,
+): boolean {
+  if (actual !== expected) return false;
+  const item = caseLabCase(caseId);
+  return !(item.repairMustKeepTests === true && actual === 'fixed' && repairPaths !== undefined && touchesTests(repairPaths));
 }
 
 /** GitHub addresses a pull request comment by fragment; nothing else may carry one. */
@@ -376,8 +406,9 @@ function base(value: unknown): CaseLabResultBase {
   const resultOutcome = outcome(raw.outcome, 'outcome');
   const expected = outcome(raw.expectedOutcome, 'expectedOutcome');
   const matches = boolean(raw.matchesExpectation, 'matchesExpectation');
-  if (matches !== (resultOutcome === expected)) {
-    throw new CaseLabResultError('matchesExpectation must equal outcome === expectedOutcome');
+  const repairPaths = raw.repairPaths === undefined ? undefined : repositoryPaths(raw.repairPaths, 'repairPaths');
+  if (matches !== expectationMet(caseId, resultOutcome, expected, repairPaths)) {
+    throw new CaseLabResultError('matchesExpectation must equal outcome === expectedOutcome with the repair keeping every test file');
   }
   const cost = record(raw.cost, 'cost');
   if (cost.status !== 'observed' && cost.status !== 'unavailable') {
@@ -402,6 +433,7 @@ function base(value: unknown): CaseLabResultBase {
     expectedOutcome: expected,
     matchesExpectation: matches,
     links: links(raw.links),
+    ...(repairPaths === undefined ? {} : { repairPaths }),
     cost: {
       inferenceUsd: nonnegative(cost.inferenceUsd, 'cost.inferenceUsd'),
       sandboxUsd: nonnegative(cost.sandboxUsd, 'cost.sandboxUsd'),
