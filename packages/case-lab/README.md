@@ -119,7 +119,8 @@ and `NODE_ENV=test` and no credential
 ```text
 case-lab catalog --out <dir>                 write the five deterministic results
 case-lab replay <case-id> [--out <file>]     one deterministic result
-case-lab build-site [--site-url <origin>]    write dist/site; the origin fills canonicals and the sitemap
+case-lab build-site [--site-url <origin>] [--site-config <file>]
+                                             write dist/site; site.json supplies the origin and identifiers
 case-lab serve [--port 4177]                 serve dist/site for local review
 case-lab acceptance --base-url <url>         signed-out acceptance record (--offline skips link checks)
 case-lab verify-pin [--tag v0.2.0]           prove release.json, the demo workflow, and the tag agree
@@ -130,12 +131,13 @@ case-lab publish-result ...                  used inside the demo workflow
 
 ## Search and social metadata
 
-`build-site --site-url https://sutura-case-lab.vercel.app` (the flag
-`vercel.json` passes) gives every page a canonical link and an absolute
-Open Graph URL, and writes `sitemap.xml` with the index and the five replay
-pages. Without the flag the build still succeeds but carries no canonical and
-no sitemap, and `case-lab acceptance` fails its `robots-txt`, `sitemap-xml`,
-and `canonical` checks against it.
+`build-site` reads the site origin from `site.json` (`--site-url` still wins,
+and `vercel.json` passes it explicitly). The origin gives every page a
+canonical link and an absolute Open Graph URL, and writes `sitemap.xml` with
+the index, the five replay pages, and `/privacy/`. Without an origin the build
+still succeeds but carries no canonical and no sitemap, and
+`case-lab acceptance` fails its `robots-txt`, `sitemap-xml`, and `canonical`
+checks against it.
 
 Every build writes `robots.txt` (`/result/` and `/api/` disallowed), copies
 `assets/favicon.svg` and `assets/social-card.png` (1200x630) to the site
@@ -144,6 +146,49 @@ page: `WebSite` plus `SoftwareApplication` on the index, `WebPage` on each
 replay. Only `/result/` is `noindex`, by meta tag and by the `X-Robots-Tag`
 header that `vercel.json` sets on `/result*` and `/api/*`; `case-lab serve`
 sends the same headers so the acceptance record means the same thing locally.
+
+## Analytics and search verification
+
+`site.json` (schema `sutura-case-lab-site-v1`) holds the public identifiers
+that appear in the served HTML. None is a secret. Every field is optional and
+a missing field renders nothing, so a config with only `schemaVersion`
+produces a site with no analytics and no verification markup.
+
+| Field | Renders |
+| --- | --- |
+| `siteUrl` | Default `--site-url`: canonical links, absolute Open Graph URLs, the sitemap. |
+| `googleSiteVerification` | `<meta name="google-site-verification">` on every page. |
+| `bingSiteVerification` | `<meta name="msvalidate.01">` on every page. |
+| `ga4MeasurementId` (`G-…`) | Google Analytics 4 under Consent Mode v2. The consent default (every storage type denied, `wait_for_update` 500 ms) is declared before the loader; `anonymize_ip` is on. Not rendered on `/result/`. |
+| `clarityProjectId` | Microsoft Clarity with `clarity('consent', false)` until the visitor accepts. Not rendered on `/result/`. |
+| `vercelAnalytics` (`"true"`) | The cookieless Vercel Web Analytics script on every page. Needs no consent. |
+
+`loadSiteConfig` refuses an unknown field, a wrong schema, or a malformed
+value with a message that names the file and the field, and `build-site`
+writes nothing in that case. `--site-config <file>` points at another file.
+
+Consent: when a page carries GA4 or Clarity, `<main>` gets
+`data-consent="ga4,clarity"` and the client renders a footer-anchored banner
+(`role="region"`, label "Cookie consent") with Accept, Decline, and a link to
+`/privacy/`. Accept sends `gtag('consent', 'update', { analytics_storage:
+'granted' })` and `clarity('consent')` and stores `sutura-consent=granted` in
+`localStorage`; Decline stores `denied` and leaves the defaults. A stored
+`granted` is re-applied on every later page load; `denied` or no choice loads
+nothing beyond the consent-off defaults. No cookie is written before Accept.
+`/privacy/` (indexed, in the sitemap, linked from every footer) names only
+the tools the build carries and how to withdraw.
+
+`case-lab acceptance` reads the same `site.json` and fails `verification-tags`
+unless the served index carries both configured tokens; without tokens the
+check is skipped with a named reason. `privacy-page` requires `/privacy/` to
+answer 200 and name its subject.
+
+Content Security Policy: no CSP is set today. A future policy must allow
+scripts from `https://www.googletagmanager.com`, `https://www.clarity.ms`
+(and its `*.clarity.ms` beacon hosts), same-origin `/_vercel/`, and the inline
+consent and loader snippets; `connect-src` must add
+`https://*.google-analytics.com`, `https://*.analytics.google.com`, and
+`https://*.clarity.ms`.
 
 ## Deployment
 

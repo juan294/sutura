@@ -9,12 +9,15 @@ import { replayCatalog } from './replay.js';
 import {
   MODE_LABELS,
   OUTCOME_LABELS,
+  consentTools,
+  cookielessIdentifiers,
   escapeHtml,
   isRenderableResult,
   renderCounterfactual,
   renderIndexBody,
   renderPage,
   renderPendingBody,
+  renderPrivacyBody,
   renderResultBody,
   resultPageTitle,
 } from './render.js';
@@ -256,10 +259,67 @@ describe('pages', () => {
     expect(page).not.toContain('rel="canonical"');
     expect(page).not.toContain('og:url');
     expect(page).not.toContain('name="robots"');
+    expect(page).not.toContain('data-consent');
     expect(page).toContain('<meta property="og:image" content="/social-card.png">');
     expect(page).toContain('<link rel="icon" href="/favicon.svg" type="image/svg+xml">');
-    const scripted = renderPage({ title: 't', description: 'd', siteRoot: '/x/', path: '/x/', body: '', script: 'case-lab.js' });
+    expect(page).toContain('<footer class="site-footer">Sutura verifies the fix. It never merges a generated repair. · <a href="/privacy/">Privacy</a></footer>');
+    const scripted = renderPage({ title: 't', description: 'd', siteRoot: '/x/', path: '/x/', body: '', script: 'case-lab.js', identifiers: {} });
     expect(scripted).toContain('<script src="/x/case-lab.js" defer></script>');
+    expect(scripted).toContain('<a href="/x/privacy/">Privacy</a>');
+    expect(scripted.match(/<script/gu)).toHaveLength(1);
+  });
+
+  it('renders verification and consent-gated analytics from identifiers and escapes each value for its context', () => {
+    const page = renderPage({
+      title: 't', description: 'd', siteRoot: '/x/', path: '/x/', body: '',
+      attributes: { 'data-page': 'index' },
+      identifiers: {
+        googleSiteVerification: 'g"><script>alert(1)</script>',
+        bingSiteVerification: 'b&b',
+        ga4MeasurementId: 'G-1"</script><script>alert(2)</script>',
+        clarityProjectId: 'c</script>',
+        vercelAnalytics: true,
+      },
+    });
+    expect(page).toContain('<meta name="google-site-verification" content="g&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;">');
+    expect(page).toContain('<meta name="msvalidate.01" content="b&amp;b">');
+    expect(page).not.toContain('</script><script>alert(');
+    expect(page).toContain('<script async src="https://www.googletagmanager.com/gtag/js?id=G-1%22%3C%2Fscript%3E%3Cscript%3Ealert(2)%3C%2Fscript%3E"></script>');
+    expect(page).toContain('gtag(\'config\', "G-1\\"\\u003c/script>\\u003cscript>alert(2)\\u003c/script>", {\'anonymize_ip\': true});');
+    expect(page).toContain('\'clarity\', \'script\', "c\\u003c/script>");window.clarity(\'consent\', false);');
+    expect(page).toContain('<script defer src="/x/_vercel/insights/script.js"></script>');
+    expect(page).toContain('<main id="main" class="case-lab" data-page="index" data-consent="ga4,clarity">');
+    const consentDefault = page.indexOf("gtag('consent', 'default'");
+    expect(consentDefault).toBeGreaterThan(page.indexOf('<link rel="stylesheet"'));
+    expect(page.indexOf('gtag/js?id=')).toBeGreaterThan(consentDefault);
+    expect(page.indexOf("gtag('config'")).toBeGreaterThan(page.indexOf('gtag/js?id='));
+    expect(page.indexOf("window.clarity('consent', false)")).toBeGreaterThan(page.indexOf("gtag('config'"));
+    expect(page).not.toContain('granted');
+    const clarityOnly = renderPage({ title: 't', description: 'd', siteRoot: '/', path: '/', body: '', identifiers: { clarityProjectId: 'abc' } });
+    expect(clarityOnly).toContain('data-consent="clarity"');
+    expect(clarityOnly).not.toContain('gtag');
+    expect(clarityOnly).not.toContain('_vercel');
+    const vercelOnly = renderPage({ title: 't', description: 'd', siteRoot: '/', path: '/', body: '', identifiers: { vercelAnalytics: true } });
+    expect(vercelOnly).not.toContain('data-consent');
+    expect(vercelOnly).toContain('/_vercel/insights/script.js');
+    expect(renderPage({ title: 't', description: 'd', siteRoot: '/', path: '/', body: '', identifiers: { vercelAnalytics: false } })).not.toContain('_vercel');
+  });
+
+  it('renders a privacy page that names only the configured tools', () => {
+    const none = renderPrivacyBody(undefined);
+    expect(none).toContain('<h1>Privacy</h1>');
+    expect(none).toContain('This build of the Case Lab carries no analytics. Nothing is measured.');
+    expect(none).not.toContain('consent-title');
+    expect(none).toContain('How to withdraw');
+    const clarity = renderPrivacyBody({ clarityProjectId: 'abc', vercelAnalytics: true });
+    expect(clarity).toContain('<dt>Microsoft Clarity</dt>');
+    expect(clarity).toContain('<dt>Vercel Web Analytics</dt>');
+    expect(clarity).not.toContain('Google Analytics');
+    expect(clarity).toContain('Microsoft Clarity does not set a cookie or record anything identifying before you choose Accept in the banner at the bottom of the page. Choose Decline to keep it off.');
+    expect(consentTools({ ga4MeasurementId: 'G-1', clarityProjectId: 'c' })).toEqual(['ga4', 'clarity']);
+    expect(consentTools({ vercelAnalytics: true })).toEqual([]);
+    expect(cookielessIdentifiers({ ga4MeasurementId: 'G-1', clarityProjectId: 'c', vercelAnalytics: true, googleSiteVerification: 'g' }))
+      .toEqual({ vercelAnalytics: true, googleSiteVerification: 'g' });
   });
 
   it('emits canonical, social, robots, and escaped structured data when a site URL is known', () => {

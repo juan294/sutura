@@ -10,15 +10,22 @@ import { PACKAGE_DIR } from './replay.js';
 import { MODE_LABELS, OUTCOME_LABELS } from './labels.js';
 import {
   FAVICON_FILE,
+  PRIVACY_DESCRIPTION,
+  PRIVACY_PATH,
+  PRIVACY_TITLE,
   SITE_NAME,
   SOCIAL_CARD_FILE,
+  consentTools,
+  cookielessIdentifiers,
   escapeHtml,
   renderIndexBody,
   renderPage,
   renderPendingBody,
+  renderPrivacyBody,
   renderResultBody,
   resultPageTitle,
   type CatalogCard,
+  type SiteIdentifiers,
 } from './render.js';
 import type { CaseLabResult } from './result.js';
 
@@ -36,6 +43,8 @@ export interface BuildSiteOptions {
   readonly clientBundle?: string;
   /** Directory holding favicon.svg and social-card.png. Defaults to the package assets. */
   readonly assetsDir?: string;
+  /** Verification tokens and analytics ids from site.json. Absent or empty: no such markup anywhere. */
+  readonly identifiers?: SiteIdentifiers;
 }
 
 export const SITE_DESCRIPTION = 'Five fixed cases that show how Sutura verifies a CI repair instead of trusting a green result.';
@@ -183,7 +192,10 @@ export async function buildSite(options: BuildSiteOptions): Promise<string[]> {
   write(resolve(outDir, 'case-lab.js'), client, written);
   copy(resolve(assetsDir, FAVICON_FILE), resolve(outDir, FAVICON_FILE), written);
   copy(resolve(assetsDir, SOCIAL_CARD_FILE), resolve(outDir, SOCIAL_CARD_FILE), written);
-  const shell = { siteRoot, ...(siteUrl === undefined ? {} : { siteUrl }) };
+  const identifiers = options.identifiers ?? {};
+  const shell = { siteRoot, identifiers, ...(siteUrl === undefined ? {} : { siteUrl }) };
+  /** Pages without live-run logic still need the client for the consent banner when a tracker is present. */
+  const consentScript = consentTools(identifiers).length === 0 ? {} : { script: 'case-lab.js' };
   write(resolve(outDir, 'index.html'), renderPage({
     ...shell,
     title: SITE_NAME,
@@ -199,6 +211,7 @@ export async function buildSite(options: BuildSiteOptions): Promise<string[]> {
     const path = `${siteRoot}replay/${item.id}/`;
     write(resolve(outDir, 'replay', item.id, 'index.html'), renderPage({
       ...shell,
+      ...consentScript,
       title: resultPageTitle(card.result, item),
       description: item.scenario,
       path,
@@ -209,8 +222,10 @@ export async function buildSite(options: BuildSiteOptions): Promise<string[]> {
     }), written);
     write(resolve(outDir, 'replay', item.id, 'result.json'), `${canonicalJson(card.result)}\n`, written);
   }
+  // The live page is per request and stays free of trackers; only cookieless identifiers remain.
   write(resolve(outDir, 'result', 'index.html'), renderPage({
     ...shell,
+    identifiers: cookielessIdentifiers(identifiers),
     title: 'Sutura Case Lab · Live run',
     description: 'A live Sutura run started from the Case Lab.',
     path: `${siteRoot}result/`,
@@ -219,12 +234,23 @@ export async function buildSite(options: BuildSiteOptions): Promise<string[]> {
     attributes: mainAttributes('result', siteRoot, options.apiBase),
     body: renderPendingBody({ requestId: 'pending', caseTitle: undefined, status: 'Loading the live result…' }),
   }), written);
+  const privacyPath = `${siteRoot}${PRIVACY_PATH}`;
+  write(resolve(outDir, 'privacy', 'index.html'), renderPage({
+    ...shell,
+    ...consentScript,
+    title: `${PRIVACY_TITLE} · ${SITE_NAME}`,
+    description: PRIVACY_DESCRIPTION,
+    path: privacyPath,
+    attributes: mainAttributes('privacy', siteRoot, undefined),
+    body: renderPrivacyBody(identifiers),
+  }), written);
   write(resolve(outDir, 'robots.txt'), renderRobotsTxt(siteUrl, siteRoot), written);
   if (siteUrl !== undefined) {
     const newest = cards.map((card) => card.result.createdAt).sort().at(-1) ?? new Date(0).toISOString();
     write(resolve(outDir, 'sitemap.xml'), renderSitemap([
       { url: `${siteUrl}${siteRoot}`, lastmod: newest },
       ...cards.map((card) => ({ url: `${siteUrl}${siteRoot}replay/${card.item.id}/`, lastmod: card.result.createdAt })),
+      { url: `${siteUrl}${privacyPath}`, lastmod: newest },
     ]), written);
   }
   write(resolve(outDir, 'catalog.json'), `${canonicalJson({

@@ -364,8 +364,52 @@ export function renderResultBody(result: CaseLabResult, item: CaseLabCase): stri
 export const SITE_NAME = 'Sutura Case Lab';
 export const FAVICON_FILE = 'favicon.svg';
 export const SOCIAL_CARD_FILE = 'social-card.png';
+export const PRIVACY_PATH = 'privacy/';
+export const PRIVACY_TITLE = 'Privacy';
+export const PRIVACY_DESCRIPTION = 'What the Sutura Case Lab measures and how to opt out.';
+/** `localStorage` key that remembers the visitor's consent choice: `granted` or `denied`. */
+export const CONSENT_STORAGE_KEY = 'sutura-consent';
 /** `--paper` in assets/case-lab.css, light then dark. */
 const THEME_COLORS = Object.freeze({ light: '#fbfbf9', dark: '#121417' });
+const GTAG_LOADER = 'https://www.googletagmanager.com/gtag/js';
+const CLARITY_LOADER = 'https://www.clarity.ms/tag/';
+const VERCEL_INSIGHTS_SCRIPT = '_vercel/insights/script.js';
+
+/**
+ * Public identifiers that appear in the served HTML. Every field is optional;
+ * an absent field renders nothing.
+ */
+export interface SiteIdentifiers {
+  /** Content of the `google-site-verification` meta tag. */
+  readonly googleSiteVerification?: string;
+  /** Content of the `msvalidate.01` meta tag. */
+  readonly bingSiteVerification?: string;
+  /** Google Analytics 4 measurement id (`G-…`). Loads under Consent Mode v2 with every storage type denied until the visitor accepts. */
+  readonly ga4MeasurementId?: string;
+  /** Microsoft Clarity project id. Loads with consent off until the visitor accepts. */
+  readonly clarityProjectId?: string;
+  /** Loads the cookieless Vercel Web Analytics script. */
+  readonly vercelAnalytics?: boolean;
+}
+
+/** The consent-gated tools a page carries, in the order the banner names them. */
+export type ConsentTool = 'ga4' | 'clarity';
+
+export function consentTools(identifiers: SiteIdentifiers | undefined): ConsentTool[] {
+  return [
+    ...(identifiers?.ga4MeasurementId === undefined ? [] : ['ga4' as const]),
+    ...(identifiers?.clarityProjectId === undefined ? [] : ['clarity' as const]),
+  ];
+}
+
+/** Keep only the identifiers that never set a cookie, for pages that must stay free of trackers. */
+export function cookielessIdentifiers(identifiers: SiteIdentifiers | undefined): SiteIdentifiers {
+  return {
+    ...(identifiers?.googleSiteVerification === undefined ? {} : { googleSiteVerification: identifiers.googleSiteVerification }),
+    ...(identifiers?.bingSiteVerification === undefined ? {} : { bingSiteVerification: identifiers.bingSiteVerification }),
+    ...(identifiers?.vercelAnalytics === undefined ? {} : { vercelAnalytics: identifiers.vercelAnalytics }),
+  };
+}
 
 export interface PageShellOptions {
   readonly title: string;
@@ -383,11 +427,52 @@ export interface PageShellOptions {
   readonly ogType?: string;
   /** One `application/ld+json` block per entry. */
   readonly jsonLd?: readonly object[];
+  /** Verification tags and analytics loaders for this page. Absent or empty: no such markup. */
+  readonly identifiers?: SiteIdentifiers;
 }
 
 /** JSON that is safe inside a script element: no `<` can close the tag or open a comment. */
 export function jsonLdScript(entry: object): string {
   return `<script type="application/ld+json">${JSON.stringify(entry).replace(/</gu, '\\u003c')}</script>`;
+}
+
+/** A JavaScript string literal that is safe inside a script element. */
+function jsString(value: string): string {
+  return JSON.stringify(value).replace(/</gu, '\\u003c');
+}
+
+function verificationTags(identifiers: SiteIdentifiers | undefined): string[] {
+  return [
+    ...(identifiers?.googleSiteVerification === undefined ? [] : [`<meta name="google-site-verification" content="${escapeHtml(identifiers.googleSiteVerification)}">`]),
+    ...(identifiers?.bingSiteVerification === undefined ? [] : [`<meta name="msvalidate.01" content="${escapeHtml(identifiers.bingSiteVerification)}">`]),
+  ];
+}
+
+/**
+ * Analytics loaders. The GA4 consent default is declared before the loader so
+ * no storage is granted until the visitor accepts; Clarity starts with consent
+ * off; Vercel Web Analytics is cookieless and needs no consent.
+ */
+function analyticsTags(siteRoot: string, identifiers: SiteIdentifiers | undefined): string[] {
+  const lines: string[] = [];
+  if (identifiers?.ga4MeasurementId !== undefined) {
+    const id = identifiers.ga4MeasurementId;
+    lines.push(
+      `<script>window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}gtag('consent', 'default', {'ad_storage': 'denied', 'analytics_storage': 'denied', 'ad_user_data': 'denied', 'ad_personalization': 'denied', 'wait_for_update': 500});</script>`,
+      `<script async src="${escapeHtml(`${GTAG_LOADER}?id=${encodeURIComponent(id)}`)}"></script>`,
+      `<script>gtag('js', new Date());gtag('config', ${jsString(id)}, {'anonymize_ip': true});</script>`,
+    );
+  }
+  if (identifiers?.clarityProjectId !== undefined) {
+    lines.push(`<script>(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src=${jsString(CLARITY_LOADER)}+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window, document, 'clarity', 'script', ${jsString(identifiers.clarityProjectId)});window.clarity('consent', false);</script>`);
+  }
+  if (identifiers?.vercelAnalytics === true) {
+    lines.push(
+      '<script>window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };</script>',
+      `<script defer src="${escapeHtml(siteRoot)}${VERCEL_INSIGHTS_SCRIPT}"></script>`,
+    );
+  }
+  return lines;
 }
 
 function metaTags(options: PageShellOptions): string {
@@ -415,6 +500,10 @@ function metaTags(options: PageShellOptions): string {
 }
 
 export function renderPage(options: PageShellOptions): string {
+  const tools = consentTools(options.identifiers);
+  const attributes = { ...options.attributes, ...(tools.length === 0 ? {} : { 'data-consent': tools.join(',') }) };
+  const head = [...verificationTags(options.identifiers), ...analyticsTags(options.siteRoot, options.identifiers)]
+    .map((line) => `\n  ${line}`).join('');
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -424,18 +513,64 @@ export function renderPage(options: PageShellOptions): string {
   <meta name="description" content="${escapeHtml(options.description)}">
   <title>${escapeHtml(options.title)}</title>
 ${metaTags(options)}
-  <link rel="stylesheet" href="${escapeHtml(options.siteRoot)}case-lab.css">
+  <link rel="stylesheet" href="${escapeHtml(options.siteRoot)}case-lab.css">${head}
 </head>
 <body>
   <nav class="site-nav" aria-label="Case Lab"><a href="${escapeHtml(options.siteRoot)}">Sutura Case Lab</a> · <a href="https://github.com/juan294/sutura" rel="noopener">Repository</a></nav>
-  <main id="main" class="case-lab"${Object.entries(options.attributes ?? {}).map(([name, value]) => ` ${escapeHtml(name)}="${escapeHtml(value)}"`).join('')}>
+  <main id="main" class="case-lab"${Object.entries(attributes).map(([name, value]) => ` ${escapeHtml(name)}="${escapeHtml(value)}"`).join('')}>
 ${options.body}
   </main>
-  <footer class="site-footer">Sutura verifies the fix. It never merges a generated repair.</footer>${options.script === undefined ? '' : `
+  <footer class="site-footer">Sutura verifies the fix. It never merges a generated repair. · <a href="${escapeHtml(options.siteRoot)}${PRIVACY_PATH}">${PRIVACY_TITLE}</a></footer>${options.script === undefined ? '' : `
   <script src="${escapeHtml(options.siteRoot)}${escapeHtml(options.script)}" defer></script>`}
 </body>
 </html>
 `;
+}
+
+/**
+ * The privacy page names only the tools this build carries, what each stores,
+ * and how to withdraw. It is rendered at build time from the same identifiers
+ * that drive the head, so it cannot drift from the served markup.
+ */
+export function renderPrivacyBody(identifiers: SiteIdentifiers | undefined): string {
+  const tools = consentTools(identifiers);
+  const entries: string[] = [];
+  if (tools.includes('ga4')) {
+    entries.push('<dt>Google Analytics 4</dt><dd>After you choose Accept it stores <code>_ga</code> cookies and pseudonymous usage data: pages viewed, approximate region, browser and device type. Before that it sets no cookie and keeps no identifier.</dd>');
+  }
+  if (tools.includes('clarity')) {
+    entries.push('<dt>Microsoft Clarity</dt><dd>After you choose Accept it records sessions and heatmaps with typed input masked. Before that it sets no cookie and records nothing identifying.</dd>');
+  }
+  if (identifiers?.vercelAnalytics === true) {
+    entries.push('<dt>Vercel Web Analytics</dt><dd>Counts page views in aggregate without cookies and without identifying visitors. It needs no consent and loads on every page.</dd>');
+  }
+  const measured = entries.length === 0
+    ? '<p class="empty">This build of the Case Lab carries no analytics. Nothing is measured.</p>'
+    : `<dl>\n${entries.map((entry) => `    ${entry}`).join('\n')}\n  </dl>`;
+  const consent = tools.length === 0
+    ? ''
+    : `<section class="sheet" aria-labelledby="consent-title">
+  <h2 id="consent-title">Consent</h2>
+  <p>${escapeHtml(tools.map((tool) => (tool === 'ga4' ? 'Google Analytics' : 'Microsoft Clarity')).join(' and '))} ${tools.length === 1 ? 'does' : 'do'} not set a cookie or record anything identifying before you choose Accept in the banner at the bottom of the page. Choose Decline to keep ${tools.length === 1 ? 'it' : 'them'} off. Your choice is remembered in this browser under the key <code>${CONSENT_STORAGE_KEY}</code> and never leaves it.</p>
+</section>
+`;
+  return `<header class="docket">
+  <p class="eyebrow">Sutura Case Lab · ${PRIVACY_TITLE}</p>
+  <h1>${PRIVACY_TITLE}</h1>
+  <p>${escapeHtml(PRIVACY_DESCRIPTION)}</p>
+</header>
+<section class="sheet" aria-labelledby="measured-title">
+  <h2 id="measured-title">What is measured</h2>
+  ${measured}
+</section>
+${consent}<section class="sheet" aria-labelledby="withdraw-title">
+  <h2 id="withdraw-title">How to withdraw</h2>
+  <p>Choose Decline in the banner, or clear this site's data in your browser settings. Clearing site data removes the stored choice and every cookie set here, and the banner appears again on your next visit.</p>
+</section>
+<section class="sheet" aria-labelledby="live-title">
+  <h2 id="live-title">Live runs</h2>
+  <p>Starting a live run sends only the case id to the Case Lab dispatcher. The live result page reads public result files and run status from GitHub; GitHub's privacy statement applies to those requests. No account, sign-in, or personal data is required anywhere on this site.</p>
+</section>`;
 }
 
 export function resultPageTitle(result: CaseLabResult, item: CaseLabCase): string {
