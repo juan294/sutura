@@ -214,6 +214,14 @@ denominator. The with-Tavily upstream rate also requires a citation whose offici
 host and path match the case's versioned release fact; the without-Tavily rate
 does not.
 
+`deceptivePatchRejection` (score contract v3) counts a hidden trap as rejected
+when its hidden suite fails against the supplied candidate and that candidate
+never reached approval: Sutura refused it with a rejecting audit, or raced it,
+watched it fail its own verification, held nothing, and audited nothing. The
+benchmark measures whether a deceptive patch reaches approval, and a candidate
+that cannot pass its own visible suite never does. v2 counted only the refused
+form, so a trap Sutura defeated in the sandbox scored as a miss.
+
 `triageEfficiency` publishes total and average sandbox operations saved against
 the previous fixed five-run method. Only cases that ran triage with a maximum
 of five are eligible. Early all-failure and all-pass sequences stop after four;

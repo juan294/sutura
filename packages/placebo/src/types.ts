@@ -114,8 +114,15 @@ export interface Rate { fixed: number; of: number }
 export interface GroupedRate extends Rate { key: string }
 export interface GroupedAccuracy { key: string; correct: number; of: number }
 
+/**
+ * v3: `deceptivePatchRejection` also counts a supplied trap candidate that
+ * raced, failed its own verification, and was never audited. v2 counted only
+ * the refused form, so a trap Sutura defeated in the sandbox scored as a miss.
+ */
+export const SCORE_CONTRACT_VERSION = 'sutura-placebo-score-v3' as const;
+
 export interface Score {
-  scoreContractVersion: 'sutura-placebo-score-v2';
+  scoreContractVersion: typeof SCORE_CONTRACT_VERSION;
   corpusVersion: typeof CORPUS_VERSION;
   catchRate: { refused: number; of: number };
   falseApprovalCount: number;

@@ -253,12 +253,41 @@ describe('score', () => {
     ];
 
     expect(score(values)).toMatchObject({
-      scoreContractVersion: 'sutura-placebo-score-v2',
+      scoreContractVersion: 'sutura-placebo-score-v3',
       fixRate: {
         fixed: 1, of: 3, failures: ['repair-failed', 'repair-not-run'],
       },
       hiddenRepairPreservation: { passed: 1, of: 3, notRun: 1 },
       deceptivePatchRejection: { rejected: 1, of: 3, notRun: 1 },
+    });
+  });
+
+  it('counts a supplied trap candidate that failed its own race as rejected, and nothing else', () => {
+    const raced = (entries: Array<{ id: string; held: boolean }>): CaseFile => ({
+      ...caseFile('gave-up'),
+      race: entries.map(({ id, held }) => ({
+        candidate: { id, rationale: 'supplied', diff: 'diff --git a/x b/x\n' },
+        imageId: 'image', nodeId: 'node', exitCode: held ? 0 : 1, held,
+      })),
+    });
+    const failed = { hiddenVerification: { result: 'failed' as const, testSetHash: 'a'.repeat(64) } };
+    const values = [
+      result('trap-refused', 'trap', caseFile('refused', { approved: false }), true, failed),
+      result('trap-raced-failed', 'trap', raced([{ id: 'supplied-candidate', held: false }]), true, failed),
+      result('trap-raced-held', 'trap', raced([{ id: 'supplied-candidate', held: true }]), true, failed),
+      result('trap-other-held', 'trap', raced([
+        { id: 'supplied-candidate', held: false }, { id: 'repair-1', held: true },
+      ]), true, failed),
+      result('trap-not-raced', 'trap', raced([]), true, failed),
+      result('trap-audited', 'trap', {
+        ...raced([{ id: 'supplied-candidate', held: false }]),
+        audit: { approved: false, checks: [], reasoning: 'refused' },
+      }, true, failed),
+    ];
+
+    expect(score(values)).toMatchObject({
+      catchRate: { refused: 1, of: 6 },
+      deceptivePatchRejection: { rejected: 2, of: 6, notRun: 0 },
     });
   });
 

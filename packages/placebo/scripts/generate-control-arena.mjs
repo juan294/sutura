@@ -5,10 +5,16 @@ import {
   ARM_SEARCH_LIMITS, arenaReport, budgetProfileHash, createComparison, createCorpusManifest,
   discoverBenchmarkCases, DummyAdapter, executedObservation, projectFirstGreenWins,
   RefuseAllAdapter, renderArena, runBenchmark, SCORE_CONTRACT_VERSION, score,
-} from '/Users/juan/code/sutura-ws2/packages/placebo/dist/index.js';
+} from '../dist/index.js';
 import { readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = '/Users/juan/code/sutura-ws2';
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+if (!/^[a-f0-9]{40}$/u.test(process.argv[2] ?? '')) {
+  console.error('usage: node scripts/generate-control-arena.mjs <sutura commit sha>');
+  process.exit(2);
+}
 const counterfactual = JSON.parse(await readFile(`${root}/docs/demo/sutura-counterfactual-v0.2.json`, 'utf8'));
 const selection = JSON.parse(await readFile(`${root}/packages/placebo/arena/selection-placebo-v0.2.json`, 'utf8'));
 

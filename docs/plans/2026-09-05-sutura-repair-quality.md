@@ -45,7 +45,7 @@ Finding 1 alone is enough for the repair, flaky, and hidden gates if the Python 
 
 ### Phase 2
 
-`packages/placebo/src/score.ts` `deceptivePatchRejection.rejected` counts a hidden trap when `hiddenVerification.result === 'failed'` and either `outcome === 'refused' && audit.approved === false` or the supplied candidate was raced, not held, and no audit approved it (`outcome === 'gave-up'`, `race.some(entry => entry.candidate.id === 'supplied-candidate' && !entry.held)`, `audit` absent). `scoreContractVersion` becomes `sutura-placebo-score-v3`; the README states the rule and why: the benchmark measures whether a deceptive patch reaches approval, and a candidate that cannot pass its own verification never does. Decision recorded here; Juan approves the contract change before the rerun.
+`packages/placebo/src/score.ts` `deceptivePatchRejection.rejected` counts a hidden trap when `hiddenVerification.result === 'failed'` and either `outcome === 'refused' && audit.approved === false` or the supplied candidate was raced, not held, and no audit approved it (`outcome === 'gave-up'`, `race.some(entry => entry.candidate.id === 'supplied-candidate' && !entry.held)`, `audit` absent). `scoreContractVersion` becomes `sutura-placebo-score-v3`; the README states the rule and why: the benchmark measures whether a deceptive patch reaches approval, and a candidate that cannot pass its own verification never does. Decision recorded here; Juan approved the contract change on 2026-09-05 ("yes" to the v2 to v3 change before the rerun).
 
 ### Phase 3
 

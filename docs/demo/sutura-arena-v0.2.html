@@ -57,12 +57,12 @@ footer code { color: var(--ink); }
       
       <p>Every arm below ran the same 51 cases, the same models, the same routing profile, the same budget profile, and the same scoring contract. The only difference between executed arms is the search shape.</p>
       <dl class="facts">
-        <div><dt>Sutura commit</dt><dd><code>ec35997cbadb213ee25ee38b99ed0db7525ff53b</code></dd></div>
+        <div><dt>Sutura commit</dt><dd><code>9c883f3da0d40bf715bca66d5e15a357cdc7bd74</code></dd></div>
         <div><dt>Corpus</dt><dd><code>placebo</code> v0.2 · <code>785cfc70359935a0f04a9a9cda39e8fb6ff4b05cc8fea3738fb24b70bcda101f</code></dd></div>
         <div><dt>Models</dt><dd><code>nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</code> · <code>nvidia/nemotron-3-super-120b-a12b</code> · <code>nvidia/Nemotron-3-Ultra-550b-a55b</code></dd></div>
         <div><dt>Routing profile</dt><dd><code>production-baseline-v1</code></dd></div>
         <div><dt>Budget profile</dt><dd><code>e12e51b76e87edae4e3d861f30ed974d7a74c1a96f10a103eea9e03f483ae487</code></dd></div>
-        <div><dt>Score contract</dt><dd><code>sutura-placebo-score-v2</code></dd></div>
+        <div><dt>Score contract</dt><dd><code>sutura-placebo-score-v3</code></dd></div>
         <div><dt>Grounding</dt><dd>Tavily enabled</dd></div>
       </dl>
     </header>
@@ -86,8 +86,8 @@ footer code { color: var(--ink); }
         <td>0.0% <small>(95% 0.0%–16.8%)</small></td>
         <td class="nonzero">19</td>
         <td>0.0% <small>(95% 0.0%–27.8%)</small></td>
-        <td>0.79 s</td>
-        <td>2.75 s</td>
+        <td>0.74 s</td>
+        <td>2.77 s</td>
         <td>$0.0000</td>
         <td>0</td>
         <td>0</td>
@@ -97,8 +97,8 @@ footer code { color: var(--ink); }
         <td>100.0% <small>(95% 83.2%–100.0%)</small></td>
         <td class="zero">0</td>
         <td>0.0% <small>(95% 0.0%–27.8%)</small></td>
-        <td>0.74 s</td>
-        <td>2.74 s</td>
+        <td>0.75 s</td>
+        <td>2.72 s</td>
         <td>$0.0000</td>
         <td>0</td>
         <td>0</td>
@@ -108,8 +108,8 @@ footer code { color: var(--ink); }
         <td>100.0% <small>(95% 83.2%–100.0%)</small></td>
         <td class="zero">0</td>
         <td>0.0% <small>(95% 0.0%–27.8%)</small></td>
-        <td>0.74 s</td>
-        <td>2.74 s</td>
+        <td>0.75 s</td>
+        <td>2.72 s</td>
         <td>$0.0000</td>
         <td>0</td>
         <td>0</td>
@@ -339,7 +339,7 @@ footer code { color: var(--ink); }
 
     <footer>
       <p>Reproduce: <code>placebo compare --arm sutura --arm single-branch --arm fixed-parallel --arm first-green-wins --output-json arena.json</code> then <code>placebo arena --comparison arena.json --output-json report.json --output-html report.html</code></p>
-      <p>Comparison hash <code>7392b981ecc263fb4eb7d8fa22e20bc8300b8e85a74f34e6c508accb3edc1a3a</code> · report hash <code>7430dddffa125154d48d13425568bcb12f37ed4d9e4872875f8987b2c55819ea</code> · selection hash <code>289f6a2ec6b417942addb3956882fc2006d32fe4a7f4d10188e83d02c810b2cb</code></p>
+      <p>Comparison hash <code>f67afe5acc685cf3f48f4ca9d2b4a8f255814f2b6dbc782d8c57b91514170d31</code> · report hash <code>ce5a2b527686d194f8eeffc79f48c93400080d6093871cc38197fe5b34d2e488</code> · selection hash <code>289f6a2ec6b417942addb3956882fc2006d32fe4a7f4d10188e83d02c810b2cb</code></p>
     </footer>
   </main>
 </body>
