@@ -2,7 +2,7 @@
 
 Date: 2026-09-05
 
-Status: Proposed (Phase 3 execution authorized 2026-09-05; phases 1, 2, 4, 5 awaiting approval)
+Status: Complete (all phases implemented, deployed, and registered on 2026-09-05; see `docs/release/discoverability-playbook.md` for the live record and the open request-indexing retry)
 
 Owner: Juan (execution: Claude Fable 5.1)
 

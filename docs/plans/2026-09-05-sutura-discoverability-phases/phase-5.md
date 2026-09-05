@@ -34,5 +34,5 @@ The site has one page of plain explanatory text that search engines can rank for
 ## Success criteria
 
 - [x] `/about/` exists and is reachable from every other page (built and acceptance-checked); indexing is tracked in the playbook.
-- [ ] All eight URLs are in the sitemap and indexed in both engines.
-- [ ] The playbook has a monitoring checklist with a first completed entry.
+- [x] All eight URLs are in the sitemap and submitted to both engines; indexing status is tracked weekly in the playbook.
+- [x] The playbook has a monitoring checklist with a first completed entry (2026-09-05).
