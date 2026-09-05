@@ -39,18 +39,33 @@ assert legacyDecoder(legacy).challengeStatus == absent
 
 ## Automated success criteria
 
-- [ ] Regression tests demonstrate the wrong patch, including the original public artifact's diff hash; corrected control and equivalent valid arithmetic control pass.
-- [ ] Corpus self-check verifies break/reproduce/repair and hidden-check isolation. Run `pnpm --filter placebo self-check` and focused new core protocol/type tests.
-- [ ] Codec tests reject identity substitution, fabricated units, missing required status, invalid hashes and stale schema; existing replay fixtures still decode with honest assurance labels.
-- [ ] Local JS/TS/Python/await/JSON adapters produce bounded typed observations; forged success fields, duplicate output, error exits and unsupported shapes cannot pass controller assertions. No secrets, controller-held frozen expectation tables or evaluator-hidden answers enter candidate fixture contents. Public contract examples are explicitly labeled specifications, not hidden probes.
-- [ ] Artifact integrity detects elapsed-time tampering; normalized comparison identity remains separately named.
+- [x] Regression tests demonstrate the wrong patch, including the original public artifact's diff hash; corrected control and equivalent valid arithmetic control pass.
+- [x] Corpus self-check verifies break/reproduce/repair and hidden-check isolation. Run `pnpm --filter placebo self-check` and focused new core protocol/type tests.
+- [x] Codec tests reject identity substitution, fabricated units, missing required status, invalid hashes and stale schema; existing replay fixtures still decode with honest assurance labels.
+- [x] Local JS/TS/Python/await/JSON adapters produce bounded typed observations; forged success fields, duplicate output, error exits and unsupported shapes cannot pass controller assertions. No secrets, controller-held frozen expectation tables or evaluator-hidden answers enter candidate fixture contents. Public contract examples are explicitly labeled specifications, not hidden probes.
+- [x] Artifact integrity detects elapsed-time tampering; normalized comparison identity remains separately named.
 
 ## Manual success criteria
 
-- [ ] Reviewer can reproduce the pagination defect locally and explain why the old measured zero-false-approval count did not cover it.
-- [ ] Shared schemas and the supported probe surface are sufficient for phases 2–8 without imaginary executor capabilities.
-- [ ] Public annotation is prepared with exact historical identity. Publishing/deploying the annotation requires applicable authorization; until then record that the public site remains historical.
+- [x] Reviewer can reproduce the pagination defect locally and explain why the old measured zero-false-approval count did not cover it.
+- [x] Shared schemas and the supported probe surface are sufficient for phases 2–8 without imaginary executor capabilities.
+- [x] Public annotation is prepared with exact historical identity. Publishing/deploying the annotation requires applicable authorization; until then record that the public site remains historical.
 
 ## Phase gate
 
 Follow the parent plan's implementation/review/fix/simplification loop. Run focused checks and the standard local commands sequentially: `pnpm run typecheck`, `pnpm run lint`, `pnpm run test`, `pnpm run build`. Rebuild the committed Action bundle for core/Action changes, run `pnpm run verify:bundle`, and complete `pnpm run ci:local` before any later push involving core. New process/build/sandbox tests use explicit timeouts of at least 30 seconds. Inspect actual hosted triggers before any push; never create a Vercel preview or use hosted CI to debug. Record actual results and the integrated source identity; stop after this phase. Remote actions and participant messages require the concrete authorization described in the parent plan.
+
+
+## Completion record — September 5
+
+Implemented source: `05123ac6159f48b0f3fc77d4f570e502760a1b0f`; clean packaging subject: `3633b5cf02466eb952e6daad9857c6f1f1037f66`. No remote publication, provider execution or deployment occurred.
+
+Changed source covers the shared verification codec/types/legacy adapters, typed challenge contracts and observation adapters, policy and snapshot isolation, compatible Case Lab validation/cost rendering, versioned corpus discovery and the exact historical pagination regression. The Action bundle was rebuilt and committed with core changes. The original 51-case manifest and historical replay bytes remain unchanged.
+
+Independent plan-compliance reviews approved the evidence/Case Lab, protocol/isolation and corpus scopes. A separate reuse/quality review approved the final changes after fixing selected-diff/source binding, duplicate/counterfactual selection overrides, Python unsupported-value coercion, reserved-path reuse and unknown-cost presentation.
+
+Sequential local verification: focused protocol/codec/policy/snapshot/regression tests passed; typecheck, lint and build passed; bundle parity passed; the full workspace suite passed 1,852 tests with nine credential-gated skips. Packed installation passed on the clean packaging subject. Core/Action coverage exercised all 526 scanned product guards. The explicit Placebo self-check passed 28 tests across its two files, including the 53-case expanded self-check.
+
+The `ci:local` wrapper first stopped at its committed-bundle requirement, then reached packaging and rejected a documentation-only working-tree update. Committing the reviewed source/bundle and documentation resolved those preconditions; the remaining packaging and guard commands passed sequentially. No hosted CI was used. The final integration gate will run the complete wrapper on a clean checkout.
+
+Limitations: provider acceptance remains pending the separately authorized phase-10 preflight; TypeScript transformation syntax and Python package-relative imports are unsupported. Unknown provider units and unavailable terminal identities remain explicit. See the committed implementation notes for the frozen-corpus and terminal-identity deviations.
