@@ -157,11 +157,11 @@ describe('replayBundle', () => {
     expect(capturedSuperRequestBodies(bundle).map(({ chat_template_kwargs }) => chat_template_kwargs))
       .toEqual(Array.from({ length: 6 }, () => ({ enable_thinking: false })));
 
+    // The executor stream replays in full; the recorded report body has since drifted.
     const error = await captureReplayMismatch(bundle);
-    expect(error.sequence).toBe(108);
-    expect(error.path).toBe('$');
-    expect(error.expected).toBe('recorded HTTP call');
-    expect(error.actual).toBe('sequence exhausted');
+    expect(error.sequence).toBe(18);
+    expect(error.path).toBe('$[1]');
+    expect(String(error.expected)).toContain('Sutura — Surgical Report');
   });
 
   it.each(['github', 'repository', 'executor', 'nebius', 'tavily'] as const)(
@@ -187,6 +187,17 @@ describe('replayBundle', () => {
       await expect(replayBundle(bundle)).rejects.toBeInstanceOf(ReplayMismatchError);
     },
   );
+
+  it('replays an executor stream whose concurrent calls were recorded in another order', async () => {
+    const bundle = await createCompleteReplayBundleForTest();
+    const first = bundle.executor[0]!;
+    const second = bundle.executor[1]!;
+    [first.sequence, second.sequence] = [second.sequence, first.sequence];
+
+    await expect(replayBundle(bundle)).resolves.toMatchObject({
+      caseFile: { outcome: bundle.outcome },
+    });
+  });
 
   it('fails closed when shared port boundaries are reordered', async () => {
     const bundle = await createCompleteReplayBundleForTest();
