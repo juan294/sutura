@@ -33,6 +33,45 @@ export class CaseLabReplayError extends Error {
   }
 }
 
+export const REPLAY_FIXTURE_SCHEMA_VERSION = 'sutura-case-lab-replay-fixture-v1' as const;
+
+/**
+ * A committed replay fixture: the bundle plus the identities it binds to. The
+ * bundle's own `actionSha` is the commit of the repository that ran the
+ * workflow (the demo commit); the Sutura release that ran is recorded here.
+ */
+export interface ReplayFixture {
+  readonly schemaVersion: typeof REPLAY_FIXTURE_SCHEMA_VERSION;
+  readonly release: ReleaseIdentity;
+  readonly demoSha: string;
+  readonly capturedRunUrl: string;
+  readonly bundle: unknown;
+}
+
+export function parseReplayFixture(value: unknown): ReplayFixture {
+  if (!isRecord(value) || value.schemaVersion !== REPLAY_FIXTURE_SCHEMA_VERSION) {
+    throw new CaseLabReplayError(`replay fixture must be a ${REPLAY_FIXTURE_SCHEMA_VERSION} document`);
+  }
+  const release = value.release;
+  if (!isRecord(release) || typeof release.version !== 'string' || typeof release.actionSha !== 'string' || !SHA_PATTERN.test(release.actionSha)) {
+    throw new CaseLabReplayError('replay fixture release must name a version and an exact 40-character actionSha');
+  }
+  if (typeof value.demoSha !== 'string' || !SHA_PATTERN.test(value.demoSha)) {
+    throw new CaseLabReplayError('replay fixture demoSha must be an exact lowercase 40-character commit');
+  }
+  if (typeof value.capturedRunUrl !== 'string' || !value.capturedRunUrl.startsWith('https://github.com/')) {
+    throw new CaseLabReplayError('replay fixture capturedRunUrl must be a public GitHub run URL');
+  }
+  if (!isRecord(value.bundle)) throw new CaseLabReplayError('replay fixture bundle must be an object');
+  return {
+    schemaVersion: REPLAY_FIXTURE_SCHEMA_VERSION,
+    release: { version: release.version, actionSha: release.actionSha },
+    demoSha: value.demoSha,
+    capturedRunUrl: value.capturedRunUrl,
+    bundle: value.bundle,
+  };
+}
+
 export function loadRelease(packageDir = PACKAGE_DIR): ReleaseIdentity {
   const { value } = readBoundedJson(resolve(packageDir, 'release.json'), 4_096, 'release.json', (message) => new CaseLabReplayError(message));
   if (!isRecord(value) || typeof value.version !== 'string' || typeof value.actionSha !== 'string' || !SHA_PATTERN.test(value.actionSha)) {
@@ -94,19 +133,25 @@ export function recordedResult(
 }
 
 export interface ReplayedResultOptions extends RecordedResultOptions {
-  readonly bundleSha256: string;
+  readonly fixtureSha256: string;
   readonly replay?: (bundle: ReplayBundle, options?: ReplayBundleOptions) => ReturnType<typeof replayBundle>;
 }
 
 export async function replayedResult(
   item: CaseLabCase,
-  bundleValue: unknown,
+  fixtureValue: unknown,
   options: ReplayedResultOptions,
 ): Promise<CaseLabResult> {
-  const bundle = parseReplayBundle(bundleValue);
-  if (bundle.actionSha !== options.release.actionSha) {
+  const fixture = parseReplayFixture(fixtureValue);
+  if (fixture.release.actionSha !== options.release.actionSha) {
     throw new CaseLabReplayError(
-      `replay bundle actionSha must equal release.json actionSha ${options.release.actionSha}`,
+      `replay fixture release actionSha ${fixture.release.actionSha} must equal release.json actionSha ${options.release.actionSha}`,
+    );
+  }
+  const bundle = parseReplayBundle(fixture.bundle);
+  if (bundle.actionSha !== fixture.demoSha) {
+    throw new CaseLabReplayError(
+      `replay bundle actionSha ${bundle.actionSha} must equal the fixture demoSha ${fixture.demoSha}`,
     );
   }
   if (!bundle.completeness.complete) {
@@ -126,18 +171,19 @@ export async function replayedResult(
     caseId: item.id,
     mode: 'replay',
     release: options.release,
-    identity: { controllerSha: bundle.actionSha },
+    identity: { controllerSha: options.release.actionSha, demoSha: fixture.demoSha },
     outcome: caseFile.outcome,
     expectedOutcome: item.expectedOutcome,
     matchesExpectation: caseFile.outcome === item.expectedOutcome,
     links: {
-      workflowRun: `https://github.com/${bundle.repo}/actions/runs/${bundle.runId}`,
+      workflowRun: fixture.capturedRunUrl,
+      ciRun: `https://github.com/${bundle.repo}/actions/runs/${bundle.runId}`,
     },
     caseFile,
     replayedFrom: {
-      bundleSha256: options.bundleSha256,
-      capturedRunUrl: `https://github.com/${bundle.repo}/actions/runs/${bundle.runId}`,
-      actionSha: bundle.actionSha,
+      bundleSha256: options.fixtureSha256,
+      capturedRunUrl: fixture.capturedRunUrl,
+      actionSha: options.release.actionSha,
     },
     cost: { ...cost, status: 'observed' },
     createdAt: options.now().toISOString(),
@@ -182,7 +228,7 @@ async function resultFor(item: CaseLabCase, resolved: ResolvedCatalogOptions): P
   if (existsSync(bundlePath)) {
     const { value, sha256 } = readReplayBundleFile(bundlePath);
     return replayedResult(item, value, {
-      release: resolved.release, now: resolved.now, bundleSha256: sha256,
+      release: resolved.release, now: resolved.now, fixtureSha256: sha256,
       ...(resolved.replay === undefined ? {} : { replay: resolved.replay }),
     });
   }

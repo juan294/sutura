@@ -10,7 +10,7 @@ import { canonicalJson } from './canonical.js';
 import { DEMO_REPOSITORY } from './dispatcher.js';
 import { CaseLabPinError, DEMO_WORKFLOW_FILE, verifyPin, withControllerSha } from './pin.js';
 import { publishResult } from './publish.js';
-import { deterministicResult, loadRelease, replayCatalog, replayedResult, PACKAGE_DIR, REPLAY_DIR, type ReplayCatalogOptions } from './replay.js';
+import { deterministicResult, loadRelease, replayCatalog, replayedResult, PACKAGE_DIR, REPLAY_DIR, REPLAY_FIXTURE_SCHEMA_VERSION, type ReplayCatalogOptions } from './replay.js';
 import { CaseLabResultError, validateCaseLabResult } from './result.js';
 import { createStaticServer, listen } from './serve.js';
 import { buildSite } from './site.js';
@@ -222,20 +222,34 @@ export async function runCaseLabCli(argv: readonly string[], dependencies: CliDe
           await gh(['run', 'download', runId, '-R', DEMO_REPOSITORY, '--name', `sutura-replay-${ciRunId}.json`, '--dir', directory]);
           const files = readdirSync(directory, { recursive: true, encoding: 'utf8' }).filter((name) => name.endsWith('.json'));
           if (files.length !== 1) throw new CaseLabCliError(`replay download must contain one JSON file, found ${files.length}`);
-          const bytes = readFileSync(join(directory, files[0]!));
-          const bundle = JSON.parse(bytes.toString('utf8')) as unknown;
+          const bundle = JSON.parse(readFileSync(join(directory, files[0]!)).toString('utf8')) as unknown;
           const item = caseLabCase(result.caseId);
+          if (result.identity.demoSha === undefined || result.links.workflowRun === undefined) {
+            throw new CaseLabCliError(`${requestId} lacks the demo commit or the workflow run link needed to bind a fixture`);
+          }
+          const release = dependencies.catalog?.release ?? loadRelease();
+          if (result.release.actionSha !== release.actionSha) {
+            throw new CaseLabCliError(`${requestId} ran release ${result.release.actionSha}, not the current release.json ${release.actionSha}`);
+          }
+          const fixture = {
+            schemaVersion: REPLAY_FIXTURE_SCHEMA_VERSION,
+            release,
+            demoSha: result.identity.demoSha,
+            capturedRunUrl: result.links.workflowRun,
+            bundle,
+          };
+          const text = `${JSON.stringify(fixture)}\n`;
           const { createHash } = await import('node:crypto');
-          const sha256 = createHash('sha256').update(bytes).digest('hex');
-          const replayed = await replayedResult(item, bundle, {
-            release: dependencies.catalog?.release ?? loadRelease(),
+          const sha256 = createHash('sha256').update(text).digest('hex');
+          const replayed = await replayedResult(item, fixture, {
+            release,
             now: dependencies.catalog?.now ?? (() => new Date()),
-            bundleSha256: sha256,
+            fixtureSha256: sha256,
             ...(dependencies.catalog?.replay === undefined ? {} : { replay: dependencies.catalog.replay }),
           });
           if (replayed.outcome !== result.outcome) throw new CaseLabCliError(`replayed outcome ${replayed.outcome} differs from the live outcome ${result.outcome}`);
           mkdirSync(outDir, { recursive: true, mode: 0o755 });
-          writeNew(join(outDir, `${item.id}.json`), `${JSON.stringify(bundle)}\n`);
+          writeNew(join(outDir, `${item.id}.json`), text);
           io.write(`${item.id}\t${sha256}\t${join(outDir, `${item.id}.json`)}\n`);
         } finally {
           rmSync(directory, { recursive: true, force: true });

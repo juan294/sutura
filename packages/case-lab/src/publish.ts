@@ -58,8 +58,9 @@ export function publishResult(inputs: PublishInputs): CaseLabResult {
   const outcome = normalizeOutcome(inputs.outcome);
   if (inputs.replayBundlePath !== undefined && inputs.replayBundlePath !== '') {
     const bundle = parseReplayBundle(readReplayBundleFile(inputs.replayBundlePath).value);
-    if (bundle.actionSha !== release.actionSha) {
-      throw new CaseLabRequestError(`replay bundle actionSha ${bundle.actionSha} must equal release.json actionSha ${release.actionSha}`);
+    // The Action records the commit of the repository that ran the workflow, which is the demo commit.
+    if (bundle.actionSha !== inputs.demoSha) {
+      throw new CaseLabRequestError(`replay bundle actionSha ${bundle.actionSha} must equal the demo commit ${inputs.demoSha}`);
     }
     if (bundle.outcome !== undefined && bundle.outcome !== outcome) {
       throw new CaseLabRequestError(`replay bundle outcome ${bundle.outcome} must equal the Action outcome ${outcome}`);
