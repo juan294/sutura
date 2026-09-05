@@ -2,7 +2,7 @@
 
 Parent: [Sutura agent-readable evaluation plan](../2026-09-05-sutura-agent-evaluation.md).
 
-Status: Not started. Dependency: Phase 1 accepted locally. Sequential phase.
+Status: Complete locally; final integration pending. Dependency: Phase 1 accepted locally. Sequential phase.
 
 ## Owned files
 
@@ -110,3 +110,12 @@ agent will load these files. The contract verifies that the links exist and work
 Review for factual drift and duplication, resolve findings, run the checks and
 parent integration procedure, then record the actual integrated commit here.
 Stop after this phase. Phase 3 measures the combined documentation route.
+
+## Execution record — 2026-09-05
+
+- [x] Navigation red: 10/11 passed, missing README pointer failed as intended. Green: 11/11, including omitted, misspelled, fenced, inline-code, image-only and broken-index mutations.
+- [x] Independent compliance and dedicated reuse/quality review approved; README setup, security and contributor rules preserved.
+- [x] `pnpm run test:readme` (3/3), `pnpm run typecheck`, `pnpm run lint`, `pnpm run test` (1,744 passed, 9 live tests skipped), `pnpm run build`, and `git diff --check` passed sequentially on Node 22.23.2.
+- [ ] Committed-only archive check (recorded after commit).
+
+The full task stays isolated until final integration, per owner policy and implementation notes. Logs: local `docs/agents/phase-2-*`.

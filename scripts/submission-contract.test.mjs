@@ -364,3 +364,83 @@ test('evaluator cards reject duplicate IDs and missing Limit fields with the car
   fixture.set(evaluatorDocs[1], architecture.replace(/^\| Limit \|.*\n/mu, ''));
   await assert.rejects(checkEvaluatorDocs(read), /architecture\.md#controller-authority: missing or duplicate Limit field/u);
 });
+
+function navigationLinks(document) {
+  const visible = [];
+  let fence;
+  for (const line of document.split('\n')) {
+    const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/u.exec(line);
+    if (fence) {
+      if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length && !marker[2].trim()) fence = undefined;
+    } else if (marker) {
+      fence = marker[1];
+    } else {
+      visible.push(line);
+    }
+  }
+  return markdownLinks(visible.join('\n').replace(/`[^`\n]*`|!\[[^\]]*\]\([^)]+\)/gu, ''));
+}
+
+function section(document, heading) {
+  return new RegExp(`^## ${escapeRegex(heading)}\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, 'mu').exec(document)?.[1] ?? '';
+}
+
+async function checkEvaluatorNavigation(read = readRepositoryFile) {
+  for (const entry of ['README.md', 'AGENTS.md', 'CLAUDE.md', 'docs/README.md']) {
+    let document;
+    try {
+      document = await read(entry);
+    } catch (error) {
+      assert.fail(`${entry}: missing evaluation entry point (${error.message})`);
+    }
+    const links = navigationLinks(document);
+    const guideLinks = links.filter(({ target }) => new URL(target, new URL(entry, root)).href === new URL(evaluatorDocs[0], root).href);
+    assert.ok(guideLinks.length > 0, `${entry}: ordinary relative evaluator guide link required`);
+    for (const { target } of guideLinks) await checkLocalTarget(entry, target, read);
+
+    let authoredLinks = [];
+    if (entry === 'README.md') authoredLinks = navigationLinks(section(document, 'Technical review'));
+    if (entry === 'AGENTS.md') authoredLinks = navigationLinks(section(document, 'Repository evaluation'));
+    if (entry === 'CLAUDE.md' || entry === 'docs/README.md') authoredLinks = links;
+    for (const { target } of authoredLinks) await checkLocalTarget(entry, target, read);
+    if (entry === 'docs/README.md') {
+      const evaluators = document.indexOf('## For evaluators\n');
+      const history = document.indexOf('## Process history\n');
+      assert.ok(evaluators >= 0 && history > evaluators, `${entry}: evaluators must precede process history`);
+    }
+  }
+}
+
+test('repository entry points expose working evaluator navigation before process history', async () => {
+  await checkEvaluatorNavigation();
+});
+
+test('evaluator navigation rejects omitted, misspelled, and example-only guide links', async () => {
+  const guideLink = '[Evaluation guide](docs/evaluation/README.md)';
+  const fixture = new Map([
+    ['README.md', `## Technical review\n${guideLink}\n`],
+    ['AGENTS.md', `## Repository evaluation\n${guideLink}\n`],
+    ['CLAUDE.md', guideLink],
+    ['docs/README.md', '## For evaluators\n[Evaluation guide](evaluation/README.md)\n## Process history\n'],
+    [evaluatorDocs[0], 'Evaluation guide.\n'],
+  ]);
+  const read = async (path) => {
+    assert.ok(fixture.has(path), `missing fixture ${path}`);
+    return fixture.get(path);
+  };
+  await checkEvaluatorNavigation(read);
+  for (const invalid of [
+    'docs/evaluation/README.md',
+    '[Evaluation guide](docs/evaluation/READM.md)',
+    `\`\`\`markdown\n${guideLink}\n\`\`\``,
+    `~~~markdown\n${guideLink}\n~~~`,
+    `\`${guideLink}\``,
+    `!${guideLink}`,
+  ]) {
+    fixture.set('README.md', `## Technical review\n${invalid}\n`);
+    await assert.rejects(checkEvaluatorNavigation(read), /README\.md: ordinary relative evaluator guide link required/u);
+  }
+  fixture.set('README.md', guideLink);
+  fixture.set('docs/README.md', '## For evaluators\n[Evaluation guide](evaluation/README.md)\n[Missing report](missing.md)\n## Process history\n');
+  await assert.rejects(checkEvaluatorNavigation(read), /docs\/README\.md: broken target missing\.md: missing file/u);
+});

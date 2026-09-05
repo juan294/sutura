@@ -148,6 +148,6 @@ commands here. Stop after this phase; Phase 2 introduces the discovery pointers.
 - [x] Initial contract red: 8/9 passed, missing guide failed as intended. Final focused check: 9/9 passed, including malformed/encoded link mutations.
 - [x] Independent plan/source review and dedicated reuse/quality review approved after lifecycle and link-diagnostic corrections.
 - [x] `pnpm run typecheck`, `pnpm run lint`, `pnpm run test`, `pnpm run build`, and `git diff --check` passed sequentially on Node 22.23.2. Full tests: 1,744 passed, 9 live credential-gated tests skipped.
-- [ ] Committed-only archive check and local integration (recorded immediately after commit).
+- [x] Committed-only archive: 9/9 passed without dependency install. Commit `e2441e480179cd1890385240f7d45bc1c964ab8b` fast-forwarded into local `develop`.
 
 Execution logs and reviews are preserved locally under `docs/agents/phase-1-*`.

@@ -2,7 +2,7 @@
 
 Date: 2026-09-05
 
-Status: Phase 1 complete and verified locally; Phases 2–3 pending.
+Status: Phases 1–2 complete and verified locally; Phase 3 pending.
 
 Owner: Juan
 
@@ -138,8 +138,8 @@ Semantic correctness remains a source-review responsibility.
 
 | Phase | Deliverable | Files | Depends on | Status |
 | --- | --- | --- | --- | --- |
-| [1](2026-09-05-sutura-agent-evaluation-phases/phase-1.md) | Current guide, architecture cards, and content/link contract | New `docs/evaluation/README.md`, `docs/evaluation/architecture.md`; extend `scripts/submission-contract.test.mjs` | This plan | Complete; local commit recorded after integration |
-| [2](2026-09-05-sutura-agent-evaluation-phases/phase-2.md) | Discoverable entry links, concise docs index, consistency corrections | `README.md`, `AGENTS.md`, `CLAUDE.md`, new `docs/README.md`; extend same test file | Phase 1 | Not started |
+| [1](2026-09-05-sutura-agent-evaluation-phases/phase-1.md) | Current guide, architecture cards, and content/link contract | New `docs/evaluation/README.md`, `docs/evaluation/architecture.md`; extend `scripts/submission-contract.test.mjs` | This plan | Complete; `e2441e4` locally integrated |
+| [2](2026-09-05-sutura-agent-evaluation-phases/phase-2.md) | Discoverable entry links, concise docs index, consistency corrections | `README.md`, `AGENTS.md`, `CLAUDE.md`, new `docs/README.md`; extend same test file | Phase 1 | Complete locally; integration deferred until all phases finish |
 | [3](2026-09-05-sutura-agent-evaluation-phases/phase-3.md) | Bounded fresh-reader comparison and final source review | Ignored `docs/agents/agent-evaluation-comparison.md` and trial outputs; scoped corrections to Phases 1–2 files if supported | Phase 2 | Not started |
 
 All phases are sequential. None is batch eligible: Phase 2 requires Phase 1's
@@ -237,9 +237,16 @@ subsequent `/implement` phase.
 ## Implementation progress
 
 - [x] Phase 1: guide, six architecture cards, source review, quality review, and documentation mutations.
-- [ ] Phase 2: ordinary discovery links and docs index.
+- [x] Phase 2: ordinary discovery links and docs index.
 - [ ] Phase 3: eight bounded readers and final review.
 
 Phase 1 source reviewed at `ce3502d86a32883eac8c7a2adcc9df2c07e12e85`.
 Node 22.23.2 local focused checks (9), typecheck, lint, full tests
 (1,744 passed, 9 credential-gated tests skipped), build, and whitespace checks passed.
+
+Phase 1 documentation commit: `e2441e480179cd1890385240f7d45bc1c964ab8b`, fast-forwarded into local `develop`.
+The dependency-free committed archive passed all nine focused checks.
+
+Phase 2 focused checks (11), README setup contract (3), typecheck, lint, full tests
+(1,744 passed, 9 live tests skipped), build, and whitespace checks passed sequentially
+on Node 22.23.2. Remaining integration is deferred until all phases are complete.

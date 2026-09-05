@@ -45,7 +45,7 @@ these four criteria.
 | Nebius ConTree | Share prepared dependencies while isolating execution branches | [`prepareSandbox`](../../packages/core/src/heal.ts#L483): runtime implementation; image availability and dependency support constrain execution. |
 | Tavily | Ground dependency failures in release sources | [`ground`](../../packages/core/src/diagnose/tavily.ts#L500): runtime Search/Extract with validation; [versioned ablations](architecture.md#grounded-dependencies) retain failed arms. |
 | Nebius Data Lab | Prepare sanitized evaluation data for later experiments | [Dataset and request](../datalab/README.md?plain=1#L3): preparation only; upload and batch inference remain pending. |
-| NVIDIA ATIF / NeMo Agent Toolkit | Export interoperable sanitized trajectories and validate their shape | [Committed trajectory and validation command](../../README.md?plain=1#L342): offline validation; NeMo is not the live repair orchestrator. |
+| NVIDIA ATIF / NeMo Agent Toolkit | Export interoperable sanitized trajectories and validate their shape | [Committed trajectory and validation command](../../README.md?plain=1#L350): offline validation; NeMo is not the live repair orchestrator. |
 
 ## Follow a Case Lab result
 
@@ -89,8 +89,8 @@ upload, batch inference, and final submission evidence remain separate work.
 Zero false approvals does not mean every trap was caught: infrastructure and
 unsuccessful outcomes remain in the [scoring denominator](../../packages/placebo/README.md?plain=1#L202).
 
-Follow [contributor setup](../../README.md?plain=1#L227) and the existing
-[offline replay commands](../../README.md?plain=1#L254). The documentation check
+Follow [contributor setup](../../README.md?plain=1#L235) and the existing
+[offline replay commands](../../README.md?plain=1#L262). The documentation check
 is `node --test scripts/submission-contract.test.mjs`; run project typecheck,
 lint, tests, and build sequentially. These local checks do not measure live
 repair quality. Final acceptance follows the [release evidence contract](../demo/sutura-v0.2.1-release-evidence-requirements.json#L1).
