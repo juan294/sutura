@@ -55,12 +55,13 @@ function head(html: string): string {
 }
 
 const REPLAY_PAGES = CASE_LAB_CASES.map((item) => `replay/${item.id}/index.html`);
-const HTML_PAGES = ['index.html', 'result/index.html', 'privacy/index.html', ...REPLAY_PAGES];
+const HTML_PAGES = ['index.html', 'result/index.html', 'about/index.html', 'privacy/index.html', ...REPLAY_PAGES];
 const INDEXED_PAGES = HTML_PAGES.filter((file) => file !== 'result/index.html');
 
 describe('buildSite', () => {
   it('writes the complete file set with validated result documents', () => {
     expect(walk(outDir).sort()).toEqual([
+      'about/index.html',
       'case-lab.css',
       'case-lab.js',
       'catalog.json',
@@ -89,10 +90,12 @@ describe('buildSite', () => {
       expect(page).toContain(`<title>`);
       expect(page).toContain(`· ${MODE_LABELS[result.mode]} ·`);
       expect(page).toContain('data-page="replay"');
+      expect(page).toContain('<nav class="page-links" aria-label="More"><a href="/">Back to cases</a> · <a href="/about/">How Sutura verifies</a></nav>\n  </main>');
     }
     const index = readFileSync(join(outDir, 'index.html'), 'utf8');
     expect(index).toContain('data-page="index" data-site-root="/" data-api-base=""');
     expect(index.match(/class="case-card"/gu)).toHaveLength(5);
+    expect(index).toContain('<a href="/about/">How Sutura verifies a repair</a>');
     const catalogJson = JSON.parse(readFileSync(join(outDir, 'catalog.json'), 'utf8')) as { cases: unknown[]; release: unknown; labels: unknown };
     expect(catalogJson.cases).toHaveLength(5);
     expect(catalogJson.release).toEqual(RELEASE);
@@ -125,7 +128,7 @@ describe('buildSite', () => {
     for (const file of HTML_PAGES) {
       const html = readFileSync(join(outDir, file), 'utf8');
       for (const marker of IDENTIFIER_MARKERS) expect(html, `${file} ${marker}`).not.toContain(marker);
-      expect(html, file).toContain('· <a href="/privacy/">Privacy</a></footer>');
+      expect(html, file).toContain('· <a href="/about/">About</a> · <a href="/privacy/">Privacy</a> · <a href="https://github.com/juan294/sutura" rel="noopener">Repository</a></footer>');
     }
     for (const file of REPLAY_PAGES) expect(readFileSync(join(outDir, file), 'utf8'), file).not.toContain('case-lab.js');
     const privacy = readFileSync(join(outDir, 'privacy/index.html'), 'utf8');
@@ -196,6 +199,62 @@ describe('buildSite', () => {
     });
   });
 
+  it('writes an indexed about page from content/about.md with the runtime roles table and a link to every case', () => {
+    const about = readFileSync(join(outDir, 'about/index.html'), 'utf8');
+    expect(about).toContain('<title>What Sutura verifies · Sutura Case Lab</title>');
+    expect(about).toContain('<meta name="description" content="How Sutura reproduces a CI failure, searches repairs in sandboxes, audits the patch, and refuses green-wash fixes.">');
+    expect(about).toContain(`<link rel="canonical" href="${SITE_URL}/about/">`);
+    expect(about).toContain('<meta property="og:type" content="article">');
+    expect(about).not.toContain('name="robots"');
+    expect(about).toContain('<main id="main" class="case-lab" data-page="about" data-site-root="/">');
+    expect(about).toContain('<h1>What Sutura verifies</h1>');
+    expect(about).toContain('<h2>How it works</h2>');
+    expect(about).toContain('<ol>\n  <li>A GitHub Actions run fails.</li>');
+    expect(about).toContain('<h2>Runtime roles</h2>');
+    expect(about).toContain('<div class="scroll"><table><thead><tr><th scope="col">Service</th><th scope="col">Runtime role</th></tr></thead><tbody>\n<tr><td>NVIDIA Nemotron on Nebius Token Factory</td>');
+    expect(about).toContain('<td>Tavily</td>');
+    expect(about).toContain('<code>flaky-no-patch</code>');
+    expect(about).toContain('<strong>inference cost</strong>');
+    for (const item of CASE_LAB_CASES) expect(about, item.id).toContain(`<a href="/replay/${item.id}/">See a`);
+    expect(about).toContain('<a href="https://github.com/juan294/sutura" rel="noopener">');
+    expect(about).toContain('<a href="https://github.com/juan294/sutura/blob/main/README.md" rel="noopener">README</a>');
+    expect(about).not.toContain('case-lab.js');
+    expect(about).toContain('<nav class="page-links" aria-label="More"><a href="/">Back to cases</a></nav>');
+    const blocks = jsonLdBlocks(about);
+    expect(blocks).toHaveLength(1);
+    const newest = catalog.map((result) => result.createdAt).sort().at(-1);
+    expect(blocks[0]).toEqual({
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'What Sutura verifies',
+      description: 'How Sutura reproduces a CI failure, searches repairs in sandboxes, audits the patch, and refuses green-wash fixes.',
+      dateModified: newest,
+      isPartOf: { '@type': 'WebSite', name: 'Sutura Case Lab', url: `${SITE_URL}/` },
+      url: `${SITE_URL}/about/`,
+    });
+    const full = readFileSync(join(fullDir, 'about/index.html'), 'utf8');
+    expect(full).toContain('data-consent="ga4,clarity"');
+    expect(full).toContain('<script src="/case-lab.js" defer></script>');
+  });
+
+  it('reads the about source from aboutPath and refuses a missing file or a disallowed link before writing', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'case-lab-about-'));
+    const aboutPath = join(dir, 'about.md');
+    writeFileSync(aboutPath, '## Custom\n\nSee [the trap](/replay/greenwash-trap/) and [the repo](https://github.com/juan294/sutura).\n');
+    const customDir = join(dir, 'site');
+    await buildSite({ outDir: customDir, catalog, release: RELEASE, clientBundle: '', siteRoot: '/lab/', aboutPath });
+    const about = readFileSync(join(customDir, 'about/index.html'), 'utf8');
+    expect(about).toContain('<h2>Custom</h2>\n<p>See <a href="/lab/replay/greenwash-trap/">the trap</a> and <a href="https://github.com/juan294/sutura" rel="noopener">the repo</a>.</p>');
+    const missing = join(dir, 'absent.md');
+    await expect(buildSite({ outDir: join(dir, 'never'), catalog, release: RELEASE, clientBundle: '', aboutPath: missing }))
+      .rejects.toThrow(`about page source is missing: ${missing}`);
+    expect(existsSync(join(dir, 'never', 'index.html'))).toBe(false);
+    writeFileSync(aboutPath, 'See [elsewhere](https://example.com/).\n');
+    await expect(buildSite({ outDir: join(dir, 'never'), catalog, release: RELEASE, clientBundle: '', aboutPath }))
+      .rejects.toThrow('markdown link is not allowed: "https://example.com/"');
+    expect(existsSync(join(dir, 'never', 'index.html'))).toBe(false);
+  });
+
   it('carries canonical, social, icon, and structured data on every page and noindex only on the live page', () => {
     for (const file of HTML_PAGES) {
       const page = readFileSync(join(outDir, file), 'utf8');
@@ -235,15 +294,16 @@ describe('buildSite', () => {
     expect(jsonLdBlocks(readFileSync(join(outDir, 'result/index.html'), 'utf8'))).toEqual([]);
   });
 
-  it('writes robots.txt and a seven-entry sitemap that reference each other', () => {
+  it('writes robots.txt and an eight-entry sitemap that reference each other', () => {
     const robots = readFileSync(join(outDir, 'robots.txt'), 'utf8');
     expect(robots.split('\n')).toEqual(['User-agent: *', 'Allow: /', 'Disallow: /result/', 'Disallow: /api/', `Sitemap: ${SITE_URL}/sitemap.xml`, '']);
     const sitemap = readFileSync(join(outDir, 'sitemap.xml'), 'utf8');
     const locs = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/gu)].map((match) => match[1]);
-    expect(locs).toEqual([`${SITE_URL}/`, ...CASE_LAB_CASES.map((item) => `${SITE_URL}/replay/${item.id}/`), `${SITE_URL}/privacy/`]);
-    expect(sitemap.match(/<lastmod>/gu)).toHaveLength(7);
+    expect(locs).toEqual([`${SITE_URL}/`, ...CASE_LAB_CASES.map((item) => `${SITE_URL}/replay/${item.id}/`), `${SITE_URL}/about/`, `${SITE_URL}/privacy/`]);
+    expect(sitemap.match(/<lastmod>/gu)).toHaveLength(8);
     const newest = catalog.map((result) => result.createdAt).sort().at(-1);
     expect(sitemap).toContain(`<loc>${SITE_URL}/</loc><lastmod>${newest}</lastmod>`);
+    expect(sitemap).toContain(`<loc>${SITE_URL}/about/</loc><lastmod>${newest}</lastmod>`);
     expect(sitemap).toContain(`<loc>${SITE_URL}/privacy/</loc><lastmod>${newest}</lastmod>`);
   });
 
@@ -301,12 +361,16 @@ describe('static server and acceptance', () => {
       'result-noindex',
       'social-card',
       'privacy-page',
+      'about-page',
       'verification-tags',
       'links-public',
     ]);
     const byName = Object.fromEntries(record.checks.map((check) => [check.name, check.detail]));
     expect(byName['verification-tags']).toBe('skipped: site.json defines no verification token');
     expect(byName['privacy-page']).toBe(`${baseUrl}privacy/ answers 200 and names its subject`);
+    expect(byName['about-page']).toBe(`${baseUrl}about/ answers 200, names its subject, and links to all five cases`);
+    expect(byName['sitemap-xml']).toBe(`${baseUrl}sitemap.xml lists 8 pages`);
+    expect(byName.canonical).toBe('8 pages carry a canonical that matches their address');
     const traversal = await fetch(`${baseUrl}..%2F..%2Fpackage.json`);
     expect([403, 404]).toContain(traversal.status);
     const missing = await fetch(`${baseUrl}nope.html`);
@@ -332,6 +396,7 @@ describe('static server and acceptance', () => {
       expect(failed['robots-txt']).toContain(`http://127.0.0.1:${port}/robots.txt: Sitemap line missing`);
       expect(failed['sitemap-xml']).toContain(`http://127.0.0.1:${port}/sitemap.xml: status 404`);
       expect(failed.canonical).toContain(`http://127.0.0.1:${port}/replay/flaky-failure/: canonical missing`);
+      expect(failed.canonical).toContain(`http://127.0.0.1:${port}/about/: canonical missing`);
       expect(failed.canonical).toContain(`http://127.0.0.1:${port}/privacy/: canonical missing`);
     } finally {
       plainServer.close();
@@ -348,7 +413,7 @@ describe('static server and acceptance', () => {
       });
       expect(matching.passed).toBe(true);
       expect(matching.checks.find((check) => check.name === 'verification-tags')?.detail).toBe(`${base} carries google-site-verification and msvalidate.01`);
-      expect(matching.checks.find((check) => check.name === 'sitemap-xml')?.detail).toBe(`${base}sitemap.xml lists 7 pages`);
+      expect(matching.checks.find((check) => check.name === 'sitemap-xml')?.detail).toBe(`${base}sitemap.xml lists 8 pages`);
       const mismatched = await acceptance(base, {
         now: NOW, checkLinks: false, verification: { google: 'another-token-for-tests', bing: FULL_IDENTIFIERS.bingSiteVerification! },
       });

@@ -7,15 +7,22 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { caseLabCase } from './cases.js';
 import { replayCatalog } from './replay.js';
 import {
+  ABOUT_DESCRIPTION,
+  ABOUT_TITLE,
   MODE_LABELS,
   OUTCOME_LABELS,
   consentTools,
   cookielessIdentifiers,
   escapeHtml,
   isRenderableResult,
+  markdownHref,
+  renderAboutBody,
   renderCounterfactual,
   renderIndexBody,
+  renderInlineMarkdown,
+  renderMarkdown,
   renderPage,
+  renderPageLinks,
   renderPendingBody,
   renderPrivacyBody,
   renderResultBody,
@@ -262,10 +269,10 @@ describe('pages', () => {
     expect(page).not.toContain('data-consent');
     expect(page).toContain('<meta property="og:image" content="/social-card.png">');
     expect(page).toContain('<link rel="icon" href="/favicon.svg" type="image/svg+xml">');
-    expect(page).toContain('<footer class="site-footer">Sutura verifies the fix. It never merges a generated repair. · <a href="/privacy/">Privacy</a></footer>');
+    expect(page).toContain('<footer class="site-footer">Sutura verifies the fix. It never merges a generated repair. · <a href="/about/">About</a> · <a href="/privacy/">Privacy</a> · <a href="https://github.com/juan294/sutura" rel="noopener">Repository</a></footer>');
     const scripted = renderPage({ title: 't', description: 'd', siteRoot: '/x/', path: '/x/', body: '', script: 'case-lab.js', identifiers: {} });
     expect(scripted).toContain('<script src="/x/case-lab.js" defer></script>');
-    expect(scripted).toContain('<a href="/x/privacy/">Privacy</a>');
+    expect(scripted).toContain('<a href="/x/about/">About</a> · <a href="/x/privacy/">Privacy</a>');
     expect(scripted.match(/<script/gu)).toHaveLength(1);
   });
 
@@ -361,6 +368,12 @@ describe('pages', () => {
     expect(html).toContain('disabled>Start live run');
     for (const label of Object.values(MODE_LABELS)) expect(html).toContain(`<dt>${label}</dt>`);
     expect(html).toContain('Release v0.2.0');
+    expect(html).toContain('<p><a href="/about/">How Sutura verifies a repair</a>: ');
+    expect(html.indexOf('href="/about/"')).toBeLessThan(html.indexOf('</header>'));
+  });
+
+  it('renders the replay page links against the site root', () => {
+    expect(renderPageLinks('/x/')).toBe('<nav class="page-links" aria-label="More"><a href="/x/">Back to cases</a> · <a href="/x/about/">How Sutura verifies</a></nav>');
   });
 
   it('renders a pending live page', () => {
@@ -368,6 +381,81 @@ describe('pages', () => {
     expect(html).toContain('Waiting');
     expect(html).toContain('Watch the workflow run on GitHub');
     expect(html).toContain(`>${MODE_LABELS.live}</span>`);
+  });
+});
+
+describe('markdown subset', () => {
+  it('renders headings at the three supported levels', () => {
+    expect(renderMarkdown('# One\n\n## Two\n\n### Three', '/')).toBe('<h1>One</h1>\n<h2>Two</h2>\n<h3>Three</h3>');
+  });
+
+  it('joins consecutive lines into one paragraph and splits paragraphs on blank lines', () => {
+    expect(renderMarkdown('first line\nsecond line\n\nnext', '/')).toBe('<p>first line second line</p>\n<p>next</p>');
+  });
+
+  it('renders ordered and unordered lists, one item per line', () => {
+    expect(renderMarkdown('1. a\n2. b\n10. c', '/')).toBe('<ol>\n  <li>a</li>\n  <li>b</li>\n  <li>c</li>\n</ol>');
+    expect(renderMarkdown('- a\n- b', '/')).toBe('<ul>\n  <li>a</li>\n  <li>b</li>\n</ul>');
+    expect(renderMarkdown('- a\n1. b', '/')).toBe('<ul>\n  <li>a</li>\n</ul>\n<ol>\n  <li>b</li>\n</ol>');
+  });
+
+  it('renders a table with a header row inside a scroll container', () => {
+    const html = renderMarkdown('| Service | Role |\n| --- | :-: |\n| Nano | classifies `x` |\n| Ultra | audits |', '/');
+    expect(html).toBe('<div class="scroll"><table><thead><tr><th scope="col">Service</th><th scope="col">Role</th></tr></thead><tbody>\n'
+      + '<tr><td>Nano</td><td>classifies <code>x</code></td></tr>\n<tr><td>Ultra</td><td>audits</td></tr>\n</tbody></table></div>');
+    expect(() => renderMarkdown('| a | b |\n| 1 | 2 |', '/')).toThrow('markdown line 1 starts a table without a header separator row: | a | b |');
+    expect(() => renderMarkdown('| a | b |\n| --- | --- |\n| only one |', '/')).toThrow('markdown line 3 has 1 cells, expected 2: | only one |');
+  });
+
+  it('renders code spans, bold, and links, and escapes everything', () => {
+    expect(renderInlineMarkdown('run `a <b> & c` now', '/')).toBe('run <code>a &lt;b&gt; &amp; c</code> now');
+    expect(renderInlineMarkdown('**bold & <strong>** text', '/')).toBe('<strong>bold &amp; &lt;strong&gt;</strong> text');
+    expect(renderInlineMarkdown('[Repo "x"](https://github.com/juan294/sutura)', '/')).toBe('<a href="https://github.com/juan294/sutura" rel="noopener">Repo &quot;x&quot;</a>');
+    expect(renderInlineMarkdown('[raw](https://raw.githubusercontent.com/juan294/sutura/main/README.md)', '/'))
+      .toBe('<a href="https://raw.githubusercontent.com/juan294/sutura/main/README.md" rel="noopener">raw</a>');
+    expect(renderInlineMarkdown('[case](/replay/greenwash-trap/)', '/x/')).toBe('<a href="/x/replay/greenwash-trap/">case</a>');
+    expect(renderInlineMarkdown('`[not a link](/x/)` and **`code`**', '/')).toBe('<code>[not a link](/x/)</code> and <strong>`code`</strong>');
+    expect(renderInlineMarkdown('<script>alert(1)</script>', '/')).toBe('&lt;script&gt;alert(1)&lt;/script&gt;');
+  });
+
+  it('refuses every link outside the two GitHub hosts and site-relative paths, naming the URL', () => {
+    for (const url of [
+      'https://example.com/',
+      'http://github.com/juan294/sutura',
+      'https://github.com.evil.test/',
+      'https://github.com',
+      'https://github.com/juan294/sutura#readme',
+      'https://user:pw@github.com/juan294/sutura',
+      'javascript:alert(1)',
+      '//evil.test/',
+      'replay/x/',
+      '/replay/"x/',
+    ]) {
+      expect(() => markdownHref(url, '/'), url).toThrow(`markdown link is not allowed: ${JSON.stringify(url)}`);
+      expect(() => renderMarkdown(`see [here](${url})`, '/'), url).toThrow('markdown link is not allowed');
+    }
+    expect(() => markdownHref('', '/')).toThrow('markdown link is not allowed: ""');
+    expect(markdownHref('/replay/flaky-failure/', '/')).toBe('/replay/flaky-failure/');
+  });
+
+  it('refuses constructs outside the subset with the line number', () => {
+    expect(() => renderMarkdown('ok\n\n```js\nx\n```', '/')).toThrow('markdown line 3 uses a construct outside the subset: ```js');
+    expect(() => renderMarkdown('> quote', '/')).toThrow('markdown line 1 uses a construct outside the subset: > quote');
+    expect(() => renderMarkdown('<div>raw</div>', '/')).toThrow('markdown line 1');
+    expect(() => renderMarkdown('#### four', '/')).toThrow('markdown line 1');
+    expect(() => renderMarkdown('![alt](/x.png)', '/')).toThrow('markdown line 1');
+    expect(() => renderMarkdown('* star item', '/')).toThrow('markdown line 1');
+    expect(() => renderMarkdown('    indented code', '/')).toThrow('markdown line 1');
+    expect(() => renderMarkdown('a\n---', '/')).toThrow('markdown line 2');
+  });
+
+  it('renders the about body with the docket header, the prose, and a link back to the cases', () => {
+    const html = renderAboutBody('## How it works\n\n1. step\n\n[refusal](/replay/greenwash-trap/)', '/x/');
+    expect(html).toContain(`<h1>${ABOUT_TITLE}</h1>`);
+    expect(html).toContain(`<p>${ABOUT_DESCRIPTION}</p>`);
+    expect(html).toContain('<article class="prose">\n<h2>How it works</h2>\n<ol>\n  <li>step</li>\n</ol>\n<p><a href="/x/replay/greenwash-trap/">refusal</a></p>\n</article>');
+    expect(html).toContain('<nav class="page-links" aria-label="More"><a href="/x/">Back to cases</a></nav>');
+    expect(html).not.toContain('/x/about/');
   });
 });
 

@@ -134,7 +134,7 @@ case-lab publish-result ...                  used inside the demo workflow
 `build-site` reads the site origin from `site.json` (`--site-url` still wins,
 and `vercel.json` passes it explicitly). The origin gives every page a
 canonical link and an absolute Open Graph URL, and writes `sitemap.xml` with
-the index, the five replay pages, and `/privacy/`. Without an origin the build
+the index, the five replay pages, `/about/`, and `/privacy/`. Without an origin the build
 still succeeds but carries no canonical and no sitemap, and
 `case-lab acceptance` fails its `robots-txt`, `sitemap-xml`, and `canonical`
 checks against it.
@@ -143,9 +143,33 @@ Every build writes `robots.txt` (`/result/` and `/api/` disallowed), copies
 `assets/favicon.svg` and `assets/social-card.png` (1200x630) to the site
 root, and adds Open Graph, Twitter card, theme-color, and JSON-LD tags to each
 page: `WebSite` plus `SoftwareApplication` on the index, `WebPage` on each
-replay. Only `/result/` is `noindex`, by meta tag and by the `X-Robots-Tag`
-header that `vercel.json` sets on `/result*` and `/api/*`; `case-lab serve`
-sends the same headers so the acceptance record means the same thing locally.
+replay and on `/about/`. Only `/result/` is `noindex`, by meta tag and by the
+`X-Robots-Tag` header that `vercel.json` sets on `/result*` and `/api/*`;
+`case-lab serve` sends the same headers so the acceptance record means the
+same thing locally.
+
+## About page
+
+`/about/` ("What Sutura verifies") is the one page of plain explanatory text.
+Its body is `content/about.md`, derived from the root README's "How it works"
+and "Runtime roles" sections; `build-site` reads it at build time
+(`BuildSiteOptions.aboutPath` overrides the file for tests) and refuses to
+write anything when the file is missing. `renderMarkdown` in `src/render.ts`
+implements the whole Markdown subset the file may use, with no dependency:
+`#`, `##`, `###` headings, paragraphs, ordered and unordered lists (one line
+per item), tables with a header separator row, code spans, `**bold**`, and
+`[text](url)` links. Every value is HTML-escaped. A link may point only to
+`https://github.com/…`, `https://raw.githubusercontent.com/…`, or a
+site-relative path starting with `/` (resolved against `--site-root`);
+any other URL, and any construct outside the subset, fails the build with
+the offending URL or line.
+
+Internal links: the index paragraph under the header, the "Back to cases" and
+"How Sutura verifies" links at the end of every replay page, and the
+About · Privacy · Repository footer on every page. `case-lab acceptance`
+requires `/about/` to answer 200, name its subject, and link to all five
+replay pages (`about-page`), and counts it among the indexed pages for the
+`sitemap-xml` and `canonical` checks.
 
 ## Analytics and search verification
 
@@ -175,8 +199,8 @@ Consent: when a page carries GA4 or Clarity, `<main>` gets
 `localStorage`; Decline stores `denied` and leaves the defaults. A stored
 `granted` is re-applied on every later page load; `denied` or no choice loads
 nothing beyond the consent-off defaults. No cookie is written before Accept.
-`/privacy/` (indexed, in the sitemap, linked from every footer) names only
-the tools the build carries and how to withdraw.
+`/privacy/` (indexed, in the sitemap, linked from every footer beside About
+and Repository) names only the tools the build carries and how to withdraw.
 
 `case-lab acceptance` reads the same `site.json` and fails `verification-tags`
 unless the served index carries both configured tokens; without tokens the

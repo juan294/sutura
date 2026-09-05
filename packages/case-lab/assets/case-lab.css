@@ -387,6 +387,30 @@ th {
   display: none;
 }
 
+.prose h2 {
+  margin: 2rem 0 0.75rem;
+}
+
+.prose ol,
+.prose ul {
+  padding-left: 1.5rem;
+}
+
+.prose li {
+  margin-bottom: 0.35rem;
+}
+
+.page-links {
+  margin: 2rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.page-links a {
+  font-weight: 600;
+}
+
 .live-status {
   font-weight: 600;
 }

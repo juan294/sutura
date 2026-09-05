@@ -128,20 +128,29 @@ export type { CliDependencies, CliIo } from './cli.js';
 export { ACCEPTANCE_SCHEMA_VERSION, acceptance } from './acceptance.js';
 export type { AcceptanceCheck, AcceptanceOptions, AcceptanceRecord } from './acceptance.js';
 export {
+  ABOUT_DESCRIPTION,
+  ABOUT_PATH,
+  ABOUT_TITLE,
   CONSENT_STORAGE_KEY,
   PRIVACY_DESCRIPTION,
   PRIVACY_PATH,
   PRIVACY_TITLE,
+  REPOSITORY_URL,
   consentTools,
   cookielessIdentifiers,
   escapeHtml,
   isRenderableResult,
+  markdownHref,
   modeBadge,
   outcomeBadge,
+  renderAboutBody,
   renderCaseCard,
   renderCounterfactual,
   renderIndexBody,
+  renderInlineMarkdown,
+  renderMarkdown,
   renderPage,
+  renderPageLinks,
   renderPendingBody,
   renderPrivacyBody,
   renderResultBody,
@@ -149,7 +158,7 @@ export {
 } from './render.js';
 export type { CatalogCard, ConsentTool, IndexOptions, PageShellOptions, PendingState, SiteIdentifiers } from './render.js';
 export { createStaticServer, listen } from './serve.js';
-export { buildSite, bundleClient } from './site.js';
+export { ABOUT_SOURCE_FILE, buildSite, bundleClient } from './site.js';
 export type { BuildSiteOptions } from './site.js';
 export { SITE_CONFIG_FILE, SITE_CONFIG_SCHEMA_VERSION, loadSiteConfig } from './site-config.js';
 export type { SiteConfig } from './site-config.js';
