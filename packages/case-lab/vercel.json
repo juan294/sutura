@@ -1,19 +1,23 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm --filter @sutura/core build && pnpm --filter @sutura/case-lab build && node bin/case-lab.js build-site",
+  "buildCommand": "pnpm --filter @sutura/core build && pnpm --filter @sutura/case-lab build && node bin/case-lab.js build-site --api-base ''",
   "outputDirectory": "dist/site",
   "framework": null,
   "functions": {
     "api/*.js": {
-      "maxDuration": 15,
-      "includeFiles": "release.json"
+      "maxDuration": 15
     }
   },
   "headers": [
     {
       "source": "/api/(.*)",
-      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
     }
   ]
 }

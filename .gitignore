@@ -53,3 +53,6 @@ docs/research/2026-08-27-sutura-brief.md
 # Core plan: competitive playbook, local until after 2026-10-30 submission
 docs/plans/2026-08-27-sutura-core.md
 docs/plans/2026-08-27-sutura-core-phases/
+
+# Vercel CLI link and pulled environment (Case Lab deploy)
+.vercel/
