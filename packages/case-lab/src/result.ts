@@ -144,15 +144,29 @@ function array(value: unknown, label: string, maximum: number): unknown[] {
   return value;
 }
 
-/** Only public GitHub URLs: the shared https rule plus an allowed host and no query. */
+/** GitHub addresses a pull request comment by fragment; nothing else may carry one. */
+const GITHUB_COMMENT_FRAGMENT = /^#issuecomment-\d{1,20}$/u;
+
+/**
+ * Only public GitHub URLs: the shared https rule plus an allowed host, no
+ * query, and no fragment other than a pull request comment anchor.
+ */
 export function publicGitHubUrl(value: unknown, label: string): string {
   const raw = text(value, label, 512);
-  const host = isPublicHttpsUrl(raw) ? new URL(raw).hostname : undefined;
-  const url = host === undefined ? undefined : new URL(raw);
-  if (url === undefined || (host !== 'github.com' && host !== 'raw.githubusercontent.com') || url.search !== '') {
+  const fragmentStart = raw.indexOf('#');
+  const fragment = fragmentStart === -1 ? '' : raw.slice(fragmentStart);
+  const withoutFragment = fragmentStart === -1 ? raw : raw.slice(0, fragmentStart);
+  const host = isPublicHttpsUrl(withoutFragment) ? new URL(withoutFragment).hostname : undefined;
+  const url = host === undefined ? undefined : new URL(withoutFragment);
+  if (
+    url === undefined ||
+    (host !== 'github.com' && host !== 'raw.githubusercontent.com') ||
+    url.search !== '' ||
+    (fragment !== '' && !(host === 'github.com' && GITHUB_COMMENT_FRAGMENT.test(fragment)))
+  ) {
     throw new CaseLabResultError(`${label} must be a public https://github.com URL`);
   }
-  return url.toString();
+  return `${url.toString()}${fragment}`;
 }
 
 function outcome(value: unknown, label: string): CaseLabOutcome {
