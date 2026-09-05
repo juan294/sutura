@@ -43,7 +43,7 @@ Every page the Case Lab serves carries the tags a crawler needs, the site publis
 
 ## Success criteria
 
-- [ ] Every generated HTML page has a canonical, Open Graph, and Twitter tags; only `/result/` is `noindex`.
-- [ ] `robots.txt` and `sitemap.xml` exist and reference each other correctly.
+- [x] Every generated HTML page has a canonical, Open Graph, and Twitter tags; only `/result/` is `noindex`.
+- [x] `robots.txt` and `sitemap.xml` exist and reference each other correctly.
 - [ ] JSON-LD parses and validates in the Rich Results Test.
-- [ ] `case-lab accept` fails on a build that omits any of the above.
+- [x] `case-lab accept` fails on a build that omits any of the above.

@@ -38,6 +38,6 @@ Every place Sutura is already listed links to the Case Lab and carries descripti
 
 ## Success criteria
 
-- [ ] Repository homepage and topics updated; social preview uploaded.
-- [ ] README, npm metadata, Devpost draft, and demo README link the Case Lab.
-- [ ] Marketplace preflight still passes.
+- [x] Repository homepage and topics updated; social preview uploaded.
+- [x] README, npm metadata, Devpost draft, and demo README link the Case Lab.
+- [x] Marketplace preflight still passes.

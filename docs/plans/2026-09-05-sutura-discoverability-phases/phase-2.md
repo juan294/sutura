@@ -37,6 +37,6 @@ The build reads public identifiers from one committed file and renders Google Se
 
 ## Success criteria
 
-- [ ] An empty `site.json` produces a site byte-identical to Phase 1 output apart from the privacy page and footer link.
-- [ ] A full config renders every tag; the tests prove Consent Mode defaults load first.
-- [ ] No cookie is set before consent.
+- [x] An empty `site.json` produces a site byte-identical to Phase 1 output apart from the privacy page and footer link.
+- [x] A full config renders every tag; the tests prove Consent Mode defaults load first.
+- [x] No cookie is set before consent.
