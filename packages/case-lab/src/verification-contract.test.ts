@@ -85,3 +85,22 @@ describe('typed cost and source presentation', () => {
     expect(() => createCaseLabResult({ ...value, cost: { inferenceUsd: 0, sandboxUsd: 0, status: 'observed' } })).toThrow(/cost/u);
   });
 });
+
+describe('Case Lab recovery binding', () => {
+  function recovery() {
+    const diagnosis = historical().diagnosis;
+    return { schemaVersion: 'sutura-diagnosis-recovery-v1', status: 'not-run', reason: 'no-supported-recovery-signal', initialClass: diagnosis.class, observedCommand: diagnosis.failingCmd, executedCommand: diagnosis.failingCmd, authorizations: [], hypotheses: [{ id: 'hypothesis-1', class: diagnosis.class, intent: 'repair-source', path: null, sourceSha256: null, signal: 'initial-diagnosis', probeId: null, status: 'not-run', reason: 'initial-diagnosis-retained', probeOutputSha256: null }] };
+  }
+  it('retains bounded recovery and rejects diagnosis or command substitution', () => {
+    const file = { ...historical(), recovery: recovery() };
+    expect(validateCaseLabCaseFile(file, 'fixed')).toHaveProperty('recovery', file.recovery);
+    expect(() => validateCaseLabCaseFile({ ...file, recovery: { ...file.recovery, observedCommand: 'another command' } }, 'fixed')).toThrow(/recovery/i);
+    expect(() => validateCaseLabCaseFile({ ...file, recovery: { approved: true } }, 'fixed')).toThrow(/recovery/i);
+  });
+});
+
+it('preserves bounded counterfactual exhaustion and rejects incoherent status metadata', () => {
+  const counterfactual = { status: 'insufficient', reason: 'budget-exhausted', alternatives: [], cost: { inferenceUsd: 0, sandboxOperations: 0, elapsedTimeSec: 0 } };
+  expect(validateCaseLabCaseFile({ ...historical(), counterfactual }, 'fixed')).toHaveProperty('counterfactual', counterfactual);
+  expect(() => validateCaseLabCaseFile({ ...historical(), counterfactual: { ...counterfactual, status: 'complete' } }, 'fixed')).toThrow(/counterfactual/i);
+});

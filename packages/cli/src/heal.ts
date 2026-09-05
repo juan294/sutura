@@ -186,6 +186,7 @@ export async function readLocalSourceContext(
   _diagnosis: Diagnosis,
   policy?: RepositoryPolicy,
   runtimeId: RuntimeId = 'node',
+  competingClasses: readonly Diagnosis['class'][] = [],
 ): Promise<RepairSourceContext> {
   const root = await realpath(caseDir);
   return readRepairSourceContext(
@@ -207,6 +208,8 @@ export async function readLocalSourceContext(
     _diagnosis,
     policy,
     runtimeId,
+    'first',
+    competingClasses,
   );
 }
 
@@ -406,12 +409,13 @@ export async function healWithRuntime(
     raceK: runtime.raceK,
     ...(runtime.repairBudgets === undefined ? {} : { repairBudgets: runtime.repairBudgets }),
     ...(runtime.search === undefined ? {} : { search: runtime.search }),
-    readSourceContext: (log, diagnosis, selectedRuntime) => readLocalSourceContext(
+    readSourceContext: (log, diagnosis, selectedRuntime, competingClasses) => readLocalSourceContext(
       caseDir,
       log,
       diagnosis,
       loadedPolicy.policy,
       selectedRuntime?.id ?? 'node',
+      competingClasses,
     ),
     policy: loadedPolicy.policy,
     policyEvidence: {

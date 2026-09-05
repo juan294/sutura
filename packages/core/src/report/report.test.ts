@@ -1,3 +1,4 @@
+import { grantedRecovery } from '../verification/recovery.test-helper.js';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 
@@ -545,4 +546,16 @@ describe('counterfactual reporting', () => {
     expect(html).not.toContain('<script>alert("cf")</script>');
     expect(html).toContain('&lt;script&gt;alert(&quot;cf&quot;)&lt;/script&gt;');
   });
+});
+
+it('renders retained initial diagnosis, alternatives and controller grants with escaped reasons', async () => {
+  const file = await loadFixture('fixed'); file.recovery = grantedRecovery();
+  file.recovery.hypotheses[1]!.reason = '<script>not executable</script>';
+  for (const report of [renderComment(file), renderCaseFile(file)]) {
+    expect(report).toContain('Diagnosis recovery');
+    expect(report).toContain('typecheck'); expect(report).toContain('test-bug');
+    expect(report).toContain('await-operation'); expect(report).toContain('test/async.test.ts');
+    expect(report).toContain('&lt;script&gt;'); expect(report).not.toContain('<script>not executable');
+    expect(report).toContain('live repair quality');
+  }
 });

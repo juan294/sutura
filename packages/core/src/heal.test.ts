@@ -13,6 +13,7 @@ import { InMemoryExecutor, type InMemoryRunResult } from './executor/memory.js';
 import {
   buildSandboxRepositoryInitializationCommandForTest,
   healCase,
+  repairFailure,
   repairVerificationCommand,
   StageLedger,
   tracedLlm,
@@ -160,6 +161,84 @@ function context(
 }
 
 describe('healCase', () => {
+  it('prioritizes an authorized recovery when only one repair fits and probes the original command', async () => {
+    const before = 'import { test, expect } from "vitest";\ntest("name", async () => { expect(load()).toBe("ADA"); });\n';
+    const after = before.replace('expect(load())', 'expect(await load())');
+    const patch = ['diff --git a/case.test.js b/case.test.js', '--- a/case.test.js', '+++ b/case.test.js',
+      '@@ -1,2 +1,2 @@', ...before.trimEnd().split('\n').map((line) => `-${line}`),
+      ...after.trimEnd().split('\n').map((line) => `+${line}`), '',
+    ].join('\n');
+    const value = context('repair-off-by-one', [], 'test-assertion', { repairBudgets: { modelTurns: 5 } });
+    const executor = new InMemoryExecutor((command) => {
+      if (command.includes('SUTURA_SOURCE_SHA256')) return { ...result(1), stdout: `SUTURA_SOURCE_SHA256=${createHash('sha256').update(before).digest('hex')}\nExpected Promise to be ADA` };
+      if (command.includes('SUTURA_TRIAGE_ATTEMPT')) return result(1);
+      if (command.includes('git apply')) return { ...result(0), stdout: patch };
+      return result(0);
+    });
+    value.ctx.readSourceContext = async () => ({ sources: [
+      { path: 'case.test.js', startLine: 1, content: before, truncated: false },
+      { path: 'page-count.js', startLine: 1, content: 'export const value = 1;\n', truncated: false },
+    ] });
+    value.ctx.llm = { ...value.ctx.llm, chat: async (tier, messages) => ({ usd: 0, text: JSON.stringify(
+      tier === 'nano' ? diagnosis('test-assertion') : tier === 'ultra' ? { approved: true, reasoning: 'unchanged assertions' } :
+      messages[0]?.content?.includes('Investigate') ? { hypotheses: [{ signalIndex: 0, sourceIndex: 0, intent: 'await-operation', probeId: 'async-completion' }] } : { replacement: after },
+    ) }) };
+    const caseFile = await repairFailure({ ...value.ctx, executor, failingImage: 'baseline',
+      failedLog: 'Run pnpm -r test\npackages/core test: AssertionError: expected Promise to be ADA',
+    });
+    expect(caseFile.outcome).toBe('fixed');
+    expect(caseFile.diagnosis.failingCmd).toBe('pnpm -r test');
+    expect(caseFile.search).toHaveLength(1);
+    const probe = executor.calls.find((call) => call.kind === 'run' && call.cmd.includes('SUTURA_SOURCE_SHA256'));
+    expect(probe?.kind === 'run' ? probe.cmd : '').toContain(sandboxExecutableCommand('pnpm -r test'));
+    expect(caseFile.selectedCandidate?.diffHash).toBe(createHash('sha256').update(patch).digest('hex'));
+  });
+
+  it('abstains explicitly when repair reservation pricing is unavailable', async () => {
+    const value = context('repair-off-by-one', [1, 1, 1, 1], 'test-assertion');
+    const quote = value.ctx.llm.modelQuote!;
+    value.ctx.llm = { ...value.ctx.llm, modelQuote: (tier, messages, options) => {
+      if (tier === 'super') throw new Error('quote unavailable');
+      return tier === 'nano' ? quote('nano', messages, options) : quote('ultra', messages, options);
+    } };
+    const caseFile = await repairFailure({ ...value.ctx, failingImage: 'baseline', failedLog: 'Run pnpm test\nAssertionError: expected 5' });
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(value.chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
+    expect(caseFile.stages.some(({ note }) => note?.startsWith('provider abstention'))).toBe(true);
+  });
+
+  it('charges initial diagnosis against the budget reserved for repair and audit', async () => {
+    const value = context('repair-off-by-one', [1, 1, 1, 1, 0, 0], 'test-assertion', {
+      repairBudgets: { modelTurns: 3 },
+    });
+    const caseFile = await repairFailure({ ...value.ctx, failingImage: 'baseline', failedLog: 'Run pnpm test\nAssertionError: expected 5' });
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(value.chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
+  });
+
+  it('charges classification schema repair before making a second model call', async () => {
+    const value = context('repair-off-by-one', [1, 1, 1, 1], 'test-assertion', { repairBudgets: { modelTurns: 1 } });
+    value.chat.mockResolvedValueOnce({ text: 'not JSON' });
+    const caseFile = await repairFailure({ ...value.ctx, failingImage: 'baseline', failedLog: 'Run pnpm test\nAssertionError: expected 5' });
+    expect(caseFile.outcome).toBe('gave-up');
+    expect(value.chat).toHaveBeenCalledTimes(1);
+    expect(value.executor.calls).toEqual([]);
+    expect(caseFile.stages.some(({ note }) => note?.includes('modelTurns'))).toBe(true);
+  });
+
+  it('starts elapsed accounting before classification rather than after source discovery', async () => {
+    const value = context('repair-off-by-one', [1, 1, 1, 1, 0, 0], 'test-assertion', { repairBudgets: { elapsedTimeSec: 1 } });
+    let now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    value.chat.mockImplementation(async () => { now += 2_000; return { text: JSON.stringify(diagnosis('test-assertion')) }; });
+    try {
+      const caseFile = await repairFailure({ ...value.ctx, failingImage: 'baseline', failedLog: 'Run pnpm test\nAssertionError: expected 5' });
+      expect(caseFile.outcome).toBe('gave-up');
+      expect(value.executor.calls).toEqual([]);
+      expect(caseFile.stages.some(({ note }) => note?.includes('elapsedTimeSec'))).toBe(true);
+    } finally { clock.mockRestore(); }
+  });
+
   it('bounds public stage evidence entries', () => {
     const stageLedger = new StageLedger();
     for (let attempt = 1; attempt <= MAX_STAGE_EVIDENCE_ENTRIES; attempt += 1) {
@@ -233,7 +312,7 @@ describe('healCase', () => {
     )).toBe(true);
   });
 
-  it('replays live run 3: shared budgets admit multiple complete initial repair branches', async () => {
+  it('replays live run 3 with audit capacity held before initial repair branches', async () => {
     const value = context('repair-off-by-one', [1, 1, 1, 1, 1, 0, 0, 0, 0, 0], 'test-assertion', {
       search: { initialBranches: 4, beamWidth: 2, maximumDepth: 4, maximumTotalBranches: 12 },
     });
@@ -242,7 +321,7 @@ describe('healCase', () => {
 
     expect(caseFile.outcome).toBe('fixed');
     expect(caseFile.search?.map(({ nodeId }) => nodeId)).toEqual([
-      'search-001', 'search-002', 'search-003', 'search-004',
+      'search-001', 'search-002', 'search-003',
     ]);
   });
 
@@ -251,7 +330,7 @@ describe('healCase', () => {
       'repair-off-by-one',
       [1, 1, 1, 1, 1, 0, 0],
       'test-assertion',
-      { search: { initialBranches: 4, beamWidth: 1, maximumDepth: 1, maximumTotalBranches: 5 } },
+      { search: { initialBranches: 2, beamWidth: 1, maximumDepth: 1, maximumTotalBranches: 5 } },
     );
     let scenarioIndex = 0;
     const selectedTargets: string[] = [];
@@ -263,7 +342,7 @@ describe('healCase', () => {
           ? result(0)
           : result(scenarioIndex++ < 5 || selectedTargets.at(-1) !== 'page-count.js' ? 1 : 0),
     { operationLimit: 1 });
-    const distractors = Array.from({ length: 4 }, (_unused, index) => ({
+    const distractors = Array.from({ length: 2 }, (_unused, index) => ({
       path: `src/distractor-${index + 1}.ts`, startLine: 1,
       content: `export const distractor${index + 1} = ${index + 1};\n`, truncated: false,
     }));
@@ -310,12 +389,11 @@ describe('healCase', () => {
 
     expect(caseFile.outcome).toBe('fixed');
     expect(selectedTargets).toEqual([
-      'src/distractor-1.ts', 'src/distractor-2.ts', 'src/distractor-3.ts',
-      'src/distractor-4.ts', 'page-count.js',
+      'src/distractor-1.ts', 'src/distractor-2.ts', 'page-count.js',
     ]);
   });
 
-  it('fails closed before Super when the branch budget cannot cover every source target', async () => {
+  it('admits only the targets that fit the remaining shared budget', async () => {
     const value = context(
       'repair-off-by-one',
       [1, 1, 1, 1, 1, 1],
@@ -332,11 +410,11 @@ describe('healCase', () => {
     const caseFile = await healCase(value.ctx);
 
     expect(caseFile.outcome).toBe('gave-up');
-    expect(value.chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
+    expect(value.chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super', 'super', 'super']);
     expect(caseFile.stages).toEqual(expect.arrayContaining([
       expect.objectContaining({
         stage: 'search',
-        note: 'Only 4 of 5 controller-owned repair targets fit the configured budgets',
+        note: 'Admitted 3 of 5 controller-owned repair targets within the shared budget; validated recovery targets take priority',
       }),
     ]));
   });
@@ -426,7 +504,7 @@ describe('healCase', () => {
       expect.objectContaining({ nodeId: 'search-001', depth: 1, changedFiles: 1 }),
       expect.objectContaining({ nodeId: 'search-002', depth: 1, changedFiles: 1 }),
       expect.objectContaining({ nodeId: 'search-003', depth: 1, terminalReason: 'completion-limit' }),
-      expect.objectContaining({ nodeId: 'search-004', depth: 1, terminalReason: 'failed' }),
+      expect.objectContaining({ nodeId: 'search-004', depth: 2, parentNodeId: 'search-001', terminalReason: 'failed' }),
     ]);
     const depthTwoNodes = caseFile.search?.filter(({ depth }) => depth === 2) ?? [];
     expect(depthTwoNodes.length).toBeGreaterThan(0);
@@ -439,7 +517,7 @@ describe('healCase', () => {
     const depthOneDecisions = caseFile.trace?.flatMap((entry) => {
       if (
         entry.type !== 'search-decision' ||
-        !['search-001', 'search-002', 'search-003', 'search-004'].includes(entry.childNodeId ?? '') ||
+        !['search-001', 'search-002', 'search-003'].includes(entry.childNodeId ?? '') ||
         (!entry.summary.startsWith('Retain') && !entry.summary.startsWith('Branch terminal'))
       ) return [];
       return [[entry.childNodeId, entry.summary]];
@@ -448,7 +526,6 @@ describe('healCase', () => {
       ['search-001', 'Retain branch in frontier'],
       ['search-002', 'Retain branch in frontier'],
       ['search-003', 'Branch terminal: completion-limit'],
-      ['search-004', 'Branch terminal: failed'],
     ]);
     expect(caseFile.stages.some(({ note }) => note?.includes('Cancellation requested'))).toBe(false);
   });
@@ -469,9 +546,7 @@ describe('healCase', () => {
     expect(value.executor.calls.filter((call) =>
       call.kind === 'run' && call.cmd.includes('git apply'),
     )).toHaveLength(0);
-    expect(caseFile.stages).toContainEqual(expect.objectContaining({
-      note: 'No complete controller-owned repair attempt fits the configured budgets',
-    }));
+    expect(caseFile.recovery).toMatchObject({ status: 'insufficient', reason: 'budget-exhausted' });
   });
 
   it('admits no expansion when ConTree has no operation capacity', async () => {
@@ -965,12 +1040,15 @@ describe('healCase', () => {
       'flaky-timing',
     );
 
+    const readSourceContext = vi.fn(ctx.readSourceContext);
+    ctx.readSourceContext = readSourceContext;
     await expect(healCase(ctx)).resolves.toMatchObject({
       outcome: 'flaky-no-patch',
       runtime: 'node',
       triage: { status: 'intermittent', reproduced: 2, of: 5 },
     });
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
+    expect(readSourceContext).not.toHaveBeenCalled();
   });
 
   it('administers and refuses the real Placebo trap candidate without a repair-model call', async () => {
@@ -982,7 +1060,11 @@ describe('healCase', () => {
       { candidateDiff },
     );
 
+    const readSourceContext = vi.fn(ctx.readSourceContext);
+    ctx.readSourceContext = readSourceContext;
     const caseFile = await healCase(ctx);
+    expect(caseFile.recovery).toBeUndefined();
+    expect(readSourceContext).not.toHaveBeenCalled();
 
     expect(caseFile.outcome).toBe('refused');
     expect(caseFile.runtime).toBe('node');

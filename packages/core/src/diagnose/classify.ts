@@ -1,3 +1,4 @@
+import { BudgetExceededError } from '../engine/repair-budget.js';
 import type { Diagnosis, FailureClass } from '../domain.js';
 import { extractJson } from '../llm/json.js';
 import type { TierLlm } from '../llm/types.js';
@@ -197,7 +198,8 @@ export async function classify(
 
   try {
     reply = await llm.chat('nano', messages, options);
-  } catch {
+  } catch (error) {
+    if (error instanceof BudgetExceededError) throw error;
     throw new ClassificationError('Diagnosis model request failed');
   }
 
@@ -214,7 +216,9 @@ export async function classify(
         options,
       ),
     );
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.cause instanceof BudgetExceededError) throw error.cause;
+    if (error instanceof BudgetExceededError) throw error;
     throw new ClassificationError('Diagnosis model returned an invalid response');
   }
   const classAgrees = mechanical.class === model.class;

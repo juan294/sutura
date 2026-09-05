@@ -410,3 +410,7 @@ export type { PolicyProvenance, ProbeInvocation, FrozenProbe } from './challenge
 
 export { summarizeVerificationCosts } from './verification/cost-summary.js';
 export type { VerificationCostSummary } from './verification/cost-summary.js';
+
+export { parseDiagnosisRecoveryEvidence } from './verification/recovery.js';
+export type { DiagnosisRecoveryBinding } from './verification/recovery.js';
+export type { DiagnosisRecoveryEvidence, RecoveryHypothesis } from './diagnose/hypotheses.js';

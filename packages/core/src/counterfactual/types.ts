@@ -55,6 +55,8 @@ export interface CounterfactualResult {
 }
 
 export interface CounterfactualEvidence {
+  status?: 'complete' | 'insufficient';
+  reason?: 'budget-exhausted';
   acceptedCandidateId?: string;
   alternatives: CounterfactualResult[];
   cost: CounterfactualCost;

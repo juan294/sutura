@@ -370,6 +370,7 @@ export async function readRepairSourceContext(
   policy?: RepositoryPolicy,
   runtimeId: RuntimeId = 'node',
   sourceReferenceOrder: SourceReferenceOrder = 'first',
+  competingClasses: readonly FailureClass[] = [],
 ): Promise<RepairSourceContext> {
   const extractedReferences = extractSourceReferences(log, sourceReferenceOrder).filter((reference) =>
     policy === undefined || policyAllowsSourceRead(reference.path, policy),
@@ -383,7 +384,8 @@ export async function readRepairSourceContext(
   const fallbackPaths = runtimeId === 'python'
     ? PYTHON_FALLBACK_SOURCE_PATHS
     : NODE_FALLBACK_SOURCE_PATHS;
-  for (const path of diagnosis ? fallbackPaths[diagnosis.class] ?? [] : []) {
+  const fallbackClasses = [...new Set([...(diagnosis ? [diagnosis.class] : []), ...competingClasses])];
+  for (const path of fallbackClasses.flatMap((failureClass) => fallbackPaths[failureClass] ?? [])) {
     if (
       references.length < REPAIR_SOURCE_LIMITS.maxFiles &&
       (policy === undefined || policyAllowsSourceRead(path, policy)) &&
@@ -689,7 +691,8 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     raceK: ctx.raceK,
     ...(ctx.repairBudgets === undefined ? {} : { repairBudgets: ctx.repairBudgets }),
     ...(ctx.search === undefined ? {} : { search: ctx.search }),
-    readSourceContext: (_log, diagnosis) => readRepairSourceContext(
+    sourceIdentity: { kind: 'git', sourceSha: run.headSha, policyBaseSha: run.baseSha, snapshotSha256: null },
+    readSourceContext: (_log, diagnosis, _runtime, competingClasses) => readRepairSourceContext(
       ctx.repository,
       checkoutDir,
       failedLog,
@@ -697,6 +700,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       loadedPolicy.policy,
       runtime.id,
       ctx.sourceReferenceOrder,
+      competingClasses,
     ),
     policy: loadedPolicy.policy,
     policyEvidence,

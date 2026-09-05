@@ -1,3 +1,4 @@
+import { parseDiagnosisRecoveryEvidence } from './recovery.js';
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '../replay/canonical-json.js';
 import { VERIFICATION_COST_VERSION, VERIFICATION_EVIDENCE_VERSION, VERIFICATION_GATES, VERIFICATION_REASONS, VERIFICATION_STATUSES } from './types.js';
@@ -112,7 +113,8 @@ function validateCosts(value: unknown, modelCount: number): void {
 
 /** Strict allowlists exclude raw oracle tables and arbitrary metadata from public evidence. */
 export function parseVerificationEvidence(value: unknown): VerificationEvidence {
-  const item = object(value, 'evidence', ['schemaVersion', 'mode', 'outcome', 'assurance', 'identity', 'startedAt', 'finishedAt', 'commands', 'models', 'challenges', 'gates', 'costs']);
+  const hasRecovery = value !== null && typeof value === 'object' && Object.hasOwn(value, 'recovery');
+  const item = object(value, 'evidence', ['schemaVersion', 'mode', 'outcome', 'assurance', 'identity', 'startedAt', 'finishedAt', 'commands', 'models', 'challenges', 'gates', 'costs', ...(hasRecovery ? ['recovery'] : [])]);
   choice(item.schemaVersion, 'schemaVersion', [VERIFICATION_EVIDENCE_VERSION]);
   choice(item.mode, 'mode', ['live', 'replay', 'recorded', 'local']);
   choice(item.outcome, 'outcome', ['repaired', 'verified-supplied-patch', 'refused', 'flaky-no-patch', 'insufficient', 'infra-stop']);
@@ -127,6 +129,10 @@ export function parseVerificationEvidence(value: unknown): VerificationEvidence 
   date(item.startedAt, 'startedAt'); date(item.finishedAt, 'finishedAt');
   if (String(item.finishedAt) < String(item.startedAt)) throw new VerificationEvidenceError('finishedAt', 'precedes start');
   array(item.commands, 'commands', 64).forEach((command) => text(command, 'commands'));
+  if (hasRecovery) {
+    const recovery = parseDiagnosisRecoveryEvidence(item.recovery, identity as unknown as VerificationIdentity);
+    if (!(item.commands as string[]).includes(recovery.executedCommand)) throw new VerificationEvidenceError('recovery', 'executed recovery command is not recorded');
+  }
   const models = array(item.models, 'models');
   models.forEach((entry) => {
     const model = object(entry, 'models', ['purpose', 'tier', 'requestedModel', 'returnedModel']);

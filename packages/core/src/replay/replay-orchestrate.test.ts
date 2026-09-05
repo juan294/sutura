@@ -67,27 +67,7 @@ async function captureReplayMismatch(bundle: ReplayBundle): Promise<ReplayMismat
     if (error instanceof ReplayMismatchError) return error;
     throw error;
   }
-  throw new Error('Current replay unexpectedly accepted a v4 provider contract');
-}
-
-function expectedCurrentReportDrift(recorded: string): string {
-  return recorded
-    .replace(
-      '| search-002 | baseline | 1 | 1 | PASS | failed |',
-      '| search-002 | baseline | 1 | 1 | PASS | repeated-state |',
-    )
-    .replace([
-      '| search-005 | search-001 | 2 | 1 | PASS | failed |',
-      '| search-006 | search-002 | 2 | 1 | PASS | repeated-state |',
-      '| search-007 | search-005 | 3 | 1 | PASS | repeated-state |',
-      '',
-    ].join('\n'), '')
-    .replace('**Inference cost: $0.0131**', '**Inference cost: $0.0010**')
-    .replace('· operations 19 ·', '· operations 16 ·')
-    .replace(
-      / · Procedure \(super\): <code>nvidia\/nemotron-3-super-120b-a12b<\/code>/gu,
-      '',
-    );
+  throw new Error('Current replay unexpectedly accepted a historical runtime contract');
 }
 
 describe('replayBundle', () => {
@@ -121,6 +101,7 @@ describe('replayBundle', () => {
   it('preserves live run 33321172589 while current replay fails closed on contract drift', async () => {
     const bundle = await capturedDogfoodReplayBundle();
     const report = recordedReport(bundle);
+    const originalBundle = JSON.stringify(bundle);
 
     expect(bundle).toMatchObject({
       runId: '33321106629',
@@ -134,15 +115,17 @@ describe('replayBundle', () => {
       .toEqual(Array.from({ length: 7 }, () => ({ enable_thinking: false })));
 
     const error = await captureReplayMismatch(bundle);
-    expect(error.sequence).toBe(17);
-    expect(error.path).toBe('$[1]');
-    expect(error.expected).toBe(report);
-    expect(error.actual).toBe(expectedCurrentReportDrift(report));
+    expect(error.sequence).toBe(7);
+    expect(error.path).toBe('$.method');
+    expect(error.expected).toBe('runMany');
+    expect(error.actual).toBe('run');
+    expect(JSON.stringify(bundle)).toBe(originalBundle);
   });
 
   it('preserves live run 33323856253 while current replay fails closed on contract drift', async () => {
     const bundle = await capturedDogfoodReplayBundle('33323765566');
     const report = recordedReport(bundle);
+    const originalBundle = JSON.stringify(bundle);
 
     expect(bundle).toMatchObject({
       runId: '33323765566',
@@ -157,11 +140,13 @@ describe('replayBundle', () => {
     expect(capturedSuperRequestBodies(bundle).map(({ chat_template_kwargs }) => chat_template_kwargs))
       .toEqual(Array.from({ length: 6 }, () => ({ enable_thinking: false })));
 
-    // The executor stream replays in full; the recorded report body has since drifted.
+    // Historical triage batches predate individually budgeted operations and identities.
     const error = await captureReplayMismatch(bundle);
-    expect(error.sequence).toBe(18);
-    expect(error.path).toBe('$[1]');
-    expect(String(error.expected)).toContain('Sutura — Surgical Report');
+    expect(error.sequence).toBe(7);
+    expect(error.path).toBe('$.method');
+    expect(error.expected).toBe('runMany');
+    expect(error.actual).toBe('run');
+    expect(JSON.stringify(bundle)).toBe(originalBundle);
   });
 
   it.each(['github', 'repository', 'executor', 'nebius', 'tavily'] as const)(
@@ -227,4 +212,15 @@ describe('replayBundle', () => {
       caseFile: { outcome: bundle.outcome },
     });
   });
+});
+
+it('retains exact recorded operation identities and deadlines', async () => {
+  for (const key of ['operationId', 'timeoutSec'] as const) {
+    const bundle = await createCompleteReplayBundleForTest();
+    const operation = bundle.executor.find(({ method, args }) => method === 'run' && typeof args[2] === 'object' && args[2] !== null && 'operationId' in args[2])!;
+    expect(operation).toBeDefined();
+    const options = operation.args[2] as Record<string, unknown>;
+    options[key] = key === 'operationId' ? 'substituted-operation' : 999;
+    await expect(replayBundle(bundle)).rejects.toBeInstanceOf(ReplayMismatchError);
+  }
 });

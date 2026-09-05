@@ -1,3 +1,4 @@
+import { BudgetExceededError } from '../engine/repair-budget.js';
 import { Buffer } from 'node:buffer';
 
 import type { Diagnosis } from '../domain.js';
@@ -130,7 +131,9 @@ export async function adjudicate(
         options,
       ),
     );
-  } catch {
+  } catch (error) {
+    if (error instanceof BudgetExceededError) throw error;
+    if (error instanceof Error && error.cause instanceof BudgetExceededError) throw error.cause;
     return {
       approved: false,
       reasoning:

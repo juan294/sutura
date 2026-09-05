@@ -1,4 +1,4 @@
-import { findSelectedCandidate, summarizeVerificationCosts, parseVerificationEvidence, type CaseFile, type VerificationCostSummary } from '@sutura/core';
+import { parseDiagnosisRecoveryEvidence, findSelectedCandidate, summarizeVerificationCosts, parseVerificationEvidence, type CaseFile, type VerificationCostSummary } from '@sutura/core';
 
 import { canonicalJson, contentHash } from './canonical.js';
 import {
@@ -251,6 +251,10 @@ function costEntries(value: unknown): CaseLabCaseFile['cost']['entries'] {
  */
 function validateCounterfactual(value: unknown): void {
   const evidence = record(value, 'caseFile.counterfactual');
+  if ((evidence.status !== undefined && evidence.status !== 'complete' && evidence.status !== 'insufficient') ||
+      (evidence.status === 'insufficient' ? evidence.reason !== 'budget-exhausted' : evidence.reason !== undefined)) {
+    throw new CaseLabResultError('caseFile.counterfactual has inconsistent completion status');
+  }
   if (evidence.acceptedCandidateId !== undefined) {
     text(evidence.acceptedCandidateId, 'caseFile.counterfactual.acceptedCandidateId', 128);
   }
@@ -364,6 +368,16 @@ export function validateCaseLabCaseFile(value: unknown, expectedOutcome: CaseLab
   if (file.search !== undefined) array(file.search, 'caseFile.search', 256);
   if (file.counterfactual !== undefined) validateCounterfactual(file.counterfactual);
   const verification = file.verification === undefined ? undefined : parseVerificationEvidence(file.verification);
+  const recovery = Object.hasOwn(file, 'recovery') ? parseDiagnosisRecoveryEvidence(file.recovery, {
+    initialClass: diagnosis.class as string, observedCommand: diagnosis.failingCmd as string,
+    ...(SHA_PATTERN.test(String(policy.baseSha)) ? { policyBaseSha: policy.baseSha as string } : {}),
+    ...(SHA256_PATTERN.test(String(policy.policySha)) ? { policySha256: policy.policySha as string } : {}),
+    ...(verification === undefined ? {} : verification.identity),
+  }) : undefined;
+  if (verification?.recovery !== undefined) {
+    parseDiagnosisRecoveryEvidence(verification.recovery, { initialClass: diagnosis.class as string, observedCommand: diagnosis.failingCmd as string });
+    if (recovery !== undefined && canonicalJson(recovery) !== canonicalJson(verification.recovery)) throw new CaseLabResultError('caseFile.recovery differs from verification recovery');
+  }
   if (verification !== undefined) {
     const candidateIds = (race as CaseFile['race']).map(({ candidate }) => candidate.id);
     if (new Set(candidateIds).size !== candidateIds.length) {
@@ -409,6 +423,7 @@ export function validateCaseLabCaseFile(value: unknown, expectedOutcome: CaseLab
     outcome: fileOutcome,
     cost: { entries: costEntries(cost.entries) },
     ...(verification === undefined ? {} : { verification }),
+    ...(recovery === undefined ? {} : { recovery }),
   };
 }
 
@@ -476,6 +491,7 @@ function base(value: unknown): CaseLabResultBase {
     createdAt: isoTimestamp(raw.createdAt, 'createdAt'),
   };
   if (validatedFile !== undefined) result.caseFile = validatedFile;
+  if (validatedFile?.recovery !== undefined && result.identity.demoSha !== undefined) parseDiagnosisRecoveryEvidence(validatedFile.recovery, { sourceSha: result.identity.demoSha });
   if (verification !== undefined) {
     if (verification.identity.sourceSha !== result.identity.demoSha) {
       throw new CaseLabResultError('caseFile.verification source differs from the displayed source identity');

@@ -8,6 +8,11 @@
       "types": "./src/index.ts",
       "development": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./recovery-summary": {
+      "types": "./src/report/recovery-summary.ts",
+      "development": "./src/report/recovery-summary.ts",
+      "default": "./dist/report/recovery-summary.js"
     }
   },
   "scripts": {
@@ -18,6 +23,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "acorn": "8.18.0",
     "p-limit": "^7.3.1"
   }
 }

@@ -1,3 +1,5 @@
+import type { DiagnosisRecoveryEvidence } from '../diagnose/hypotheses.js';
+
 export const VERIFICATION_EVIDENCE_VERSION = 'sutura-verification-evidence-v1' as const;
 export const VERIFICATION_COST_VERSION = 'sutura-verification-cost-v1' as const;
 export const VERIFICATION_GATES = ['policy', 'visible', 'audit', 'challenges', 'reproduction', 'repository-policy', 'mechanical', 'adjudication', 'resources', 'counterfactual'] as const;
@@ -90,6 +92,8 @@ export interface VerificationEvidence {
   challenges: { mode: 'required' | 'optional' | 'disabled'; qualifiedProbeCount: number };
   gates: VerificationGateObservation[];
   costs: VerificationCosts;
+  /** Optional bounded recovery observations; absence preserves historical evidence. */
+  recovery?: DiagnosisRecoveryEvidence;
 }
 
 /** Store bytes unchanged and hashes alongside them; integrity is not a signature. */

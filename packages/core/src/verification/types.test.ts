@@ -1,3 +1,4 @@
+import { grantedRecovery } from './recovery.test-helper.js';
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { decodeVerificationEvidence, encodeVerificationEvidence, parseVerificationEvidence } from './codec.js';
@@ -141,4 +142,32 @@ describe('legacy evidence adapter', () => {
     expect(adaptLegacyVerification('{"assurance":"reduced","outcome":"audit-approved"}', 'audit-file-v0'))
       .toMatchObject({ assurance: 'reduced-log-only', challengeStatus: 'absent', sandboxRawAmounts: [], sandboxUnit: null });
   });
+});
+
+describe('optional recovery serialization', () => {
+  it('round trips present recovery while leaving absent historical bytes alone', () => {
+    const original = evidence(); const before = encodeVerificationEvidence(original);
+    expect(JSON.parse(before.bytes)).not.toHaveProperty('recovery');
+    const recovery = grantedRecovery(); recovery.observedCommand = original.commands[0]!; recovery.executedCommand = original.commands[0]!; recovery.authorizations[0]!.failingCommand = recovery.observedCommand;
+    const value = { ...original, recovery };
+    expect(decodeVerificationEvidence(encodeVerificationEvidence(value), value.identity)).toEqual(value);
+    expect(encodeVerificationEvidence(original)).toEqual(before);
+  });
+  it('rejects recovery from another source or unrecorded command', () => {
+    const recovery = grantedRecovery();
+    expect(() => parseVerificationEvidence({ ...evidence(), recovery })).toThrow();
+    recovery.observedCommand = 'node --test'; recovery.executedCommand = 'node --test'; recovery.authorizations[0]!.failingCommand = 'node --test';
+    recovery.authorizations[0]!.baseline.sourceSha = 'f'.repeat(40);
+    expect(() => parseVerificationEvidence({ ...evidence(), recovery })).toThrow();
+  });
+  it('retains only present validated legacy recovery', () => {
+    const bytes = JSON.stringify({ outcome: 'gave-up', recovery: grantedRecovery() });
+    expect(adaptLegacyVerification(bytes, 'case-file-v0')).toHaveProperty('recovery', grantedRecovery());
+    expect(() => adaptLegacyVerification(JSON.stringify({ outcome: 'gave-up', recovery: { approved: true } }), 'case-file-v0')).toThrow();
+    expect(adaptLegacyVerification('{"outcome":"gave-up"}', 'case-file-v0')).not.toHaveProperty('recovery');
+  });
+});
+
+it('binds legacy recovery to a recorded diagnosis when present', () => {
+  expect(() => adaptLegacyVerification(JSON.stringify({ outcome: 'gave-up', diagnosis: { class: 'env-config', failingCmd: 'another command' }, recovery: grantedRecovery() }), 'case-file-v0')).toThrow(/recovery/i);
 });

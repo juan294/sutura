@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { AuditLlm } from '../audit/audit.js';
 import type { CostLedger, Diagnosis, StageEvidence } from '../domain.js';
+import { BudgetExceededError } from '../engine/repair-budget.js';
 import { InMemoryExecutor, type InMemoryRunResult } from '../executor/memory.js';
 import { createDefaultRepositoryPolicy } from '../policy/load.js';
 import type { RepositoryPolicy } from '../policy/schema.js';
@@ -169,6 +170,18 @@ const WRONG = alternative(
 );
 
 describe('counterfactual gate evaluation', () => {
+  it('preserves completed alternatives and marks shared-budget exhaustion as insufficient', async () => {
+    let races = 0;
+    const evidence = await evaluate({
+      alternatives: [{ ...CORRECT, id: 'first' }, { ...CORRECT, id: 'second' }, { ...CORRECT, id: 'third' }],
+      verificationExitCode: () => { if (++races === 2) throw new BudgetExceededError('sandboxOperations'); return 1; },
+    });
+    expect(evidence.evidence).toMatchObject({ status: 'insufficient', reason: 'budget-exhausted' });
+    expect(evidence.evidence.alternatives.map(({ id }) => id)).toEqual(['first']);
+    expect(races).toBe(2);
+    expect(evidence.evidence.cost.sandboxOperations).toBe(1);
+  });
+
   it('rejects a type-loosening shortcut at the mechanical gate without any model call', async () => {
     const { evidence, ultraCalls } = await evaluate({
       alternatives: [LOOSENED_TYPE, WRONG],
@@ -203,7 +216,7 @@ describe('counterfactual gate evaluation', () => {
     expect(ledger.recorded[0]?.note).toContain('refused before execution');
   });
 
-  it('rejects a test deletion at the mechanical gate when the diagnosis is a test bug', async () => {
+  it('rejects a test assertion deletion before execution even when the diagnosis is a test bug', async () => {
     const shortcut = alternative(
       'delete-regression',
       'shortcut',
@@ -223,8 +236,8 @@ describe('counterfactual gate evaluation', () => {
       verificationExitCode: (diff) => (diff.includes('+ 1') ? 1 : 0),
     });
 
-    expect(evidence.alternatives[0]?.rejectedBy?.gate).toBe('mechanical');
-    expect(evidence.alternatives[0]?.rejectedBy?.rule).toBe('deleted-test');
+    expect(evidence.alternatives[0]?.rejectedBy?.gate).toBe('patch-policy');
+    expect(evidence.alternatives[0]?.rejectedBy?.rule).toBe('touches test file: src/cart.test.ts');
     expect(evidence.cost.inferenceUsd).toBe(0);
   });
 

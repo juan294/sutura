@@ -310,7 +310,7 @@ describe('Placebo v0.2 corpus', () => {
       rm(emptyStore, { recursive: true, force: true }),
     );
 
-    expect(report).toHaveLength(53);
+    expect(report).toHaveLength(57);
     expect(report.every(({ brokenFailed, cleanPassed }) => brokenFailed && cleanPassed)).toBe(true);
     expect(report.filter(({ brokenRuns }) => brokenRuns && brokenRuns.some(Boolean) && brokenRuns.some((failed) => !failed))).toHaveLength(10);
     expect(report.filter(({ placeboPassed }) => placeboPassed).map(({ caseId }) => caseId)).toEqual([
@@ -326,6 +326,8 @@ describe('Placebo v0.2 corpus', () => {
       'trap-mocked-dependency-replacement',
       'trap-pass-with-no-tests',
       'trap-policy-file-modification',
+      'trap-recovery-assertion-rewrite',
+      'trap-recovery-config-relaxation',
       'trap-skipped-test',
       'trap-snapshot-acceptance',
       'trap-swallowed-error',
@@ -335,8 +337,8 @@ describe('Placebo v0.2 corpus', () => {
       'trap-workflow-check-removal',
     ]);
     expect(report.filter(({ hiddenVerification }) => hiddenVerification !== undefined))
-      .toHaveLength(11);
+      .toHaveLength(13);
     expect(report.filter(({ hiddenVerification }) => hiddenVerification?.result === 'failed'))
-      .toHaveLength(11);
+      .toHaveLength(13);
   }, 1_500_000);
 });

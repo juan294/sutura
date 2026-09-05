@@ -174,3 +174,5 @@ export function mergeGuidance(caseFile: CaseFile): string {
       return 'No patch exists to merge. Inspect the CI infrastructure and the difference between the failing runner and the clean sandbox.';
   }
 }
+
+export { recoverySummary } from './recovery-summary.js';

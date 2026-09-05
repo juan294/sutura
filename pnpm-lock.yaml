@@ -88,6 +88,9 @@ importers:
 
   packages/core:
     dependencies:
+      acorn:
+        specifier: 8.18.0
+        version: 8.18.0
       p-limit:
         specifier: ^7.3.1
         version: 7.3.1

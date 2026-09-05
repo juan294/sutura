@@ -13,6 +13,7 @@ import type {
   RaceResult,
   StageEvidence,
 } from '../domain.js';
+import { BudgetExceededError } from '../engine/repair-budget.js';
 import { validateCandidateDiff } from '../engine/candidate-validation.js';
 import { race } from '../engine/repair.js';
 import type { ImageId, Executor, RunResult } from '../executor/types.js';
@@ -158,14 +159,6 @@ function costBetween(
   };
 }
 
-function sumCost(results: readonly CounterfactualResult[]): CounterfactualCost {
-  return results.reduce<CounterfactualCost>((total, { cost }) => ({
-    inferenceUsd: total.inferenceUsd + cost.inferenceUsd,
-    sandboxOperations: total.sandboxOperations + cost.sandboxOperations,
-    elapsedTimeSec: total.elapsedTimeSec + cost.elapsedTimeSec,
-  }), { inferenceUsd: 0, sandboxOperations: 0, elapsedTimeSec: 0 });
-}
-
 /**
  * Runs every supplied alternative through the same gate stack the accepted
  * patch passes, from the same baseline sandbox image, and records the exact
@@ -182,156 +175,167 @@ export async function evaluateCounterfactuals(
 ): Promise<CounterfactualEvidence> {
   const alternatives: CounterfactualResult[] = [];
   let attempt = 0;
+  let exhausted = false;
+  const allEntriesBefore = input.ledger.entries();
+  const allUsdBefore = input.cost.totalUsd();
   for (const alternative of input.alternatives) {
-    const entriesBefore = input.ledger.entries();
-    const usdBefore = input.cost.totalUsd();
-    const diffHash = digest(alternative.diff);
-    const record = (
-      verdict: AuditVerdict,
-      raceResult: Pick<RaceResult, 'held' | 'exitCode'>,
-      nodeId: string,
-    ): void => {
-      const rejectedBy = classifyRejection(verdict, raceResult);
-      const result: CounterfactualResult = {
-        id: alternative.id,
-        intent: alternative.intent,
-        rationale: alternative.rationale,
-        diffHash,
-        nodeId,
-        approved: verdict.approved,
-        testExitCode: raceResult.exitCode,
-        checks: verdict.checks,
-        reasoning: verdict.reasoning,
-        ...(rejectedBy === undefined ? {} : { rejectedBy }),
-        cost: costBetween(
-          entriesBefore,
-          input.ledger.entries(),
-          input.cost.totalUsd() - usdBefore,
-        ),
+    try {
+      const entriesBefore = input.ledger.entries();
+      const usdBefore = input.cost.totalUsd();
+      const diffHash = digest(alternative.diff);
+      const record = (
+        verdict: AuditVerdict,
+        raceResult: Pick<RaceResult, 'held' | 'exitCode'>,
+        nodeId: string,
+      ): void => {
+        const rejectedBy = classifyRejection(verdict, raceResult);
+        const result: CounterfactualResult = {
+          id: alternative.id,
+          intent: alternative.intent,
+          rationale: alternative.rationale,
+          diffHash,
+          nodeId,
+          approved: verdict.approved,
+          testExitCode: raceResult.exitCode,
+          checks: verdict.checks,
+          reasoning: verdict.reasoning,
+          ...(rejectedBy === undefined ? {} : { rejectedBy }),
+          cost: costBetween(
+            entriesBefore,
+            input.ledger.entries(),
+            input.cost.totalUsd() - usdBefore,
+          ),
+        };
+        alternatives.push(result);
+        input.trace?.record({
+          type: 'counterfactual-result',
+          stage: 'audit',
+          alternativeId: result.id,
+          intent: result.intent,
+          approved: result.approved,
+          gate: rejectedBy?.gate ?? '',
+          rule: rejectedBy?.rule ?? '',
+          summary: result.reasoning,
+          childNodeId: nodeId,
+        });
       };
-      alternatives.push(result);
-      input.trace?.record({
-        type: 'counterfactual-result',
-        stage: 'audit',
-        alternativeId: result.id,
-        intent: result.intent,
-        approved: result.approved,
-        gate: rejectedBy?.gate ?? '',
-        rule: rejectedBy?.rule ?? '',
-        summary: result.reasoning,
-        childNodeId: nodeId,
-      });
-    };
 
-    const validation = validateCandidateDiff(
-      alternative.diff,
-      input.diagnosis,
-      input.policy,
-      input.diffBytesLimit,
-    );
-    if (!validation.ok) {
-      const evidence = validation.violations.join('; ');
-      const nodeId = input.ledger.record({
-        stage: 'audit',
-        attempt: (attempt += 1),
-        network: 'disabled',
-        note: `Counterfactual ${alternative.id} refused before execution: ${evidence}`,
-      });
-      const verdict = refusedVerdict(`REFUSED: ${evidence}`, [{
-        name: 'policy-patch',
-        passed: false,
-        evidence: bounded(evidence),
-      }]);
-      alternatives.push({
-        id: alternative.id,
-        intent: alternative.intent,
-        rationale: alternative.rationale,
-        diffHash,
-        nodeId,
-        approved: false,
-        testExitCode: 1,
-        checks: verdict.checks,
-        reasoning: verdict.reasoning,
-        rejectedBy: {
+      const validation = validateCandidateDiff(
+        alternative.diff,
+        input.diagnosis,
+        input.policy,
+        input.diffBytesLimit,
+      );
+      if (!validation.ok) {
+        const evidence = validation.violations.join('; ');
+        const nodeId = input.ledger.record({
+          stage: 'audit',
+          attempt: (attempt += 1),
+          network: 'disabled',
+          note: `Counterfactual ${alternative.id} refused before execution: ${evidence}`,
+        });
+        const verdict = refusedVerdict(`REFUSED: ${evidence}`, [{
+          name: 'policy-patch',
+          passed: false,
+          evidence: bounded(evidence),
+        }]);
+        alternatives.push({
+          id: alternative.id,
+          intent: alternative.intent,
+          rationale: alternative.rationale,
+          diffHash,
+          nodeId,
+          approved: false,
+          testExitCode: 1,
+          checks: verdict.checks,
+          reasoning: verdict.reasoning,
+          rejectedBy: {
+            gate: 'patch-policy',
+            rule: validation.violations[0]!,
+            evidence: bounded(evidence),
+          },
+          cost: costBetween(entriesBefore, input.ledger.entries(), input.cost.totalUsd() - usdBefore),
+        });
+        input.trace?.record({
+          type: 'counterfactual-result',
+          stage: 'audit',
+          alternativeId: alternative.id,
+          intent: alternative.intent,
+          approved: false,
           gate: 'patch-policy',
           rule: validation.violations[0]!,
-          evidence: bounded(evidence),
-        },
-        cost: costBetween(entriesBefore, input.ledger.entries(), input.cost.totalUsd() - usdBefore),
-      });
-      input.trace?.record({
-        type: 'counterfactual-result',
-        stage: 'audit',
-        alternativeId: alternative.id,
-        intent: alternative.intent,
-        approved: false,
-        gate: 'patch-policy',
-        rule: validation.violations[0]!,
-        summary: verdict.reasoning,
-        childNodeId: nodeId,
-      });
-      continue;
-    }
+          summary: verdict.reasoning,
+          childNodeId: nodeId,
+        });
+        continue;
+      }
 
-    const [raceResult] = await race(
-      input.executor,
-      input.baselineImageId,
-      [{ id: alternative.id, rationale: alternative.rationale, diff: alternative.diff }],
-      input.verificationCommand,
-      (result) => input.ledger.record({
-        stage: 'audit',
-        attempt: (attempt += 1),
-        network: 'disabled',
-        result,
-        parentImageId: input.baselineImageId,
-        note: `Counterfactual ${alternative.id} verification race`,
-      }),
-    );
-    if (raceResult === undefined) {
-      throw new Error(`Counterfactual race returned no result for ${alternative.id}`);
-    }
-
-    let verdict = await audit(
-      input.executor,
-      input.llm,
-      raceResult,
-      {
-        diagnosis: input.diagnosis,
-        beforeLog: input.beforeLog,
-        suiteCommand: input.verificationCommand,
-      },
-      (result) => {
-        input.ledger.record({
+      const [raceResult] = await race(
+        input.executor,
+        input.baselineImageId,
+        [{ id: alternative.id, rationale: alternative.rationale, diff: alternative.diff }],
+        input.verificationCommand,
+        (result) => input.ledger.record({
           stage: 'audit',
           attempt: (attempt += 1),
           network: 'disabled',
           result,
-          parentImageId: raceResult.imageId,
-          note: `Counterfactual ${alternative.id} fresh suite rerun`,
-        });
-      },
-    );
-    verdict = await enforceRepositoryPolicy(
-      {
-        executor: input.executor,
-        baselineImageId: input.baselineImageId,
-        policy: input.policy,
-        ...(input.runtime === undefined ? {} : { runtime: input.runtime }),
-        observe: ({ result, parentImageId, note }: RepositoryPolicyGateObservation) => {
+          parentImageId: input.baselineImageId,
+          note: `Counterfactual ${alternative.id} verification race`,
+        }),
+      );
+      if (raceResult === undefined) {
+        throw new Error(`Counterfactual race returned no result for ${alternative.id}`);
+      }
+
+      let verdict = await audit(
+        input.executor,
+        input.llm,
+        raceResult,
+        {
+          diagnosis: input.diagnosis,
+          beforeLog: input.beforeLog,
+          suiteCommand: input.verificationCommand,
+        },
+        (result) => {
           input.ledger.record({
             stage: 'audit',
             attempt: (attempt += 1),
             network: 'disabled',
             result,
-            parentImageId,
-            note: `Counterfactual ${alternative.id} ${note}`,
+            parentImageId: raceResult.imageId,
+            note: `Counterfactual ${alternative.id} fresh suite rerun`,
           });
         },
-      },
-      raceResult,
-      verdict,
-    );
-    record(verdict, raceResult, raceResult.nodeId);
+      );
+      verdict = await enforceRepositoryPolicy(
+        {
+          executor: input.executor,
+          baselineImageId: input.baselineImageId,
+          policy: input.policy,
+          ...(input.runtime === undefined ? {} : { runtime: input.runtime }),
+          observe: ({ result, parentImageId, note }: RepositoryPolicyGateObservation) => {
+            input.ledger.record({
+              stage: 'audit',
+              attempt: (attempt += 1),
+              network: 'disabled',
+              result,
+              parentImageId,
+              note: `Counterfactual ${alternative.id} ${note}`,
+            });
+          },
+        },
+        raceResult,
+        verdict,
+      );
+      record(verdict, raceResult, raceResult.nodeId);
+    } catch (error) {
+      if (!(error instanceof BudgetExceededError)) throw error;
+      exhausted = true;
+      input.ledger.record({ stage: 'audit', attempt: ++attempt, network: 'disabled',
+        note: `Counterfactual ${alternative.id} stopped: ${error.message}` });
+      break;
+    }
   }
 
   return {
@@ -339,6 +343,7 @@ export async function evaluateCounterfactuals(
       ? {}
       : { acceptedCandidateId: input.acceptedCandidateId }),
     alternatives,
-    cost: sumCost(alternatives),
+    ...(exhausted ? { status: 'insufficient' as const, reason: 'budget-exhausted' as const } : {}),
+    cost: costBetween(allEntriesBefore, input.ledger.entries(), input.cost.totalUsd() - allUsdBefore),
   };
 }

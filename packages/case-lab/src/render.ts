@@ -1,8 +1,9 @@
 /**
  * Pure HTML rendering for the Case Lab. This module runs in Node (site
  * generation) and in the browser (live result page), so it imports only
- * types and uses no Node API.
+ * browser-safe helpers and types, and uses no Node API.
  */
+import { recoverySummary } from '@sutura/core/recovery-summary';
 import { expectedOutcomeFor, touchesTests, type CaseLabCase, type CaseLabOutcome } from './cases.js';
 import { MODES, MODE_LABELS, OUTCOME_LABELS, isPublicHttpsUrl, type CaseLabMode } from './labels.js';
 import type {
@@ -212,6 +213,11 @@ function renderDiagnosis(file: CaseLabCaseFile | undefined): string {
 </dl>${citations}`);
 }
 
+function renderRecovery(file: CaseLabCaseFile | undefined): string {
+  const lines = file === undefined ? [] : recoverySummary(file);
+  return lines.length === 0 ? '' : section('recovery', 'Diagnosis recovery', `<ul>${lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>`);
+}
+
 function renderSearch(file: CaseLabCaseFile | undefined): string {
   if (!file) return '';
   const triage = `<p>Triage: ${escapeHtml(file.triage.status)} · reproduced ${file.triage.reproduced}/${file.triage.of} · stop reason ${escapeHtml(file.triage.stopReason)} · method <code>${escapeHtml(file.triage.methodVersion)}</code></p>`;
@@ -352,6 +358,7 @@ export function renderResultBody(result: CaseLabResult, item: CaseLabCase): stri
     renderHeader(result, item),
     renderEvidence(result, item),
     renderDiagnosis(file),
+    renderRecovery(file),
     renderSearch(file),
     renderCandidates(file),
     renderRejections(file),

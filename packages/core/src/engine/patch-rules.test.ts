@@ -84,7 +84,7 @@ index 1111111..0000000
     },
   );
 
-  it('rejects test edits unless the diagnosis is test-bug', () => {
+  it('rejects test edits even when the diagnosis is test-bug without a grant', () => {
     const diff = `diff --git a/src/foo.spec.ts b/src/foo.spec.ts
 index 1111111..2222222 100644
 --- a/src/foo.spec.ts
@@ -98,12 +98,12 @@ index 1111111..2222222 100644
       'touches test file: src/foo.spec.ts',
     ]);
     expect(vetPatch(diff, diagnosis('test-bug'))).toEqual({
-      ok: true,
-      violations: [],
+      ok: false,
+      violations: ['touches test file: src/foo.spec.ts'],
     });
   });
 
-  it('rejects tool configuration edits unless the diagnosis is env-config', () => {
+  it('rejects tool configuration edits even with an env-config diagnosis without a grant', () => {
     const diff = `diff --git a/vitest.config.ts b/vitest.config.ts
 index 1111111..2222222 100644
 --- a/vitest.config.ts
@@ -117,8 +117,8 @@ index 1111111..2222222 100644
       'touches tool config: vitest.config.ts',
     ]);
     expect(vetPatch(diff, diagnosis('env-config'))).toEqual({
-      ok: true,
-      violations: [],
+      ok: false,
+      violations: ['touches tool config: vitest.config.ts'],
     });
   });
 
@@ -353,7 +353,7 @@ index 1111111..2222222 100644
 +const mask = value << 2;
 `;
 
-    expect(vetPatch(diff, diagnosis('env-config')).violations).toEqual([]);
+    expect(vetPatch(diff, diagnosis('env-config')).violations).toEqual(['touches tool config: vitest.config.ts']);
   });
 
   it('cannot hide a test edit behind a quoted path or a safe source edit', () => {

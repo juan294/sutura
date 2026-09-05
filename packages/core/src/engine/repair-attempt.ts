@@ -9,6 +9,7 @@ import { assertExternalEditableText, redactExternalJsonValue } from '../security
 import type { RepairAgentContext, RepairAgentOutcome } from './repair-agent.js';
 import { publicRepairReason, requestRepairModel } from './repair-model-call.js';
 import { RepairToolRuntime, type RepairToolResult } from './repair-tools.js';
+import { isAuthorizedRepairTarget } from './repair-authorization.js';
 import { isRepairPathAdmissible } from './patch-rules.js';
 import {
   anchoredEditsDiff,
@@ -95,7 +96,7 @@ function digest(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function sourceEvidence(ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 'policy' | 'sourceContext'>): PreparedSourceEvidence[] {
+function sourceEvidence(ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 'policy' | 'sourceContext' | 'authorization'>): PreparedSourceEvidence[] {
   return ctx.sourceContext.sources.flatMap((source) => {
     assertExternalEditableText(source.content);
     let lines: ReturnType<typeof indexRepairSourceLines>;
@@ -107,8 +108,11 @@ function sourceEvidence(ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 
       );
     }
     if (lines.length === 0) return [];
-    const policyAdmissible = isRepairPathAdmissible(source.path, ctx.diagnosis) &&
-      policyAllowsPatchPath(source.path, ctx.policy);
+    const policyAdmissible = isRepairPathAdmissible(
+      source.path, ctx.diagnosis, ctx.authorization, source,
+    ) && (ctx.authorization === undefined || isAuthorizedRepairTarget(
+      ctx.authorization.session, ctx.authorization.baseline, source,
+    )) && policyAllowsPatchPath(source.path, ctx.policy);
     const replacementCodePoints = [...source.content].length;
     return [{
       path: source.path,
@@ -139,9 +143,15 @@ function proposalSchema(): JsonSchema {
 }
 
 export function prepareControlledRepairProposalTemplate(
-  ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 'policy' | 'sourceContext'>,
+  ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 'policy' | 'sourceContext' | 'authorization'>,
 ): ControlledRepairProposalTemplate {
-  const sources = sourceEvidence(ctx);
+  return buildProposalTemplate(ctx, sourceEvidence(ctx));
+}
+
+function buildProposalTemplate(
+  ctx: Pick<ControlledRepairAttemptContext, 'diagnosis'>,
+  sources: PreparedSourceEvidence[],
+): ControlledRepairProposalTemplate {
   if (sources.length === 0) {
     throw new RepairProposalPreparationError(
       'invalid', 'No non-empty anchorable repair source was available',
@@ -282,7 +292,7 @@ function worstCaseRequestUsd(
   return Math.max(REPAIR_ATTEMPT_MINIMUM_INFERENCE_USD, Math.ceil(priced * 1_000_000) / 1_000_000);
 }
 
-function proposalOptions(ctx: ControlledRepairAttemptContext, schema: JsonSchema): ChatOptions {
+function proposalOptions(ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 'budget'>, schema: JsonSchema): ChatOptions {
   return {
     maxTokens: CONTROLLED_REPAIR_MAX_TOKENS,
     temperature: 1,
@@ -308,6 +318,42 @@ export function controlledRepairAttemptReservationUsd(
   const quote = ctx.llm.modelQuote?.('super', messages, options);
   if (quote === undefined) throw new Error('Repair model routing quote is unavailable');
   return worstCaseRequestUsd(requestBytes, quote.price.input, quote.price.output);
+}
+
+/** Price bounded initial/recovery prompts without granting or exposing an editable target. */
+export function recoveryRepairReservationUsd(
+  ctx: Pick<ControlledRepairAttemptContext, 'llm' | 'diagnosis' | 'policy' | 'sourceContext' | 'budget'>,
+): number {
+  const sources = sourceEvidence(ctx);
+  const diagnoses = [ctx.diagnosis, ...(['test-bug', 'env-config'] as const).map((failureClass) => ({
+    ...ctx.diagnosis, class: failureClass,
+    signals: [...ctx.diagnosis.signals, 'recovery:hypothesis-2'],
+  }))];
+  const templates: Array<{ diagnosis: typeof ctx.diagnosis; template: ControlledRepairProposalTemplate }> = [];
+  if (sources.some(({ editable }) => editable)) {
+    templates.push({ diagnosis: ctx.diagnosis, template: buildProposalTemplate(ctx, sources) });
+  }
+  for (const diagnosis of diagnoses.slice(1)) {
+    for (const selected of sources) {
+      if (selected.truncated || selected.startLine !== 1 ||
+        selected.replacementCodePoints > REPAIR_PROPOSAL_LIMITS.replacementCodePoints ||
+        !policyAllowsPatchPath(selected.path, ctx.policy)) continue;
+      const estimate = sources.map((source) => ({
+        ...source, editable: source === selected, policyAdmissible: source === selected,
+      }));
+      templates.push({ diagnosis, template: buildProposalTemplate({ diagnosis }, estimate) });
+    }
+  }
+  let maximum = REPAIR_ATTEMPT_MINIMUM_INFERENCE_USD;
+  for (const { diagnosis, template } of templates) {
+    for (let index = 0; index < template.targetCount; index++) {
+      const { messages, schema, requestBytes } = template.contract(undefined, index);
+      const quote = ctx.llm.modelQuote?.('super', messages, proposalOptions({ diagnosis, budget: ctx.budget }, schema));
+      if (quote === undefined) throw new Error('Repair model routing quote is unavailable');
+      maximum = Math.max(maximum, worstCaseRequestUsd(requestBytes, quote.price.input, quote.price.output));
+    }
+  }
+  return maximum;
 }
 
 export async function runControlledRepairAttempt(
@@ -422,6 +468,8 @@ export async function runControlledRepairAttempt(
     budget: ctx.budget,
     trustedCommands: ctx.trustedCommands,
     sourceContext: ctx.sourceContext,
+    ...(ctx.authorization === undefined ? {} : { authorization: ctx.authorization }),
+    ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
     ...(ctx.operationIdPrefix === undefined ? {} : { operationIdPrefix: ctx.operationIdPrefix }),
     ...(ctx.onOperationStart === undefined ? {} : { onOperationStart: ctx.onOperationStart }),
     ...(ctx.observe === undefined ? {} : { observe: ctx.observe }),

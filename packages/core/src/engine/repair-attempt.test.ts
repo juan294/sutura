@@ -9,8 +9,11 @@ import { DEFAULT_MODEL_PRICES } from '../llm/cost.js';
 import type { ChatMessage, ChatOptions, TierLlm } from '../llm/types.js';
 import { createDefaultRepositoryPolicy } from '../policy/load.js';
 import { RepairBudget } from './repair-budget.js';
+import { createRepairAuthorizationSession, deriveRepairAuthorization, type ControllerBaselineBinding } from './repair-authorization.js';
 import {
   CONTROLLED_REPAIR_MAX_TOKENS,
+  controlledRepairAttemptReservationUsd,
+  recoveryRepairReservationUsd,
   prepareControlledRepairProposalTemplate,
   runControlledRepairAttempt,
 } from './repair-attempt.js';
@@ -79,6 +82,41 @@ function llm(
 }
 
 describe('runControlledRepairAttempt', () => {
+  it('selects a complete test source only through its controller-derived narrow grant', async () => {
+    const source = { path: 'case.test.js', startLine: 1, truncated: false,
+      content: "import { expect, test } from 'vitest';\ntest('loads', async () => { expect(fetchName()).toBe('Ada'); });\n" };
+    const policy = createDefaultRepositoryPolicy();
+    const baseline: ControllerBaselineBinding = { kind: 'local-snapshot', sourceSha: null, policyBaseSha: null,
+      policySha256: 'a'.repeat(64), baselineImageId: 'baseline', snapshotSha256: null };
+    const session = createRepairAuthorizationSession({ baseline, failingCommand: 'pnpm test', policy, sources: [source] });
+    expect(await deriveRepairAuthorization(session, { kind: 'await-operation', path: source.path,
+      evidenceReferences: ['recorded-await-failure'], controllerProbe: { id: 'async-completion', sourceSha256: createHash('sha256').update(source.content).digest('hex'), failingCommand: diagnosis.failingCmd, imageId: 'baseline', exitCode: 1,
+        output: 'AssertionError: expected Promise to be Ada' } })).toMatchObject({ ok: true });
+    expect(prepareControlledRepairProposalTemplate({ diagnosis, policy, sourceContext: { sources: [source, sourceContext.sources[0]!] },
+      authorization: { session, baseline } }).targetCount).toBe(1);
+    const quoted = llm('', { input: 100, output: 3 });
+    const budget = new RepairBudget();
+    const quoteContext = { llm: quoted.model, diagnosis, policy, sourceContext: { sources: [source, sourceContext.sources[0]!] }, budget };
+    const reserved = recoveryRepairReservationUsd(quoteContext);
+    const actual = controlledRepairAttemptReservationUsd({ ...quoteContext,
+      diagnosis: { ...diagnosis, class: 'test-bug', signals: [...diagnosis.signals, 'recovery:hypothesis-3'] },
+      executor: new InMemoryExecutor(() => runResult(1)), initialImageId: 'baseline',
+      trustedCommands: { diagnosed: diagnosis.failingCmd }, authorization: { session, baseline },
+    });
+    expect(reserved).toBeGreaterThan(0.05);
+    expect(reserved).toBeGreaterThanOrEqual(actual);
+    expect(quoted.chat).not.toHaveBeenCalled();
+    expect(budget.snapshot().modelTurns).toBe(0);
+    expect(() => prepareControlledRepairProposalTemplate({ diagnosis, policy, sourceContext: { sources: [source] } })).toThrow(/policy-admissible/u);
+  });
+
+  it('never turns a test-bug label into test-edit authority', () => {
+    expect(() => prepareControlledRepairProposalTemplate({
+      diagnosis: { ...diagnosis, class: 'test-bug' }, policy: createDefaultRepositoryPolicy(),
+      sourceContext: { sources: [ambiguousSourceContext.sources[0]!] },
+    })).toThrow(/policy-admissible/u);
+  });
+
   it('replays live run 8: an accepted patch is tested and submitted without exploration', async () => {
     const results = [
       runResult(0, diff),

@@ -10,6 +10,7 @@ import {
   mergeGuidance,
   outcomeLabel,
   raceNote,
+  recoverySummary,
   safeWebUrl,
   stageForRole,
   triageSentence,
@@ -177,6 +178,9 @@ export function renderComment(caseFile: CaseFile, artifactUrl?: string): string 
       ...renderPathology(caseFile),
     );
   }
+
+  const recovery = recoverySummary(caseFile);
+  if (recovery.length > 0) sections.push('', '### Diagnosis recovery', '', ...recovery.map((line) => `- ${escapeMarkdown(escapeHtml(line))}`));
 
   const counterfactual = renderCounterfactual(caseFile);
   if (counterfactual.length > 0) sections.push('', ...counterfactual);

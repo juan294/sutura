@@ -1,4 +1,5 @@
-import { mkdtempSync } from 'node:fs';
+import type { DiagnosisRecoveryEvidence } from '@sutura/core';
+import { readFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -468,4 +469,21 @@ describe('isRenderableResult', () => {
     expect(isRenderableResult({ ...byId('flaky-failure'), outcome: 'green' }, ids)).toBe(false);
     expect(isRenderableResult({ ...byId('flaky-failure'), mode: 'fake' }, ids)).toBe(false);
   });
+});
+
+it('shows bounded recovery grants and separately records executed commands with escaped text', () => {
+  const original = byId('javascript-repair');
+  const recovery = JSON.parse(readFileSync(new URL('../../core/src/verification/__fixtures__/recovery.json', import.meta.url), 'utf8')) as DiagnosisRecoveryEvidence;
+  recovery.executedCommand = 'node normalized-runner.js';
+  recovery.hypotheses[1]!.reason = '<script>forged markup</script>';
+  const result = { ...original, caseFile: { ...original.caseFile!, recovery } };
+  const html = renderResultBody(result, caseLabCase('javascript-repair'));
+  expect(html).toContain('Diagnosis recovery');
+  expect(html).toContain('Initial diagnosis retained: typecheck');
+  expect(html).toContain('test-bug'); expect(html).toContain('Controller grant: await-operation');
+  expect(html).toContain('test/async.test.ts'); expect(html).toContain('node normalized-runner.js');
+  expect(html).toContain('&lt;script&gt;forged markup&lt;/script&gt;');
+  expect(html).not.toContain('<script>forged markup</script>');
+  expect(html).toContain('do not measure live repair quality');
+  expect(renderResultBody(original, caseLabCase('javascript-repair'))).not.toContain('Diagnosis recovery');
 });
