@@ -1,0 +1,6 @@
+# Implementation decisions for `2026-09-05-sutura-agent-evaluation`
+
+## Deviations
+
+- Plan said: stop after each phase and leave remote publication out of scope. Found: the implementation request explicitly authorizes all phases without stopping, local integration, one develop push, and final CI verification. Chose: complete phases sequentially with reviews/local gates and push develop once after completion. Why: the current owner's request overrides the earlier phase and publication limits.
+- Command said: use Sonnet for Explore/implementation/review agents. Found: this Codex runtime does not expose a Sonnet model. Chose: use the same inherited available model/settings for implementation reviews and all eight fresh reader sessions. Why: preserve role separation and matched reader settings without inventing a model mapping.

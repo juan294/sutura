@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile, stat } from 'node:fs/promises';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
@@ -167,4 +168,199 @@ test('submission sources contain no unfinished markers', async () => {
     assert.doesNotMatch(document, /\b(?:TODO|TBD|placeholder|coming soon|insert here|add later)\b/iu);
     assert.doesNotMatch(document, /https?:\/\/(?:example\.com|localhost)\b/iu);
   }
+});
+
+const evaluatorDocs = ['docs/evaluation/README.md', 'docs/evaluation/architecture.md'];
+const cardIds = [
+  'controller-authority',
+  'contree-branches',
+  'layered-audit',
+  'flake-triage',
+  'grounded-dependencies',
+  'counterfactual-verification',
+];
+const cardFields = [
+  'Claim', 'Product value', 'Criterion', 'Implementation', 'Verification', 'Mode and revision', 'Limit',
+];
+
+function markdownLinks(document) {
+  return [...document.matchAll(/!?\[([^\]]*)\]\(([^)]+)\)/gu)]
+    .map((match) => ({ label: match[1], target: match[2] }));
+}
+
+function explicitIds(document) {
+  return [...document.matchAll(/<a id="([a-z][a-z0-9-]*)"><\/a>/gu)]
+    .map((match) => ({ id: match[1], index: match.index }));
+}
+
+async function readRepositoryFile(path) {
+  return readFile(resolve(fileURLToPath(root), path), 'utf8');
+}
+
+async function checkLocalTarget(document, target, read = readRepositoryFile) {
+  if (/^https?:\/\//u.test(target)) return;
+  const context = `${document}: broken target ${target}`;
+  let decodedTarget;
+  try {
+    decodedTarget = decodeURIComponent(target);
+  } catch (error) {
+    assert.fail(`${context}: invalid URL encoding (${error.message})`);
+  }
+  assert.ok(!/^(?:\/|\\|[a-z][a-z0-9+.-]*:)/iu.test(decodedTarget), `${context}: absolute local path`);
+  const targetUrl = new URL(target, new URL(document, root));
+  assert.ok(targetUrl.href.startsWith(root.href), `${context}: outside repository`);
+  const fragment = decodeURIComponent(targetUrl.hash.slice(1));
+  targetUrl.search = '';
+  targetUrl.hash = '';
+  const path = relative(fileURLToPath(root), resolve(decodeURIComponent(targetUrl.pathname)));
+  assert.ok(!isAbsolute(path) && path !== '..' && !path.startsWith(`..${sep}`), `${context}: outside repository`);
+  let contents;
+  try {
+    contents = await read(path);
+  } catch (error) {
+    assert.fail(`${context}: missing file (${error.message})`);
+  }
+  if (!fragment) return;
+  const lines = /^L(\d+)(?:-L(\d+))?$/u.exec(fragment);
+  if (lines) {
+    const start = Number(lines[1]);
+    const end = Number(lines[2] ?? lines[1]);
+    const lineCount = contents.replace(/\n$/u, '').split('\n').length;
+    assert.ok(start > 0 && end >= start && end <= lineCount, `${context}: out-of-range lines`);
+    return;
+  }
+  assert.match(fragment, /^[a-z][a-z0-9-]*$/u, `${context}: unsupported fragment`);
+  assert.ok(explicitIds(contents).some(({ id }) => id === fragment), `${context}: missing explicit section`);
+}
+
+async function checkEvaluatorDocs(read = readRepositoryFile) {
+  const documents = new Map();
+  for (const path of evaluatorDocs) {
+    let document;
+    try {
+      document = await read(path);
+    } catch (error) {
+      assert.fail(`${path}: missing evaluator document (${error.message})`);
+    }
+    documents.set(path, document);
+    assert.match(document, /Reviewed source[^\n]*\n?[^\n]*\b[0-9a-f]{40}\b/iu, `${path}: reviewed source SHA required`);
+    assert.match(document, /\b\d{4}-\d{2}-\d{2}\b/u, `${path}: inspection date required`);
+    const ids = explicitIds(document).map(({ id }) => id);
+    assert.equal(new Set(ids).size, ids.length, `${path}: duplicate explicit ID`);
+    for (const { target } of markdownLinks(document)) await checkLocalTarget(path, target, read);
+  }
+
+  const [guidePath, architecturePath] = evaluatorDocs;
+  const guide = documents.get(guidePath);
+  const guideLinks = markdownLinks(guide).map(({ target }) => target);
+  assert.ok(guideLinks.includes('architecture.md'), `${guidePath}: architecture link required`);
+  for (const id of ['evidence-status', 'limitations']) {
+    assert.ok(explicitIds(guide).some((anchor) => anchor.id === id), `${guidePath}: ${id} section required`);
+    assert.ok(guideLinks.includes(`#${id}`), `${guidePath}: ${id} link required`);
+  }
+  assert.ok(guideLinks.some((target) => /^\.\.\/(?:demo|datalab)\//u.test(target)), `${guidePath}: canonical evidence link required`);
+  const criterionSection = /^## [^\n]*criteri[^\n]*\n([\s\S]*?)(?=^## |$(?![\s\S]))/imu.exec(guide)?.[1];
+  assert.ok(criterionSection, `${guidePath}: criterion section required`);
+  for (const criterion of ['Technological Implementation', 'Design', 'Potential Impact', 'Quality of the Idea']) {
+    assert.ok(criterionSection.includes(criterion), `${guidePath}: missing criterion ${criterion}`);
+  }
+
+  const architecture = documents.get(architecturePath);
+  const anchors = explicitIds(architecture);
+  for (const cardId of cardIds) {
+    const anchorIndex = anchors.findIndex(({ id }) => id === cardId);
+    assert.ok(anchorIndex >= 0, `${architecturePath}: missing card ${cardId}`);
+    const card = architecture.slice(anchors[anchorIndex].index, anchors[anchorIndex + 1]?.index);
+    const fields = new Map();
+    for (const field of cardFields) {
+      const rows = [...card.matchAll(new RegExp(`^\\| ${escapeRegex(field)} \\| (.+) \\|$`, 'gmu'))];
+      assert.equal(rows.length, 1, `${architecturePath}#${cardId}: missing or duplicate ${field} field`);
+      assert.ok(rows[0][1].trim(), `${architecturePath}#${cardId}: empty ${field} field`);
+      fields.set(field, rows[0][1]);
+    }
+    assert.match(fields.get('Implementation'), /`[A-Za-z_$][\w.$]*`/u, `${cardId}: named implementation symbol required`);
+    assert.ok(markdownLinks(fields.get('Implementation')).some(({ target }) => /^\.\.\/\.\.\/packages\/.+\/src\/.+#L\d/u.test(target)), `${cardId}: repository source link required`);
+    assert.ok(markdownLinks(fields.get('Verification')).some(({ target }) => /\.test\.[cm]?[jt]s(?:#|$)|^\.\.\/(?:demo|plans|datalab)\/|^\.\.\/\.\.\/packages\/placebo\//u.test(target)), `${cardId}: test or canonical artifact link required`);
+    assert.match(fields.get('Mode and revision'), /\b(?:inspect(?:ed|ion)|execut(?:ed|ion))\b/iu, `${cardId}: inspection/execution mode required`);
+    assert.match(fields.get('Mode and revision'), /\b[0-9a-f]{40}\b/u, `${cardId}: revision required`);
+  }
+}
+
+test('evaluator guide and architecture carry source-backed evidence cards and valid local links', async () => {
+  await checkEvaluatorDocs();
+});
+
+test('evaluator local links reject missing files, invalid lines, missing sections, and repository escapes', async () => {
+  const read = async (path) => {
+    assert.equal(path, 'docs/evaluation/target.md', `missing fixture ${path}`);
+    return '<a id="present"></a>\nsecond line\n';
+  };
+  for (const target of ['target.md?plain=1#L1-L2', 'target.md#present']) {
+    await checkLocalTarget(evaluatorDocs[0], target, read);
+  }
+  for (const [target, reason] of [
+    ['missing.md', 'missing file'],
+    ['target.md#L3', 'out-of-range lines'],
+    ['target.md#L2-L1', 'out-of-range lines'],
+    ['target.md#missing', 'missing explicit section'],
+    ['target.md#%ZZ', 'invalid URL encoding'],
+    ['/tmp/outside.md', 'absolute local path'],
+    ['%2Ftmp%2Foutside.md', 'absolute local path'],
+    ['../../../outside.md', 'outside repository'],
+    ['%2e%2e%2f%2e%2e%2f%2e%2e%2foutside.md', 'outside repository'],
+  ]) {
+    await assert.rejects(checkLocalTarget(evaluatorDocs[0], target, read), (error) => {
+      assert.ok(error.message.includes(evaluatorDocs[0]) && error.message.includes(target));
+      assert.ok(error.message.includes(reason));
+      return true;
+    });
+  }
+});
+
+function evaluatorFixture() {
+  const revision = 'a'.repeat(40);
+  const identity = `Reviewed source: \`${revision}\`; inspected 2026-09-05.\n`;
+  return new Map([
+    [evaluatorDocs[0], `${identity}
+[Architecture](architecture.md), [evidence](#evidence-status), [limits](#limitations).
+## Hackathon criteria
+Technological Implementation; Design; Potential Impact; Quality of the Idea.
+<a id="evidence-status"></a>
+## Evidence status
+[Canonical measured report](../demo/evidence.md)
+<a id="limitations"></a>
+## Limitations
+Source inspection only.
+`],
+    [evaluatorDocs[1], identity + cardIds.map((id) => `
+<a id="${id}"></a>
+### ${id}
+| Field | Evidence |
+| --- | --- |
+| Claim | Bounded behavior. |
+| Product value | Reviewable results. |
+| Criterion | Technological Implementation |
+| Implementation | \`audit\`, [audit source](../../packages/core/src/audit/audit.ts#L1) |
+| Verification | [audit test](../../packages/core/src/audit/audit.test.ts#L1) |
+| Mode and revision | Source inspected at \`${revision}\`. |
+| Limit | Inspection does not demonstrate live behavior. |
+`).join('')],
+    ['docs/demo/evidence.md', 'Historical evidence.\n'],
+    ['packages/core/src/audit/audit.ts', 'export function audit() {}\n'],
+    ['packages/core/src/audit/audit.test.ts', 'test("audit", () => {});\n'],
+  ]);
+}
+
+test('evaluator cards reject duplicate IDs and missing Limit fields with the card context', async () => {
+  const fixture = evaluatorFixture();
+  const read = async (path) => {
+    assert.ok(fixture.has(path), `missing fixture ${path}`);
+    return fixture.get(path);
+  };
+  await checkEvaluatorDocs(read);
+  const architecture = fixture.get(evaluatorDocs[1]);
+  fixture.set(evaluatorDocs[1], `${architecture}\n<a id="controller-authority"></a>\n`);
+  await assert.rejects(checkEvaluatorDocs(read), /architecture\.md: duplicate explicit ID/u);
+  fixture.set(evaluatorDocs[1], architecture.replace(/^\| Limit \|.*\n/mu, ''));
+  await assert.rejects(checkEvaluatorDocs(read), /architecture\.md#controller-authority: missing or duplicate Limit field/u);
 });
