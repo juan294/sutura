@@ -480,10 +480,11 @@ export async function runSinglePlaceboCase(options, dependencies) {
   if (ledger.entries.some((entry) => entry.outcomes.includes('infra-stop'))) {
     throw new Error('Placebo single run refuses to continue an infrastructure-stop ledger');
   }
-  const corpus = loadCorpusSync();
+  // Ledger entries may name a versioned case, so each is resolved through the
+  // selection that actually holds it.
   if (ledger.entries.some((entry) =>
-    corpusCase(corpus, entry.caseId).metadata.kind === 'trap' &&
-    entry.outcomes.includes('fixed'))) {
+    corpusCase(loadCorpusSync(needsExpandedSelection(entry.caseId)), entry.caseId)
+      .metadata.kind === 'trap' && entry.outcomes.includes('fixed'))) {
     throw new Error('Placebo single run refuses to continue a false-approval ledger');
   }
   const spentUsd = ledger.entries.reduce((sum, entry) => sum + entry.totalUsd, 0);
