@@ -3,13 +3,21 @@ import { open } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import {
+  ContreeExecutor,
+  evaluateVerification,
+  sandboxVerificationGates,
+  trustedCommandsFromPolicy,
   validateVerifyRequest,
+  verificationApproved,
+  type Executor,
   type RepositoryPolicy,
+  type SharedVerificationOutcome,
   type ValidatedVerifyRequest,
+  type VerifyReproduction,
 } from '@sutura/core';
 
 import type { VerifyArguments } from './args.js';
-import { assertCleanCheckoutAt, readTrustedPolicyAtCommit } from './verify-source.js';
+import { assertCleanCheckoutAt, readTrustedPolicyAtCommit, snapshotCleanSourceAt } from './verify-source.js';
 
 /** A supplied patch is bounded well below the policy diff limit before reading. */
 export const MAX_CANDIDATE_DIFF_FILE_BYTES = 1024 * 1024;
@@ -89,10 +97,7 @@ export async function prepareVerify(
     await assertCleanCheckoutAt(request.caseDir, request.sourceSha);
   }
   const loaded = await readTrustedPolicyAtCommit(request.caseDir, request.policyBaseSha);
-  const trustedCommands = overrides.trustedCommands ?? Object.fromEntries(
-    loaded.policy.requiredCommands.map((command, index) =>
-      [index === 0 ? 'diagnosed' : `required-${index}`, command]),
-  );
+  const trustedCommands = overrides.trustedCommands ?? trustedCommandsFromPolicy(loaded.policy);
   const candidateDiff = await readCandidateDiffFile(request.candidateDiff);
   const validated = validateVerifyRequest({
     caseDir: request.caseDir,
@@ -109,4 +114,87 @@ export async function prepareVerify(
     policySha: loaded.sha,
     trustedCommands,
   };
+}
+
+export interface VerifyExecutionResult {
+  status: 'verified-supplied-patch' | 'refused' | 'insufficient' | 'infra-stop';
+  request: ValidatedVerifyRequest;
+  policySource: 'repository' | 'default';
+  policySha: string;
+  /** The immutable copy that executed, bound by hash. */
+  source: { sourceSha: string; snapshotSha256: string; files: number };
+  reproduction: VerifyReproduction['status'];
+  observations: SharedVerificationOutcome['observations'];
+  blockingGate: SharedVerificationOutcome['blockingGate'];
+  challengeAssurance: boolean;
+  /** Always false: verification never authors or applies a replacement. */
+  generatedReplacement: false;
+}
+
+export interface VerifyRuntime {
+  executor: Executor;
+  /** Gates this route does not execute itself, such as the audit stack. */
+  delegated?: Parameters<typeof sandboxVerificationGates>[2];
+  challengeMode?: 'required' | 'optional' | 'disabled';
+}
+
+/**
+ * Runs a supplied patch through preparation, reproduction and the shared gate
+ * stack, against an immutable copy of the declared source.
+ *
+ * The copy is what executes, so nothing that happens to the developer's
+ * checkout afterwards changes what this run verified. Nothing is generated and
+ * nothing is written back: the result is evidence about the supplied bytes.
+ */
+export async function executeVerify(
+  request: VerifyArguments,
+  runtime: VerifyRuntime,
+): Promise<VerifyExecutionResult> {
+  const prepared = await prepareVerify(request);
+  const snapshot = await snapshotCleanSourceAt(request.caseDir, request.sourceSha);
+  try {
+    const gates = await sandboxVerificationGates(
+      prepared.request,
+      { executor: runtime.executor, sourceDir: snapshot.dir },
+      runtime.delegated ?? {},
+    );
+    const outcome = await evaluateVerification({
+      challengeMode: runtime.challengeMode ?? 'required',
+      runGate: gates.runGate,
+    });
+    const status: VerifyExecutionResult['status'] = verificationApproved(outcome)
+      ? 'verified-supplied-patch'
+      : outcome.status === 'infra-stop'
+        ? 'infra-stop'
+        : outcome.status === 'insufficient' ? 'insufficient' : 'refused';
+    return {
+      status,
+      request: prepared.request,
+      policySource: prepared.policySource,
+      policySha: prepared.policySha,
+      source: {
+        sourceSha: snapshot.sourceSha,
+        snapshotSha256: snapshot.snapshotSha256,
+        files: snapshot.files.length,
+      },
+      reproduction: gates.reproduction.status,
+      observations: outcome.observations,
+      blockingGate: outcome.blockingGate,
+      challengeAssurance: outcome.challengeAssurance,
+      generatedReplacement: false,
+    };
+  } finally {
+    await snapshot.cleanup();
+  }
+}
+
+/** Builds the sandbox client from the environment, as `sutura heal` does. */
+export function verifyRuntimeFromEnvironment(
+  environment: NodeJS.ProcessEnv = process.env,
+): VerifyRuntime {
+  const token = environment.CONTREE_TOKEN;
+  const project = environment.CONTREE_PROJECT;
+  if (!token) throw new VerifyInputError('CONTREE_TOKEN is required to execute a verification');
+  if (!project) throw new VerifyInputError('CONTREE_PROJECT is required to execute a verification');
+  return { executor: new ContreeExecutor({ token, project }) };
 }

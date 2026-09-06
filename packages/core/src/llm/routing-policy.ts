@@ -158,5 +158,12 @@ export function routeModel(
     }
     rejected.push({ tier, reason: problem });
   }
-  return { tier: null, reason: 'affordable-fallback', rejected, profileHash };
+  // An abstention names why the last permitted tier was unusable, rather than
+  // reporting a fallback that never happened.
+  return {
+    tier: null,
+    reason: rejected.at(-1)?.reason ?? 'affordable-fallback',
+    rejected,
+    profileHash,
+  };
 }

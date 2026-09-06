@@ -1,7 +1,9 @@
 import {
   createDefaultRepositoryPolicy,
+  trustedCommandsFromPolicy,
   validateVerifyRequest,
   VerifyRequestError,
+  type RepositoryPolicy,
   type ValidatedVerifyRequest,
 } from '@sutura/core';
 
@@ -70,9 +72,24 @@ export function mapVerifyInputs(read: InputReader): ActionVerifyInputs {
   };
 }
 
+/**
+ * What this route treats as trusted.
+ *
+ * The policy is the one the workflow resolved from the operator's chosen
+ * commit, never one the patch carries. The command map is derived from that
+ * policy unless the caller supplies one, so the Action and the CLI resolve a
+ * failing command the same way.
+ */
+export interface ActionVerifyTrust {
+  policy?: RepositoryPolicy;
+  commands?: Readonly<Record<string, string>>;
+}
+
 export interface ActionVerifyResult {
   status: 'validated';
   request: ValidatedVerifyRequest;
+  /** The command map the trusted policy declared for this run. */
+  trustedCommands: Readonly<Record<string, string>>;
   /**
    * Structural facts about this route, asserted rather than described: it never
    * writes to the repository and never authors a replacement.
@@ -91,8 +108,10 @@ export interface ActionVerifyResult {
 export function verifyActionRequest(
   inputs: ActionVerifyInputs,
   caseDir: string,
-  trustedCommands: Readonly<Record<string, string>>,
+  trust: ActionVerifyTrust = {},
 ): ActionVerifyResult {
+  const policy = trust.policy ?? createDefaultRepositoryPolicy();
+  const trustedCommands = trust.commands ?? trustedCommandsFromPolicy(policy);
   let request: ValidatedVerifyRequest;
   try {
     request = validateVerifyRequest({
@@ -102,7 +121,7 @@ export function verifyActionRequest(
       candidateDiff: inputs.candidateDiff,
       failureCommandId: inputs.failingCommandId,
       ...(inputs.runtimeId === undefined ? {} : { runtimeId: inputs.runtimeId }),
-    }, createDefaultRepositoryPolicy(), trustedCommands);
+    }, policy, trustedCommands);
   } catch (error) {
     if (error instanceof VerifyRequestError) {
       throw new VerifyInputError(`Verification refused the request: ${error.reasonCode}`);
@@ -112,6 +131,7 @@ export function verifyActionRequest(
   return {
     status: 'validated',
     request,
+    trustedCommands,
     repositoryMutation: false,
     generatedReplacement: false,
   };

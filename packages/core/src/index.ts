@@ -152,6 +152,20 @@ export {
   routingProfileHash,
 } from './llm/routing-policy.js';
 export {
+  applyAndRun,
+  prepareAndReproduce,
+  sandboxVerificationGates,
+  VERIFY_REPRODUCTION_RUNS,
+} from './verify-execution.js';
+export type {
+  ReproductionStatus,
+  SandboxVerificationGates,
+  VerifyExecutionPorts,
+  VerifyReproduction,
+  VerifyVisibleResult,
+} from './verify-execution.js';
+export {
+  trustedCommandsFromPolicy,
   validateVerifyRequest,
   verifyExternalPatch,
   VerifyRequestError,
@@ -206,7 +220,7 @@ export { adaptLegacyVerification } from './verification/legacy.js';
 export { VERIFICATION_EVIDENCE_VERSION, VERIFICATION_COST_VERSION, VERIFICATION_GATES, VERIFICATION_STATUSES, VERIFICATION_REASONS } from './verification/types.js';
 export type { VerificationChallengeSubject, VerificationEvidence, VerificationIdentity, VerificationGateObservation, VerificationGateStatus, VerificationOutcome, VerificationAssurance, VerificationMode, VerificationModel, VerificationCosts, VerificationDatasetTruth, VerificationPresentation, VerificationArtifact } from './verification/types.js';
 export type { LegacyVerificationEvidence } from './verification/legacy.js';
-export { isSensitiveRepositoryPath } from './security/repository-path.js';
+export { isSensitiveRepositoryPath, isVerificationPrivatePath } from './security/repository-path.js';
 export { trimEdges, trimTrailing } from './text/trim-edge.js';
 export { TraceRecorder } from './trace/recorder.js';
 export { selectBoundedSourceWindow, SourceWindowError } from './source-window.js';

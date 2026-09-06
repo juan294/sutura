@@ -53,12 +53,12 @@ Reuse existing comparison arms and Wilson intervals. Extend observation records 
 
 ## Automated success criteria
 
-- [ ] Leak-sentinel tests inject kind, labels, hidden verdicts, agent provenance and answer-bearing filenames; model prompt export removes/rejects them while scoring retains valid joins.
-- [ ] Dataset tests reject duplicates, split-family overlap, missing licenses/provenance, source-hash mismatch and missing outputs falsely scored correct.
-- [ ] Perturb execution truth and confirm quality scores change; alter only fixture kind and confirm blinded predictions cannot obtain it.
-- [ ] Run the real local NeMo harness via `uv run --project packages/evaluation python packages/evaluation/scripts/evaluate-atif.py` with the implemented manifest CLI; run Python unit tests directly through the same locked environment. Existing `pnpm run test:atif` remains passing.
+- [x] Leak-sentinel tests inject kind, labels, hidden verdicts, agent provenance and answer-bearing filenames; model prompt export removes/rejects them while scoring retains valid joins.
+- [x] Dataset tests reject duplicates, split-family overlap, missing licenses/provenance, source-hash mismatch and missing outputs falsely scored correct.
+- [x] Perturb execution truth and confirm quality scores change; alter only fixture kind and confirm blinded predictions cannot obtain it.
+- [x] Run the real local NeMo harness via `uv run --project packages/evaluation python packages/evaluation/scripts/evaluate-atif.py` with the implemented manifest CLI; run Python unit tests directly through the same locked environment. Existing `pnpm run test:atif` remains passing.
 - [ ] `pnpm --filter @sutura/evaluation test`, `pnpm --filter placebo self-check`, and `node --test scripts/datalab-experiment.test.mjs` pass sequentially.
-- [ ] Comparison mutations reject changed models/budgets/splits and never interpret missing or infrastructure outcomes as negative-cost wins.
+- [x] Comparison mutations reject changed models/budgets/splits and never interpret missing or infrastructure outcomes as negative-cost wins.
 
 ## Manual success criteria
 
@@ -94,3 +94,87 @@ Not built in this pass, and not claimed:
 
   Run against the expanded corpus on September 6 it reports `incomplete`: **63 of the required 100 cases across 50 distinct root families, 37 missing**. That is the honest state of the inventory, and no split hash is published until the corpus reaches 100. Authoring 37 further distinct root defects, with pinned upstream repositories, commits, licenses and offline dependencies, is the outstanding work.
 - Balanced accuracy, false-approval and false-refusal scoring, calibration and cost accounting are not implemented.
+
+## Second pass — September 6
+
+The inventory is complete and frozen.
+
+38 corpus cases were added, each one distinct root defect with its own family:
+19 Python, 16 JavaScript and 3 TypeScript; 26 repairable, 8 traps, 3 flakes and
+1 upstream migration. They are generated from a table
+(`packages/placebo/scripts/inventory-cases.mjs`) by
+`generate-inventory-cases.mjs`, which produces every patch with
+`git diff --no-index`, so the committed bytes are the bytes Git writes rather
+than a hand-assembled approximation. Every added case carries
+`evaluationRevision: inventory-v1`, so the frozen v0.2 default selection and
+its committed `corpusHash` are unchanged and the historical 51-case scores
+still mean what they meant.
+
+The defects cover mutable default arguments, integer division, suffix
+stripping, sort keys, exclusive ranges, async gather ordering, decimal money
+arithmetic, deduplication order, timezone-aware comparison, regex anchoring,
+lookup defaults, resource release, internal list aliasing, numeric sort
+comparators, shallow-copy mutation, settled-result handling, zero-based months,
+parse radix, strict equality, regex `lastIndex`, JSON clone type loss, map key
+identity, optional index access, discriminated-union narrowing, percentage
+rounding preservation, a config-and-consumer two-file transaction and an
+upstream separator release. The traps cover tautological assertions,
+expected-failure markers, widened numeric tolerance, a patched subject under
+test, non-null assertions, empty catch blocks, loosened precision and a
+narrowed input set.
+
+Two defects were found while validating them and fixed rather than kept: a
+decimal-rounding case whose float and exact arithmetic happened to agree on the
+chosen inputs, and a percentage case whose visible test passed under the broken
+rounding. Both were only visible because every case is executed rather than
+reviewed.
+
+`packages/evaluation/scripts/inventory.mjs` freezes the inventory from the
+corpus on disk rather than from a list kept beside it. Run against the
+completed corpus it reports 100 cases across 94 root families, split 60/20/20,
+split hash `14453c118c71…`, inventory hash `ee6954ca1d7d…`; the record is
+`docs/evaluation/inventory-v1.json` and `docs/evaluation/README-inventory.md`.
+Four tests hold it: the corpus supplies exactly the registered count, the
+freeze is reproducible and keeps each family in one split, a short corpus
+freezes nothing rather than a smaller split, and a changed fixture moves the
+inventory hash.
+
+`packages/evaluation/src/dataset.ts` validates a quality dataset and prepares,
+but never sends, the paired batch. Validation refuses a record counted twice, a
+root family that appears in two splits, a record with no stated source, licence
+or revision, a record whose bytes no longer hash to what it was registered
+under, an unbounded custom id, an unknown split and a label surviving anywhere
+inside a record. `preparePairedBatch` sends byte-identical inputs to both
+pre-registered variants, differing only in the instruction, names each request
+after its dataset entry so outputs join without a heuristic, and refuses to
+place a scoring key in a request. `joinBatchOutputs` joins by exact custom id
+and leaves a missing output missing, because an answer that never arrived is
+not a correct one. 14 tests.
+
+Leak sentinels are now explicit: eight injected fields (case kind, expected
+outcome, final verdict, hidden verdict, adjudicator recommendation, agent
+provenance, label and split) are each removed from the model-facing record, a
+sentinel nested inside an observation is rejected rather than only a top-level
+one, and answer-bearing filenames are dropped while the join key survives. The
+lineage hash is the one thing that changes when only the fixture kind changes,
+and it is opaque: the kind itself reaches neither the prompt nor anything a
+reader could decode it from. 10 added tests.
+
+Perturbation is covered: moving the executable truth while the answers stay
+fixed changes balanced accuracy and moves the false-refusal rate, relabelling a
+deceptive record moves the false-approval rate, and an unknown truth or a
+missing answer stays out of every rate. 3 added tests.
+
+The comparison contract now carries `challengeVersion`, `routingVersion` and
+`splitHash` invariants and an `oracleStatus` per observation, and
+`firstInvariantDifference` names each of them. `comparisonSlices` reports
+per-language, per-kind and per-split slices over decided cases only.
+`comparisonEfficiency` reports coverage beside correctly verified repairs per
+priced dollar, and an arm that stopped on infrastructure scores zero rather
+than reading as the cheapest arm; an arm that priced nothing reports no rate at
+all rather than an unbounded one. 5 added tests.
+
+Still not built, and not claimed: the paired batch is prepared but nothing has
+been uploaded, dispatched or measured, and no provider was called. Calibration
+and cost accounting beyond the per-arm dollar rate are not implemented. Phase
+10 owns every paid measurement.

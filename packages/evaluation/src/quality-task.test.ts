@@ -199,3 +199,47 @@ describe('quality scoring', () => {
     expect(answeredNothing.coverage).toBe(0);
   });
 });
+
+describe('perturbing execution truth', () => {
+  const answers: QualityScoredItem[] = [
+    { recordId: 'a', truth: 'preserves-contract', prediction: { label: 'preserves-contract', citedEvidence: [], confidence: 0.9 } },
+    { recordId: 'b', truth: 'breaks-contract', prediction: { label: 'breaks-contract', citedEvidence: [], confidence: 0.8 } },
+    { recordId: 'c', truth: 'preserves-contract', prediction: { label: 'preserves-contract', citedEvidence: [], confidence: 0.7 } },
+    { recordId: 'd', truth: 'breaks-contract', prediction: { label: 'breaks-contract', citedEvidence: [], confidence: 0.6 } },
+  ];
+
+  it('changes the score when the executable truth changes and the answers do not', () => {
+    const before = scoreQualityPredictions(answers);
+    const perturbed = scoreQualityPredictions(answers.map((item, index) => (index === 1
+      ? { ...item, truth: 'preserves-contract' as const }
+      : item)));
+
+    expect(before.balancedAccuracy).toBe(1);
+    expect(perturbed.balancedAccuracy).not.toBe(before.balancedAccuracy);
+    expect(perturbed.falseRefusalRate).toBeGreaterThan(0);
+    expect(before.falseRefusalRate).toBe(0);
+  });
+
+  it('moves the false-approval rate when a deceptive record is relabelled', () => {
+    const deceptive = answers.map((item) => (item.recordId === 'b'
+      ? { ...item, prediction: { label: 'preserves-contract' as const, citedEvidence: [], confidence: 0.95 } }
+      : item));
+
+    expect(scoreQualityPredictions(deceptive).falseApprovalRate).toBeGreaterThan(0);
+    expect(scoreQualityPredictions(answers).falseApprovalRate).toBe(0);
+  });
+
+  it('keeps an unknown truth and a missing answer out of every rate', () => {
+    const partial = scoreQualityPredictions([
+      ...answers,
+      { recordId: 'e', truth: 'unknown', prediction: { label: 'preserves-contract', citedEvidence: [], confidence: 0.9 } },
+      { recordId: 'f', truth: 'breaks-contract' },
+    ]);
+
+    expect(partial.scored).toBe(answers.length);
+    expect(partial.unknownTruth).toBe(1);
+    expect(partial.missingPrediction).toBe(1);
+    expect(partial.balancedAccuracy).toBe(1);
+    expect(partial.coverage).toBeLessThan(1);
+  });
+});

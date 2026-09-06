@@ -31,10 +31,10 @@ publishOnlyConsentedSanitizedAggregate(allAttempts, acceptedInstalls, reviewRepo
 
 ## Automated success criteria
 
-- [ ] Existing adoption/Marketplace validator tests remain passing; exact-three success contract is not weakened.
-- [ ] New ledger/review tests reject duplicate participant IDs, missing consent, fabricated release identities, invalid timing, empty answers, post-hint answers mislabeled unaided dropped failed attempts, unbalanced condition assignments and task leakage between the paired arms.
-- [ ] Trial rehearsals use local packed artifacts, label rehearsal mode and never satisfy public-install acceptance.
-- [ ] Run `node --test scripts/adoption-study.test.mjs scripts/marketplace-evidence.test.mjs scripts/review-study.test.mjs` sequentially as one local test command; validate real recruitment templates with the existing script.
+- [x] Existing adoption/Marketplace validator tests remain passing; exact-three success contract is not weakened.
+- [x] New ledger/review tests reject duplicate participant IDs, missing consent, fabricated release identities, invalid timing, empty answers, post-hint answers mislabeled unaided dropped failed attempts, unbalanced condition assignments and task leakage between the paired arms.
+- [x] Trial rehearsals use local packed artifacts, label rehearsal mode and never satisfy public-install acceptance.
+- [x] Run `node --test scripts/adoption-study.test.mjs scripts/marketplace-evidence.test.mjs scripts/review-study.test.mjs` sequentially as one local test command; validate real recruitment templates with the existing script.
 
 ## Manual success criteria
 
@@ -54,9 +54,54 @@ Review scoring counts only answers given before any hint. An answer produced aft
 
 The paired review-impact exercise refuses the three ways it could quietly become meaningless: showing Sutura's verdict inside the ordinary-CI arm, giving one participant the same defect twice so the second decision measures memory, and an unbalanced condition order that would let a practice effect read as an effect of the evidence. It reports correctness beside median time rather than instead of it, and carries the small-sample caveat in the output itself. 18 tests, wired into `test:release-contracts` so they run in every local and hosted gate.
 
-Not built, and not claimed:
+All four were outstanding at the time of that record and are now built; see
+the second pass below.
 
-- `docs/adoption/verified-repair-study.md`, the recruitment message, the intended cohort and the consent text. These are participant-facing artifacts and the phase requires explicit authorization before any of them is sent; drafting them is in scope, sending is not.
-- The frozen four-task review set with hidden assessor answers, and the two counterbalanced task packs.
-- The two external-agent patch-source task packs.
-- The rehearsal mode that uses local packed artifacts and must never satisfy public-install acceptance.
+## Second pass — September 6
+
+**No participant was contacted, no message was sent, no session was scheduled
+and no calendar was reserved.** Everything below is prepared material.
+
+`scripts/review-tasks.mjs` holds the frozen task material. The four
+comprehension tasks are one of each kind — a valid repair, a deceptive green
+patch, a flake and a stopped run — each with the decision that is correct and
+the reason that makes it correct. The participant-facing pack and the assessor
+sheet come from the same source so they cannot drift apart, and they are
+separated by a function rather than by discipline: `participantPack()` strips
+every assessor field and then refuses to return material that still carries one.
+`assessorSheet()` keeps the answers and hashes them.
+
+The two paired packs share no defect, so nobody decides the same defect twice
+and the second decision is never a memory of the first. Each pairs one
+boundary-arithmetic defect with one missing-guard defect, so the two conditions
+face comparable difficulty by construction rather than by assertion.
+
+The two external-agent packs name the same clean source, the same failing
+command and the same allowed scope, so two agents are asked an identical
+question and the verifier sees only their bytes. Each carries a correct and a
+deceptive control, so the verifier can be calibrated whether or not either
+agent succeeds, and neither pack contains a hidden expectation.
+
+Rehearsal mode is a label the acceptance contract cannot accept.
+`buildRehearsalRecord()` marks a run against a locally packed artifact, and
+`assertRehearsalIsNotAdoption()` calls the real adoption validator and fails if
+it accepts one. A rehearsal cannot be promoted to an install by editing a
+number: acceptance requires public npm and an immutable Action identity, and a
+packed local artifact is neither. A test also proves the guard itself works, by
+handing it a validator that accepts everything and checking it refuses.
+
+`docs/adoption/verified-repair-study.md` records what each study measures and
+who records it, the draft recruitment message, the intended cohort, the draft
+consent text, and the scheduling dependency. The consent text states what is
+recorded, that a quote, screenshot or repository name is published only with
+specific consent for that item, and that withdrawing removes the answers while
+the ledger keeps the fact that an attempt happened — because dropping
+unsuccessful attempts would make the results describe only the people who
+succeeded.
+
+The 14 to 20 October window is recorded as a dependency rather than assumed.
+Reserving it means contacting people, which needs authorization this phase does
+not have.
+
+7 added tests, wired into `test:release-contracts`. All four named test files
+pass together: 36 tests.

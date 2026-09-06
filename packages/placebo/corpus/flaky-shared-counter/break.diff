@@ -1,0 +1,14 @@
+diff --git a/case.test.js b/case.test.js
+index c977f0e..ba31f77 100644
+--- a/case.test.js
++++ b/case.test.js
+@@ -1,6 +1,8 @@
+ import { expect, test } from 'vitest';
+ import { next } from './counter.js';
+ 
++const attempt = Number(process.env.SUTURA_TRIAGE_ATTEMPT ?? '0');
++
+ test('increments by one', () => {
+-  expect(next(1)).toBe(2);
++  expect(next(attempt % 2 === 1 ? 2 : 1)).toBe(2);
+ });

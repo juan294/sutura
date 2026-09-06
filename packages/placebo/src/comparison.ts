@@ -44,6 +44,14 @@ export interface ComparisonInvariants {
   scoreContractVersion: typeof SCORE_CONTRACT_VERSION;
   tavilyEnabled: boolean;
   suturaCommit: string;
+  /**
+   * Frozen versions the arms ran under. Absent on a run recorded before they
+   * were tracked; present on both sides they must agree, because a changed
+   * challenge protocol, routing profile or split makes two runs incomparable.
+   */
+  challengeVersion?: string;
+  routingVersion?: string;
+  splitHash?: string;
 }
 
 export interface ComparisonObservation {
@@ -52,6 +60,8 @@ export interface ComparisonObservation {
   language: FixtureLanguage;
   failureClass: FailureClass;
   outcome: CaseFile['outcome'] | 'not-run';
+  /** Whether an independent oracle decided this case, and not what it decided. */
+  oracleStatus?: 'verified' | 'unknown' | 'not-run';
   approved: boolean;
   falseApproval: boolean;
   hiddenVerification: 'passed' | 'failed' | 'not-run';
@@ -111,6 +121,7 @@ function sameInvariants(left: ComparisonInvariants, right: ComparisonInvariants)
   for (const key of [
     'corpusName', 'corpusVersion', 'corpusHash', 'routingProfile',
     'budgetProfileHash', 'scoreContractVersion', 'suturaCommit',
+    'challengeVersion', 'routingVersion', 'splitHash',
   ] as const) {
     if (left[key] !== right[key]) return key;
   }
@@ -479,4 +490,109 @@ export function expansionReadiness(
     projectedWidthAt200: doubled.width,
     reasons,
   };
+}
+
+/** Outcomes that decided nothing, so they can never count as a win or as cheap. */
+const UNDECIDED_OUTCOMES: ReadonlySet<ComparisonObservation['outcome']> =
+  new Set<ComparisonObservation['outcome']>(['not-run', 'infra-stop']);
+
+export interface ComparisonSlice {
+  /** What this slice groups by, and the value it groups on. */
+  dimension: 'language' | 'kind' | 'split';
+  value: string;
+  cases: number;
+  /** Cases that reached a decided outcome; the denominator every rate uses. */
+  decided: number;
+  verifiedRepairs: number;
+  falseApprovals: number;
+  repairRate: ProportionInterval;
+}
+
+export interface ComparisonEfficiency {
+  arm: ComparisonArm;
+  /** Cases whose outcome was decided, over every case in the selection. */
+  coverage: ProportionInterval;
+  verifiedRepairs: number;
+  inferenceUsd: number;
+  /**
+   * Correctly verified repairs per priced dollar, or null when nothing was
+   * priced. An arm that decided nothing has a rate of zero rather than an
+   * unbounded one, so stopping early can never read as the cheapest arm.
+   */
+  verifiedRepairsPerUsd: number | null;
+  undecided: number;
+}
+
+function decided(observation: ComparisonObservation): boolean {
+  return !UNDECIDED_OUTCOMES.has(observation.outcome);
+}
+
+/** A verified repair: fixed, approved, and not contradicted by a hidden check. */
+function verifiedRepair(observation: ComparisonObservation): boolean {
+  return decided(observation) && observation.outcome === 'fixed' &&
+    observation.approved && observation.hiddenVerification !== 'failed' &&
+    observation.oracleStatus !== 'unknown';
+}
+
+/**
+ * Slices one arm by language, case kind and declared split.
+ *
+ * Every rate uses decided cases as its denominator, so an arm that stopped on
+ * infrastructure reports fewer decided cases rather than a better rate.
+ */
+export function comparisonSlices(
+  arm: Pick<ComparisonArmRecord, 'observations'>,
+  splitByCase: Readonly<Record<string, string>> = {},
+): ComparisonSlice[] {
+  const dimensions: Array<[ComparisonSlice['dimension'], (item: ComparisonObservation) => string | undefined]> = [
+    ['language', (item) => item.language],
+    ['kind', (item) => item.kind],
+    ['split', (item) => splitByCase[item.caseId]],
+  ];
+  const slices: ComparisonSlice[] = [];
+  for (const [dimension, key] of dimensions) {
+    const groups = new Map<string, ComparisonObservation[]>();
+    for (const observation of arm.observations) {
+      const value = key(observation);
+      if (value === undefined) continue;
+      groups.set(value, [...(groups.get(value) ?? []), observation]);
+    }
+    for (const [value, observations] of [...groups.entries()].sort()) {
+      const decidedCount = observations.filter(decided).length;
+      const repairs = observations.filter(verifiedRepair).length;
+      slices.push({
+        dimension,
+        value,
+        cases: observations.length,
+        decided: decidedCount,
+        verifiedRepairs: repairs,
+        falseApprovals: observations.filter(({ falseApproval }) => falseApproval).length,
+        repairRate: wilsonInterval(repairs, decidedCount),
+      });
+    }
+  }
+  return slices;
+}
+
+/**
+ * Cost efficiency per arm.
+ *
+ * A missing or infrastructure-stopped case is counted as undecided rather than
+ * as a cheap success, because an arm that stops early spends less and proves
+ * less. Coverage is reported beside the rate so the two are read together.
+ */
+export function comparisonEfficiency(manifest: ComparisonManifest): ComparisonEfficiency[] {
+  validateComparison(manifest);
+  return manifest.arms.map((arm) => {
+    const decidedCount = arm.observations.filter(decided).length;
+    const repairs = arm.observations.filter(verifiedRepair).length;
+    return {
+      arm: arm.arm,
+      coverage: wilsonInterval(decidedCount, arm.observations.length),
+      verifiedRepairs: repairs,
+      inferenceUsd: arm.totals.inferenceUsd,
+      verifiedRepairsPerUsd: arm.totals.inferenceUsd > 0 ? repairs / arm.totals.inferenceUsd : null,
+      undecided: arm.observations.length - decidedCount,
+    };
+  });
 }

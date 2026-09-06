@@ -104,3 +104,18 @@ export type {
   InventoryResult,
   InventoryShortfall,
 } from './inventory.js';
+export {
+  assertRecordMatchesSourceHash,
+  DATASET_SCHEMA_VERSION,
+  DatasetError,
+  joinBatchOutputs,
+  PAIRED_BATCH_SCHEMA_VERSION,
+  preparePairedBatch,
+  validateEvaluationDataset,
+} from './dataset.js';
+export type {
+  DatasetEntry,
+  PairedBatch,
+  PairedBatchRequest,
+  ValidatedDataset,
+} from './dataset.js';

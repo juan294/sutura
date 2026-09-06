@@ -131,6 +131,20 @@ export function validateVerifyRequest(
   };
 }
 
+/**
+ * The command map a trusted policy declares.
+ *
+ * The first required command is the diagnosed failure; the rest keep stable
+ * identifiers so a request names a command the operator's policy already
+ * declares rather than supplying command text of its own.
+ */
+export function trustedCommandsFromPolicy(
+  policy: Pick<RepositoryPolicy, 'requiredCommands'>,
+): Readonly<Record<string, string>> {
+  return Object.freeze(Object.fromEntries(policy.requiredCommands.map((command, index) =>
+    [index === 0 ? 'diagnosed' : `required-${index}`, command])));
+}
+
 export type VerifyOutcomeStatus =
   | 'verified-supplied-patch' | 'refused' | 'insufficient' | 'infra-stop';
 

@@ -40,11 +40,11 @@ Routing never changes patch authority, challenge requirements, policy or test co
 
 ## Automated success criteria
 
-- [ ] Table-driven boundary tests at 0.7/0.9, context limits, missing confidence, one/two targets, exhaustion and previous failure demonstrate actual changed route decisions.
-- [ ] Budget tests reserve maximum input/output, charge retries and provider failures, retain audit reserve, stop on missing price/model contracts and cap escalation at one.
-- [ ] Same inputs/profile yield identical decisions; candidate or provenance cannot override purpose or safety gates.
-- [ ] End-to-end deterministic controls show valid/invalid patches receive identical verifier gates across profiles; trace/replay preserves route reasons and returned model identity.
-- [ ] Existing fixed profile remains reproducible; `pnpm --filter @sutura/core exec vitest run src/llm/router.test.ts src/llm/routing-policy.test.ts` and relevant repair-budget/replay tests pass.
+- [x] Table-driven boundary tests at 0.7/0.9, context limits, missing confidence, one/two targets, exhaustion and previous failure demonstrate actual changed route decisions.
+- [x] Budget tests reserve maximum input/output, charge retries and provider failures, retain audit reserve, stop on missing price/model contracts and cap escalation at one.
+- [x] Same inputs/profile yield identical decisions; candidate or provenance cannot override purpose or safety gates.
+- [x] End-to-end deterministic controls show valid/invalid patches receive identical verifier gates across profiles; trace/replay preserves route reasons and returned model identity.
+- [x] Existing fixed profile remains reproducible; `pnpm --filter @sutura/core exec vitest run src/llm/router.test.ts src/llm/routing-policy.test.ts` and relevant repair-budget/replay tests pass.
 
 ## Manual success criteria
 
@@ -64,6 +64,43 @@ Not built in this pass, and not claimed:
 
 - The policy is wired into `ModelRouter.select` as an opt-in `adaptive` input. Absent it, the requested role is used unchanged, so fixed routing stays the reproducible control and the safe default until phase 10 evaluates promotion. When supplied, the chosen tier is priced from the same profile the fixed path would use, an abstaining policy keeps the requested role rather than inventing one, and the decision carries both the reason and the frozen routing profile hash. Adaptive selection cannot change the profile identity. 5 added tests; the existing router tests are unchanged.
 - No call site passes `adaptive` yet, so no production request is adaptively routed. Turning it on for a purpose is a promotion decision phase 10 owns.
-- Budget tests that charge retries and provider failures, and record requested versus returned model identity as an explicit contract failure, are not added.
-- `docs/evaluation/routing-policy.md` is not written.
 - No model or price contract is validated against a live provider; phase 10 owns that.
+
+## Second pass — September 6
+
+`routing-integration.test.ts` holds the policy against the budget it spends
+from and the gates it cannot change. 10 tests.
+
+The audit reserve survives every routing decision: a run routes from what is
+left after the reserve is held back, the reserve is still spendable afterwards,
+and when only the reserve would cover the request the policy abstains rather
+than spending it. A model turn reserves its worst case and refunds only what
+was not spent; settling the same reservation twice is refused. A provider
+failure and a retry each consume a turn like any other, so two failures exhaust
+a two-turn budget: the money is refunded, the attempt is not.
+
+A missing price or model contract stops the run rather than routing to the tier
+anyway, and ultra escalation is capped at one per run.
+
+One defect this surfaced and fixed: an abstention reported
+`affordable-fallback` whatever the actual obstacle, so a run that abstained
+because no tier had a verified contract read as though it could not afford one.
+The abstention now names why the last permitted tier was unusable; the rejected
+list already carried the per-tier reasons and is unchanged.
+
+Nothing a candidate supplies reaches the policy: adjudication routes to the
+same tier with the same reason and the same profile hash whether or not the
+signals carry a preferred tier, an agent name or a trusted flag. The same
+signals, profile and budget give byte-identical decisions across repeated
+calls. The profile hash ignores tier order and moves on any frozen field.
+
+The verifier runs the same ordered gate stack for a valid and an invalid patch;
+they differ only in where the walk stops, which is what makes a cross-profile
+comparison meaningful.
+
+`docs/evaluation/routing-policy.md` documents the table, what a decision cannot
+do, how to read a nano selection, an escalation and a budget abstention, and
+the limits: no live provider validation and no cost or success claim.
+
+Local verification: `router.test.ts`, `routing-policy.test.ts`,
+`repair-budget.test.ts` and `routing-integration.test.ts` pass together.

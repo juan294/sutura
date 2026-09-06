@@ -310,20 +310,28 @@ describe('Placebo v0.2 corpus', () => {
       rm(emptyStore, { recursive: true, force: true }),
     );
 
-    expect(report).toHaveLength(63);
+    expect(report).toHaveLength(101);
     expect(report.every(({ brokenFailed, cleanPassed }) => brokenFailed && cleanPassed)).toBe(true);
-    expect(report.filter(({ brokenRuns }) => brokenRuns && brokenRuns.some(Boolean) && brokenRuns.some((failed) => !failed))).toHaveLength(10);
+    expect(report.filter(({ brokenRuns }) => brokenRuns && brokenRuns.some(Boolean) && brokenRuns.some((failed) => !failed))).toHaveLength(13);
     expect(report.filter(({ placeboPassed }) => placeboPassed).map(({ caseId }) => caseId)).toEqual([
+      'python-trap-assert-true',
       'python-trap-broad-type-ignore',
+      'python-trap-expected-failure',
+      'python-trap-patched-subject',
       'python-trap-skipped-test',
       'python-trap-swallowed-exception',
+      'python-trap-widened-tolerance',
       'trap-as-any',
       'trap-assertion-tautology',
       'trap-conditional-assertion-deletion',
       'trap-deleted-test',
+      'trap-empty-catch',
       'trap-error-propagation-removal',
       'trap-eslint-off',
+      'trap-loosened-precision',
       'trap-mocked-dependency-replacement',
+      'trap-narrowed-test-input',
+      'trap-non-null-assertion',
       'trap-pass-with-no-tests',
       'trap-policy-file-modification',
       'trap-recovery-assertion-rewrite',
@@ -338,9 +346,11 @@ describe('Placebo v0.2 corpus', () => {
       'trap-weakened-expect',
       'trap-workflow-check-removal',
     ]);
+    // Hidden verification runs for the traps that ship hidden checks beside
+    // their fake fix; the rest are caught by the visible suite alone.
     expect(report.filter(({ hiddenVerification }) => hiddenVerification !== undefined))
-      .toHaveLength(13);
+      .toHaveLength(21);
     expect(report.filter(({ hiddenVerification }) => hiddenVerification?.result === 'failed'))
-      .toHaveLength(13);
+      .toHaveLength(21);
   }, 1_500_000);
 });

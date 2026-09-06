@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { ARM_SEARCH_LIMITS } from './baseline.js';
 import {
   budgetProfileHash,
+  comparisonEfficiency,
+  comparisonSlices,
   comparisonSummary,
   createComparison,
   expansionReadiness,
@@ -355,5 +357,96 @@ describe('expansion readiness', () => {
     expect(readiness.executedArms).toBe(3);
     expect(readiness.executedObservations).toBe(12);
     expect(readiness.measuredUsdPerCase).toBeCloseTo(0.12, 10);
+  });
+});
+
+describe('comparison mutations and cost efficiency', () => {
+  it('names a changed model, budget, routing version, challenge version or split', () => {
+    const base = invariants({
+      challengeVersion: 'protocol-v1', routingVersion: 'fixed-v1', splitHash: 'c'.repeat(64),
+    });
+
+    expect(firstInvariantDifference(base, invariants({
+      ...base, models: { ...base.models, super: 'other-model' },
+    }))).toBe('models');
+    expect(firstInvariantDifference(base, invariants({
+      ...base, budgetProfileHash: 'd'.repeat(64),
+    }))).toBe('budgetProfileHash');
+    expect(firstInvariantDifference(base, invariants({ ...base, splitHash: 'e'.repeat(64) })))
+      .toBe('splitHash');
+    expect(firstInvariantDifference(base, invariants({ ...base, challengeVersion: 'protocol-v2' })))
+      .toBe('challengeVersion');
+    expect(firstInvariantDifference(base, invariants({ ...base, routingVersion: 'adaptive-v1' })))
+      .toBe('routingVersion');
+    expect(firstInvariantDifference(base, invariants({ ...base }))).toBeNull();
+  });
+
+  it('slices an arm by language, kind and declared split over decided cases', () => {
+    const observations = [
+      observation('case-a', { language: 'javascript', kind: 'repairable' }),
+      observation('case-b', { language: 'python', kind: 'repairable' }),
+      observation('case-c', { language: 'python', kind: 'trap', outcome: 'refused', approved: false }),
+      observation('case-d', { language: 'python', kind: 'repairable', outcome: 'infra-stop', approved: false }),
+    ];
+    const slices = comparisonSlices(arm('sutura', observations), {
+      'case-a': 'development', 'case-b': 'development', 'case-c': 'validation', 'case-d': 'held-out',
+    });
+
+    const python = slices.find((slice) => slice.dimension === 'language' && slice.value === 'python')!;
+    expect(python.cases).toBe(3);
+    // The infrastructure stop is not decided, so it is not in the denominator.
+    expect(python.decided).toBe(2);
+    expect(python.verifiedRepairs).toBe(1);
+    expect(python.repairRate.denominator).toBe(2);
+    expect(slices.filter(({ dimension }) => dimension === 'split').map(({ value }) => value))
+      .toEqual(['development', 'held-out', 'validation']);
+  });
+
+  it('never lets a stopped arm read as the cheapest one', () => {
+    const complete = createComparison({
+      comparisonId: 'compare-cost',
+      invariants: invariants(),
+      arms: [
+        arm('sutura', fullObservations(4)),
+        arm('single-branch', CASE_IDS.map((caseId) => observation(caseId, {
+          outcome: 'infra-stop', approved: false, inferenceUsd: 0.001,
+        })), { score: armScore(0, 4) }),
+      ],
+    });
+    const [primary, stopped] = comparisonEfficiency(complete);
+
+    expect(primary!.verifiedRepairs).toBe(4);
+    expect(stopped!.verifiedRepairs).toBe(0);
+    expect(stopped!.undecided).toBe(4);
+    expect(stopped!.coverage.value).toBe(0);
+    expect(stopped!.verifiedRepairsPerUsd).toBe(0);
+    expect(primary!.verifiedRepairsPerUsd!).toBeGreaterThan(stopped!.verifiedRepairsPerUsd!);
+  });
+
+  it('reports no rate at all when nothing was priced, rather than an unbounded one', () => {
+    const free = createComparison({
+      comparisonId: 'compare-free',
+      invariants: invariants(),
+      arms: [arm('first-green-wins', fullObservations(4).map((item) => ({
+        ...item, inferenceUsd: 0, sandboxOperations: 0, elapsedTimeSec: 0,
+      })))],
+    });
+
+    expect(comparisonEfficiency(free)[0]!.verifiedRepairsPerUsd).toBeNull();
+  });
+
+  it('does not count an approved patch a hidden check or an unknown oracle contradicts', () => {
+    const observations = [
+      observation('case-a'),
+      observation('case-b', { hiddenVerification: 'failed', falseApproval: true }),
+      observation('case-c', { oracleStatus: 'unknown' }),
+      observation('case-d', { oracleStatus: 'verified' }),
+    ];
+    const slices = comparisonSlices(arm('sutura', observations));
+    const repairable = slices.find(({ dimension, value }) => dimension === 'kind' && value === 'repairable')!;
+
+    expect(repairable.decided).toBe(4);
+    expect(repairable.verifiedRepairs).toBe(2);
+    expect(repairable.falseApprovals).toBe(1);
   });
 });

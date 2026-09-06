@@ -141,3 +141,55 @@ describe('frozen evaluation split', () => {
       .toThrow(/does not fit any remaining split/u);
   });
 });
+
+describe('leak sentinels', () => {
+  const sentinels: Array<[string, Record<string, unknown>]> = [
+    ['case kind', { kind: 'trap' }],
+    ['expected outcome', { expectedOutcome: 'refused' }],
+    ['final verdict', { verdict: 'approved' }],
+    ['hidden verdict', { hiddenVerification: { result: 'failed' } }],
+    ['adjudicator recommendation', { adjudicatorRecommendation: 'reject' }],
+    ['agent provenance', { agentName: 'other-agent', agentId: 'a-1' }],
+    ['label', { label: 'breaks-contract' }],
+    ['split', { split: 'held-out' }],
+  ];
+
+  it.each(sentinels)('removes an injected %s from the model-facing record', (_name, injected) => {
+    const blinded = blindExecutedRecord({
+      recordId: 'case-a',
+      failureExcerpt: 'expected 3, received 2',
+      candidateDiff: '--- a/page.js\n+++ b/page.js\n@@ -1 +1 @@\n-a\n+b\n',
+      publicContracts: [],
+      observations: [],
+      changedPaths: ['page.js'],
+      ...injected,
+    });
+
+    for (const key of Object.keys(injected)) {
+      expect(Object.hasOwn(blinded, key)).toBe(false);
+    }
+    expect(() => assertNoForbiddenMetadata(blinded)).not.toThrow();
+  });
+
+  it('rejects a sentinel nested inside an observation rather than only at the top', () => {
+    expect(() => assertNoForbiddenMetadata({
+      observations: [{ command: 'pnpm test', exitCode: 0, output: 'ok', hiddenTests: ['x'] }],
+    })).toThrow(/leak/u);
+  });
+
+  it('drops an answer-bearing filename while keeping the joinable record id', () => {
+    const blinded = blindExecutedRecord({
+      recordId: 'case-a',
+      failureExcerpt: 'failed',
+      candidateDiff: 'diff',
+      publicContracts: [],
+      observations: [],
+      changedPaths: ['page.js', 'hidden/answers.test.js', 'fake-fix.diff', 'expected-output.json'],
+    });
+
+    expect(blinded.changedPaths).toEqual(['page.js']);
+    // The join key survives, so scoring still finds this record.
+    expect(blinded.recordId).toBe('case-a');
+    expect(blinded.sourceHash).toMatch(/^[a-f0-9]{64}$/u);
+  });
+});

@@ -118,8 +118,67 @@ Identity and trust now come from Git rather than from arguments alone. `assertCl
 
 One defect this pass found and fixed: the Action input reader trimmed the candidate patch, which strips the trailing newline a unified diff needs. Patch bytes are now preserved exactly and only checked for presence.
 
-Not built in this pass, and not claimed:
-- Neither route yet prepares a sandbox, reproduces the failure or executes the shared gate stack, so `verifyExternalPatch` is reachable from tests but not from the command. Both stop after establishing identity and validating the request.
-- Source snapshotting into an immutable temporary copy, and detection of source changing during snapshotting, are not implemented. The checkout is confirmed clean at the declared commit, which is the identity half of that requirement, not the isolation half.
-- The Action route still uses a fixed trusted command map; only the CLI resolves it from the policy at the trusted commit.
-- No external-patch fixtures from two agent sources exist; phase 10 owns that evidence.
+Not built at the time of that pass: sandbox preparation and gate execution,
+the immutable source snapshot, and the Action's command map. All three are now
+built; see the third pass below. External-patch fixtures from two agent sources
+remain phase 10's evidence and are not claimed here.
+
+## Third pass — September 6
+
+The command executes now.
+
+`snapshotCleanSourceAt` copies the clean checkout into a temporary directory
+and binds its hash. The copy is what executes, so nothing that happens to the
+developer's checkout afterwards changes what a run verified. Controller
+storage, evaluator storage, hidden tests and sensitive paths are excluded by
+the same rules the sandbox snapshot uses, `.git` never travels with the copy,
+and every file and directory in the copy is left read-only. Every file is read
+once for the copy and read again afterwards, and the checkout is re-checked for
+cleanliness, so a source that changed while it was being copied refuses the run
+rather than producing a snapshot that describes neither state. Two identical
+sources hash the same and two different sources do not. 6 tests against real
+Git checkouts.
+
+`verify-execution.ts` supplies the sandbox-backed gates. It imports the runtime
+image, prepares dependencies and the repository overlay through the same
+`prepareSandbox` a repair uses, then observes the failing command twice on the
+untouched baseline. A baseline that already passes and one that fails only
+sometimes each get their own status rather than being folded into a refusal,
+because a patch cannot be shown to fix a failure that did not happen or that
+happens on its own schedule. Only a reproduced failure reaches the candidate,
+and the patch is applied to the prepared baseline image, so what runs is the
+snapshot plus exactly the supplied diff. A patch that does not apply is invalid
+input and the command never runs. 11 tests.
+
+The gate runner returns observations for reproduction, policy, mechanical and
+visible from that execution. Audit, challenges, adjudication, repository policy
+and resources are delegated; without a delegate each records `not-run`.
+
+That exposed a real hole in the shared evaluator, which is now fixed. A gate
+the runner reported as `not-run` did not stop the walk, so in optional
+challenge mode a patch could reach the end and read as `passed` with the audit
+never run. A runner-reported `not-run` now stops the walk as missing evidence,
+and the outcome is `insufficient` rather than a refusal: the gate did not
+decide against the subject, it did not happen. A gate declared unsupported for
+this subject, and the challenge gate in `disabled` mode, still skip without
+stopping, so the offline harness and the disabled-challenge path are unchanged.
+
+`executeVerify` joins the two halves: prepare and validate, snapshot the
+source, execute the gates, evaluate, and remove the copy whether the run
+succeeded or failed. The CLI runs it when sandbox credentials are present and
+otherwise reports what it established, since without a sandbox nothing can
+execute. 4 tests drive it against a real Git checkout with an in-memory
+sandbox, including the controller storage that never reaches the copy and the
+dirty checkout that refuses before any sandbox call.
+
+The Action derives its trusted command map from the trusted policy through the
+same `trustedCommandsFromPolicy` the CLI uses, rather than a fixed default, and
+refuses a command that policy does not declare. 3 tests.
+
+Local verification: workspace typecheck, lint and bundle parity passed; core
+1,654 tests, CLI 157, Action 22.
+
+Still not built here: the audit, challenge and adjudication gates are delegated
+rather than executed by this route, so an executed verification currently ends
+`insufficient` at the audit gate. Wiring the audit stack into this route is the
+remaining work, and phase 10 owns the two-agent-source evidence.

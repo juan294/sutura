@@ -90,8 +90,12 @@ function unreached(
  *
  * An early refusal does not truncate the record: the remaining gates stay
  * `not-run` with `not-executed`, so an omitted suite, policy command, challenge
- * or adjudication can never read as a pass. In `required` challenge mode a
- * subject that reaches the end without qualified challenge assurance is
+ * or adjudication can never read as a pass. A gate the runner itself reports as
+ * `not-run` stops the walk as missing evidence, which is `insufficient` rather
+ * than a refusal: the gate did not decide against the subject, it did not
+ * happen. Only a gate declared unsupported for this subject, or the challenge
+ * gate in `disabled` mode, is skipped without stopping. In `required` challenge
+ * mode a subject that reaches the end without qualified challenge assurance is
  * `insufficient`, not approved.
  */
 export async function evaluateVerification(
@@ -100,6 +104,7 @@ export async function evaluateVerification(
   const observations: VerificationGateObservation[] = [];
   const unsupported = request.unsupportedGates ?? {};
   let blockingGate: OrderedVerificationGate | null = null;
+  let missingEvidence = false;
   let challengeAssurance = false;
 
   for (const gate of VERIFICATION_GATE_ORDER) {
@@ -119,12 +124,17 @@ export async function evaluateVerification(
     const result = observed(gate, await request.runGate(gate));
     observations.push(result);
     if (gate === 'challenges' && result.status === 'passed') challengeAssurance = true;
-    if (TERMINAL.has(result.status)) blockingGate = gate;
+    if (result.status === 'not-run') {
+      blockingGate = gate;
+      missingEvidence = true;
+    } else if (TERMINAL.has(result.status)) blockingGate = gate;
   }
 
   if (blockingGate !== null) {
     return {
-      status: observations.find(({ gate }) => gate === blockingGate)!.status,
+      status: missingEvidence
+        ? 'insufficient'
+        : observations.find(({ gate }) => gate === blockingGate)!.status,
       blockingGate,
       observations,
       challengeMode: request.challengeMode,
