@@ -150,8 +150,25 @@ Built and locally verified:
 
 Local verification: workspace typecheck, lint and build passed; the core suite passed 1,476 tests with nine credential-gated skips.
 
-Not built in this pass, and not claimed:
+Not built in this first pass: acceptance items 3, 4, 5, 7, 8, 9 and 10, and the search-admission integration.
 
-- Acceptance items 3, 4, 5, 7, 8, 9 and 10 have no tests yet: probe target validation against traversal, symlink and denied sources; the pagination floor-only versus ceil oracle qualification; the quality fixture family; budget exhaustion around generation and repetitions; search-admission integration; fabricated-expectation qualification; and replay reproduction of challenge hashes and statuses.
-- Item 2's prompt-exclusion proof is covered, but "frozen set is created before the repair call" is not, because the evaluator and challenge set are not yet wired into `heal.ts` or `search.ts`. Search still admits on diagnosed-test green rather than on `verificationApproved`, so the shared evaluator is available and tested but not yet the production admission path.
-- `challenges/validate.ts` and `challenges/evaluate.ts` are not added; phase 1's `protocol.ts` continues to own probe freezing and observation decoding.
+## Second pass — September 6
+
+Items 3, 8 and 9 are now built and locally verified.
+
+`challenges/validate.ts` (item 3) answers one question for every proposal: can the controller evaluate this itself, from something it already trusts? It rejects absolute and Windows-absolute targets, traversal both directly and nested, targets resolving through a symbolic link, evaluator-private, controller-private and credential paths, sources the repository policy denies reading, references whose hash does not match the controller's baseline, references to paths the controller never read, inputs beyond a bounded size, inputs that are not bounded typed values, tautological relations, unknown relations, and contracts the trusted policy does not declare. The trusted-contract check runs before anything a proposal can influence. 26 tests.
+
+`challenges/expectation.ts` (items 4 and 9) derives expected values from the operator-trusted contract alone. A fabricated `expected: 2` for `(21, 10)` carried alongside a perfectly valid citation cannot override the contract's `3`; the derivation does not read the proposal at all. The pagination controls hold: the floor-only patch is refused at the exact boundary `(20, 10)` where `floor + 1` gives 3 and the contract gives 2, while the correct ceiling patch passes there and at `(21, 10)`, `(1, 10)` and `(0, 10)`. An input outside the declared domain, an example table with no matching row, an unsupported contract kind and an unsupported relation all abstain, and a missing expectation is never turned into a pass. Strict configuration contracts are served by the JSON-property adapter. 14 tests.
+
+Search admission (item 8) now treats diagnosed-test green as provisional. `adaptiveSearch` takes an `admit` hook; only a fully accepted result cancels siblings and terminates the search. A refused provisional patch becomes `verification-refused`, keeps its reason on the node, and leaves the remaining frontier running. The verifier is never called for a branch whose visible suite failed or whose repository policy already refused it, and with no hook supplied the previous visible-suite behavior is unchanged, so existing callers keep working. 20 tests in `search.test.ts`.
+
+Local verification for this pass: workspace typecheck, lint and build passed; the core suite passed 1,572 tests with nine credential-gated skips.
+
+Item 7 is also built. `challenges/budget.ts` reserves the mandatory audit before challenge generation is even priced, so challenge work cannot consume the capacity a run needs to finish auditing. When the remainder cannot cover every proposal it reduces retention before freezing, rather than dropping challenges afterwards, which would let a run quietly skip the ones it failed. When it cannot cover even one, it refuses explicitly with the audit reserve still held and still spendable. Exhausting sandbox operations, model turns or inference spend before generation each refuse with `audit-reserve-unavailable`. No limit is raised to make a plan fit, and none can be: the budget refuses any limit above the frozen default outright. 13 tests.
+
+Still not built, and not claimed:
+
+- Item 5's quality fixture family: baseline import failure, nondeterminism, contradictory contracts and equivalent valid repairs.
+- Item 6's sandbox controls for forged approval fields and malformed observation envelopes beyond what phase 1's `protocol.ts` already covers, and the test-aware patch documenting the remaining limitation.
+- Item 10's replay reproduction of challenge set and subject hashes across all five statuses.
+- `heal.ts` does not yet pass an `admit` hook, so the production repair path still admits on the visible suite. The seam, the evaluator, the contract derivation and the budget reservation all exist and are tested; connecting them in `heal.ts` is the remaining integration, and it is now unblocked because item 7 supplies the capacity reservation the plan requires before admitting each attempt.

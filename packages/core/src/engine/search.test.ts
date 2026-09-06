@@ -278,3 +278,82 @@ describe('adaptiveSearch', () => {
     expect(result.candidates.map(({ id }) => id)).toEqual(['search-001', 'search-002']);
   });
 });
+
+describe('verified admission', () => {
+  const options = (
+    admit?: (input: { nodeId: string; expansion: SearchExpansion }) =>
+      Promise<{ accepted: boolean; reason?: string }>,
+  ) => ({
+    baselineImageId: 'base' as never,
+    initialBranches: 3,
+    maximumDepth: 1,
+    availableBranches: () => 3,
+    concurrencyCapacity: () => 3,
+    ...(admit === undefined ? {} : { admit }),
+  });
+
+  /** Branch 1 is green but wrong; branch 2 is green and correct. */
+  const expandTwo = (results: readonly string[]) =>
+    async ({ branch }: { branch: number }) => expansion(results[branch - 1] ?? 'x', 0);
+
+  it('admits a green branch on the visible suite when no verifier is supplied', async () => {
+    const result = await adaptiveSearch({
+      ...options(), expand: expandTwo(['floor-only', 'ceil', 'third']),
+    });
+
+    expect(result.terminalReason).toBe('candidate-found');
+    expect(result.candidates).not.toHaveLength(0);
+  });
+
+  it('does not cancel siblings at the first visible green', async () => {
+    const cancel = vi.fn(async () => {});
+    const result = await adaptiveSearch({
+      ...options(async ({ expansion: item }) =>
+        ({ accepted: item.cumulativeDiff === 'ceil', reason: 'challenge refused the patch' })),
+      cancel,
+      expand: expandTwo(['floor-only', 'ceil', 'third']),
+    });
+
+    const refused = result.nodes.find(({ cumulativeDiff }) => cumulativeDiff === 'floor-only');
+    expect(refused?.terminalReason).toBe('verification-refused');
+    expect(refused?.verificationReason).toBe('challenge refused the patch');
+    expect(result.candidates.map(({ cumulativeDiff }) => cumulativeDiff)).toEqual(['ceil']);
+    expect(result.terminalReason).toBe('candidate-found');
+  });
+
+  it('keeps a refused provisional patch out of the accepted candidates', async () => {
+    const result = await adaptiveSearch({
+      ...options(async () => ({ accepted: false, reason: 'no qualified challenge' })),
+      expand: expandTwo(['floor-only', 'also-wrong', 'third']),
+    });
+
+    expect(result.candidates).toEqual([]);
+    expect(result.terminalReason).not.toBe('candidate-found');
+    for (const node of result.nodes) {
+      expect(node.terminalReason).toBe('verification-refused');
+      expect(node.verificationReason).toBe('no qualified challenge');
+    }
+  });
+
+  it('never verifies a branch whose visible suite did not pass', async () => {
+    const admit = vi.fn(async () => ({ accepted: true }));
+    await adaptiveSearch({
+      ...options(admit), expand: async () => expansion('red', 1),
+    });
+
+    expect(admit).not.toHaveBeenCalled();
+  });
+
+  it('never verifies a branch the repository policy already refused', async () => {
+    const admit = vi.fn(async () => ({ accepted: true }));
+    await adaptiveSearch({
+      ...options(admit),
+      expand: async () => ({
+        ...expansion('green', 0),
+        policyEvidence: { valid: false, violations: ['denied'], changedFiles: ['a.ts'], diffBytes: 5 },
+      }),
+    });
+
+    expect(admit).not.toHaveBeenCalled();
+  });
+});

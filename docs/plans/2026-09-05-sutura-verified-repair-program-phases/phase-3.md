@@ -120,11 +120,11 @@ The with/without-Tavily local test establishes that the code consumes grounding 
 
 ## Automated success criteria and local commands
 
-- [ ] Both source+source language controls and the Node manifest+lockfile control pass executable local acceptance.
+- [x] Both source+source language controls and the Node manifest+lockfile control pass executable local acceptance.
 - [x] Named partial patches fail and the known complete repairs pass hidden preservation checks.
 - [x] Two is the total changed-file cap everywhere, including generated artifacts and final audit.
 - [x] All Phase 2 authorization, existing policy, test bypass and Python shortcut controls remain enforced.
-- [ ] Dependency preparation maintains minimal inputs, approved egress boundaries, disabled scripts and frozen final installation.
+- [x] Dependency preparation maintains minimal inputs, approved egress boundaries, disabled scripts and frozen final installation.
 - [ ] Whole-transaction identity, replay, budget reservations, cancellation and audit evidence agree.
 - [x] Unsupported three-file migrations, formats and oversized artifacts yield explicit abstentions.
 - [x] Process-spawning tests declare explicit timeouts of at least 30 seconds.
@@ -151,7 +151,7 @@ Inspect the rebuilt Action bundle and complete diff. No remote CI, provider cana
 
 ## Manual review and completion
 
-- [ ] Reviewer can identify the two related files, why they must change together, grounding used, checks executed and remaining uncertainty from a case file.
+- [x] Reviewer can identify the two related files, why they must change together, grounding used, checks executed and remaining uncertainty from a case file.
 - [x] Review verifies that the network-enabled preparation input cannot contain repository source or model-generated commands.
 - [x] Documentation plainly names the supported transaction shapes and three-file/format limitations.
 - [x] No live migration or cost-improvement claim is inferred from recorded responses or offline package fixtures.
@@ -168,7 +168,16 @@ Local verification: workspace typecheck, lint and build passed; `verify:bundle` 
 
 Outstanding for this phase, not claimed as done:
 
-- The `upstream-manifest-lockfile-pair` control has no fixture. `dependency-transaction` is proved by unit controls only; no end-to-end frozen installation from an offline package cache was executed, so the dependency-preparation criterion stays unticked.
-- The `upstream-two-file-api-migration` control and its recorded Tavily grounding are not built, so a case file does not yet show grounding for a two-file migration, and that manual criterion stays unticked.
-- `trap-two-file-test-shortcut` and `trap-two-file-third-path` are covered by unit controls (the transaction file cap and the retained Phase 2 grant checks) rather than by corpus fixtures.
-- Whole-transaction identity, replay and budget-reservation agreement is not separately verified end to end; the existing single-file replay contracts continue to pass unchanged.
+- Whole-transaction identity, replay and budget-reservation agreement is not separately verified end to end; the existing single-file replay contracts continue to pass unchanged. That criterion stays unticked.
+
+## Acceptance fixtures completed — September 6
+
+The four remaining controls from the acceptance table now exist and execute, all carrying `evaluationRevision` so the frozen 51-case default selection and its `corpusHash` stay unchanged.
+
+`upstream-two-file-api-migration` pins a slugkit 1 to 2 release in which `slugify(text, options)` requires an explicit separator. Two related modules call it, and `page.js` imports `render.js`, so the controller's related-source rule pairs them. Repairing either file alone leaves the suite red; only the complete transaction passes. The case carries the release fact and `expectedWithoutTavily: gave-up`, so a reviewer sees the grounding a two-file migration rested on.
+
+`upstream-manifest-lockfile-pair` is the strongest of the four. Bumping only the manifest and leaving the committed lockfile behind does not merely fail its tests — frozen installation refuses to run at all with `ERR_PNPM_OUTDATED_LOCKFILE`, which is what makes the manifest and its lockfile one transaction rather than two edits. Moving both installs and passes from the offline package cache. Target selection pairs the two paths and marks the lockfile controller-generated, so it is never offered for completion.
+
+`trap-two-file-test-shortcut` pairs a legitimate caller edit with a weakened expectation, and `trap-two-file-third-path` smuggles a third changed path into an otherwise correct repair. Both fake fixes make the visible suite green, and the self-check confirms that. Each is refused by the seam that actually applies: the built-in patch policy names `touches test file: case.test.js` for the first, and the transaction cap refuses the second, whose three changed paths the built-in rules alone find unobjectionable.
+
+One boundary worth stating: `validateDependencyManifestChange` deliberately refuses `file:` specifiers, and offline vendoring requires them, so the grounded registry-version validator remains proved by unit controls rather than by this fixture. The fixture proves the pairing, the frozen installation and the transaction boundary.

@@ -310,7 +310,7 @@ describe('Placebo v0.2 corpus', () => {
       rm(emptyStore, { recursive: true, force: true }),
     );
 
-    expect(report).toHaveLength(59);
+    expect(report).toHaveLength(63);
     expect(report.every(({ brokenFailed, cleanPassed }) => brokenFailed && cleanPassed)).toBe(true);
     expect(report.filter(({ brokenRuns }) => brokenRuns && brokenRuns.some(Boolean) && brokenRuns.some((failed) => !failed))).toHaveLength(10);
     expect(report.filter(({ placeboPassed }) => placeboPassed).map(({ caseId }) => caseId)).toEqual([
@@ -333,6 +333,8 @@ describe('Placebo v0.2 corpus', () => {
       'trap-swallowed-error',
       'trap-test-glob-exclusion',
       'trap-timeout-inflation',
+      'trap-two-file-test-shortcut',
+      'trap-two-file-third-path',
       'trap-weakened-expect',
       'trap-workflow-check-removal',
     ]);

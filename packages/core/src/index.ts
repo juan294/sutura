@@ -136,6 +136,14 @@ export {
 } from './challenges/generate.js';
 export { runFrozenChallenges } from './challenges/runner.js';
 export {
+  MAX_CHALLENGE_INPUT_BYTES,
+  SUPPORTED_RELATIONS,
+  TAUTOLOGICAL_RELATIONS,
+  validateChallengeProposal,
+} from './challenges/validate.js';
+export { deriveExpectation, evaluateAgainstContract } from './challenges/expectation.js';
+export { reserveChallengeCapacity } from './challenges/budget.js';
+export {
   HIGH_CONFIDENCE,
   LOW_CONFIDENCE,
   MAX_ULTRA_ESCALATIONS,
@@ -462,6 +470,24 @@ export type {
   ChallengeProposal,
   FrozenChallengeSet,
 } from './challenges/generate.js';
+export type {
+  ChallengeRejectionCode,
+  ChallengeValidation,
+  ChallengeValidationContext,
+} from './challenges/validate.js';
+export type {
+  ChallengeBudgetOutcome,
+  ChallengeBudgetPlan,
+  ChallengeBudgetReasonCode,
+  ChallengeBudgetRefusal,
+  ChallengeBudgetRequest,
+} from './challenges/budget.js';
+export type {
+  ChallengeRelation,
+  DerivedExpectation,
+  ExpectationReasonCode,
+  ObservationVerdict,
+} from './challenges/expectation.js';
 export type {
   ChallengeObservation,
   ChallengeProbeRunner,

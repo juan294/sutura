@@ -31,7 +31,9 @@ export interface SearchNode {
   transcriptReference: string;
   metrics?: RunMetrics;
   candidate?: Candidate;
-  terminalReason?: 'passed' | 'policy' | 'repeated-state' | 'depth' | 'cancelled' | 'failed' | 'completion-limit';
+  terminalReason?: 'passed' | 'policy' | 'repeated-state' | 'depth' | 'cancelled' | 'failed' | 'completion-limit' | 'verification-refused';
+  /** Why full verification refused a provisionally green candidate. */
+  verificationReason?: string;
 }
 
 export interface SearchExpansion {
@@ -67,6 +69,15 @@ export interface AdaptiveSearchOptions {
   cancel?(nodeId: string): Promise<void>;
   onDecision?(decision: { summary: string; nodeId?: string; parentNodeId?: string }): void;
   expand(context: SearchExpansionContext): Promise<SearchExpansion>;
+  /**
+   * Fully verifies a provisionally green candidate. Diagnosed-test green only
+   * makes a branch provisional; without this hook a green branch is admitted on
+   * the visible suite alone, which is the pre-phase-4 behavior.
+   */
+  admit?(input: {
+    nodeId: string;
+    expansion: SearchExpansion;
+  }): Promise<{ accepted: boolean; reason?: string }>;
 }
 
 export interface AdaptiveSearchResult {
@@ -136,10 +147,16 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
           signal: controllers[index]!.signal,
         });
         settled[index] = true;
-        const passed = expansion.policyEvidence.valid &&
+        const provisional = expansion.policyEvidence.valid &&
           expansion.testEvidence.exitCode === 0 &&
           expansion.candidate !== undefined;
-        if (!cancellationStarted && passed) {
+        // A provisional branch is verified before it may cancel anything. Only a
+        // fully accepted result ends the race; a refused one keeps its reason and
+        // leaves the remaining frontier running.
+        const admission = provisional && options.admit !== undefined
+          ? await options.admit({ nodeId: id, expansion })
+          : { accepted: provisional };
+        if (!cancellationStarted && admission.accepted) {
           cancellationStarted = true;
           await Promise.all(ids.flatMap((otherId, otherIndex) => {
             if (otherIndex === index || settled[otherIndex]) return [];
@@ -147,19 +164,19 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
             return options.cancel === undefined ? [] : [options.cancel(otherId)];
           }));
         }
-        return expansion;
+        return { expansion, admission };
       }));
-      for (const [index, expansion] of expansions.entries()) {
+      for (const [index, { expansion, admission }] of expansions.entries()) {
         const parent = batch[index];
         const id = ids[index]!;
       const fingerprint = `${diffFingerprint(expansion.cumulativeDiff)}:${errorFingerprint(expansion.testEvidence.output)}`;
       const repeated = visited.has(fingerprint);
       visited.add(fingerprint);
-      const passed = expansion.testEvidence.exitCode === 0 && expansion.candidate !== undefined;
+      const provisional = expansion.testEvidence.exitCode === 0 && expansion.candidate !== undefined;
       const terminalReason = !expansion.policyEvidence.valid
         ? 'policy' as const
-        : passed
-          ? 'passed' as const
+        : provisional
+          ? (admission.accepted ? 'passed' as const : 'verification-refused' as const)
           : isEvidenceTerminal(expansion.terminalReason)
             ? expansion.terminalReason
             : repeated
@@ -179,6 +196,9 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
         ...(expansion.candidate === undefined ? {} : { candidate: expansion.candidate }),
         errorFingerprint: errorFingerprint(expansion.testEvidence.output),
         ...(terminalReason === undefined ? {} : { terminalReason }),
+        ...(terminalReason === 'verification-refused' && admission.reason !== undefined
+          ? { verificationReason: admission.reason }
+          : {}),
       });
       options.onDecision?.({
         summary: terminalReason === undefined ? 'Retain branch in frontier' : `Branch terminal: ${terminalReason}`,

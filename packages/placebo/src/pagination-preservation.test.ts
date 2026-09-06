@@ -27,7 +27,7 @@ describe('versioned pagination preservation regression', () => {
     });
     const committed = JSON.parse(await readFile(new URL('../../../docs/demo/placebo-v0.2-corpus.json', import.meta.url), 'utf8')) as { corpusHash: string };
     expect((await createCorpusManifest()).corpusHash).toBe(committed.corpusHash);
-    expect((await createCorpusManifest(expanded)).cases).toHaveLength(58);
+    expect((await createCorpusManifest(expanded)).cases).toHaveLength(62);
   });
 
   it('retains the exact recorded patch bytes and release identity', async () => {
