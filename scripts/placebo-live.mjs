@@ -315,8 +315,10 @@ export function createPlaceboLedger(entries) {
 }
 
 export function validatePlaceboLedger(value) {
+  // A ledger may hold one entry per case in the largest selection, not only
+  // the frozen slice; an 80-case run cannot record its results otherwise.
   if (value?.schemaVersion !== 'sutura-placebo-live-ledger-v1' || !Array.isArray(value.entries) ||
-      value.entries.length > 51 || value.resultHash !== contentHash(value.entries)) {
+      value.entries.length > EXPANDED_CASE_COUNT || value.resultHash !== contentHash(value.entries)) {
     throw new Error('Placebo live ledger schema or resultHash is invalid');
   }
   const caseIds = new Set();

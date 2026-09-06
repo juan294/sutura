@@ -430,3 +430,34 @@ test('the expanded selection reaches versioned cases without widening the frozen
     assert.ok(!frozenIds.has(id), `${id} leaked into the frozen slice`);
   }
 });
+
+test('a ledger holds one entry per case in the expanded selection, not only the frozen slice', () => {
+  const entry = (index) => ({
+    artifactName: `sutura-placebo-pl-1-case-${index}`,
+    artifactSha256: 'a'.repeat(64),
+    caseId: `case-${index}`,
+    controllerSha: 'c'.repeat(40),
+    evaluationCount: 1,
+    inferenceUsd: 0.001,
+    outcomes: ['fixed'],
+    packageContentHash: 'd'.repeat(64),
+    packageIntegrity: 'f'.repeat(64),
+    recordedAt: '2026-09-06T12:00:00.000Z',
+    resultHash: 'e'.repeat(64),
+    runId: String(1000 + index),
+    runUrl: `https://github.com/juan294/sutura/actions/runs/${1000 + index}`,
+    sandboxUsd: 0.06,
+    subjectSha: 'c'.repeat(40),
+    totalUsd: 0.061,
+  });
+
+  // 80 entries is a development plus validation run; 51 was the frozen slice.
+  const eighty = createPlaceboLedger(Array.from({ length: 80 }, (_unused, index) => entry(index)));
+  assert.equal(validatePlaceboLedger(eighty).entries.length, 80);
+
+  const hundred = createPlaceboLedger(Array.from({ length: 100 }, (_unused, index) => entry(index)));
+  assert.equal(validatePlaceboLedger(hundred).entries.length, 100);
+
+  const tooMany = createPlaceboLedger(Array.from({ length: 101 }, (_unused, index) => entry(index)));
+  assert.throws(() => validatePlaceboLedger(tooMany), /schema or resultHash is invalid/u);
+});
