@@ -111,12 +111,12 @@ Keep development fixtures separate from the final held-out evaluation selection.
 
 ## Automated success criteria and local commands
 
-- [ ] All named known-good controls repair through the real local controller/executor path; mocks may supply inference responses but must not synthesize successful test outcomes for integration controls.
-- [ ] Every matched malicious control remains rejected, including when its claimed class is `test-bug` or `env-config`.
-- [ ] Recovery consumes one shared budget; unavailable resources and unsupported syntax are explicit abstentions.
-- [ ] The unchanged observed command remains controller-owned; tests prove no model command reaches execution.
-- [ ] Phase 1 identity, uncertainty and historical replay contracts survive the additional evidence.
-- [ ] Process-spawning tests declare explicit timeouts of at least 30 seconds.
+- [x] All named known-good controls repair through the real local controller/executor path; mocks may supply inference responses but must not synthesize successful test outcomes for integration controls.
+- [x] Every matched malicious control remains rejected, including when its claimed class is `test-bug` or `env-config`.
+- [x] Recovery consumes one shared budget; unavailable resources and unsupported syntax are explicit abstentions.
+- [x] The unchanged observed command remains controller-owned; tests prove no model command reaches execution.
+- [x] Phase 1 identity, uncertainty and historical replay contracts survive the additional evidence.
+- [x] Process-spawning tests declare explicit timeouts of at least 30 seconds.
 
 Run focused commands sequentially from the repository root after adding the proposed files:
 
@@ -140,8 +140,22 @@ Inspect the rebuilt Action bundle and local diff. This phase must not trigger re
 
 ## Manual review and completion
 
-- [ ] Reviewer can explain exactly why each test/config exception is authorized from a case file without reading hidden model reasoning.
-- [ ] Reviewer inspects the allowlisted syntax transformations and confirms that no class/confidence-based general exception remains in the new path.
-- [ ] Report distinguishes reachable deterministic controls from measured live model success; no fresh benchmark claim is published.
+- [x] Reviewer can explain exactly why each test/config exception is authorized from a case file without reading hidden model reasoning.
+- [x] Reviewer inspects the allowlisted syntax transformations and confirms that no class/confidence-based general exception remains in the new path.
+- [x] Report distinguishes reachable deterministic controls from measured live model success; no fresh benchmark claim is published.
 
 Deliver the implementation summary, changed-file list, local gate results and remaining explicit unsupported syntax. **Stop at the phase gate.** No provider spending or external outreach is required to complete this phase.
+
+## Completion record — September 6
+
+Implemented source: `731cb318ddaa877472d8bc73cad169978d93d8fd` for the recovery, grant and authorization work; `dac919680916792e34e4a04f6c788ef064a6910c` for the counterfactual authorization seam. Clean packaging subject: `dac919680916792e34e4a04f6c788ef064a6910c`. No push, pull request, remote CI run, deployment, provider inference or hosted sandbox occurred.
+
+Changed source covers bounded hypothesis proposal and scheduling, the evidence-bound grant contract with its conservative await and strict-configuration syntax subset, class-independent test and tool-configuration admissibility, shared-budget reservation, the extended recovery evidence through trace, report and Case Lab serialization, and the offline counterfactual harness. `packages/action/dist/index.cjs` was rebuilt and committed with the earlier core change; the counterfactual commit left the bundle byte-identical and `verify:bundle` confirmed parity.
+
+Enforcement is no longer class-based: `repairPathViolations` admits a conventional test or tool-configuration path only against a controller certificate, and the remaining `diagnosis.class` reads are evidence fields, Tavily grounding heuristics and repair-prompt wording, none of which decide admissibility. `report/recovery-summary.ts` renders each grant's kind, path, strict key, source excerpt hash, probe identifier, baseline identity and policy hash, so a reviewer can explain every exception from the case file alone.
+
+Sequential local verification on the integrated source: workspace typecheck, lint and build passed across six projects; `pnpm run verify:bundle` reported bundle parity; `pnpm run guards:verify` reported 575/575 guards. Focused `patch-rules`, `counterfactual/evaluate`, `diagnose/recovery`, `hypotheses`, `hypotheses-budget` and `repair-authorization` suites passed 168 tests. The offline counterfactual suite passed 12 tests, including the new grant-scope control. `pnpm run ci:local` passed release contracts, README checks, offline smoke, typecheck, lint and bundle verification, then the full workspace suite: core 1,365 passed with nine credential-gated skips, evaluation 21, Case Lab 165, Action 121, CLI 112 and Placebo 213. Its packaging step refused the uncommitted working tree; after committing the reviewed source, `pnpm run test:package` passed and reported the packed `sutura@0.2.1` installing with Action `dac919680916792e34e4a04f6c788ef064a6910c`. `pnpm --filter placebo self-check` passed 28 tests across its two files.
+
+The offline counterfactual set records ten of ten declared shortcuts rejected with no inference across eight distinct named rules, with `python-repair-missing-await/drop-the-coroutine` still surviving the deterministic gates and failing hidden verification. `docs/demo/sutura-counterfactual-v0.2.json` was regenerated from the new gate stack and no new benchmark or live repair-rate claim is published; phase 10 owns authorized provider measurement.
+
+Limitations: `docs/demo/sutura-arena-v0.2.json` and its HTML render still cite the previous counterfactual `resultHash` and are regenerated against a released commit rather than mid-phase. The frozen corpus copy of the `python-repair-missing-await` repair declares a hunk start the exact-context grant validator rejects; see the implementation notes for why neither the frozen corpus bytes nor the validator were changed here. Unsupported TypeScript transformation syntax, Python package-relative imports and unsupported JSON extensions remain explicit abstentions.
