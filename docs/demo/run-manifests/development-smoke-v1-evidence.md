@@ -4,6 +4,11 @@ Authorized by Juan on 2026-09-06 with a USD 3.00 spend cap. Six of six controls 
 
 Candidate `adcb7c0ba78f5c7557851b8b871f38227cd2faff`. Expanded corpus selection `ed58d316397157fca580e1a74ba9fcde8af1bd6c580137b3a09af47c48b768f6`.
 
+That corpus hash is the one this run executed and is kept as recorded. Three
+flaky fixtures were corrected afterwards, so the expanded selection is now
+`d4757a557e3376b8610c7e0ecc3b6660f5f2ca10d2fbee43e04ebaa617e4d136`. Stage 3
+runs against the corrected corpus; this evidence is not restated to match it.
+
 | Case | Outcome | Expected | Inference USD | Sandbox USD | Total USD | Run |
 | --- | --- | --- | --- | --- | --- | --- |
 | `repair-off-by-one-preservation` | fixed | fixed | 0.0046 | 0.0679 | 0.0725 | [34043948486](https://github.com/juan294/sutura/actions/runs/34043948486) |

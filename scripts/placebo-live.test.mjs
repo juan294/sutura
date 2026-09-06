@@ -413,6 +413,7 @@ test('the expanded selection reaches versioned cases without widening the frozen
   assert.equal(frozen.corpusHash, '785cfc70359935a0f04a9a9cda39e8fb6ff4b05cc8fea3738fb24b70bcda101f');
   assert.equal(expanded.cases.length, 100);
   assert.notEqual(expanded.corpusHash, frozen.corpusHash);
+  assert.equal(expanded.corpusHash, 'd4757a557e3376b8610c7e0ecc3b6660f5f2ca10d2fbee43e04ebaa617e4d136');
 
   // The expanded selection contains every frozen case, so opting in adds and never replaces.
   const expandedIds = new Set(expanded.cases.map(({ id }) => id));

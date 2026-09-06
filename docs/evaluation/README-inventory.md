@@ -13,7 +13,7 @@ node packages/evaluation/scripts/inventory.mjs --out docs/evaluation/inventory-v
 | Root families | 94 |
 | Corpus revision | Placebo v0.2 |
 | Split hash | `49fb4609a602e609a6f31596522a4b229b3fc56ba670ce6a29d764905364a683` |
-| Inventory hash | `31a82cf94487e1381aff35692d7f72f662349dce168bba17ac163009c13974d5` |
+| Inventory hash | `e743598733bbd024ee66ebe9715619ae6061ec91a22f3570c44dfcf957c35272` |
 
 Splits are frozen by root family, so a synthetic mutation can never land in a
 different split from the case it derives from. The inventory hash moves when

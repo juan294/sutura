@@ -297,7 +297,7 @@ export const CASES = [
       'tests/test_registry.py': 'import os\nimport unittest\n\nfrom registry import first_tag\n\n\nclass RegistryTest(unittest.TestCase):\n    def test_first_tag(self) -> None:\n        self.assertEqual(first_tag(["alpha", "beta"]), "alpha")\n',
     },
     broken: {
-      'tests/test_registry.py': 'import os\nimport unittest\n\nfrom registry import first_tag\n\n\nATTEMPT = int(os.environ.get("SUTURA_TRIAGE_ATTEMPT", "0"))\n\n\nclass RegistryTest(unittest.TestCase):\n    def test_first_tag(self) -> None:\n        tags = ["alpha", "beta"] if ATTEMPT in (2, 4) else ["beta", "alpha"]\n        self.assertEqual(first_tag(tags), "alpha")\n',
+      'tests/test_registry.py': 'import os\nimport unittest\n\nfrom registry import first_tag\n\n\nclass RegistryTest(unittest.TestCase):\n    def test_first_tag(self) -> None:\n        raw = os.environ.get("SUTURA_TRIAGE_ATTEMPT")\n        if raw is None or not raw.isdigit():\n            raise RuntimeError("SUTURA_TRIAGE_ATTEMPT must be a non-negative integer")\n        attempt = int(raw)\n        tags = ["alpha", "beta"] if attempt in (2, 4) else ["beta", "alpha"]\n        self.assertEqual(first_tag(tags), "alpha")\n',
     },
   },
   {
@@ -312,7 +312,7 @@ export const CASES = [
       'tests/test_window.py': 'import unittest\n\nfrom window import within_window\n\n\nclass WindowTest(unittest.TestCase):\n    def test_boundary_is_inclusive(self) -> None:\n        self.assertTrue(within_window(10, 10))\n',
     },
     broken: {
-      'tests/test_window.py': 'import os\nimport unittest\n\nfrom window import within_window\n\n\nATTEMPT = int(os.environ.get("SUTURA_TRIAGE_ATTEMPT", "0"))\n\n\nclass WindowTest(unittest.TestCase):\n    def test_boundary_is_inclusive(self) -> None:\n        elapsed = 11 if ATTEMPT % 2 == 0 else 10\n        self.assertTrue(within_window(elapsed, 10))\n',
+      'tests/test_window.py': 'import os\nimport unittest\n\nfrom window import within_window\n\n\nclass WindowTest(unittest.TestCase):\n    def test_boundary_is_inclusive(self) -> None:\n        raw = os.environ.get("SUTURA_TRIAGE_ATTEMPT")\n        if raw is None or not raw.isdigit():\n            raise RuntimeError("SUTURA_TRIAGE_ATTEMPT must be a non-negative integer")\n        elapsed = 11 if int(raw) % 2 == 0 else 10\n        self.assertTrue(within_window(elapsed, 10))\n',
     },
   },
 
@@ -545,7 +545,7 @@ export const CASES = [
       'case.test.js': "import { expect, test } from 'vitest';\nimport { next } from './counter.js';\n\ntest('increments by one', () => {\n  expect(next(1)).toBe(2);\n});\n",
     },
     broken: {
-      'case.test.js': "import { expect, test } from 'vitest';\nimport { next } from './counter.js';\n\nconst attempt = Number(process.env.SUTURA_TRIAGE_ATTEMPT ?? '0');\n\ntest('increments by one', () => {\n  expect(next(attempt % 2 === 1 ? 2 : 1)).toBe(2);\n});\n",
+      'case.test.js': "import { expect, test } from 'vitest';\nimport { next } from './counter.js';\n\ntest('increments by one', () => {\n  const attempt = Number.parseInt(process.env.SUTURA_TRIAGE_ATTEMPT ?? '', 10);\n  if (!Number.isSafeInteger(attempt) || attempt < 0) throw new Error('SUTURA_TRIAGE_ATTEMPT must be a non-negative integer');\n  expect(next(attempt % 2 === 1 ? 2 : 1)).toBe(2);\n});\n",
     },
   },
 

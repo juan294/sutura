@@ -60,13 +60,19 @@ All manifests here are bound to:
 | --- | --- |
 | Candidate commit | `303a571dee985c6c25b5b44364490a1feb92e9e0` |
 | Runtime image | `node:22` at `sha256:8a34c4ab3ea2c5cd194f07e317b2a8f09461d3c8b05c4e34c8ccd56d56024c4d` |
-| Corpus (expanded, 100 cases) | `ed58d316397157fca580e1a74ba9fcde8af1bd6c580137b3a09af47c48b768f6` |
+| Corpus (expanded, 100 cases) | `d4757a557e3376b8610c7e0ecc3b6660f5f2ca10d2fbee43e04ebaa617e4d136` |
 | Split | `49fb4609a602e609a6f31596522a4b229b3fc56ba670ce6a29d764905364a683` |
 | Configuration | `eadefeea0455a6a88202a6f1c5e978bafd9d1326222c4a15306b53baa5f6bf0b` |
 
 A result recorded under any other candidate, image, corpus, split, config,
 model or price is refused by `validateRunEvidence`, so evidence cannot be
 carried from one manifest to another.
+
+Stages 1 and 2 ran against the earlier expanded corpus
+`ed58d316397157fca580e1a74ba9fcde8af1bd6c580137b3a09af47c48b768f6`, before
+three flaky fixtures were corrected. Their manifests keep that hash, because a
+manifest describes the run that happened. Stage 3 onward uses the corrected
+hash above.
 
 ## Before dispatching
 

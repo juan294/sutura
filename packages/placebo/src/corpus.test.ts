@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { runMechanicalChecks } from '@sutura/core';
 
-import { applyPatch, createCorpusManifest, discoverBenchmarkCases, discoverCases, prepareFixture, selfCheckCorpus, verifyCandidateWithHiddenTests } from './corpus.js';
+import { applyPatch, createCorpusManifest, createPortableTestRuntime, discoverBenchmarkCases, discoverCases, installFixture, prepareFixture, runFixtureSuite, selfCheckCorpus, verifyCandidateWithHiddenTests } from './corpus.js';
 import type { CaseKind, CorpusCase } from './types.js';
 
 const NEW_CASE_IDS = [
@@ -303,6 +303,42 @@ describe('Placebo v0.2 corpus', () => {
       await rm(emptyStore, { recursive: true, force: true });
     }
   }, 120_000);
+
+  it('makes every flaky fixture fail its first reproduction, before triage sets an attempt', async () => {
+    // Sutura reproduces once with no SUTURA_TRIAGE_ATTEMPT before triage
+    // scripts the ratio. A fixture that defaults the attempt can pass that
+    // reproduction, and the run is then reported as an infrastructure stop
+    // rather than as a flake, which is what happened live to
+    // flaky-shared-counter on 2026-09-06.
+    const cases = (await discoverCases(undefined, { includeVersionedCases: true }))
+      .filter(({ metadata }) => metadata.kind === 'flaky');
+    expect(cases.length).toBeGreaterThan(0);
+
+    const store = await mkdtemp(join(tmpdir(), 'placebo-flaky-store-'));
+    const runtime = await createPortableTestRuntime(store);
+    const passed: string[] = [];
+    try {
+      for (const benchmarkCase of cases) {
+        const root = await mkdtemp(join(tmpdir(), `placebo-flaky-${benchmarkCase.id}-`));
+        const fixture = join(root, 'fixture');
+        try {
+          await cp(benchmarkCase.fixtureDirectory, fixture, { recursive: true });
+          await prepareFixture(fixture, store, runtime);
+          await applyPatch(fixture, benchmarkCase.breakPatch);
+          if (benchmarkCase.metadata.language !== 'python') await installFixture(fixture, store);
+          const exitCode = await runFixtureSuite(fixture, { SUTURA_TRIAGE_ATTEMPT: '' });
+          if (exitCode === 0) passed.push(benchmarkCase.id);
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      }
+    } finally {
+      await runtime.cleanup();
+      await rm(store, { recursive: true, force: true });
+    }
+
+    expect(passed, 'these flakes pass their first reproduction and read as infra-stop').toEqual([]);
+  }, 900_000);
 
   it('proves every break patch is red and every clean fixture is green', async () => {
     const emptyStore = await mkdtemp(join(tmpdir(), 'placebo-empty-store-'));
