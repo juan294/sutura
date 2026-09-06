@@ -12,8 +12,8 @@ node packages/evaluation/scripts/inventory.mjs --out docs/evaluation/inventory-v
 | Cases | 100 (60 development, 20 validation, 20 held out) |
 | Root families | 94 |
 | Corpus revision | Placebo v0.2 |
-| Split hash | `14453c118c71549b84c205fd57ecd167307199b68f05a09a5a860ac98362b6b9` |
-| Inventory hash | `ee6954ca1d7d9df49fea97c297aa73da025d8b7ba3d4c697840f155711d9e27c` |
+| Split hash | `49fb4609a602e609a6f31596522a4b229b3fc56ba670ce6a29d764905364a683` |
+| Inventory hash | `31a82cf94487e1381aff35692d7f72f662349dce168bba17ac163009c13974d5` |
 
 Splits are frozen by root family, so a synthetic mutation can never land in a
 different split from the case it derives from. The inventory hash moves when
@@ -45,3 +45,45 @@ assertions, empty catch blocks, loosened precision and a narrowed input set.
 Every added case is validated by the corpus self-check: the clean fixture is
 green, the break patch is red, reversing the break restores green, and each
 trap's fake fix passes the visible suite while failing its hidden checks.
+
+## Split composition
+
+| Split | Cases | Families | Kinds | Languages |
+| --- | --- | --- | --- | --- |
+| Development | 60 | 55 | 33 repairable, 16 trap, 7 flaky, 4 upstream | 34 JS, 22 Python, 4 TS |
+| Validation | 20 | 19 | 9 repairable, 7 trap, 3 flaky, 1 upstream | 13 JS, 4 Python, 3 TS |
+| Held out | 20 | 20 | 8 repairable, 8 trap, 3 flaky, 1 upstream | 16 JS, 3 Python, 1 TS |
+
+## Family leakage audit
+
+No root family appears in more than one split. This is enforced rather than
+inspected: `freezeSplitByRootFamily` assigns a family as a unit, the inventory
+test asserts no family spans two splits, and the dataset validator refuses an
+export where one does. The held-out split holds 20 families for 20 cases, so no
+held-out case shares a family with any other held-out case either.
+
+One defect was found and fixed while auditing this. The freeze filled
+development, then validation, then held out, taking families in alphabetical
+order. That produced a held-out split of 15 families made almost entirely of
+traps and upstream migrations, with a single Python case: it measured the end
+of the alphabet rather than the corpus. Families are now taken largest first
+and each goes to whichever split would still be furthest from full, measured
+against its own share. The split hash changed with that fix, which is the point
+of publishing it.
+
+## Known limits
+
+- **Benchmark familiarity.** Every case is synthetic and written for this
+  benchmark, so no model has seen these exact files. That removes contamination
+  and introduces a different limit: the defects are chosen by one author, and
+  common defect shapes are over-represented relative to real repositories.
+- **Language balance.** The held-out split is 16 JavaScript, 3 Python and 1
+  TypeScript. Per-language held-out numbers are too small to compare; only the
+  overall held-out number should be read as an estimate.
+- **Upstream migrations.** One upstream case is held out. That is enough to
+  check the path is exercised and not enough to estimate a rate.
+- **Size.** 20 held-out cases give wide intervals. Reported as a proportion
+  with a Wilson interval, not as a point estimate.
+- **Single use.** The held-out split is opened once. If a fix follows held-out
+  inspection, the set becomes development and replacement families are needed
+  before any unseen-performance claim.

@@ -7,8 +7,8 @@
     "validation": 20,
     "held-out": 20
   },
-  "splitHash": "14453c118c71549b84c205fd57ecd167307199b68f05a09a5a860ac98362b6b9",
-  "inventoryHash": "ee6954ca1d7d9df49fea97c297aa73da025d8b7ba3d4c697840f155711d9e27c",
+  "splitHash": "49fb4609a602e609a6f31596522a4b229b3fc56ba670ce6a29d764905364a683",
+  "inventoryHash": "31a82cf94487e1381aff35692d7f72f662349dce168bba17ac163009c13974d5",
   "cases": [
     {
       "caseId": "flaky-filesystem-visibility",
@@ -25,13 +25,13 @@
     {
       "caseId": "flaky-port-collision",
       "rootFamily": "flaky-port-collision",
-      "split": "development",
+      "split": "validation",
       "contentHash": "e8ed4f7a82ba2a41a5d302f6f1d29234758373c23d654b17079d8e34799dccd3"
     },
     {
       "caseId": "flaky-port-worker",
       "rootFamily": "flaky-port-worker",
-      "split": "development",
+      "split": "held-out",
       "contentHash": "4f11ffbe1016958812d8287e84fa096e607e2518471dda30130b1d122bda33e2"
     },
     {
@@ -43,7 +43,7 @@
     {
       "caseId": "flaky-shared-counter",
       "rootFamily": "shared-counter-state",
-      "split": "validation",
+      "split": "development",
       "contentHash": "b7520bc40268732d28e38f896fd278ef488b30fa58a9d9d18ec6f4f9716bb699"
     },
     {
@@ -61,19 +61,19 @@
     {
       "caseId": "flaky-timer-race",
       "rootFamily": "flaky-timer-race",
-      "split": "development",
+      "split": "validation",
       "contentHash": "4e4fc17e758305317f541e77ee5c3cfd2ceb5a717923ee3d92b115e7f9215dc4"
     },
     {
       "caseId": "flaky-timing-deadline",
       "rootFamily": "flaky-timing-deadline",
-      "split": "development",
+      "split": "held-out",
       "contentHash": "db174ab91f4f95b2c0c47674882ecb7a2ec8914fd4e445aeba3f7691660aed1f"
     },
     {
       "caseId": "python-flaky-clock-boundary",
       "rootFamily": "clock-boundary",
-      "split": "development",
+      "split": "held-out",
       "contentHash": "d011ef4a9dc8ef2db5b13f0234b2f1dfce8afef05eab706d1e5cbdecdcfc31a0"
     },
     {
@@ -91,19 +91,19 @@
     {
       "caseId": "python-repair-await-result-preservation",
       "rootFamily": "await-recovery",
-      "split": "development",
+      "split": "validation",
       "contentHash": "6146ab95971f526df94c869065704f1bf534ff55cd6e3e74ece1d5afd5390ee9"
     },
     {
       "caseId": "python-repair-cache-key",
       "rootFamily": "python-repair-cache-key",
-      "split": "development",
+      "split": "validation",
       "contentHash": "1d04a0a93f68d1e8df3497c9dad8f5eb5ffbace846f09f4897b519fc9132e628"
     },
     {
       "caseId": "python-repair-context-manager",
       "rootFamily": "resource-release",
-      "split": "validation",
+      "split": "development",
       "contentHash": "2ae689f9893f126e63fdf18e6ba9bc25532065f136981ab6832031d0b67b72ca"
     },
     {
@@ -145,7 +145,7 @@
     {
       "caseId": "python-repair-missing-await",
       "rootFamily": "python-repair-missing-await",
-      "split": "development",
+      "split": "held-out",
       "contentHash": "dadb5e259908aa34ed58ed82889a7e19ef3850cac22315f15a16b4de40d4fce7"
     },
     {
@@ -169,25 +169,25 @@
     {
       "caseId": "python-repair-sort-key",
       "rootFamily": "sort-key-selection",
-      "split": "validation",
+      "split": "development",
       "contentHash": "f0bbab9c45558432072aa9030f8b5dca76e914f41952cd6233af230894132730"
     },
     {
       "caseId": "python-repair-strip-suffix",
       "rootFamily": "strip-character-set",
-      "split": "validation",
+      "split": "development",
       "contentHash": "9d7c8e70de6f3812ada161a5c81c17bff15564afc3df0915bf0d01ebdc2d6173"
     },
     {
       "caseId": "python-repair-timezone-aware",
       "rootFamily": "timezone-aware-comparison",
-      "split": "validation",
+      "split": "development",
       "contentHash": "b63f315dd58b520957cbb8c722ca9ee5f751876b858c56c4b2294106632999de"
     },
     {
       "caseId": "python-repair-two-file-call-contract",
       "rootFamily": "two-file-transaction",
-      "split": "held-out",
+      "split": "development",
       "contentHash": "b6a9e305542249e031877d77f078d692bf47309e2893e5ae497b9352d6258325"
     },
     {
@@ -205,7 +205,7 @@
     {
       "caseId": "python-trap-assert-true",
       "rootFamily": "tautological-python-assertion",
-      "split": "validation",
+      "split": "development",
       "contentHash": "87f8960bc5232ea31219b32f8742aa63e8032fd5c56be3af210463c9e974a8f3"
     },
     {
@@ -229,13 +229,13 @@
     {
       "caseId": "python-trap-skipped-test",
       "rootFamily": "python-trap-skipped-test",
-      "split": "development",
+      "split": "validation",
       "contentHash": "bb6b50d424615a679cea882b0217bcc38cc8be7c96b3e1ca584cb3411a2d564f"
     },
     {
       "caseId": "python-trap-swallowed-exception",
       "rootFamily": "python-trap-swallowed-exception",
-      "split": "development",
+      "split": "held-out",
       "contentHash": "ae04a1b52206f9a26b365d0ab597bb59d4413a30dfafdf4a72dcda93be814fd5"
     },
     {
@@ -247,25 +247,25 @@
     {
       "caseId": "repair-await-helper-preservation",
       "rootFamily": "await-recovery",
-      "split": "development",
+      "split": "validation",
       "contentHash": "9c4b018d52d2d76df457bd43ffcf127f6036304657dea350fbbae92077701db6"
     },
     {
       "caseId": "repair-bad-import",
       "rootFamily": "repair-bad-import",
-      "split": "development",
+      "split": "validation",
       "contentHash": "35e66785b64a33bb94254161fe23a0d6298a769a5e735bb5a0fc637ac274e12a"
     },
     {
       "caseId": "repair-cache-invalidation-target",
       "rootFamily": "repair-cache-invalidation-target",
-      "split": "development",
+      "split": "held-out",
       "contentHash": "5b1ecf592a188135d882dffddf2f0ada20a99b4cc3cb108832107c4c464a0119"
     },
     {
       "caseId": "repair-discriminated-union",
       "rootFamily": "discriminated-union-narrowing",
-      "split": "development",
+      "split": "validation",
       "contentHash": "f530a2a674f6c4292f35cbce80d0e93ef438898db2bfa1e83cf629d96fa5bc30"
     },
     {
@@ -289,19 +289,19 @@
     {
       "caseId": "repair-hard-cache-invalidation",
       "rootFamily": "repair-hard-cache-invalidation",
-      "split": "development",
+      "split": "validation",
       "contentHash": "59762799dad66f80bbde896a30859bf3e629f7e2dd22537b05ade3f313816b2f"
     },
     {
       "caseId": "repair-json-clone-dates",
       "rootFamily": "json-clone-loses-types",
-      "split": "development",
+      "split": "validation",
       "contentHash": "42c5e7d4c82f3351a3b12efdf97e81aebd680accdd0a90a6ba1aa7aa045e7fc5"
     },
     {
       "caseId": "repair-lint-autofix",
       "rootFamily": "repair-lint-autofix",
-      "split": "development",
+      "split": "held-out",
       "contentHash": "a679832fea9e01375a8ec7104914db1c8eed354afc9746203069a79ba888832f"
     },
     {
@@ -337,13 +337,13 @@
     {
       "caseId": "repair-off-by-one",
       "rootFamily": "repair-off-by-one",
-      "split": "development",
+      "split": "validation",
       "contentHash": "f82c2dc032fac7ee086f18b0a2af9106db94035556a7304cec00d5378c1e6365"
     },
     {
       "caseId": "repair-off-by-one-preservation",
       "rootFamily": "pagination-ceiling-division",
-      "split": "development",
+      "split": "validation",
       "contentHash": "55ab8ff8ff3be8169685b95c503c57dacbeacbb2d80cf2deac7d16292a42291d"
     },
     {
@@ -355,7 +355,7 @@
     {
       "caseId": "repair-parse-radix",
       "rootFamily": "parse-radix",
-      "split": "development",
+      "split": "held-out",
       "contentHash": "9dc9c515883d6439bd93bc74f06f07f0a8c17d439e21f924e39bd3958a753951"
     },
     {
@@ -373,13 +373,13 @@
     {
       "caseId": "repair-settled-results",
       "rootFamily": "settled-result-handling",
-      "split": "validation",
+      "split": "held-out",
       "contentHash": "54b2d8743145b1b8b371f36014dd5a2caec014d9ca9ac02deeff8f3db62f4338"
     },
     {
       "caseId": "repair-shallow-copy-mutation",
       "rootFamily": "shallow-copy-mutation",
-      "split": "validation",
+      "split": "development",
       "contentHash": "e022ac6def7b585f8656bb1ce0e6e4e88f9296d2123206cf237c2ab27bae2864"
     },
     {
@@ -391,13 +391,13 @@
     {
       "caseId": "repair-strict-equality",
       "rootFamily": "strict-equality",
-      "split": "validation",
+      "split": "held-out",
       "contentHash": "086df15c27bcde8499dab8fc23313b0003458e1b600244dabc6cb4a3c61c810d"
     },
     {
       "caseId": "repair-tsconfig-drift",
       "rootFamily": "repair-tsconfig-drift",
-      "split": "development",
+      "split": "held-out",
       "contentHash": "35fc3ed732362d652c45a3aed2e6d904230a44f4a46b9e48570ff9462202ce61"
     },
     {
@@ -415,13 +415,13 @@
     {
       "caseId": "repair-two-file-export-contract",
       "rootFamily": "two-file-transaction",
-      "split": "held-out",
+      "split": "development",
       "contentHash": "5f1fc17eb0109ccf1ecf710601c4a93ee070cdb8c1d1fe793f62df8b1e0ed7ac"
     },
     {
       "caseId": "repair-type-mismatch",
       "rootFamily": "repair-type-mismatch",
-      "split": "validation",
+      "split": "development",
       "contentHash": "8393bb219a2038fd5c2f0566a45896c738c0f2a7ad4653d7937a5691a952f8f1"
     },
     {
@@ -433,31 +433,31 @@
     {
       "caseId": "trap-assertion-tautology",
       "rootFamily": "trap-assertion-tautology",
-      "split": "validation",
+      "split": "held-out",
       "contentHash": "d707972274ed4429132bff46410f394bd1eb26645c9c8b70e9fb2677792653d3"
     },
     {
       "caseId": "trap-conditional-assertion-deletion",
       "rootFamily": "trap-conditional-assertion-deletion",
-      "split": "validation",
+      "split": "development",
       "contentHash": "540a4525cda3709ffe6f1973c8acf0b7ff7d60e559ad26b501ce03d5bd483eb6"
     },
     {
       "caseId": "trap-deleted-test",
       "rootFamily": "trap-deleted-test",
-      "split": "validation",
+      "split": "development",
       "contentHash": "4f760a29b3ad1bb6a4b02e9fdd0ac867ccd2fe0d4f82508060b571b487f81502"
     },
     {
       "caseId": "trap-empty-catch",
       "rootFamily": "empty-catch-block",
-      "split": "development",
+      "split": "held-out",
       "contentHash": "a4cfa22067517d31e3d86bd726ec4a1ab94ff5fb8b4c4ce47150f847a8b6e530"
     },
     {
       "caseId": "trap-error-propagation-removal",
       "rootFamily": "trap-error-propagation-removal",
-      "split": "validation",
+      "split": "development",
       "contentHash": "c56c98da6022c6bdb1b7b9e6ded452d290aefdeddaeda7b4e3b67585573d6e8f"
     },
     {
@@ -469,43 +469,43 @@
     {
       "caseId": "trap-loosened-precision",
       "rootFamily": "loosened-precision",
-      "split": "development",
+      "split": "held-out",
       "contentHash": "68ce30ee5ca7dd194bc4de8ea7b79d2cc89bfdf20a9afa60f97742add64eeac8"
     },
     {
       "caseId": "trap-mocked-dependency-replacement",
       "rootFamily": "trap-mocked-dependency-replacement",
-      "split": "validation",
+      "split": "held-out",
       "contentHash": "8005fb4bb2abe5bdecd079f4f3b88e18bcee507702f40a1122bd067d050e0128"
     },
     {
       "caseId": "trap-narrowed-test-input",
       "rootFamily": "narrowed-test-input",
-      "split": "development",
+      "split": "validation",
       "contentHash": "177d7efb271f526e4b226a8f70ac632972cf3783f1771928085a1dba9655d427"
     },
     {
       "caseId": "trap-non-null-assertion",
       "rootFamily": "non-null-assertion",
-      "split": "development",
+      "split": "held-out",
       "contentHash": "4ea320e77f33a1e309d3d0846f14c67a3cd25faa9b9716fc0757f0406bd407b7"
     },
     {
       "caseId": "trap-pass-with-no-tests",
       "rootFamily": "trap-pass-with-no-tests",
-      "split": "validation",
+      "split": "development",
       "contentHash": "bedce350413c206e193b29fba341dbc525c50738cd09b80cb4bc58eaf0537be8"
     },
     {
       "caseId": "trap-policy-file-modification",
       "rootFamily": "trap-policy-file-modification",
-      "split": "held-out",
+      "split": "development",
       "contentHash": "cd7ef73a1ff433dac30dbe44b519ee6c757e156f910bd60194be8bf0722bb693"
     },
     {
       "caseId": "trap-recovery-assertion-rewrite",
       "rootFamily": "assertion-recovery",
-      "split": "development",
+      "split": "held-out",
       "contentHash": "ade8915bd70f9f9f2c0b769631bbd263c00c9a6bafed04eb171c2223a2c25a4f"
     },
     {
@@ -517,13 +517,13 @@
     {
       "caseId": "trap-skipped-test",
       "rootFamily": "trap-skipped-test",
-      "split": "held-out",
+      "split": "development",
       "contentHash": "cc2d8197ad54dd912385191d3c5eb41710b63ee2c9c47d8b0aab6547d1528924"
     },
     {
       "caseId": "trap-snapshot-acceptance",
       "rootFamily": "trap-snapshot-acceptance",
-      "split": "held-out",
+      "split": "validation",
       "contentHash": "dd459b9f55920ce3225a02dc3e092e58405884ed9b34d9f9f54599b6710f5606"
     },
     {
@@ -535,37 +535,37 @@
     {
       "caseId": "trap-test-glob-exclusion",
       "rootFamily": "trap-test-glob-exclusion",
-      "split": "held-out",
+      "split": "development",
       "contentHash": "dab903082d160e54a1b02146c6688c06cb2957887884db7bec249e1b5b2b345f"
     },
     {
       "caseId": "trap-timeout-inflation",
       "rootFamily": "trap-timeout-inflation",
-      "split": "held-out",
+      "split": "development",
       "contentHash": "8a247406b5b86966a0760aba127c6ce7a93b610703b3972bcb0fc019abb81c2a"
     },
     {
       "caseId": "trap-two-file-test-shortcut",
       "rootFamily": "two-file-transaction",
-      "split": "held-out",
+      "split": "development",
       "contentHash": "679b4f73b5c5338583f28728ae5f439e14fb8cff89c46069495be5517c8ab69c"
     },
     {
       "caseId": "trap-two-file-third-path",
       "rootFamily": "two-file-transaction",
-      "split": "held-out",
+      "split": "development",
       "contentHash": "ad390ad790dcdb6338337921ab275ea11dcafff80e765f2076e18fa5dca2c8f5"
     },
     {
       "caseId": "trap-weakened-expect",
       "rootFamily": "trap-weakened-expect",
-      "split": "held-out",
+      "split": "development",
       "contentHash": "89c20f1b891716a82e6e8f3166a91d12cf39fbfb2a865298db63ed78517d70a2"
     },
     {
       "caseId": "trap-workflow-check-removal",
       "rootFamily": "trap-workflow-check-removal",
-      "split": "held-out",
+      "split": "validation",
       "contentHash": "36e355b99b0a9ff97528969c2636cd98c60ca7ca4660b27896c57f3f58967080"
     },
     {
@@ -577,37 +577,37 @@
     {
       "caseId": "upstream-formatter-release",
       "rootFamily": "upstream-formatter-release",
-      "split": "held-out",
+      "split": "development",
       "contentHash": "7550c565ce0e959a1a750024118e8e6ad9e9cedf45ed359471f802e4f3a28768"
     },
     {
       "caseId": "upstream-manifest-lockfile-pair",
       "rootFamily": "two-file-transaction",
-      "split": "held-out",
+      "split": "development",
       "contentHash": "5d61516e0fc9ce8e4c2f8034398c437e4ec60fa6807baeb1c3e4b06f900bacab"
     },
     {
       "caseId": "upstream-parser-release",
       "rootFamily": "upstream-parser-release",
-      "split": "held-out",
+      "split": "development",
       "contentHash": "64864a7a1478635bf9530485c7d4fc73394b5e1ab2fc0135463c19e8998580a8"
     },
     {
       "caseId": "upstream-retry-release",
       "rootFamily": "upstream-retry-release",
-      "split": "held-out",
+      "split": "development",
       "contentHash": "e4237368c6784966f7a849e80aa5fb8de269bb0c2a4da173a39457a8893078bb"
     },
     {
       "caseId": "upstream-slug-separator-release",
       "rootFamily": "upstream-slug-separator",
-      "split": "held-out",
+      "split": "validation",
       "contentHash": "dfee5336c9e436ceb6a4ec49105bd8ef697e93a7609434fb5bdc2da2d6867400"
     },
     {
       "caseId": "upstream-two-file-api-migration",
       "rootFamily": "two-file-transaction",
-      "split": "held-out",
+      "split": "development",
       "contentHash": "e1a83afc9687ed1bb954ca3f2d6cff7af520ac1f0051537731a7d87725d5df7c"
     }
   ]

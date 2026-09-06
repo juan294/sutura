@@ -193,3 +193,61 @@ describe('leak sentinels', () => {
     expect(blinded.sourceHash).toMatch(/^[a-f0-9]{64}$/u);
   });
 });
+
+describe('split composition', () => {
+  /** Ten families named a… through j…, two cases each. */
+  const alphabetical = Array.from({ length: 10 }, (_unused, index) => {
+    const family = String.fromCharCode(97 + index);
+    return [
+      { caseId: `${family}-1`, rootFamily: `family-${family}` },
+      { caseId: `${family}-2`, rootFamily: `family-${family}` },
+    ];
+  }).flat();
+
+  it('does not hand the last split whatever sorts last', () => {
+    const frozen = freezeSplitByRootFamily(alphabetical, {
+      development: 12, validation: 4, heldOut: 4,
+    });
+    const heldOut = frozen.assignments.filter(({ split }) => split === 'held-out');
+    const lastAlphabetically = new Set(['family-i', 'family-j']);
+
+    expect(frozen.counts).toEqual({ development: 12, validation: 4, 'held-out': 4 });
+    // A fill-in-order freeze would put exactly the last two families here.
+    expect(heldOut.every(({ rootFamily }) => lastAlphabetically.has(rootFamily))).toBe(false);
+  });
+
+  it('gives every split families from across the corpus, not one end of it', () => {
+    const mixed = [
+      ...Array.from({ length: 4 }, (_unused, index) => ({ caseId: `big-a-${index}`, rootFamily: 'big-a' })),
+      ...Array.from({ length: 4 }, (_unused, index) => ({ caseId: `big-b-${index}`, rootFamily: 'big-b' })),
+      ...Array.from({ length: 12 }, (_unused, index) =>
+        ({ caseId: `small-${index}`, rootFamily: `small-${index}` })),
+    ];
+    const frozen = freezeSplitByRootFamily(mixed, { development: 12, validation: 4, heldOut: 4 });
+    const families = (split: string) => new Set(frozen.assignments
+      .filter((item) => item.split === split).map(({ rootFamily }) => rootFamily));
+
+    expect(frozen.counts).toEqual({ development: 12, validation: 4, 'held-out': 4 });
+    for (const split of ['development', 'validation', 'held-out'] as const) {
+      expect(families(split).size).toBeGreaterThan(0);
+    }
+    // A large family is never divided across splits, whatever else happens.
+    expect([...families('development')].filter((name) => name.startsWith('big')).length
+      + [...families('validation')].filter((name) => name.startsWith('big')).length
+      + [...families('held-out')].filter((name) => name.startsWith('big')).length).toBe(2);
+  });
+
+  it('stays reproducible and keeps every family whole', () => {
+    const first = freezeSplitByRootFamily(alphabetical, { development: 12, validation: 4, heldOut: 4 });
+    const second = freezeSplitByRootFamily([...alphabetical].reverse(), {
+      development: 12, validation: 4, heldOut: 4,
+    });
+
+    expect(second.splitHash).toBe(first.splitHash);
+    const byFamily = new Map<string, string>();
+    for (const { rootFamily, split } of first.assignments) {
+      if (byFamily.has(rootFamily)) expect(byFamily.get(rootFamily)).toBe(split);
+      byFamily.set(rootFamily, split);
+    }
+  });
+});

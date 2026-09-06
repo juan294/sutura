@@ -131,8 +131,14 @@ export interface FrozenSplit {
  *
  * A family is assigned as a unit, so a synthetic mutation can never land in a
  * different split from the case it was derived from — the leak that would make
- * a held-out score meaningless. Families are ordered deterministically, so the
- * same corpus always produces the same split and the same hash.
+ * a held-out score meaningless.
+ *
+ * Families are taken largest first, breaking ties by name, and each goes to the
+ * split with the most room left. Filling one split before the next would hand
+ * the last split whatever families sort last, which makes a held-out score
+ * describe the end of the alphabet rather than the corpus. The ordering and the
+ * tie-breaks are fixed, so the same corpus always produces the same split and
+ * the same hash.
  */
 export function freezeSplitByRootFamily(
   cases: readonly SplitCase[],
@@ -155,17 +161,24 @@ export function freezeSplitByRootFamily(
     families.set(item.rootFamily, bucket);
   }
 
-  const targets: Array<{ split: EvaluationSplit; remaining: number }> = [
-    { split: 'development', remaining: counts.development },
-    { split: 'validation', remaining: counts.validation },
-    { split: 'held-out', remaining: counts.heldOut },
+  const targets: Array<{ split: EvaluationSplit; remaining: number; target: number }> = [
+    { split: 'development', remaining: counts.development, target: counts.development },
+    { split: 'validation', remaining: counts.validation, target: counts.validation },
+    { split: 'held-out', remaining: counts.heldOut, target: counts.heldOut },
   ];
   const assignments: FrozenSplit['assignments'] = [];
-  const ordered = [...families.entries()]
-    .sort(([left], [right]) => left.localeCompare(right));
+  const ordered = [...families.entries()].sort(([leftName, left], [rightName, right]) =>
+    right.length - left.length || leftName.localeCompare(rightName));
 
   for (const [rootFamily, members] of ordered) {
-    const target = targets.find(({ remaining }) => remaining >= members.length);
+    // Whichever split would still be furthest from full after taking this
+    // family, measured against its own share. Filling development first would
+    // leave the held-out split made entirely of the families that sort last.
+    const target = targets
+      .filter(({ remaining }) => remaining >= members.length)
+      .sort((left, right) =>
+        ((right.remaining - members.length) / right.target)
+        - ((left.remaining - members.length) / left.target))[0];
     if (target === undefined) {
       throw new BlindingError(
         'family-does-not-fit',

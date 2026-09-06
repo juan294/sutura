@@ -57,14 +57,14 @@ Reuse existing comparison arms and Wilson intervals. Extend observation records 
 - [x] Dataset tests reject duplicates, split-family overlap, missing licenses/provenance, source-hash mismatch and missing outputs falsely scored correct.
 - [x] Perturb execution truth and confirm quality scores change; alter only fixture kind and confirm blinded predictions cannot obtain it.
 - [x] Run the real local NeMo harness via `uv run --project packages/evaluation python packages/evaluation/scripts/evaluate-atif.py` with the implemented manifest CLI; run Python unit tests directly through the same locked environment. Existing `pnpm run test:atif` remains passing.
-- [ ] `pnpm --filter @sutura/evaluation test`, `pnpm --filter placebo self-check`, and `node --test scripts/datalab-experiment.test.mjs` pass sequentially.
+- [x] `pnpm --filter @sutura/evaluation test`, `pnpm --filter placebo self-check`, and `node --test scripts/datalab-experiment.test.mjs` pass sequentially.
 - [x] Comparison mutations reject changed models/budgets/splits and never interpret missing or infrastructure outcomes as negative-cost wins.
 
 ## Manual success criteria
 
 - [ ] Independent reviewer checks one valid and one deceptive record end to end from executable truth through sanitized model input and final score.
-- [ ] Reviewer audits the held-out split for family leakage and records known benchmark familiarity limits.
-- [ ] Real local NeMo output exists; Data Lab remains explicitly prepared, not uploaded or measured until phase 10.
+- [x] Reviewer audits the held-out split for family leakage and records known benchmark familiarity limits.
+- [x] Real local NeMo output exists; Data Lab remains explicitly prepared, not uploaded or measured until phase 10.
 
 ## Phase gate
 
@@ -178,3 +178,50 @@ Still not built, and not claimed: the paired batch is prepared but nothing has
 been uploaded, dispatched or measured, and no provider was called. Calibration
 and cost accounting beyond the per-arm dollar rate are not implemented. Phase
 10 owns every paid measurement.
+
+## Third pass — September 6
+
+The held-out split audit found a real defect and fixed it. The freeze filled
+development, then validation, then held out, taking families in alphabetical
+order, which gave a held-out split of 15 families made almost entirely of traps
+and upstream migrations with a single Python case: it measured the end of the
+alphabet rather than the corpus. Families are now taken largest first and each
+goes to whichever split would still be furthest from full against its own
+share. The held-out split is now 20 families for 20 cases with a representative
+mix, and the split hash changed with the fix, which is the point of publishing
+one. Three tests pin the property so the bias cannot return.
+
+No family appears in two splits, and this is enforced in three places rather
+than inspected once: the freeze assigns a family as a unit, the inventory test
+asserts it against the real corpus, and the dataset validator refuses an export
+where one spans splits. The known limits are recorded in
+`docs/evaluation/README-inventory.md`: every case is synthetic, so no model has
+seen these files and the defect shapes are one author's choice; the held-out
+split is 16 JavaScript to 3 Python to 1 TypeScript, so per-language held-out
+numbers are not comparable; 20 held-out cases give wide intervals and are
+reported as a proportion with an interval; and the split is opened once.
+
+Real NeMo output exists and is committed. `docs/evaluation/nemo-atif-report.json`
+is the output of `EvaluationHarness.evaluate` over the three trajectories,
+hashed and reproducible: gate coverage 1.0 / 1.0 / 0.5, outcome agreement
+1.0 / 0.0 / 1.0, resource accounting 1.0 / 1.0 / 1.0. The stopped run recorded
+no audit result or finish; the deceptive run recorded a refusal where the truth
+expected a repair.
+
+Data Lab remains prepared and nothing more. The paired batch is constructed
+offline from the validated dataset; **no prompt was sent, no job dispatched, no
+file uploaded and no provider called.**
+
+The three named commands pass sequentially: `@sutura/evaluation` 116 tests,
+`placebo self-check` 28 tests over the 101 fixtures, and
+`datalab-experiment.test.mjs` 21 tests. The self-check run found one stale
+assertion, a hardcoded expanded-selection count of 62, now 100 with the
+assertion that actually matters beside it: the frozen slice keeps its committed
+`corpusHash` and the expanded selection does not share it.
+
+`docs/evaluation/record-walkthrough.md` traces one valid and one deceptive
+record end to end, from executable truth through the exact prompt bytes to the
+score, with the commands to reproduce each step. It is written so an
+independent reviewer can follow it. **That review has not happened**, so the
+manual criterion it serves stays open: a walkthrough a reviewer could follow is
+not a reviewer having followed it.
