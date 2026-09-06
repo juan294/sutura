@@ -136,6 +136,12 @@ export {
 } from './challenges/generate.js';
 export { runFrozenChallenges } from './challenges/runner.js';
 export {
+  validateVerifyRequest,
+  verifyExternalPatch,
+  VerifyRequestError,
+  VERIFY_RESERVED_PATHS,
+} from './verify.js';
+export {
   MAX_REPAIR_PAIR_TARGETS,
   MAX_REPAIR_TARGET_FILES,
   modelRepairSlots,
@@ -454,6 +460,13 @@ export type {
   ChallengeQualification,
   ChallengeRunResult,
 } from './challenges/runner.js';
+export type {
+  ValidatedVerifyRequest,
+  VerifyOutcomeStatus,
+  VerifyPorts,
+  VerifyRequest,
+  VerifyResult,
+} from './verify.js';
 export type {
   RepairTargetKind,
   RepairTargetRelationship,

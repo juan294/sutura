@@ -137,3 +137,21 @@ Write failing tests first, then implementation and review:
 ## Manual success criteria and phase exit
 
 Reviewer can trace one named contract through immutable challenge bytes, baseline/candidate repetitions, decision, remaining uncertainty, and cost. Review the declarative probe support matrix and observe a forged-success fixture fail safely. These reviews cannot substitute for automated controls or phase 10 paid live evidence. Perform plan-compliance review, fix findings, dedicated simplification review, and local gates; stop for the phase gate. No production deployment, remote CI experiment, publication, or live quality claim is authorized by this phase document.
+
+## Progress record — September 6
+
+Implemented source: `5803d4b`. No push, provider inference, deployment or hosted sandbox occurred.
+
+Built and locally verified:
+
+- `verification/evaluate.ts` orders phase 1's gate names into the production sequence and returns an observation for every gate. Acceptance item 1 is met: the same subject produces identical ordered observations through the repair, supplied and counterfactual adapters; each refusal names the first blocking gate; an omitted suite, policy command, challenge, adjudication or terminal result is recorded `not-run`/`not-executed` and never reads as a pass. Required challenge mode without qualified assurance is `insufficient`. 22 tests.
+- `challenges/generate.ts` builds the generation prompt from baseline failure, source and contract excerpts alone and refuses any context carrying a candidate diff, transcript, alternatives, provenance, expected outcome, fixture kind, hidden test, oracle or known-good patch, including nested inside supplied evidence. `freezeChallengeSet` retains at most three proposals, excludes duplicates and any proposal naming a contract the trusted policy does not declare, and refuses model-supplied expected values, test source and commands as unsupported fields. 35 tests.
+- `challenges/runner.ts` qualifies each frozen challenge on the baseline across both repetitions before the candidate sees it, excludes an unqualified challenge with a reason, never runs the candidate for one, and requires every qualified challenge to pass every candidate repetition. 8 tests.
+
+Local verification: workspace typecheck, lint and build passed; the core suite passed 1,476 tests with nine credential-gated skips.
+
+Not built in this pass, and not claimed:
+
+- Acceptance items 3, 4, 5, 7, 8, 9 and 10 have no tests yet: probe target validation against traversal, symlink and denied sources; the pagination floor-only versus ceil oracle qualification; the quality fixture family; budget exhaustion around generation and repetitions; search-admission integration; fabricated-expectation qualification; and replay reproduction of challenge hashes and statuses.
+- Item 2's prompt-exclusion proof is covered, but "frozen set is created before the repair call" is not, because the evaluator and challenge set are not yet wired into `heal.ts` or `search.ts`. Search still admits on diagnosed-test green rather than on `verificationApproved`, so the shared evaluator is available and tested but not yet the production admission path.
+- `challenges/validate.ts` and `challenges/evaluate.ts` are not added; phase 1's `protocol.ts` continues to own probe freezing and observation decoding.
