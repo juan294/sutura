@@ -48,3 +48,7 @@ readBackSubmittedStateAndArchiveConfirmation()
 ## Manual success criteria and stop
 
 Review actual signed-out desktop/mobile demo, playable video and concise criteria story. Confirm team/eligibility and sponsor-feedback accuracy from real records. Prepare complete reviewable Devpost payload before requesting submission authorization; sending feedback is also an external-message action requiring authorization. After authorized submission, read back project fields/status and archive public URL/confirmation; a draft is not a submitted entry. Stop after documenting final readiness and the phase 14 operations handoff.
+
+## Progress record — September 6
+
+Not started. Depends on phase 12 trial evidence and on a recorded video and Devpost submission, none of which exist. The intended freeze and submission dates are in the future.

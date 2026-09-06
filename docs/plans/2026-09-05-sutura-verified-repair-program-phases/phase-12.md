@@ -41,3 +41,7 @@ All material setup/verification/UX defects discovered in this scope must be reso
 ## Manual success criteria and stop
 
 Three valid independent installs and five real review sessions completed; publish counts, failures, interventions, findings, consented quotations and measured outcomes. Reviewer verifies the value statement against what developers actually achieved. Retain pilot evidence with its original identity; the final package's current install/critical behavior checks are required in phase 13, without falsely claiming every earlier human used that final version. Stop after recording fixes and remaining empirical target misses honestly.
+
+## Progress record — September 6
+
+Not started, and not completable by an agent. This phase requires three independent developers installing Sutura in unfamiliar repositories and five people reviewing verification evidence. The phase text states it directly: human participation and consent cannot be manufactured with agents. It also depends on an accepted phase 11 public pilot. No participant was contacted and no message was sent.

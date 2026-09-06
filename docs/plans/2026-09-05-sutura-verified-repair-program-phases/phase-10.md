@@ -70,3 +70,7 @@ unfreeze only after every dispatched job is terminal/accounted
 ## Manual success criteria and stop
 
 Independent reviewer samples one correct repair, one false-approval trap, one abstention and one infrastructure record; reconstructs each score and verifies no hidden answer entered inference. Review all declared targets against measured results, retain unfavorable findings, and approve only supported default-profile changes. Supply final run IDs, costs/caps, source/split/config identities and remediation status. Stop after the phase; this evidence does not itself publish npm, deploy Case Lab, recruit participants or submit Devpost.
+
+## Progress record — September 6
+
+Not started, and blocked on authorization rather than on effort. This phase measures the product with real providers, which the parent plan gates: all remote budgets start at zero authorized, and a concrete run manifest with finite caps and a verified price-based maximum must be approved before any dispatch. No job was prepared, dispatched or cancelled, and no provider credential was read.

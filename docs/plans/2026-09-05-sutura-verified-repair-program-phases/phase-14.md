@@ -42,3 +42,7 @@ on December15 after judging access window:
 ## Manual success criteria and completion
 
 Owner confirms actual monitoring/rotation mechanism, finite remaining budget and incident response. Log actual access checks across judging and any outages/remediation. Keep project evidence public after December 15; later decommissioning is a separate deliberate action. Phase closes only after the judging-access obligation is met, not when a future checklist has been written.
+
+## Progress record — September 6
+
+Not started. This is a bounded operational phase that runs through December 15, 2026, after submission. It cannot be completed ahead of the judging window it covers.

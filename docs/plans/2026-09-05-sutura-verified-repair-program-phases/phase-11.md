@@ -40,3 +40,7 @@ writePilotEvidence(finalSubmissionReady=false, actualPublicArtifacts)
 ## Manual success criteria and stop
 
 Inspect actual signed-out public result on desktop/mobile and the immutable evidence/diff links; confirm quota and infrastructure errors are understandable. Record public identities, deployment ID, publication approvals and terminal job costs. No preview or hidden hosted builds occurred outside reviewed triggers. Stop; no outreach until exact messages/cohort are approved for phase 12.
+
+## Progress record — September 6
+
+Not started, and blocked on authorization rather than on effort. Publication of a public package, an immutable Action and a Case Lab deployment requires explicit release authorization, and it depends on phase 10 candidate gates that have not run. Nothing was published, tagged or deployed.
