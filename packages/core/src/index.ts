@@ -136,6 +136,14 @@ export {
 } from './challenges/generate.js';
 export { runFrozenChallenges } from './challenges/runner.js';
 export {
+  HIGH_CONFIDENCE,
+  LOW_CONFIDENCE,
+  MAX_ULTRA_ESCALATIONS,
+  ROUTING_POLICY_VERSION,
+  routeModel,
+  routingProfileHash,
+} from './llm/routing-policy.js';
+export {
   validateVerifyRequest,
   verifyExternalPatch,
   VerifyRequestError,
@@ -460,6 +468,13 @@ export type {
   ChallengeQualification,
   ChallengeRunResult,
 } from './challenges/runner.js';
+export type {
+  RoutingBudget,
+  RoutingDecision,
+  RoutingProfile,
+  RoutingPurpose,
+  RoutingSignals,
+} from './llm/routing-policy.js';
 export type {
   ValidatedVerifyRequest,
   VerifyOutcomeStatus,
