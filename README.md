@@ -393,6 +393,35 @@ reproduces the command it read from the failing log; a local `sutura heal`
 takes `--failing-command "<command>"` and otherwise defaults to `pnpm test` or,
 for Python, `python -m unittest`.
 
+### Verifying a patch another agent wrote
+
+`sutura verify` checks a patch this tool did not write, through the same gate
+order a generated repair walks. It never authors a replacement, opens a branch
+or a pull request, or accepts an uploaded green log in place of execution.
+
+```text
+sutura verify \
+  --case-dir /tmp/sutura-verify/checkout \
+  --source-sha 0f2a1c9d4e6b8a7c5d3e1f0a2b4c6d8e0f2a1c9d \
+  --policy-base-sha 9d8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0c \
+  --candidate-diff /tmp/sutura-verify/candidate.diff \
+  --failing-command diagnosed \
+  --format json
+```
+
+Both commits are exact and required: a branch name or short sha is refused,
+because verification is tied to the commit that actually failed. The trusted
+policy commit is chosen by the operator through `--policy-base-sha`, so a patch
+cannot ask for a more permissive policy by carrying one. The failing command is
+an identifier resolved through the trusted command map, not arbitrary text. The
+candidate is always a file path, read once and bounded, and a patch touching
+`.sutura.json`, controller or evaluator storage, hidden tests or a credential
+path is refused before anything runs.
+
+The same route is available to the Action through the `source-sha`,
+`policy-base-sha`, `candidate-diff` and `failing-command` inputs. It takes no
+repository write access.
+
 ### Reduced-assurance audit-only mode
 
 Audit a supplied diff and paired CI logs without ConTree:
