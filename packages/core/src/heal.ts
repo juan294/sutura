@@ -1090,6 +1090,33 @@ async function repairFailureWithinBudget(
             providerCapacityAvailable(providerCapacity),
             ctx.executor.operationCapacity().available,
           )),
+        /**
+         * Diagnosed-test green only makes a branch provisional. The mechanical
+         * green-washing checks run here, before siblings are cancelled, so a
+         * patch that passes the visible suite by weakening it no longer ends the
+         * race and hides the alternatives that might have been correct. They are
+         * pure functions of the diff, so admitting this way costs no sandbox
+         * operation, provider turn or budget capacity.
+         *
+         * The provider-backed gates, fresh suite rerun, challenges and
+         * adjudication, still run once on the winner. Moving those into
+         * admission needs an audit reserve sized for several candidates rather
+         * than one, which the phase 4 record names as the remaining work.
+         */
+        admit: ({ expansion }) => {
+          const candidate = expansion.candidate;
+          if (candidate === undefined) return Promise.resolve({ accepted: false });
+          const failed = runMechanicalChecks(candidate.diff).find(({ passed }) => !passed);
+          if (failed === undefined) return Promise.resolve({ accepted: true });
+          ledger.record({
+            stage: 'search', attempt: ++candidateAttempt, network: 'disabled',
+            note: `Provisional candidate refused by mechanical check ${failed.name}`,
+          });
+          return Promise.resolve({
+            accepted: false,
+            reason: `mechanical:${failed.name}`,
+          });
+        },
         cancel: async (nodeId) => {
           const activeOperation = activeOperations.get(nodeId);
           if (!activeOperation) {
