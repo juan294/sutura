@@ -53,3 +53,16 @@ Reviewer can explain one Nano selection, one escalation and one budget abstentio
 ## Phase gate
 
 Follow the parent plan's implementation/review/fix/simplification loop. Run focused checks and the standard local commands sequentially: `pnpm run typecheck`, `pnpm run lint`, `pnpm run test`, `pnpm run build`. Rebuild the committed Action bundle for core/Action changes, run `pnpm run verify:bundle`, and complete `pnpm run ci:local` before any later push involving core. New process/build/sandbox tests use explicit timeouts of at least 30 seconds. Inspect actual hosted triggers before any push; never create a Vercel preview or use hosted CI to debug. Record actual results and the integrated source identity; stop after this phase. Remote actions and participant messages require the concrete authorization described in the parent plan.
+
+## Progress record — September 6
+
+Implemented source: `262ec32`. No push, provider inference or paid routing occurred.
+
+`packages/core/src/llm/routing-policy.ts` implements the decision table with boundary behavior at 0.7 and 0.9, two-target repair forced to super, the nano-repair option gated behind the profile, at most one ultra escalation on new execution feedback, context-limit and unverified-contract fallbacks, and abstention when no permitted tier is both verified and affordable. `availableUsd` is defined as what remains after the mandatory audit and challenge reserve, so routing cannot spend it, and adjudication is never downgraded to finance repair work. Decisions are deterministic for the same signals, profile and budget, and every rejected tier is recorded with its reason beside a profile hash that changes with any frozen field and ignores tier order. 20 tests.
+
+Not built in this pass, and not claimed:
+
+- The policy is not yet wired into `packages/core/src/llm/router.ts` or its call sites, so production still uses profile-only selection. The table is available and tested but is not the live route.
+- Budget tests that charge retries and provider failures, and record requested versus returned model identity as an explicit contract failure, are not added.
+- `docs/evaluation/routing-policy.md` is not written.
+- No model or price contract is validated against a live provider; phase 10 owns that.

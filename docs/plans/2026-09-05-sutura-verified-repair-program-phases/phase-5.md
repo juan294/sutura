@@ -97,3 +97,15 @@ Write failing tests first:
 A reviewer can take a saved patch against an exact clean baseline, follow the documented command, and identify verdict, executed checks, challenge limitations, source/policy provenance, and next review action. Verify read-only Action documentation and inspect the JSON/artifact presentation. Real installation and two-agent-source measurements remain phase 10 and must not be marked complete by mocked/local tests.
 
 Complete implementation review, fixes, dedicated simplification review, and local verification; stop for the phase gate. No provider spending, hosted CI experiment, push, production deployment, outreach, or public verification dispatch is authorized merely by this plan.
+
+## Progress record — September 6
+
+Implemented source: `f82a055`. No push, provider inference, deployment or hosted sandbox occurred.
+
+`packages/core/src/verify.ts` verifies a supplied patch through phase 4's shared evaluator rather than a second gate stack. `validateVerifyRequest` enforces every trust input before anything executes and before any provider call: exact 40-character `source-sha` and `policy-base-sha`, a failing command that resolves through the trusted command map rather than printable-text validation, a bounded and parseable candidate diff, the phase 3 two-file transaction cap, and refusal of any path reaching `.sutura.json`, controller or evaluator storage, hidden tests, challenge sets or a sensitive file. Challenge mode defaults to `required`, so a missing contract abstains as `insufficient` instead of approving on the visible suite; an infrastructure stop stays distinct from a refusal; and `generatedReplacement: false` is a structural property of the result. 23 tests, and a test proves no gate runs when validation refuses.
+
+Not built in this pass, and not claimed:
+
+- `packages/cli/src/verify.ts` and `packages/action/src/verify.ts` are not added, so `sutura verify` is not yet a command and the Action has no separate verification route. The core contract exists and is tested; the argument parsing, bounded diff-file reading, Action metadata, help text and rebuilt bundle wiring remain.
+- Source snapshotting from a clean checkout, bounded Git object reads of `.sutura.json` at the trusted policy commit, and detection of source changing during snapshotting are specified but not implemented; the core entry point takes already-read bytes.
+- No external-patch fixtures from two agent sources exist; phase 10 owns that evidence.
