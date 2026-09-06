@@ -166,10 +166,14 @@ Local verification for this pass: workspace typecheck, lint and build passed; th
 
 Item 7 is also built. `challenges/budget.ts` reserves the mandatory audit before challenge generation is even priced, so challenge work cannot consume the capacity a run needs to finish auditing. When the remainder cannot cover every proposal it reduces retention before freezing, rather than dropping challenges afterwards, which would let a run quietly skip the ones it failed. When it cannot cover even one, it refuses explicitly with the audit reserve still held and still spendable. Exhausting sandbox operations, model turns or inference spend before generation each refuse with `audit-reserve-unavailable`. No limit is raised to make a plan fit, and none can be: the budget refuses any limit above the frozen default outright. 13 tests.
 
-Still not built, and not claimed:
+Item 5's quality fixtures are built as runner controls: a baseline import failure, a nondeterministic baseline, a nondeterministic candidate, contradictory challenges that must not cancel out into an approval, two equivalent valid repairs scoring identically, and a bug-regression challenge the candidate fixes. The property that matters across all of them is that an invalid or unqualified challenge yields `insufficient`, never `failed`, so a generated test that could not run is never reported as a defect in the patch.
 
-- Item 5's quality fixture family: baseline import failure, nondeterminism, contradictory contracts and equivalent valid repairs.
-- Item 6's sandbox controls for forged approval fields and malformed observation envelopes beyond what phase 1's `protocol.ts` already covers, and the test-aware patch documenting the remaining limitation.
+Item 6's envelope guards were already established by phase 1's `decodeObservation`, which rejects a nonzero exit, truncation, oversized output, an unsupported version, duplicate keys and any field beyond `version` and `value`. Tests now name the specific forgeries the phase calls out: `approved`, `passed` and `verdict` fields alongside a valid value, and an envelope that exits without one. Only the controller's own comparison produces a pass.
+
+The remaining limitation is documented rather than papered over: a test-aware patch that computes the right answer for exactly the inputs a challenge names passes those inputs and fails a held-out one. Controller-owned expectations stop a candidate asserting its own correctness; they do not stop it being right only where it is looked at.
+
+Still not built, and not claimed:
+- Item 6's execution-level controls that need a real sandbox: symlink escape during observation, a candidate mutating the next repetition, and the fixed-environment and network-disabled assertions beyond the one existing protocol test.
 - Item 10's replay reproduction of challenge set and subject hashes across all five statuses.
 - `heal.ts` now passes an `admit` hook that runs the mechanical green-washing checks on a provisional candidate before it can cancel its siblings. Those checks are pure functions of the diff, so admission costs no sandbox operation, provider turn or budget capacity, and a patch that passes the visible suite by weakening it no longer ends the race and hides the alternatives that might have been correct. The refusal is recorded on the node as `verification-refused` with the failing check named.
 

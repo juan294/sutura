@@ -130,3 +130,101 @@ describe('frozen challenge runner', () => {
     expect(result.reasonCode).toBe('second');
   });
 });
+
+describe('challenge quality fixtures', () => {
+  const preservation = challenge({ id: 'preserved' });
+  const regression = challenge({ id: 'reproduces-bug', kind: 'bug-regression' });
+
+  /** A challenge whose probe cannot even load on the baseline. */
+  it('treats a baseline import failure as insufficient, never as a patch defect', async () => {
+    const result = await runFrozenChallenges({
+      set: frozen([preservation]),
+      run: ({ subject }) => Promise.resolve(subject === 'baseline'
+        ? { status: 'insufficient' as const, reasonCode: 'import-error' }
+        : { status: 'passed' as const }),
+    });
+
+    expect(result.status).toBe('insufficient');
+    expect(result.status).not.toBe('failed');
+    expect(result.reasonCode).toBe('no-qualified-challenge');
+  });
+
+  it('treats a nondeterministic baseline as insufficient rather than qualifying it', async () => {
+    let baselineRun = 0;
+    const result = await runFrozenChallenges({
+      set: frozen([preservation]),
+      run: ({ subject }) => {
+        if (subject !== 'baseline') return Promise.resolve({ status: 'passed' as const });
+        baselineRun += 1;
+        return Promise.resolve({ status: baselineRun === 1 ? 'passed' as const : 'failed' as const });
+      },
+    });
+
+    expect(result.status).toBe('insufficient');
+    expect(result.qualified[0]?.qualified).toBe(false);
+  });
+
+  it('treats a nondeterministic candidate as a refusal, not a pass', async () => {
+    let candidateRun = 0;
+    const result = await runFrozenChallenges({
+      set: frozen([preservation]),
+      run: ({ subject }) => {
+        if (subject === 'baseline') return Promise.resolve({ status: 'passed' as const });
+        candidateRun += 1;
+        return Promise.resolve({ status: candidateRun === 1 ? 'failed' as const : 'passed' as const });
+      },
+    });
+
+    expect(result.status).toBe('failed');
+  });
+
+  it('keeps contradictory challenges from cancelling out into an approval', async () => {
+    // One qualified challenge passes the candidate, the other refuses it.
+    const result = await runFrozenChallenges({
+      set: frozen([preservation, challenge({ id: 'also-preserved' })]),
+      run: ({ challenge: item, subject }) => Promise.resolve({
+        status: subject === 'baseline' || item.id === 'preserved'
+          ? 'passed' as const
+          : 'failed' as const,
+      }),
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.reasonCode).toBe('also-preserved');
+  });
+
+  it('passes two equivalent valid repairs identically', async () => {
+    const run = scripted({ baseline: 'passed', candidate: 'passed' });
+    const [first, second] = await Promise.all([
+      runFrozenChallenges({ set: frozen([preservation]), run }),
+      runFrozenChallenges({ set: frozen([preservation]), run }),
+    ]);
+
+    expect(first.status).toBe('passed');
+    expect(second).toEqual(first);
+  });
+
+  it('qualifies a bug-regression challenge the candidate then fixes', async () => {
+    const result = await runFrozenChallenges({
+      set: frozen([regression]),
+      run: ({ subject }) => Promise.resolve({
+        status: subject === 'baseline' ? 'failed' as const : 'passed' as const,
+      }),
+    });
+
+    expect(result.status).toBe('passed');
+    expect(result.qualified[0]).toMatchObject({ challengeId: 'reproduces-bug', qualified: true });
+  });
+
+  it('never reports a candidate refusal when no challenge qualified', async () => {
+    const result = await runFrozenChallenges({
+      set: frozen([preservation, regression]),
+      run: ({ subject }) => Promise.resolve(subject === 'baseline'
+        ? { status: 'insufficient' as const, reasonCode: 'timeout' }
+        : { status: 'failed' as const }),
+    });
+
+    expect(result.status).toBe('insufficient');
+    expect(result.observations.every(({ subject }) => subject === 'baseline')).toBe(true);
+  });
+});

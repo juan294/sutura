@@ -22,6 +22,10 @@ describe('bounded observation protocol', () => {
     '{"version":2,"value":3}',
     '{"version":1,"value":1e999}',
     '{"version":1,"value":3,"value":2}',
+    '{"version":1,"value":3,"approved":true}',
+    '{"version":1,"value":3,"passed":true}',
+    '{"version":1,"value":3,"verdict":"passed"}',
+    '{"version":1}',
     'x'.repeat(17000),
   ])('rejects forged or malformed observation %s', (stdout) => {
     expect(() => decodeObservation(result(stdout))).toThrow();

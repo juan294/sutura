@@ -119,3 +119,27 @@ describe('controller-derived expectations', () => {
       .toBe(passes ? 'passed' : 'failed');
   });
 });
+
+describe('remaining limitation of declarative probes', () => {
+  /**
+   * A patch can be written to satisfy exactly the inputs a challenge names.
+   * Controller-owned expectations stop a candidate from asserting its own
+   * correctness; they do not stop it from being right only where it is looked
+   * at. This is the documented limit of the approach, not a defect in it.
+   */
+  it('a test-aware patch passes the named inputs and fails a held-out one', () => {
+    const named: Array<[number, number]> = [[20, 10], [21, 10]];
+    const heldOut: [number, number] = [7, 4];
+    const testAware = (items: number, divisor: number): number => {
+      const match = named.find(([a, b]) => a === items && b === divisor);
+      return match ? Math.ceil(items / divisor) : Math.floor(items / divisor);
+    };
+
+    for (const [items, divisor] of named) {
+      expect(evaluateAgainstContract(ceiling, [items, divisor], 'equals', testAware(items, divisor)))
+        .toEqual({ status: 'passed' });
+    }
+    expect(evaluateAgainstContract(ceiling, heldOut, 'equals', testAware(...heldOut)))
+      .toEqual({ status: 'failed', reasonCode: 'assertion-mismatch' });
+  });
+});
