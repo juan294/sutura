@@ -171,3 +171,73 @@ describe('optional recovery serialization', () => {
 it('binds legacy recovery to a recorded diagnosis when present', () => {
   expect(() => adaptLegacyVerification(JSON.stringify({ outcome: 'gave-up', diagnosis: { class: 'env-config', failingCmd: 'another command' }, recovery: grantedRecovery() }), 'case-file-v0')).toThrow(/recovery/i);
 });
+
+describe('frozen challenge set identity in replay', () => {
+  const SET_HASH = 'c'.repeat(64);
+
+  it('round trips a challenge set hash through encode and decode', () => {
+    const original = evidence();
+    original.challenges = { mode: 'required', qualifiedProbeCount: 0, setHash: SET_HASH };
+    const encoded = encodeVerificationEvidence(original);
+
+    const decoded = decodeVerificationEvidence(encoded, original.identity);
+    expect(decoded.challenges.setHash).toBe(SET_HASH);
+    expect(decoded).toEqual(original);
+  });
+
+  it('leaves evidence recorded before challenge sets were hashed decodable', () => {
+    const historical = evidence();
+    expect(historical.challenges.setHash).toBeUndefined();
+
+    const encoded = encodeVerificationEvidence(historical);
+    const decoded = decodeVerificationEvidence(encoded, historical.identity);
+    expect(decoded).toEqual(historical);
+    expect('setHash' in decoded.challenges).toBe(false);
+  });
+
+  it('changes the replay identity when the frozen set changes', () => {
+    const first = evidence();
+    first.challenges = { mode: 'required', qualifiedProbeCount: 0, setHash: SET_HASH };
+    const second = evidence();
+    second.challenges = { mode: 'required', qualifiedProbeCount: 0, setHash: 'd'.repeat(64) };
+
+    expect(encodeVerificationEvidence(second).normalizedComparisonSha256)
+      .not.toBe(encodeVerificationEvidence(first).normalizedComparisonSha256);
+  });
+
+  it('refuses a malformed set hash', () => {
+    for (const setHash of ['not-a-hash', 'C'.repeat(64), 'c'.repeat(63), 123]) {
+      const value = evidence();
+      (value.challenges as Record<string, unknown>).setHash = setHash;
+      expect(() => parseVerificationEvidence(value)).toThrow(/setHash/u);
+    }
+  });
+
+  it('refuses a frozen set on a run that disabled challenges', () => {
+    const value = evidence();
+    value.assurance = 'baseline-only';
+    value.challenges = { mode: 'disabled', qualifiedProbeCount: 0, setHash: SET_HASH };
+    value.gates[3] = { gate: 'challenges', status: 'not-run', reasons: ['not-executed'], artifacts: [] };
+
+    expect(() => parseVerificationEvidence(value)).toThrow(/no frozen challenge set/u);
+  });
+
+  it.each(['passed', 'failed', 'insufficient', 'not-run', 'infra-stop'] as const)(
+    'reproduces the challenge gate status %s across encode and decode',
+    (status) => {
+      const value = evidence();
+      value.challenges = { mode: 'optional', qualifiedProbeCount: status === 'passed' ? 1 : 0, setHash: SET_HASH };
+      value.gates[3] = {
+        gate: 'challenges',
+        status,
+        reasons: status === 'passed' ? [] : ['not-executed'],
+        // A passed gate must point at the observation that produced it.
+        artifacts: status === 'passed' ? [{ id: 'challenge-run', sha256: SET_HASH }] : [],
+      };
+
+      const decoded = decodeVerificationEvidence(encodeVerificationEvidence(value), value.identity);
+      expect(decoded.gates.find(({ gate }) => gate === 'challenges')?.status).toBe(status);
+      expect(decoded.challenges.setHash).toBe(SET_HASH);
+    },
+  );
+});

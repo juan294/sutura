@@ -142,7 +142,18 @@ export function parseVerificationEvidence(value: unknown): VerificationEvidence 
     if (model.returnedModel !== null) text(model.returnedModel, 'models.returnedModel');
   });
   validateCosts(item.costs, models.length);
-  const challenge = object(item.challenges, 'challenges', ['mode', 'qualifiedProbeCount']);
+  const hasSetHash = typeof item.challenges === 'object' && item.challenges !== null &&
+    'setHash' in (item.challenges as Record<string, unknown>);
+  const challenge = object(item.challenges, 'challenges', [
+    'mode', 'qualifiedProbeCount', ...(hasSetHash ? ['setHash'] : []),
+  ]);
+  if (hasSetHash &&
+    (typeof challenge.setHash !== 'string' || !/^[a-f0-9]{64}$/u.test(challenge.setHash))) {
+    throw new VerificationEvidenceError('challenges', 'setHash must be a sha256 digest');
+  }
+  if (hasSetHash && challenge.mode === 'disabled') {
+    throw new VerificationEvidenceError('challenges', 'disabled mode has no frozen challenge set');
+  }
   choice(challenge.mode, 'challenges.mode', ['required', 'optional', 'disabled']);
   if (number(challenge.qualifiedProbeCount, 'challenges.qualifiedProbeCount', true) > 3) throw new VerificationEvidenceError('challenges', 'at most three qualified probes');
   const gates = array(item.gates, 'gates', VERIFICATION_GATES.length);

@@ -90,7 +90,15 @@ export interface VerificationEvidence {
   finishedAt: string;
   commands: string[];
   models: VerificationModel[];
-  challenges: { mode: 'required' | 'optional' | 'disabled'; qualifiedProbeCount: number };
+  /**
+   * `setHash` identifies the frozen challenge set a run executed. It is optional
+   * so evidence recorded before challenge sets were hashed still decodes.
+   */
+  challenges: {
+    mode: 'required' | 'optional' | 'disabled';
+    qualifiedProbeCount: number;
+    setHash?: string;
+  };
   gates: VerificationGateObservation[];
   costs: VerificationCosts;
   /** Optional bounded recovery observations; absence preserves historical evidence. */
