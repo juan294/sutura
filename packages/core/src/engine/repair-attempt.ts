@@ -12,6 +12,12 @@ import { RepairToolRuntime, type RepairToolResult } from './repair-tools.js';
 import { isAuthorizedRepairTarget } from './repair-authorization.js';
 import { isRepairPathAdmissible } from './patch-rules.js';
 import {
+  modelRepairSlots,
+  selectRepairTargetSets,
+  type RepairTargetKind,
+  type RepairTargetSlot,
+} from './repair-targets.js';
+import {
   anchoredEditsDiff,
   indexRepairSourceLines,
   REPAIR_EDIT_FIELDS,
@@ -42,6 +48,7 @@ export interface ControlledRepairAttemptContext extends RepairAgentContext {
 }
 
 interface RepairProposal {
+  slotId: string;
   replacement: string;
 }
 
@@ -57,13 +64,21 @@ interface SourceEvidence {
 interface PreparedSourceEvidence extends SourceEvidence {
   policyAdmissible: boolean;
   replacementCodePoints: number;
+  /** Kept for target selection and slot identity; never sent to the model. */
+  content: string;
 }
 
 export interface RepairProposalContract {
   messages: ChatMessage[];
   schema: JsonSchema;
   requestBytes: number;
+  /** The first completion slot; a single-target contract has only this one. */
   target: RepairProposalTarget;
+  /** Every slot the model completes, in stable slot order. */
+  slots: RepairTargetSlot[];
+  kind: RepairTargetKind;
+  /** Controller-generated files the transaction also changes. */
+  generatedPaths: string[];
 }
 
 export interface RepairProposalTarget {
@@ -90,6 +105,16 @@ export class RepairProposalPreparationError extends Error {
 const REPAIR_PROPOSAL_EXAMPLE = Object.freeze({
   [REPAIR_PROPOSAL_FIELDS.replacement]: 'complete replacement for the controller-selected excerpt',
 });
+const REPAIR_PAIR_PROPOSAL_EXAMPLE = Object.freeze({
+  [REPAIR_PROPOSAL_FIELDS.replacements]: [{
+    [REPAIR_PROPOSAL_FIELDS.slot]: 'slot-1',
+    [REPAIR_PROPOSAL_FIELDS.replacement]: 'complete replacement for that slot',
+  }],
+});
+
+function proposalExample(slots: readonly RepairTargetSlot[]): unknown {
+  return slots.length === 1 ? REPAIR_PROPOSAL_EXAMPLE : REPAIR_PAIR_PROPOSAL_EXAMPLE;
+}
 export const CONTROLLED_REPAIR_MAX_TOKENS = 8_192;
 
 function digest(value: string): string {
@@ -125,31 +150,56 @@ function sourceEvidence(ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 
       lines: lines.map(({ line, text }) => ({ line, text })),
       policyAdmissible,
       replacementCodePoints,
+      content: source.content,
     }];
   });
 }
 
-function proposalSchema(): JsonSchema {
+function proposalSchema(slots: readonly RepairTargetSlot[]): JsonSchema {
+  const replacement = {
+    type: 'string', maxLength: REPAIR_PROPOSAL_LIMITS.replacementCodePoints,
+  };
+  if (slots.length === 1) {
+    return {
+      type: 'object',
+      properties: { [REPAIR_PROPOSAL_FIELDS.replacement]: replacement },
+      required: [REPAIR_PROPOSAL_FIELDS.replacement],
+      additionalProperties: false,
+    };
+  }
   return {
     type: 'object',
     properties: {
-      [REPAIR_PROPOSAL_FIELDS.replacement]: {
-        type: 'string', maxLength: REPAIR_PROPOSAL_LIMITS.replacementCodePoints,
+      [REPAIR_PROPOSAL_FIELDS.replacements]: {
+        type: 'array',
+        minItems: slots.length,
+        maxItems: slots.length,
+        items: {
+          type: 'object',
+          properties: {
+            [REPAIR_PROPOSAL_FIELDS.slot]: {
+              type: 'string', enum: slots.map(({ slotId }) => slotId),
+            },
+            [REPAIR_PROPOSAL_FIELDS.replacement]: replacement,
+          },
+          required: [REPAIR_PROPOSAL_FIELDS.slot, REPAIR_PROPOSAL_FIELDS.replacement],
+          additionalProperties: false,
+        },
       },
     },
-    required: Object.values(REPAIR_PROPOSAL_FIELDS),
+    required: [REPAIR_PROPOSAL_FIELDS.replacements],
     additionalProperties: false,
   };
 }
 
 export function prepareControlledRepairProposalTemplate(
-  ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 'policy' | 'sourceContext' | 'authorization'>,
+  ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 'policy' | 'sourceContext' | 'authorization' | 'runtimeId'>,
 ): ControlledRepairProposalTemplate {
   return buildProposalTemplate(ctx, sourceEvidence(ctx));
 }
 
 function buildProposalTemplate(
-  ctx: Pick<ControlledRepairAttemptContext, 'diagnosis'>,
+  ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 'policy' | 'runtimeId'>,
   sources: PreparedSourceEvidence[],
 ): ControlledRepairProposalTemplate {
   if (sources.length === 0) {
@@ -169,7 +219,18 @@ function buildProposalTemplate(
       'invalid', 'No completion-bounded repair source was available',
     );
   }
-  const schema = proposalSchema();
+  const targetSets = selectRepairTargetSets({
+    sources: policySources.map(({ path, startLine, endLine, content, editable }) => ({
+      path, startLine, endLine, content, editable,
+    })),
+    runtimeId: ctx.runtimeId ?? 'node',
+    policy: ctx.policy,
+  });
+  if (targetSets.length === 0) {
+    throw new RepairProposalPreparationError(
+      'invalid', 'No bounded repair target set was available',
+    );
+  }
   const evidence = {
     diagnosis: redactExternalJsonValue(ctx.diagnosis),
     sources: sources.map((source): SourceEvidence => ({
@@ -182,34 +243,44 @@ function buildProposalTemplate(
     })),
     trustedCommandId: 'diagnosed',
   };
-  const systemMessage: ChatMessage = {
+  const repairInstruction = ctx.diagnosis.class === 'test-bug'
+    ? 'Repair the diagnosed test defect; do not change policy.'
+    : 'The failing assertion declares required behavior. Repair production source; do not change tests or policy.';
+  const systemMessageFor = (slots: readonly RepairTargetSlot[]): ChatMessage => ({
     role: 'system',
     content: [
-      'Return one complete replacement repair proposal as strict JSON.',
-      `Return exactly this shape: ${JSON.stringify(REPAIR_PROPOSAL_EXAMPLE)}`,
-      'The controller selects exactly one target excerpt. You cannot select a path or line range.',
+      slots.length === 1
+        ? 'Return one complete replacement repair proposal as strict JSON.'
+        : 'Return one complete replacement for every controller-selected slot as strict JSON.',
+      `Return exactly this shape: ${JSON.stringify(proposalExample(slots))}`,
+      slots.length === 1
+        ? 'The controller selects exactly one target excerpt. You cannot select a path or line range.'
+        : 'The controller selects every slot. Name each slot by its supplied slot identifier; you cannot select a path or line range, and you cannot add, drop or repeat a slot.',
       'replacement must be the complete new text for the entire selected target excerpt, including every unchanged line and without supplied line numbers.',
-      ctx.diagnosis.class === 'test-bug'
-        ? 'Repair the diagnosed test defect; do not change policy.'
-        : 'The failing assertion declares required behavior. Repair production source; do not change tests or policy.',
+      repairInstruction,
       'Use an empty replacement only when deleting the entire selected excerpt is the diagnosed repair.',
       'Change the smallest necessary part of the excerpt, but return the full replacement excerpt.',
       'Do not include analysis or markdown.',
       'A previousAttempt is feedback only; this proposal will be applied to the clean baseline.',
     ].join('\n'),
-  };
+  });
   const cache = new Map<string, RepairProposalContract>();
   return {
-    targetCount: editableSources.length,
+    targetCount: targetSets.length,
     contract(feedback, targetIndex = 0) {
-      if (!Number.isSafeInteger(targetIndex) || targetIndex < 0 || targetIndex >= editableSources.length) {
+      if (!Number.isSafeInteger(targetIndex) || targetIndex < 0 || targetIndex >= targetSets.length) {
         throw new RepairProposalPreparationError('invalid', 'Repair proposal target index is outside the bounded source closure');
       }
-      const selectedSource = editableSources[targetIndex]!;
+      const targetSet = targetSets[targetIndex]!;
+      const slots = modelRepairSlots(targetSet);
+      if (slots.length === 0) {
+        throw new RepairProposalPreparationError('invalid', 'Repair target set offers no completion slot');
+      }
+      const schema = proposalSchema(slots);
       const target: RepairProposalTarget = {
-        path: selectedSource.path,
-        startLine: selectedSource.startLine,
-        endLine: selectedSource.endLine,
+        path: slots[0]!.path,
+        startLine: slots[0]!.startLine,
+        endLine: slots[0]!.endLine,
       };
       const redactedFeedback = feedback === undefined
         ? undefined
@@ -221,8 +292,9 @@ function buildProposalTemplate(
       const key = `${targetIndex}:${feedbackKey}${repeatedProposal ? ':repeat' : ''}`;
       const existing = cache.get(key);
       if (existing !== undefined) return existing;
+      const systemMessage = systemMessageFor(slots);
       const extraLines = [
-        moduleSystemInstruction(target.path),
+        ...new Set(slots.map(({ path }) => moduleSystemInstruction(path))),
         repeatedProposal
           ? 'The previous proposal was identical to an earlier failed proposal for this excerpt. Return a materially different replacement.'
           : undefined,
@@ -230,13 +302,26 @@ function buildProposalTemplate(
       const contractSystemMessage = extraLines.length === 0
         ? systemMessage
         : { ...systemMessage, content: [systemMessage.content, ...extraLines].join('\n') };
+      const generatedPaths = targetSet.slots
+        .filter(({ generated }) => generated)
+        .map(({ path }) => path);
+      const selected = slots.length === 1
+        ? { selectedTarget: target }
+        : {
+          selectedSlots: slots.map(({ slotId, path, startLine, endLine }) =>
+            ({ slotId, path, startLine, endLine })),
+          ...(targetSet.relationship === undefined
+            ? {}
+            : { slotRelationship: targetSet.relationship }),
+          ...(generatedPaths.length === 0 ? {} : { controllerGeneratedPaths: generatedPaths }),
+        };
       const messages: ChatMessage[] = [
         contractSystemMessage,
         {
           role: 'user',
           content: JSON.stringify({
             ...evidence,
-            selectedTarget: target,
+            ...selected,
             ...(redactedFeedback === undefined ? {} : { previousAttempt: redactedFeedback }),
           }),
         },
@@ -246,11 +331,22 @@ function buildProposalTemplate(
         messages,
         requestBytes: Buffer.byteLength(JSON.stringify({ messages, responseSchema: schema }), 'utf8'),
         target,
+        slots,
+        kind: targetSet.kind,
+        generatedPaths,
       };
       cache.set(key, contract);
       return contract;
     },
   };
+}
+
+/** Exposes the slot-reply contract to tests without widening the runtime surface. */
+export function parseControlledRepairProposalForTest(
+  text: string,
+  slots: readonly RepairTargetSlot[],
+): Array<{ slotId: string; replacement: string }> {
+  return parseProposal(text, slots);
 }
 
 function proposalContract(ctx: ControlledRepairAttemptContext): RepairProposalContract {
@@ -259,7 +355,7 @@ function proposalContract(ctx: ControlledRepairAttemptContext): RepairProposalCo
   return template.contract(ctx.feedback);
 }
 
-function parseProposal(text: string): RepairProposal {
+function proposalObject(text: string): Record<string, unknown> {
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -269,20 +365,65 @@ function parseProposal(text: string): RepairProposal {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new TypeError('Repair proposal must be an object');
   }
-  const record = value as Record<string, unknown>;
-  const keys = Object.keys(record);
-  const replacement = record[REPAIR_PROPOSAL_FIELDS.replacement];
-  if (
-    keys.length !== 1 ||
-    keys[0] !== REPAIR_PROPOSAL_FIELDS.replacement
-  ) throw new TypeError('Repair proposal must contain only the replacement field');
-  if (typeof replacement !== 'string') {
+  return value as Record<string, unknown>;
+}
+
+function boundedReplacement(value: unknown): string {
+  if (typeof value !== 'string') {
     throw new TypeError('Repair proposal replacement must be a string');
   }
-  if ([...replacement].length > REPAIR_PROPOSAL_LIMITS.replacementCodePoints) {
+  if ([...value].length > REPAIR_PROPOSAL_LIMITS.replacementCodePoints) {
     throw new TypeError('Repair proposal replacement exceeds the completion-bound source limit');
   }
-  return { replacement };
+  return value;
+}
+
+/**
+ * One replacement per controller-supplied slot, in slot order. A reply that
+ * adds, drops, repeats or renames a slot is refused rather than partially
+ * applied, so an incomplete transaction never reaches a branch.
+ */
+function parseProposal(text: string, slots: readonly RepairTargetSlot[]): RepairProposal[] {
+  const record = proposalObject(text);
+  const keys = Object.keys(record);
+  if (slots.length === 1) {
+    if (keys.length !== 1 || keys[0] !== REPAIR_PROPOSAL_FIELDS.replacement) {
+      throw new TypeError('Repair proposal must contain only the replacement field');
+    }
+    return [{
+      slotId: slots[0]!.slotId,
+      replacement: boundedReplacement(record[REPAIR_PROPOSAL_FIELDS.replacement]),
+    }];
+  }
+  const replacements = record[REPAIR_PROPOSAL_FIELDS.replacements];
+  if (keys.length !== 1 || keys[0] !== REPAIR_PROPOSAL_FIELDS.replacements) {
+    throw new TypeError('Repair proposal must contain only the replacements field');
+  }
+  if (!Array.isArray(replacements) || replacements.length !== slots.length) {
+    throw new TypeError(`Repair proposal must contain exactly ${slots.length} slot replacements`);
+  }
+  const bySlot = new Map<string, string>();
+  for (const entry of replacements) {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      throw new TypeError('Each repair proposal replacement must be an object');
+    }
+    const item = entry as Record<string, unknown>;
+    const itemKeys = Object.keys(item);
+    if (
+      itemKeys.length !== 2 ||
+      !itemKeys.includes(REPAIR_PROPOSAL_FIELDS.slot) ||
+      !itemKeys.includes(REPAIR_PROPOSAL_FIELDS.replacement)
+    ) throw new TypeError('Each repair proposal replacement must contain only slot and replacement');
+    const slotId = item[REPAIR_PROPOSAL_FIELDS.slot];
+    if (typeof slotId !== 'string' || !slots.some((slot) => slot.slotId === slotId)) {
+      throw new TypeError('Repair proposal named a slot the controller did not supply');
+    }
+    if (bySlot.has(slotId)) {
+      throw new TypeError('Repair proposal repeated a slot');
+    }
+    bySlot.set(slotId, boundedReplacement(item[REPAIR_PROPOSAL_FIELDS.replacement]));
+  }
+  return slots.map((slot) => ({ slotId: slot.slotId, replacement: bySlot.get(slot.slotId)! }));
 }
 
 function worstCaseRequestUsd(
@@ -322,7 +463,7 @@ export function controlledRepairAttemptReservationUsd(
 
 /** Price bounded initial/recovery prompts without granting or exposing an editable target. */
 export function recoveryRepairReservationUsd(
-  ctx: Pick<ControlledRepairAttemptContext, 'llm' | 'diagnosis' | 'policy' | 'sourceContext' | 'budget'>,
+  ctx: Pick<ControlledRepairAttemptContext, 'llm' | 'diagnosis' | 'policy' | 'sourceContext' | 'budget' | 'runtimeId'>,
 ): number {
   const sources = sourceEvidence(ctx);
   const diagnoses = [ctx.diagnosis, ...(['test-bug', 'env-config'] as const).map((failureClass) => ({
@@ -341,7 +482,12 @@ export function recoveryRepairReservationUsd(
       const estimate = sources.map((source) => ({
         ...source, editable: source === selected, policyAdmissible: source === selected,
       }));
-      templates.push({ diagnosis, template: buildProposalTemplate({ diagnosis }, estimate) });
+      templates.push({
+        diagnosis,
+        template: buildProposalTemplate({
+          diagnosis, policy: ctx.policy, ...(ctx.runtimeId === undefined ? {} : { runtimeId: ctx.runtimeId }),
+        }, estimate),
+      });
     }
   }
   let maximum = REPAIR_ATTEMPT_MINIMUM_INFERENCE_USD;
@@ -380,7 +526,7 @@ export async function runControlledRepairAttempt(
       reason: publicRepairReason(error instanceof Error ? error.message : String(error)),
     };
   }
-  const { messages, schema, requestBytes, target } = contract;
+  const { messages, schema, requestBytes, slots } = contract;
   const options = proposalOptions(ctx, schema);
   const response = await requestRepairModel({
     llm: ctx.llm, budget: ctx.budget, messages, options,
@@ -396,18 +542,22 @@ export async function runControlledRepairAttempt(
       reason: 'Repair proposal reached the provider completion-token limit',
     };
   }
+  const slotById = new Map(slots.map((slot) => [slot.slotId, slot]));
   const parseAttempt = (text: string): {
-    proposal: RepairProposal;
+    proposals: RepairProposal[];
     proposalDiff: string;
   } => {
-    const proposal = parseProposal(text);
-    const proposalDiff = anchoredEditsDiff([{
-      path: target.path,
-      startLine: target.startLine,
-      endLine: target.endLine,
-      [REPAIR_EDIT_FIELDS.replacement]: proposal.replacement,
-    }], ctx.sourceContext);
-    return { proposal, proposalDiff };
+    const proposals = parseProposal(text, slots);
+    const proposalDiff = anchoredEditsDiff(proposals.map((proposal) => {
+      const slot = slotById.get(proposal.slotId)!;
+      return {
+        path: slot.path,
+        startLine: slot.startLine,
+        endLine: slot.endLine,
+        [REPAIR_EDIT_FIELDS.replacement]: proposal.replacement,
+      };
+    }), ctx.sourceContext);
+    return { proposals, proposalDiff };
   };
   let parsedAttempt: ReturnType<typeof parseAttempt>;
   try {
@@ -421,7 +571,7 @@ export async function runControlledRepairAttempt(
       { role: 'assistant', content: reply.text },
       {
         role: 'user',
-        content: `The previous reply was not a valid repair proposal: ${firstReason}. Return only ${JSON.stringify(REPAIR_PROPOSAL_EXAMPLE)} with the complete replacement text.`,
+        content: `The previous reply was not a valid repair proposal: ${firstReason}. Return only ${JSON.stringify(proposalExample(slots))} with the complete replacement text.`,
       },
     ];
     ctx.observe?.({
@@ -456,10 +606,12 @@ export async function runControlledRepairAttempt(
       };
     }
   }
-  const { proposal, proposalDiff } = parsedAttempt;
+  const { proposals, proposalDiff } = parsedAttempt;
   const proposalDiffHash = digest(proposalDiff);
   const proposalId = `repair-${proposalDiffHash.slice(0, 12)}`;
-  const proposalRationale = 'Replace the controller-selected source excerpt.';
+  const proposalRationale = slots.length === 1
+    ? 'Replace the controller-selected source excerpt.'
+    : 'Replace every controller-selected slot as one transaction.';
   const tools = new RepairToolRuntime({
     executor: ctx.executor,
     initialImageId: ctx.initialImageId,
@@ -483,7 +635,7 @@ export async function runControlledRepairAttempt(
     ctx.trace?.record({
       type: 'tool-request', stage: 'candidate', toolCallId: id, toolName: name,
       argumentSummary: name === 'apply_patch'
-        ? { form: 'anchored-line-ranges', proposalId, proposalHash: digest(JSON.stringify(proposal)), diffHash: proposalDiffHash }
+        ? { form: 'anchored-line-ranges', proposalId, proposalHash: digest(JSON.stringify(proposals)), diffHash: proposalDiffHash }
         : name === 'run_test'
           ? { commandId: 'diagnosed' }
           : { candidateId: proposalId, diffHash: digest(tools.state().cumulativeDiff) },

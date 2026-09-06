@@ -18,6 +18,7 @@ import {
   type RepairToolState,
 } from './repair-tools.js';
 import type { RepairSourceContext } from './repair.js';
+import type { RuntimeId } from '../runtime/types.js';
 import type { TraceRecorder } from '../trace/recorder.js';
 
 const MAX_AGENT_OUTPUT_TOKENS = 8_192;
@@ -50,6 +51,8 @@ export interface RepairAgentContext {
   budget: RepairBudget;
   trustedCommands: Readonly<Record<string, string>>;
   sourceContext: RepairSourceContext;
+  /** Decides how a related-source pair resolves an import; defaults to Node. */
+  runtimeId?: RuntimeId;
   authorization?: RepairAuthorizationContext;
   branchId?: string;
   operationIdPrefix?: string;

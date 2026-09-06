@@ -910,6 +910,7 @@ async function repairFailureWithinBudget(
     try {
       repairReservationUsd = recoveryRepairReservationUsd({
         llm: fullContext.llm, diagnosis, policy, sourceContext, budget,
+        runtimeId: (ctx.runtime ?? NODE_RUNTIME).id,
       });
     } catch (error) {
       const kind = error instanceof RepairProposalPreparationError ? error.failureKind : 'provider';
@@ -943,6 +944,7 @@ async function repairFailureWithinBudget(
         try {
           const template = prepareControlledRepairProposalTemplate({
             diagnosis: attempt.diagnosis, policy, sourceContext,
+            runtimeId: (ctx.runtime ?? NODE_RUNTIME).id,
             ...(attempt.authorization === undefined ? {} : { authorization: attempt.authorization }),
           });
           for (let index = 0; index < template.targetCount; index++) {
@@ -986,6 +988,7 @@ async function repairFailureWithinBudget(
           budget,
           trustedCommands,
           sourceContext,
+          runtimeId: (ctx.runtime ?? NODE_RUNTIME).id,
           ...(target.authorization === undefined ? {} : { authorization: target.authorization }),
           proposalTemplate: target.template,
           proposalContract: target.template.contract(feedback, target.index),

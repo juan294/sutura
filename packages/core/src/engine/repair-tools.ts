@@ -11,6 +11,7 @@ import { redactExternalText } from '../security/external-text.js';
 import { isSensitiveRepositoryPath } from '../security/repository-path.js';
 import { boundedTail } from '../text/bounded-tail.js';
 import { authorizeRepairCandidate, type RepairAuthorizationContext } from './repair-authorization.js';
+import { repairTargetFileCap } from './repair-targets.js';
 import { validateCandidateDiff } from './candidate-validation.js';
 import { BudgetExceededError, type RepairBudget } from './repair-budget.js';
 import {
@@ -381,15 +382,31 @@ export class RepairToolRuntime {
     return { ok: true, message: output || `Test exited ${result.exitCode}`, imageId: result.imageId, exitCode: result.exitCode };
   }
 
+  /**
+   * Every diff this branch proposes or accumulates stays inside the repair
+   * transaction's file cap, which is the stricter of the two-file bound and the
+   * repository policy. A controller-generated artifact counts against it like
+   * any other changed file.
+   */
   private async validateDiff(diff: string): Promise<ReturnType<typeof validateCandidateDiff>> {
     const authorization = this.options.authorization;
     if (authorization !== undefined) {
       await authorizeRepairCandidate(authorization.session, authorization.baseline, diff);
     }
-    return validateCandidateDiff(
+    const validation = validateCandidateDiff(
       diff, this.options.diagnosis, this.options.policy,
       this.options.budget.limits.diffBytes, authorization,
     );
+    const cap = repairTargetFileCap(this.options.policy);
+    if (validation.changedFiles.length <= cap) return validation;
+    return {
+      ...validation,
+      ok: false,
+      violations: [
+        ...validation.violations,
+        `changes ${validation.changedFiles.length} files; the repair transaction permits at most ${cap}`,
+      ],
+    };
   }
 
   private async applyPatch(value: unknown): Promise<RepairToolResult> {

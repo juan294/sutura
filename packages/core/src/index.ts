@@ -120,6 +120,20 @@ export { adaptiveSearch, DEFAULT_SEARCH_LIMITS } from './engine/search.js';
 export { REPAIR_TOOL_DEFINITIONS, RepairToolRuntime } from './engine/repair-tools.js';
 export { sourceDependencyGroups } from './engine/source-context.js';
 export {
+  MAX_REPAIR_PAIR_TARGETS,
+  MAX_REPAIR_TARGET_FILES,
+  modelRepairSlots,
+  repairTargetFileCap,
+  selectRepairTargetSets,
+} from './engine/repair-targets.js';
+export {
+  APPROVED_REGISTRY_ORIGINS,
+  DependencyTransactionError,
+  dependencyResolutionInput,
+  validateDependencyManifestChange,
+  validateGeneratedLockfile,
+} from './engine/dependency-transaction.js';
+export {
   generateCandidates,
   prepareRepair,
   selectWinner,
@@ -404,6 +418,19 @@ export type {
   SearchPolicyEvidence,
 } from './engine/search.js';
 export type { SourceDependencyGroup } from './engine/source-context.js';
+export type {
+  RepairTargetKind,
+  RepairTargetRelationship,
+  RepairTargetSet,
+  RepairTargetSlot,
+  RepairTargetSource,
+} from './engine/repair-targets.js';
+export type {
+  DependencyGrounding,
+  DependencyManifestChange,
+  DependencyResolutionInput,
+  GeneratedLockfile,
+} from './engine/dependency-transaction.js';
 export type { SearchScore } from './engine/search-score.js';
 export type {
   RepositoryPolicy,

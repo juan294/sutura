@@ -38,6 +38,8 @@ export const REPAIR_PROPOSAL_LIMITS = Object.freeze({
 });
 export const REPAIR_PROPOSAL_FIELDS = Object.freeze({
   replacement: 'replacement',
+  replacements: 'replacements',
+  slot: 'slot',
 } as const);
 export const REPAIR_EDIT_FIELDS = Object.freeze({
   path: 'path', startLine: 'startLine', endLine: 'endLine', replacement: 'new',
