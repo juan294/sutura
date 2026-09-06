@@ -120,6 +120,22 @@ export { adaptiveSearch, DEFAULT_SEARCH_LIMITS } from './engine/search.js';
 export { REPAIR_TOOL_DEFINITIONS, RepairToolRuntime } from './engine/repair-tools.js';
 export { sourceDependencyGroups } from './engine/source-context.js';
 export {
+  evaluateVerification,
+  VERIFICATION_GATE_ORDER,
+  verificationApproved,
+} from './verification/evaluate.js';
+export {
+  buildChallengeGenerationPrompt,
+  CHALLENGE_GENERATION_PURPOSE,
+  CHALLENGE_REPETITIONS,
+  CHALLENGE_SET_VERSION,
+  ChallengeGenerationError,
+  FORBIDDEN_CHALLENGE_CONTEXT_KEYS,
+  freezeChallengeSet,
+  MAX_RETAINED_CHALLENGES,
+} from './challenges/generate.js';
+export { runFrozenChallenges } from './challenges/runner.js';
+export {
   MAX_REPAIR_PAIR_TARGETS,
   MAX_REPAIR_TARGET_FILES,
   modelRepairSlots,
@@ -418,6 +434,26 @@ export type {
   SearchPolicyEvidence,
 } from './engine/search.js';
 export type { SourceDependencyGroup } from './engine/source-context.js';
+export type {
+  ChallengeMode,
+  OrderedVerificationGate,
+  SharedVerificationOutcome,
+  SharedVerificationRequest,
+  VerificationGateResult,
+  VerificationGateRunner,
+} from './verification/evaluate.js';
+export type {
+  ChallengeGenerationContext,
+  ChallengeKind,
+  ChallengeProposal,
+  FrozenChallengeSet,
+} from './challenges/generate.js';
+export type {
+  ChallengeObservation,
+  ChallengeProbeRunner,
+  ChallengeQualification,
+  ChallengeRunResult,
+} from './challenges/runner.js';
 export type {
   RepairTargetKind,
   RepairTargetRelationship,

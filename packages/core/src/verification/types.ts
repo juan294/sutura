@@ -7,6 +7,7 @@ export const VERIFICATION_STATUSES = ['passed', 'failed', 'insufficient', 'not-r
 export const VERIFICATION_REASONS = ['not-executed', 'missing-contract', 'unsupported-contract', 'invalid-probe', 'assertion-failed', 'command-failed', 'policy-denied', 'audit-refused', 'budget-exhausted', 'provider-error', 'protocol-error', 'identity-mismatch', 'flaky', 'no-candidate', 'resource-limit'] as const;
 
 export type VerificationGateStatus = typeof VERIFICATION_STATUSES[number];
+export type VerificationReason = typeof VERIFICATION_REASONS[number];
 export type VerificationOutcome = 'repaired' | 'verified-supplied-patch' | 'refused' | 'flaky-no-patch' | 'insufficient' | 'infra-stop';
 export type VerificationAssurance = 'contract-verified' | 'baseline-only';
 export type VerificationMode = 'live' | 'replay' | 'recorded' | 'local';
