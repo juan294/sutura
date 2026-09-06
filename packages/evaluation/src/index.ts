@@ -92,3 +92,15 @@ export type {
   QualityScoredItem,
   QualityTruth,
 } from './quality-task.js';
+export {
+  buildEvaluationInventory,
+  INVENTORY_SCHEMA_VERSION,
+  INVENTORY_TARGET_COUNTS,
+  INVENTORY_TARGET_TOTAL,
+} from './inventory.js';
+export type {
+  EvaluationInventory,
+  InventoryCase,
+  InventoryResult,
+  InventoryShortfall,
+} from './inventory.js';
