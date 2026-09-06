@@ -67,6 +67,23 @@ export interface VerificationCosts {
   wallTimeMs: number | null;
 }
 
+/**
+ * One challenge repetition against one subject.
+ *
+ * `observationSha256` is the digest of the bytes the sandbox printed, so a
+ * replay can show it observed the same thing rather than only the same
+ * verdict. A repetition that produced no observation, because it was
+ * cancelled or could not run, records null and says so in its reason.
+ */
+export interface VerificationChallengeSubject {
+  challengeId: string;
+  subject: 'baseline' | 'candidate';
+  repetition: number;
+  status: 'passed' | 'failed' | 'insufficient';
+  observationSha256: string | null;
+  reasonCode: string;
+}
+
 /** Dataset truth and presentation are deliberately separate from executed evidence. */
 export interface VerificationDatasetTruth {
   schemaVersion: 'sutura-repair-quality-truth-v1';
@@ -98,6 +115,12 @@ export interface VerificationEvidence {
     mode: 'required' | 'optional' | 'disabled';
     qualifiedProbeCount: number;
     setHash?: string;
+    /**
+     * One record per executed repetition, in execution order. Present only
+     * for a run that froze a challenge set; evidence recorded before subject
+     * records existed decodes unchanged without it.
+     */
+    subjects?: VerificationChallengeSubject[];
   };
   gates: VerificationGateObservation[];
   costs: VerificationCosts;

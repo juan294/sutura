@@ -172,11 +172,57 @@ Item 6's envelope guards were already established by phase 1's `decodeObservatio
 
 The remaining limitation is documented rather than papered over: a test-aware patch that computes the right answer for exactly the inputs a challenge names passes those inputs and fails a held-out one. Controller-owned expectations stop a candidate asserting its own correctness; they do not stop it being right only where it is looked at.
 
-Still not built, and not claimed:
-- Item 6's execution-level controls that need a real sandbox: symlink escape during observation, a candidate mutating the next repetition, and the fixed-environment and network-disabled assertions beyond the one existing protocol test.
-- Item 10 is partly built. Phase 1's evidence now carries an optional `challenges.setHash`, so a replayed run identifies the frozen set it executed. The field is optional by construction: evidence recorded before challenge sets were hashed still decodes byte for byte, a malformed digest is refused, a run that disabled challenges may not carry a set at all, and changing the frozen set changes the normalized comparison identity. All five gate statuses reproduce across encode and decode. What remains is subject-level hashes per repetition and cancellation replay, which need challenge execution wired into the report rather than only into the codec.
+Still not built at the time of that pass:
+- Item 6's execution-level controls: a candidate mutating the next repetition, and the fixed-environment assertion beyond the one existing protocol test. (Symlink escape during observation was already covered by `protocol.test.ts`, which runs the real adapter against both an escaping and an in-snapshot symlink for all three adapters.) Both are now built; see the third pass below.
+- Item 10 was partly built. Phase 1's evidence now carries an optional `challenges.setHash`, so a replayed run identifies the frozen set it executed. The field is optional by construction: evidence recorded before challenge sets were hashed still decodes byte for byte, a malformed digest is refused, a run that disabled challenges may not carry a set at all, and changing the frozen set changes the normalized comparison identity. All five gate statuses reproduce across encode and decode. What remains is subject-level hashes per repetition and cancellation replay, which need challenge execution wired into the report rather than only into the codec.
 - `heal.ts` now passes an `admit` hook that runs the mechanical green-washing checks on a provisional candidate before it can cancel its siblings. Those checks are pure functions of the diff, so admission costs no sandbox operation, provider turn or budget capacity, and a patch that passes the visible suite by weakening it no longer ends the race and hides the alternatives that might have been correct. The refusal is recorded on the node as `verification-refused` with the failing check named.
 
   The provider-backed gates — fresh suite rerun, challenges and adjudication — still run once on the winner rather than per provisional candidate. Moving those into admission needs an audit reserve sized for several candidates rather than one; `reserveChallengeCapacity` models exactly that shape for challenges, and the equivalent for the audit is the remaining work.
 
   Admission is proved at the `adaptiveSearch` seam by five focused tests. An end-to-end assertion through `repairFailure` is not included: the attempt to write one produced a case that gave up before reaching search, so it would have passed without exercising admission at all, and a test that passes for the wrong reason is worse than none.
+
+## Third pass — September 6
+
+Items 6 and 10 are complete.
+
+`observation-execution.test.ts` proves the execution-level controls by running
+the real adapter as a process rather than by reading its source. A target that
+writes a marker file and answers differently once it exists observes 3 in both
+repetitions when each repetition starts from a copy of the frozen workspace,
+and the frozen workspace still has no marker afterwards. The companion test
+runs the same target twice in one shared directory and observes 3 then 2, so
+the control is shown to be the immutable parent rather than the assertion.
+At the `observeProbe` seam, three repetitions all name the caller's image and
+never the image a previous run produced.
+
+The fixed environment is proved the same way: with an ambient `NODE_OPTIONS`
+preloading a module that writes to stdout, the observation is unusable, and
+with the fixed environment the same command in the same directory observes 3.
+The run options are asserted exactly, not partially: network disabled, cwd
+`/workspace`, a ten-second timeout, and the six-variable environment with
+nothing else in it. A separate test decodes the base64 invocation out of the
+command and shows it carries the inputs and the target but no expected value,
+while the controller still evaluates the observation correctly, so the answer
+never travels into the sandbox with the question.
+
+Item 10's remaining half is the per-repetition record. Phase 1's evidence now
+carries an optional `challenges.subjects`: one entry per repetition that was
+actually reached, in execution order, each naming its challenge, subject,
+repetition, status, reason and the digest of the bytes it observed. A cancelled
+repetition records a null digest with reason `cancelled` and is refused if it
+claims a decided status, so nothing that observed nothing can read as a pass.
+The codec refuses a duplicate repetition, a repetition outside the frozen
+count, a malformed digest, an unknown subject, subject records from a run that
+froze no set, and a candidate repetition whose baseline did not complete every
+repetition, because a challenge that never qualified says nothing about a
+candidate. Evidence recorded before subject records existed still decodes
+unchanged.
+
+The replay property that matters holds: two runs whose statuses are identical
+but whose candidate observed different bytes get different normalized
+comparison hashes, so a replay shows a rerun observed the same things rather
+than only that it reached the same verdict.
+
+22 tests across `observation-execution.test.ts` and `subject-replay.test.ts`.
+Core suite: 1,643 passing, nine credential-gated skips. Workspace typecheck,
+lint and bundle parity passed.

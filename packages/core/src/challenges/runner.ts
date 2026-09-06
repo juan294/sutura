@@ -1,3 +1,4 @@
+import type { VerificationChallengeSubject } from '../verification/types.js';
 import { CHALLENGE_REPETITIONS, type ChallengeProposal, type FrozenChallengeSet } from './generate.js';
 
 export type ChallengeObservationStatus = 'passed' | 'failed' | 'insufficient';
@@ -8,6 +9,11 @@ export interface ChallengeObservation {
   repetition: number;
   status: ChallengeObservationStatus;
   reasonCode: string;
+  /**
+   * Digest of the bytes this repetition observed. Absent when the repetition
+   * produced no observation, because it was cancelled or could not run.
+   */
+  observationSha256?: string;
 }
 
 export interface ChallengeQualification {
@@ -33,7 +39,11 @@ export type ChallengeProbeRunner = (input: {
   challenge: ChallengeProposal;
   subject: 'baseline' | 'candidate';
   repetition: number;
-}) => Promise<{ status: ChallengeObservationStatus; reasonCode?: string }>;
+}) => Promise<{
+  status: ChallengeObservationStatus;
+  reasonCode?: string;
+  observationSha256?: string;
+}>;
 
 async function observe(
   run: ChallengeProbeRunner,
@@ -49,6 +59,7 @@ async function observe(
       repetition,
       status: result.status,
       reasonCode: result.reasonCode ?? (result.status === 'passed' ? 'passed' : 'observation'),
+      ...(result.observationSha256 === undefined ? {} : { observationSha256: result.observationSha256 }),
     });
   }
   return observations;
@@ -121,4 +132,25 @@ export async function runFrozenChallenges(input: {
     return { status: 'failed', reasonCode: failing.challengeId, qualified, observations };
   }
   return { status: 'passed', reasonCode: 'passed', qualified, observations };
+}
+
+/**
+ * The per-repetition record a replay compares against.
+ *
+ * Only repetitions that were actually reached appear, in execution order, so a
+ * missing record reads as a repetition that did not happen rather than as one
+ * that passed. A repetition that observed something carries the digest of what
+ * it observed; a cancelled or unrunnable one carries null and keeps its reason.
+ */
+export function challengeSubjectRecords(
+  result: Pick<ChallengeRunResult, 'observations'>,
+): VerificationChallengeSubject[] {
+  return result.observations.map((observation) => ({
+    challengeId: observation.challengeId,
+    subject: observation.subject,
+    repetition: observation.repetition,
+    status: observation.status,
+    observationSha256: observation.observationSha256 ?? null,
+    reasonCode: observation.reasonCode,
+  }));
 }

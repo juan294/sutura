@@ -112,6 +112,57 @@ function validateCosts(value: unknown, modelCount: number): void {
 }
 
 /** Strict allowlists exclude raw oracle tables and arbitrary metadata from public evidence. */
+/** At most three challenges, two subjects, two repetitions each. */
+const MAX_CHALLENGE_SUBJECT_RECORDS = 12;
+const MAX_CHALLENGE_REPETITION = 2;
+
+/**
+ * Per-repetition challenge records.
+ *
+ * A record exists only for a repetition that was actually reached, so the
+ * absence of one is not a pass. A candidate record cannot appear without the
+ * baseline records for the same challenge, because a challenge that never
+ * qualified on the baseline says nothing about a candidate. A repetition that
+ * observed something carries the digest of what it observed; one that was
+ * cancelled or could not run carries null and states its reason.
+ */
+function validateChallengeSubjects(value: unknown, hasSetHash: boolean): void {
+  if (!hasSetHash) throw new VerificationEvidenceError('challenges', 'subject records require the frozen set hash');
+  const entries = array(value, 'challenges.subjects', MAX_CHALLENGE_SUBJECT_RECORDS);
+  const seen = new Set<string>();
+  const baselineRepetitions = new Map<string, number>();
+  const candidates: string[] = [];
+  for (const entry of entries) {
+    const record = object(entry, 'challenges.subjects', [
+      'challengeId', 'subject', 'repetition', 'status', 'observationSha256', 'reasonCode',
+    ]);
+    const challengeId = text(record.challengeId, 'challenges.subjects.challengeId');
+    choice(record.subject, 'challenges.subjects.subject', ['baseline', 'candidate']);
+    const repetition = number(record.repetition, 'challenges.subjects.repetition', true);
+    if (repetition < 1 || repetition > MAX_CHALLENGE_REPETITION) {
+      throw new VerificationEvidenceError('challenges.subjects', 'repetition is outside the frozen repetition count');
+    }
+    choice(record.status, 'challenges.subjects.status', ['passed', 'failed', 'insufficient']);
+    text(record.reasonCode, 'challenges.subjects.reasonCode');
+    const key = `${challengeId}:${String(record.subject)}:${repetition}`;
+    if (seen.has(key)) throw new VerificationEvidenceError('challenges.subjects', 'duplicate repetition record');
+    seen.add(key);
+    if (record.observationSha256 === null) {
+      if (record.status !== 'insufficient') {
+        throw new VerificationEvidenceError('challenges.subjects', 'a decided repetition must carry its observation digest');
+      }
+    } else pattern(record.observationSha256, 'challenges.subjects.observationSha256', /^[a-f0-9]{64}$/u);
+    if (record.subject === 'baseline') {
+      baselineRepetitions.set(challengeId, (baselineRepetitions.get(challengeId) ?? 0) + 1);
+    } else candidates.push(challengeId);
+  }
+  for (const challengeId of candidates) {
+    if ((baselineRepetitions.get(challengeId) ?? 0) !== MAX_CHALLENGE_REPETITION) {
+      throw new VerificationEvidenceError('challenges.subjects', 'a candidate repetition requires every baseline repetition');
+    }
+  }
+}
+
 export function parseVerificationEvidence(value: unknown): VerificationEvidence {
   const hasRecovery = value !== null && typeof value === 'object' && Object.hasOwn(value, 'recovery');
   const item = object(value, 'evidence', ['schemaVersion', 'mode', 'outcome', 'assurance', 'identity', 'startedAt', 'finishedAt', 'commands', 'models', 'challenges', 'gates', 'costs', ...(hasRecovery ? ['recovery'] : [])]);
@@ -142,10 +193,12 @@ export function parseVerificationEvidence(value: unknown): VerificationEvidence 
     if (model.returnedModel !== null) text(model.returnedModel, 'models.returnedModel');
   });
   validateCosts(item.costs, models.length);
-  const hasSetHash = typeof item.challenges === 'object' && item.challenges !== null &&
-    'setHash' in (item.challenges as Record<string, unknown>);
+  const declared = typeof item.challenges === 'object' && item.challenges !== null
+    ? (item.challenges as Record<string, unknown>) : {};
+  const hasSetHash = 'setHash' in declared;
+  const hasSubjects = 'subjects' in declared;
   const challenge = object(item.challenges, 'challenges', [
-    'mode', 'qualifiedProbeCount', ...(hasSetHash ? ['setHash'] : []),
+    'mode', 'qualifiedProbeCount', ...(hasSetHash ? ['setHash'] : []), ...(hasSubjects ? ['subjects'] : []),
   ]);
   if (hasSetHash &&
     (typeof challenge.setHash !== 'string' || !/^[a-f0-9]{64}$/u.test(challenge.setHash))) {
@@ -154,6 +207,7 @@ export function parseVerificationEvidence(value: unknown): VerificationEvidence 
   if (hasSetHash && challenge.mode === 'disabled') {
     throw new VerificationEvidenceError('challenges', 'disabled mode has no frozen challenge set');
   }
+  if (hasSubjects) validateChallengeSubjects(challenge.subjects, hasSetHash);
   choice(challenge.mode, 'challenges.mode', ['required', 'optional', 'disabled']);
   if (number(challenge.qualifiedProbeCount, 'challenges.qualifiedProbeCount', true) > 3) throw new VerificationEvidenceError('challenges', 'at most three qualified probes');
   const gates = array(item.gates, 'gates', VERIFICATION_GATES.length);

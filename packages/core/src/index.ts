@@ -134,7 +134,7 @@ export {
   freezeChallengeSet,
   MAX_RETAINED_CHALLENGES,
 } from './challenges/generate.js';
-export { runFrozenChallenges } from './challenges/runner.js';
+export { challengeSubjectRecords, runFrozenChallenges } from './challenges/runner.js';
 export {
   MAX_CHALLENGE_INPUT_BYTES,
   SUPPORTED_RELATIONS,
@@ -204,7 +204,7 @@ export { aggregateStageEvidence } from './report/format.js';
 export { VerificationEvidenceError, parseVerificationEvidence, encodeVerificationEvidence, decodeVerificationEvidence } from './verification/codec.js';
 export { adaptLegacyVerification } from './verification/legacy.js';
 export { VERIFICATION_EVIDENCE_VERSION, VERIFICATION_COST_VERSION, VERIFICATION_GATES, VERIFICATION_STATUSES, VERIFICATION_REASONS } from './verification/types.js';
-export type { VerificationEvidence, VerificationIdentity, VerificationGateObservation, VerificationGateStatus, VerificationOutcome, VerificationAssurance, VerificationMode, VerificationModel, VerificationCosts, VerificationDatasetTruth, VerificationPresentation, VerificationArtifact } from './verification/types.js';
+export type { VerificationChallengeSubject, VerificationEvidence, VerificationIdentity, VerificationGateObservation, VerificationGateStatus, VerificationOutcome, VerificationAssurance, VerificationMode, VerificationModel, VerificationCosts, VerificationDatasetTruth, VerificationPresentation, VerificationArtifact } from './verification/types.js';
 export type { LegacyVerificationEvidence } from './verification/legacy.js';
 export { isSensitiveRepositoryPath } from './security/repository-path.js';
 export { trimEdges, trimTrailing } from './text/trim-edge.js';
