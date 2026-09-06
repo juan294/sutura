@@ -243,6 +243,7 @@ table {
   font-size: 0.9375rem;
 }
 
+
 th,
 td {
   text-align: left;
@@ -469,4 +470,35 @@ th {
     width: 100%;
     text-align: center;
   }
+
+  /* The banner is fixed over the first screen, so it stays as short as it can. */
+  .consent .actions .button {
+    width: auto;
+    flex: 1 1 auto;
+  }
+}
+
+.verdict {
+  margin: 1.25rem 0;
+  padding: 0.875rem 1rem;
+  border-radius: 0.5rem;
+  border-left: 4px solid var(--rule, #888);
+}
+
+.verdict-headline {
+  margin: 0 0 0.35rem;
+  font-size: 1.25rem;
+}
+
+.verdict-reason,
+.verdict-evidence,
+.verdict-next {
+  margin: 0.25rem 0;
+}
+
+.verdict-evidence {
+  opacity: 0.8;
+  font-size: 0.9375rem;
+  /* The subject hash is one 40-character token; without this it runs off a narrow screen. */
+  overflow-wrap: anywhere;
 }

@@ -153,25 +153,44 @@ ${alternatives}
 ${totals}`);
 }
 
-function renderHeader(result: CaseLabResult, item: CaseLabCase): string {
+/**
+ * What the evidence mode means and whether the outcome matched the case.
+ *
+ * Both qualify the verdict, so they read after it. The verdict names the mode
+ * and the mismatch in one line each; these state them in full.
+ */
+function renderContext(result: CaseLabResult): string {
   const expectation = result.matchesExpectation
     ? 'Outcome matches the expected outcome.'
     : result.outcome === result.expectedOutcome && result.repairPaths !== undefined && touchesTests(result.repairPaths)
       ? `Expected ${OUTCOME_LABELS[result.expectedOutcome]} without touching a test file; the repair changed ${result.repairPaths.filter((path) => touchesTests([path])).join(', ')}. This result does not match. The failure is kept in the record.`
       : `Expected ${OUTCOME_LABELS[result.expectedOutcome]}; this result does not match. The failure is kept in the record.`;
+  return `<p class="mode-note">${escapeHtml(MODES[result.mode].note)}</p>
+<p class="expectation">${escapeHtml(expectation)}</p>`;
+}
+
+function renderHeader(result: CaseLabResult, item: CaseLabCase): string {
   return `<header class="docket">
-  <p class="eyebrow">Sutura Case Lab · ${escapeHtml(item.scenario)}</p>
+  <p class="eyebrow">Sutura Case Lab</p>
   <h1>${escapeHtml(item.title)}</h1>
   <p class="badges">${modeBadge(result.mode)} ${outcomeBadge(result.outcome)}</p>
-  <p class="mode-note">${escapeHtml(MODES[result.mode].note)}</p>
-  <p class="expectation">${escapeHtml(expectation)}</p>
-  <dl class="identity">
+</header>`;
+}
+
+/**
+ * Release, controller and request identity.
+ *
+ * This is execution detail, so it sits below the verdict. On a narrow screen
+ * it is tall enough to push the verdict off the first screen, which would
+ * defeat the point of leading with a verdict.
+ */
+function renderIdentity(result: CaseLabResult): string {
+  return `<dl class="identity">
     <dt>Release</dt><dd>v${escapeHtml(result.release.version)} · Action <code>${escapeHtml(result.release.actionSha)}</code></dd>
     <dt>Controller</dt><dd><code>${escapeHtml(result.identity.controllerSha)}</code></dd>${result.identity.demoSha === undefined ? '' : `
     <dt>Demo repository</dt><dd><code>${escapeHtml(result.identity.demoSha)}</code></dd>`}
     <dt>Request</dt><dd><code>${escapeHtml(result.requestId)}</code> · ${escapeHtml(result.createdAt)}</dd>
-  </dl>
-</header>`;
+  </dl>`;
 }
 
 function renderEvidence(result: CaseLabResult, item: CaseLabCase): string {
@@ -347,6 +366,8 @@ export function renderResultBody(result: CaseLabResult, item: CaseLabCase): stri
   return [
     renderHeader(result, item),
     renderVerdict(result, item),
+    renderContext(result),
+    renderIdentity(result),
     renderEvidence(result, item),
     renderDiagnosis(file),
     renderRecovery(file),

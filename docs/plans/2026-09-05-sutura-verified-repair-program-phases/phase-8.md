@@ -33,11 +33,11 @@ Costs display priced inference estimate, raw/confirmed sandbox costs with units 
 
 ## Automated success criteria
 
-- [ ] Render tests cover all six states; no infrastructure/insufficient result gets accepted color/text or green scenario expectation.
-- [ ] Regression comparison binds the same baseline, exact two diff hashes, old visible test and new independent checks. Historical artifacts retain original mode/hash and annotation.
-- [ ] Replay tests execute twice with network/provider spies and compare semantic outputs; mismatch, unsupported version and missing artifact have explicit recorded fallback.
+- [x] Render tests cover all six states; no infrastructure/insufficient result gets accepted color/text or green scenario expectation.
+- [x] Regression comparison binds the same baseline, exact two diff hashes, old visible test and new independent checks. Historical artifacts retain original mode/hash and annotation.
+- [x] Replay tests execute twice with network/provider spies and compare semantic outputs; mismatch, unsupported version and missing artifact have explicit recorded fallback.
 - [ ] Browser interaction tests cover keyboard tabs, focus, expanded evidence, status announcements, responsive layouts and live-button readiness/quota transitions. Cost fixtures cover unknown units and partial records.
-- [ ] `pnpm --filter @sutura/case-lab test` passes; run local build and existing acceptance validator. No hosted screenshots or preview deployment needed.
+- [x] `pnpm --filter @sutura/case-lab test` passes; run local build and existing acceptance validator. No hosted screenshots or preview deployment needed.
 
 ## Manual success criteria
 
@@ -62,4 +62,34 @@ Not built, and not claimed:
 - The two-patch regression comparison is built. It binds one baseline, exactly two patches by exact diff hash, the original failing test command and the independent checks, and refuses every shape that would let the page imply a distinction the evidence does not support: fewer or more than two patches, the same patch listed twice, a patch that did not pass the original test, an inexact baseline or diff hash, a duplicate check id, and, most importantly, a check set where no check separates the two patches. The render marks which checks separate them and which agree. 9 tests.
 - Replay determinism is covered. The catalog replays twice and the semantic projection, case, mode, outcome, expectation match and result hash, is identical, with a spy asserting no `fetch` call occurred. A bundle that exists but cannot replay now becomes a labelled recorded view carrying `recordedFrom.replayFallbackReason`, rather than throwing or being quietly relabelled as a replay; a case with no bundle at all carries no reason, so the two situations stay distinguishable.
 - Browser interaction tests for keyboard tabs, focus, expanded evidence, status announcements, responsive layouts and live-button readiness or quota transitions; cost fixtures for unknown units and partial records.
-- Live-control readiness states, the concise CLI verify route shown in the page, and the manual narrow and desktop inspection with saved screenshots.
+- Live-control readiness states and the concise CLI verify route shown in the page.
+
+## Manual inspection — September 6
+
+Inspected in Chrome against a local build served on `127.0.0.1:8788`, case
+`greenwash-trap`. Screenshots and the full record are in
+[`docs/demo/case-lab/`](../../demo/case-lab/README.md).
+
+At 1440 x 1000 the verdict already led the page. At 375 x 812, which needs a
+fixed-size iframe harness because Chrome will not resize below roughly 500 CSS
+px, three defects were found and fixed:
+
+1. The identity block sat inside the header and pushed the verdict to 671 px,
+   below the 812 px fold. Identity now renders after the verdict.
+2. The mode note and expectation line sat in the header for the same reason.
+   Both qualify the verdict, so both now render after it. The eyebrow no
+   longer repeats the scenario sentence, which the verdict evidence line
+   already carries; at 375 px that sentence alone was 101 px of header.
+3. The 40-character subject hash in the verdict evidence line is one unbroken
+   token and ran 38 px past the right edge, giving a 381 px document on a
+   375 px viewport. `.verdict-evidence` now sets `overflow-wrap: anywhere`.
+
+The consent banner was 259 px tall at 375 px because `.actions .button` forces
+full width below 720 px, stacking Accept and Decline. It now keeps its buttons
+inline and is 175 px tall.
+
+Measured after the fix at 375 x 812: verdict spans 205 to 593, banner top 637,
+no overlap, document width exactly 375. Keyboard-only inspection at desktop
+width found 13 focusable controls, no negative `tabindex`, and a `main`
+landmark. The site has no sign-in, so the captured state is the signed-out
+state. `case-lab acceptance --offline` passes all 17 checks against this build.
