@@ -121,13 +121,13 @@ The with/without-Tavily local test establishes that the code consumes grounding 
 ## Automated success criteria and local commands
 
 - [ ] Both source+source language controls and the Node manifest+lockfile control pass executable local acceptance.
-- [ ] Named partial patches fail and the known complete repairs pass hidden preservation checks.
-- [ ] Two is the total changed-file cap everywhere, including generated artifacts and final audit.
-- [ ] All Phase 2 authorization, existing policy, test bypass and Python shortcut controls remain enforced.
+- [x] Named partial patches fail and the known complete repairs pass hidden preservation checks.
+- [x] Two is the total changed-file cap everywhere, including generated artifacts and final audit.
+- [x] All Phase 2 authorization, existing policy, test bypass and Python shortcut controls remain enforced.
 - [ ] Dependency preparation maintains minimal inputs, approved egress boundaries, disabled scripts and frozen final installation.
 - [ ] Whole-transaction identity, replay, budget reservations, cancellation and audit evidence agree.
-- [ ] Unsupported three-file migrations, formats and oversized artifacts yield explicit abstentions.
-- [ ] Process-spawning tests declare explicit timeouts of at least 30 seconds.
+- [x] Unsupported three-file migrations, formats and oversized artifacts yield explicit abstentions.
+- [x] Process-spawning tests declare explicit timeouts of at least 30 seconds.
 
 Run focused commands sequentially after adding the proposed files:
 
@@ -152,8 +152,23 @@ Inspect the rebuilt Action bundle and complete diff. No remote CI, provider cana
 ## Manual review and completion
 
 - [ ] Reviewer can identify the two related files, why they must change together, grounding used, checks executed and remaining uncertainty from a case file.
-- [ ] Review verifies that the network-enabled preparation input cannot contain repository source or model-generated commands.
-- [ ] Documentation plainly names the supported transaction shapes and three-file/format limitations.
-- [ ] No live migration or cost-improvement claim is inferred from recorded responses or offline package fixtures.
+- [x] Review verifies that the network-enabled preparation input cannot contain repository source or model-generated commands.
+- [x] Documentation plainly names the supported transaction shapes and three-file/format limitations.
+- [x] No live migration or cost-improvement claim is inferred from recorded responses or offline package fixtures.
 
 Deliver the implementation summary, transaction-control results, local gates and supported/unsupported shapes. **Stop at the phase gate.** Phase 10 owns authorized live repair-quality measurement.
+
+## Completion record — September 6
+
+Implemented source: `f160501` (bounded target sets) and `e748e0c` (two-slot contract, dependency transaction, transaction file cap), plus the fixtures and acceptance tests in this phase's final commit. The Action bundle was rebuilt and committed with the core change and `pnpm run verify:bundle` reported parity. No push, provider inference, registry call, deployment or hosted sandbox occurred.
+
+Controller-owned target selection decides which files may change together before any contract exists: every editable source alone, plus at most two pairs, where a pair is a resolved unambiguous import relationship or the root Node manifest with its lockfile. The two-slot contract names slots rather than paths or ranges, and a reply that adds, drops, repeats or renames a slot is refused instead of partially applied. `dependency-transaction` admits exactly one existing dependency moving between pinned releases and refuses every range, tag, alias, workspace, file, URL and git specifier as well as any edit outside the dependency sections. A generated lockfile is accepted only when the pinned manager produced identical bytes twice from approved origins, and the resolution lane receives the candidate manifest alone.
+
+Local verification: workspace typecheck, lint and build passed; `verify:bundle` reported parity; focused `repair-targets` (12), `two-file-repair` (12) and `dependency-transaction` (28) suites passed; the core suite passed 1,419 tests with nine credential-gated skips. `repair-two-file-export-contract` and `python-repair-two-file-call-contract` fail after either partial patch and pass only as a complete transaction, and the Python case's hidden preservation checks fail on the partial patch and pass on the complete one. Both fixtures carry `evaluationRevision`, so the frozen default corpus selection and its `corpusHash` are unchanged and the committed counterfactual evidence stays valid.
+
+Outstanding for this phase, not claimed as done:
+
+- The `upstream-manifest-lockfile-pair` control has no fixture. `dependency-transaction` is proved by unit controls only; no end-to-end frozen installation from an offline package cache was executed, so the dependency-preparation criterion stays unticked.
+- The `upstream-two-file-api-migration` control and its recorded Tavily grounding are not built, so a case file does not yet show grounding for a two-file migration, and that manual criterion stays unticked.
+- `trap-two-file-test-shortcut` and `trap-two-file-third-path` are covered by unit controls (the transaction file cap and the retained Phase 2 grant checks) rather than by corpus fixtures.
+- Whole-transaction identity, replay and budget-reservation agreement is not separately verified end to end; the existing single-file replay contracts continue to pass unchanged.
