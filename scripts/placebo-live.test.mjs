@@ -11,6 +11,7 @@ import {
   placeboSpendDecision,
   redactPublicArtifact,
   main,
+  orderedPlaceboCaseIds,
   runSinglePlaceboCase,
   runPlaceboStreak,
   dispatchPlaceboWorkflow,
@@ -401,4 +402,30 @@ test('finalizer requires all 51 cases and 55 retained evaluations', async () => 
       corpus, scoreResults: () => ({}),
     },
   ), /51 canonical cases/u);
+});
+
+test('the expanded selection reaches versioned cases without widening the frozen one', async () => {
+  const { readFileSync } = await import('node:fs');
+  const frozen = JSON.parse(readFileSync('docs/demo/placebo-v0.2-corpus.json', 'utf8'));
+  const expanded = JSON.parse(readFileSync('docs/demo/placebo-v0.2-expanded-corpus.json', 'utf8'));
+
+  assert.equal(frozen.cases.length, 51);
+  assert.equal(frozen.corpusHash, '785cfc70359935a0f04a9a9cda39e8fb6ff4b05cc8fea3738fb24b70bcda101f');
+  assert.equal(expanded.cases.length, 100);
+  assert.notEqual(expanded.corpusHash, frozen.corpusHash);
+
+  // The expanded selection contains every frozen case, so opting in adds and never replaces.
+  const expandedIds = new Set(expanded.cases.map(({ id }) => id));
+  for (const { id } of frozen.cases) assert.ok(expandedIds.has(id), `${id} missing from expanded`);
+
+  // The default selection is still exactly the frozen slice.
+  assert.equal(orderedPlaceboCaseIds().length, 51);
+  const frozenIds = new Set(frozen.cases.map(({ id }) => id));
+  for (const id of orderedPlaceboCaseIds()) assert.ok(frozenIds.has(id), `${id} is not frozen`);
+
+  // Cases the verified repair program added exist only in the expanded selection.
+  for (const id of ['repair-off-by-one-preservation', 'repair-two-file-export-contract']) {
+    assert.ok(expandedIds.has(id), `${id} missing from expanded`);
+    assert.ok(!frozenIds.has(id), `${id} leaked into the frozen slice`);
+  }
 });

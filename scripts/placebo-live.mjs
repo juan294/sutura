@@ -18,6 +18,12 @@ import { requireActivePushFreeze } from './push-freeze.mjs';
 const execFileAsync = promisify(execFile);
 const ROOT = resolve(import.meta.dirname, '..');
 const CORPUS_PATH = resolve(ROOT, 'docs/demo/placebo-v0.2-corpus.json');
+/**
+ * The expanded selection: the frozen 51 plus every versioned case. It is a
+ * separate committed manifest with its own hash, so opting into it can never
+ * change what the frozen slice means or what a historical score refers to.
+ */
+const EXPANDED_CORPUS_PATH = resolve(ROOT, 'docs/demo/placebo-v0.2-expanded-corpus.json');
 const LEDGER_PATH = resolve(ROOT, '.sutura/placebo-v0.2.1-live-ledger.json');
 const LOCK_PATH = resolve(ROOT, '.sutura/placebo-v0.2.1-live.lock');
 const ARTIFACT_ROOT = resolve(ROOT, '.sutura/placebo-v0.2.1-live-artifacts');
@@ -25,6 +31,9 @@ const MAX_ARTIFACT_BYTES = 10 * 1024 * 1024;
 const OUTCOMES = new Set(['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop']);
 const KIND_ORDER = new Map([['flaky', 0], ['trap', 1], ['upstream', 2], ['repairable', 3]]);
 const CORPUS_HASH = '785cfc70359935a0f04a9a9cda39e8fb6ff4b05cc8fea3738fb24b70bcda101f';
+const EXPANDED_CORPUS_HASH = 'ed58d316397157fca580e1a74ba9fcde8af1bd6c580137b3a09af47c48b768f6';
+const FROZEN_CASE_COUNT = 51;
+const EXPANDED_CASE_COUNT = 100;
 const PUBLIC_REDACTION = Object.freeze({
   credential: '[REDACTED_CREDENTIAL]',
   privatePath: '[REDACTED_PRIVATE_PATH]',
@@ -63,25 +72,41 @@ function artifactName(value) {
   return value;
 }
 
-function loadCorpusSync() {
-  const value = JSON.parse(Buffer.from(requireCorpusBytes()).toString('utf8'));
-  return validateCorpus(value);
+function loadCorpusSync(expanded = false) {
+  const value = JSON.parse(Buffer.from(requireCorpusBytes(expanded)).toString('utf8'));
+  return validateCorpus(value, expanded);
 }
 
 let corpusBytes;
-function requireCorpusBytes() {
+let expandedCorpusBytes;
+function requireCorpusBytes(expanded = false) {
+  if (expanded) {
+    expandedCorpusBytes ??= readFileSync(EXPANDED_CORPUS_PATH);
+    return expandedCorpusBytes;
+  }
   corpusBytes ??= readFileSync(CORPUS_PATH);
   return corpusBytes;
 }
 
-function validateCorpus(value) {
+/**
+ * Each selection is pinned to its own exact count and hash, so neither can be
+ * served in place of the other and the frozen slice keeps its identity.
+ */
+function validateCorpus(value, expanded = false) {
+  const count = expanded ? EXPANDED_CASE_COUNT : FROZEN_CASE_COUNT;
+  const hash = expanded ? EXPANDED_CORPUS_HASH : CORPUS_HASH;
   if (value?.schemaVersion !== 'placebo-corpus-manifest-v1' || value.corpusVersion !== '0.2' ||
-      !Array.isArray(value.cases) || value.cases.length !== 51 ||
-      value.corpusHash !== CORPUS_HASH ||
-      new Set(value.cases.map(({ id }) => id)).size !== 51) {
-    throw new Error('Placebo canonical corpus must contain 51 unique cases');
+      !Array.isArray(value.cases) || value.cases.length !== count ||
+      value.corpusHash !== hash ||
+      new Set(value.cases.map(({ id }) => id)).size !== count) {
+    throw new Error(`Placebo canonical corpus must contain ${count} unique cases`);
   }
   return value;
+}
+
+/** True when the case exists only in the expanded selection. */
+function needsExpandedSelection(caseId) {
+  return !loadCorpusSync().cases.some(({ id }) => id === caseId);
 }
 
 function corpusCase(corpus, caseId) {
@@ -130,7 +155,9 @@ function validateResultSet(results, expectedCase) {
 }
 
 function artifactBase(input, options = {}) {
-  const corpus = validateCorpus(options.corpus ?? loadCorpusSync());
+  const corpus = options.corpus === undefined
+    ? loadCorpusSync(needsExpandedSelection(input.caseId))
+    : validateCorpus(options.corpus, options.corpus.cases?.length === EXPANDED_CASE_COUNT);
   const expectedCase = corpusCase(corpus, input.caseId);
   const results = validateResultSet(input.results, expectedCase);
   const controllerSha = exactSha(input.controllerSha, 'Placebo controller');
@@ -630,7 +657,9 @@ export async function dispatchPlaceboWorkflow(input, dependencies = {}) {
 
 async function runRemoteCase({ controllerSha, subjectSha, caseId, skipGate = false, counterfactual = false }) {
   if (!skipGate) await gatePlaceboLive(controllerSha, subjectSha);
-  const corpus = loadCorpusSync();
+  // A case outside the frozen slice is served from the expanded manifest; the
+  // frozen one is never widened to accommodate it.
+  const corpus = loadCorpusSync(needsExpandedSelection(caseId));
   corpusCase(corpus, caseId);
   const controllerId = `pl-${Date.now()}-${randomUUID().slice(0, 8)}`;
   await dispatchPlaceboWorkflow({ controllerSha, subjectSha, caseId, controllerId, counterfactual });

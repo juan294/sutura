@@ -44,12 +44,12 @@
   "stopPolicy": "Stop on any required gate failure; a failed control blocks expansion to the full corpus.",
   "subjects": [
     "repair-off-by-one-preservation",
-    "greenwash-trap",
+    "trap-weakened-expect",
     "repair-missing-await",
     "repair-two-file-export-contract",
     "flaky-timer-race",
     "trap-policy-file-modification"
   ],
-  "manifestHash": "0ef99725d3f943a7168f2b585fd0c022b698878aa2c5686d4ef41e364d95d455",
+  "manifestHash": "a2eb51b6965cc1d5c6646441e3e141d7127e5cdadb6f3925eacafd041146a230",
   "pricedMaximumUsd": 0.9830399999999999
 }

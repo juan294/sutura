@@ -23,7 +23,10 @@ stage stops every dependent job rather than continuing to the next.
 | Stage | Manifest | Subjects | Priced maximum | Spend cap | What it decides |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `preflight-contract-v1` | 6 | USD 0.12 | USD 1.00 | Whether the provider, the pinned image and the typed-probe protocol work at all. Not a quality benchmark. |
-| 2 | `development-smoke-v1` | 6 | USD 0.98 | USD 3.00 | Whether six known controls behave: a repair, a green-but-broken trap, a missing await, a two-file pair, a flake and a policy refusal. |
+| 2 | `development-smoke-v1` | 6 | USD 0.98 | USD 3.00 | Whether six known controls behave: a preservation repair, a green-but-broken trap, a missing await, a two-file pair, a flake and a policy refusal. |
+
+Stage 2 uses the expanded selection, because the preservation and two-file
+controls are versioned cases and exist only there.
 | 3 | not yet written | 60 + 20 | — | — | Development and validation comparisons. Needs stage 2 green before it is worth pricing. |
 | 4 | not yet written | 20 | — | — | The held-out estimate, opened once, with the runtime configuration frozen beforehand. |
 
@@ -67,3 +70,16 @@ carried from one manifest to another.
 3. Dispatch the approved manifest and nothing else.
 4. `pnpm run push-freeze off` once every dispatched job is terminal or
    explicitly cancelled and recorded.
+
+## Inference is not the whole bill
+
+The priced maximum covers inference. Nebius bills sandbox time separately, and
+on the 2026-09-03 upstream run sandbox was about 95 percent of the total at
+roughly USD 0.24 per case. Six cases therefore cost about USD 1.44 in practice
+against a USD 0.98 inference ceiling. The spend cap must cover both, which is
+why stage 2 is capped at USD 3.00 rather than at its inference ceiling.
+
+The manifest caps `rawSandboxUnits` separately and does not convert it to
+dollars, because the provider's raw unit is unconfirmed. Recording an
+unconfirmed unit as a dollar figure would state a precision the evidence does
+not have.

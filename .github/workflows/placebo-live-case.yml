@@ -82,7 +82,7 @@ jobs:
           test "$GITHUB_SHA" = "$CONTROLLER_SHA"
           test "$(git -C controller rev-parse HEAD)" = "$CONTROLLER_SHA"
           test "$(git -C subject rev-parse HEAD)" = "$SUBJECT_SHA"
-          node -e 'const m=require("./controller/docs/demo/placebo-v0.2-corpus.json"); if(m.cases.filter(x=>x.id===process.env.CASE_ID).length!==1) process.exit(1)'
+          node -e 'const f=require("./controller/docs/demo/placebo-v0.2-corpus.json"); const e=require("./controller/docs/demo/placebo-v0.2-expanded-corpus.json"); const inOne=(m)=>m.cases.filter(x=>x.id===process.env.CASE_ID).length===1; if(!inOne(f) && !inOne(e)) process.exit(1)'
 
       - name: Install frozen controller and subject
         run: |
