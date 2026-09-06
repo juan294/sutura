@@ -1,5 +1,12 @@
 import type { FailureClass } from '../domain.js';
 import type { ModelPrice, ModelPrices, ModelTier } from './cost.js';
+import {
+  routeModel,
+  type RoutingBudget,
+  type RoutingProfile,
+  type RoutingReason,
+  type RoutingSignals,
+} from './routing-policy.js';
 
 export const MODEL_SELECTION_SCHEMA_VERSION = 'sutura-model-selection-v1' as const;
 export const DEFAULT_ROUTING_PROFILE_ID = 'production-baseline-v1' as const;
@@ -13,6 +20,12 @@ export interface ModelSelectionProfile {
   prices: ModelPrices;
 }
 
+export interface AdaptiveRoutingRequest {
+  signals: RoutingSignals;
+  profile: RoutingProfile;
+  budget: RoutingBudget;
+}
+
 export interface ModelRoutingInput {
   requestedRole: ModelTier;
   failureClass: FailureClass | null;
@@ -20,6 +33,12 @@ export interface ModelRoutingInput {
   boundedContextBytes: number;
   remainingInferenceBudgetUsd: number;
   profileId: string;
+  /**
+   * Opt-in adaptive tier selection. Absent, the requested role is used
+   * unchanged, which keeps fixed routing the reproducible control and the safe
+   * default until phase 10 evaluates promotion.
+   */
+  adaptive?: AdaptiveRoutingRequest;
 }
 
 export interface ModelRouteDecision {
@@ -28,6 +47,10 @@ export interface ModelRouteDecision {
   price: ModelPrice;
   profileId: string;
   fallbackReason?: string;
+  /** Present only when adaptive selection ran; names why the tier was chosen. */
+  adaptiveReason?: RoutingReason;
+  /** Binds the decision to the exact frozen routing profile that produced it. */
+  routingProfileHash?: string;
 }
 
 function validInput(input: ModelRoutingInput): void {
@@ -75,16 +98,24 @@ export class ModelRouter {
       : this.profiles.get(input.profileId);
     const usable = selected?.complete === true && selected.pricesVerified === true;
     const profile = usable ? selected : this.baseline;
+    // An abstaining policy keeps the requested role rather than inventing one.
+    const adaptive = input.adaptive === undefined
+      ? undefined
+      : routeModel(input.adaptive.signals, input.adaptive.profile, input.adaptive.budget);
+    const role = adaptive?.tier ?? input.requestedRole;
     return {
-      role: input.requestedRole,
-      modelId: profile.models[input.requestedRole],
-      price: { ...profile.prices[input.requestedRole] },
+      role,
+      modelId: profile.models[role],
+      price: { ...profile.prices[role] },
       profileId: profile.profileId,
       ...(!usable && input.profileId !== DEFAULT_ROUTING_PROFILE_ID
         ? { fallbackReason: selected === undefined
             ? 'selected profile is unavailable'
             : 'selected profile is incomplete or has unverified prices' }
         : {}),
+      ...(adaptive === undefined
+        ? {}
+        : { adaptiveReason: adaptive.reason, routingProfileHash: adaptive.profileHash }),
     };
   }
 }

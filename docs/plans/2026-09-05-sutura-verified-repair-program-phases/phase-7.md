@@ -62,7 +62,8 @@ Implemented source: `262ec32`. No push, provider inference or paid routing occur
 
 Not built in this pass, and not claimed:
 
-- The policy is not yet wired into `packages/core/src/llm/router.ts` or its call sites, so production still uses profile-only selection. The table is available and tested but is not the live route.
+- The policy is wired into `ModelRouter.select` as an opt-in `adaptive` input. Absent it, the requested role is used unchanged, so fixed routing stays the reproducible control and the safe default until phase 10 evaluates promotion. When supplied, the chosen tier is priced from the same profile the fixed path would use, an abstaining policy keeps the requested role rather than inventing one, and the decision carries both the reason and the frozen routing profile hash. Adaptive selection cannot change the profile identity. 5 added tests; the existing router tests are unchanged.
+- No call site passes `adaptive` yet, so no production request is adaptively routed. Turning it on for a purpose is a promotion decision phase 10 owns.
 - Budget tests that charge retries and provider failures, and record requested versus returned model identity as an explicit contract failure, are not added.
 - `docs/evaluation/routing-policy.md` is not written.
 - No model or price contract is validated against a live provider; phase 10 owns that.
