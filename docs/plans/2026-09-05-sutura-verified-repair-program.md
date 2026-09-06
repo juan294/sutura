@@ -1,6 +1,6 @@
 # Sutura verified repair program
 
-Date: 2026-09-05. Owner: Juan. Status: implementation in progress; phases 1 and 2 complete locally; phases 3, 4, 5 and 7 partially implemented with honest per-phase progress records; phases 6, 8 and 9 not started; phases 10–14 require separately authorized spending, publication or real participants.
+Date: 2026-09-05. Owner: Juan. Status: implementation in progress; phases 1 and 2 complete locally; phases 3 through 9 partially implemented, each with a per-phase progress record naming what was built and what was not; phase 6 additionally blocked on a uv version pin recorded in its phase file; phases 10–14 require separately authorized spending, publication, real participants or a calendar window that has not opened.
 
 Planning source: local `develop` at `369c972777eea3c80b698db61165f07ba46e6b13`. Integration: `develop`; releases: `main`; implementation: isolated worktrees. This document records the user's approval of the **full recommended product scope**, not authorization for spending, outreach, publication or deployment. Stop after every implementation phase unless Juan explicitly authorizes continuation.
 
@@ -77,13 +77,13 @@ Windows are targets for planning, not evidence of completion or guaranteed effor
 | --- | --- | --- | --- | --- |
 | [1](2026-09-05-sutura-verified-repair-program-phases/phase-1.md) | Truthful baseline, pagination regression, contracts and probe adapter proof | This plan | Sep 5–8 | Complete locally |
 | [2](2026-09-05-sutura-verified-repair-program-phases/phase-2.md) | Bounded diagnosis recovery | 1 | Sep 8–12 | Complete locally |
-| [3](2026-09-05-sutura-verified-repair-program-phases/phase-3.md) | Atomic two-file and grounded migration repairs | 2 | Sep 12–17 | Core implemented; dependency fixture and grounding outstanding |
-| [4](2026-09-05-sutura-verified-repair-program-phases/phase-4.md) | Shared verifier and independent regression probes | 3 | Sep 17–23 | Evaluator and challenge freeze implemented; not yet the production admission path |
-| [5](2026-09-05-sutura-verified-repair-program-phases/phase-5.md) | External-patch CLI/Action | 4 | Sep 23–26 | Core verify contract implemented; CLI and Action routes outstanding |
-| [6](2026-09-05-sutura-verified-repair-program-phases/phase-6.md) | Blinded evaluation, NeMo execution and Arena harness | 5 | Sep 26–30 | Contamination controls implemented; NeMo harness and 100-case inventory outstanding |
-| [7](2026-09-05-sutura-verified-repair-program-phases/phase-7.md) | Adaptive Nemotron routing | 6 | Sep 30–Oct 3 | Decision table implemented; not yet wired into the router |
-| [8](2026-09-05-sutura-verified-repair-program-phases/phase-8.md) | Verdict-first Case Lab and deterministic replay | 7 | Oct 3–7 | Not started |
-| [9](2026-09-05-sutura-verified-repair-program-phases/phase-9.md) | Maintainer study and public-install preparation | 5 | Sep 26–30 | Not started |
+| [3](2026-09-05-sutura-verified-repair-program-phases/phase-3.md) | Atomic two-file and grounded migration repairs | 2 | Sep 12–17 | Acceptance fixtures complete; whole-transaction identity outstanding |
+| [4](2026-09-05-sutura-verified-repair-program-phases/phase-4.md) | Shared verifier and independent regression probes | 3 | Sep 17–23 | Items 1–9 done; admission gated on mechanical checks; replay partial |
+| [5](2026-09-05-sutura-verified-repair-program-phases/phase-5.md) | External-patch CLI/Action | 4 | Sep 23–26 | Command, Action route and Git-backed trust done; sandbox execution outstanding |
+| [6](2026-09-05-sutura-verified-repair-program-phases/phase-6.md) | Blinded evaluation, NeMo execution and Arena harness | 5 | Sep 26–30 | Blinding, quality task and inventory done; NeMo blocked on a uv pin, corpus 63 of 100 |
+| [7](2026-09-05-sutura-verified-repair-program-phases/phase-7.md) | Adaptive Nemotron routing | 6 | Sep 30–Oct 3 | Decision table done; not yet wired into the router |
+| [8](2026-09-05-sutura-verified-repair-program-phases/phase-8.md) | Verdict-first Case Lab and deterministic replay | 7 | Oct 3–7 | Verdict region done; regression comparison, replay spies and browser tests outstanding |
+| [9](2026-09-05-sutura-verified-repair-program-phases/phase-9.md) | Maintainer study and public-install preparation | 5 | Sep 26–30 | Ledger and review scoring done; participant-facing artifacts outstanding |
 | [10](2026-09-05-sutura-verified-repair-program-phases/phase-10.md) | Integrated benchmark, ablations and sponsor experiment evidence | 8, 9 | Oct 7–12 | Blocked: needs an approved paid run manifest |
 | [11](2026-09-05-sutura-verified-repair-program-phases/phase-11.md) | Validated public pilot release/demo | 10 | Oct 12–14 | Blocked: needs release and deployment authorization |
 | [12](2026-09-05-sutura-verified-repair-program-phases/phase-12.md) | Real maintainer trials, findings and verified fixes | 11 | Oct 14–20 | Blocked: needs real participants and consent |
