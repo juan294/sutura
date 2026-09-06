@@ -126,7 +126,15 @@ async function evaluate(
 }
 
 export async function runBenchmark(adapter: Adapter, options: BenchmarkOptions = {}): Promise<BenchmarkReport> {
-  const discovered = await discoverBenchmarkCases();
+  const frozen = await discoverBenchmarkCases();
+  // Naming one case reaches the expanded selection; a whole-corpus run keeps
+  // the frozen slice, so an unqualified benchmark score still means what it
+  // has always meant.
+  const discovered = options.caseId === undefined
+    ? frozen
+    : frozen.some(({ id }) => id === options.caseId)
+      ? frozen
+      : await discoverBenchmarkCases(undefined, { includeVersionedCases: true });
   const cases = discovered.filter((benchmarkCase) =>
     (!options.only || benchmarkCase.metadata.kind === options.only) &&
     (!options.caseId || benchmarkCase.id === options.caseId));

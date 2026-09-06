@@ -1,3 +1,4 @@
+import { discoverBenchmarkCases } from './corpus.js';
 import { describe, expect, it, vi } from 'vitest';
 import { spawn } from 'node:child_process';
 import { access, readFile, writeFile } from 'node:fs/promises';
@@ -301,4 +302,19 @@ describe('counterfactual alternatives in a benchmark run', () => {
 
     expect(observedPath).toBeUndefined();
   }, 60_000);
+});
+
+describe('reaching versioned cases by name', () => {
+  it('finds a versioned case when it is named, and keeps the frozen slice otherwise', async () => {
+    const frozen = await discoverBenchmarkCases();
+    const expanded = await discoverBenchmarkCases(undefined, { includeVersionedCases: true });
+
+    expect(frozen).toHaveLength(51);
+    expect(expanded.length).toBeGreaterThan(frozen.length);
+
+    // A versioned case exists only in the expanded selection.
+    const versioned = 'repair-off-by-one-preservation';
+    expect(frozen.some(({ id }) => id === versioned)).toBe(false);
+    expect(expanded.some(({ id }) => id === versioned)).toBe(true);
+  });
 });
