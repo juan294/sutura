@@ -27,11 +27,18 @@ stage stops every dependent job rather than continuing to the next.
 
 Stage 2 uses the expanded selection, because the preservation and two-file
 controls are versioned cases and exist only there.
-| 3 | not yet written | 60 + 20 | — | — | Development and validation comparisons. Needs stage 2 green before it is worth pricing. |
+| 3 | `development-validation-v1` | 80 | USD 10.00 (clamped) | USD 10.00 | The repair, refusal and flake rates over the development and validation splits. The held-out split stays unopened. |
 | 4 | not yet written | 20 | — | — | The held-out estimate, opened once, with the runtime configuration frozen beforehand. |
 
-Stages 3 and 4 are deliberately absent. Writing them before stage 2 has run
-would price a run whose shape depends on what stage 2 finds.
+Stage 3's raw token ceiling is USD 13.10, above its own spend cap, so the
+priced maximum reports the cap. That is expected once a run is large enough:
+the cap becomes the binding constraint and the token ceiling stops being
+informative. Measured cost from stage 2 puts stage 3 near USD 5.60, so the cap
+carries about 1.8 times headroom over the expected total including sandbox.
+
+Stage 4 is deliberately absent. Writing it before stage 3 has run would price a
+run whose shape depends on what stage 3 finds, and the held-out split is opened
+once.
 
 ## How the priced maximum is computed
 
