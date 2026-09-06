@@ -54,6 +54,8 @@ node packages/case-lab/bin/case-lab.js acceptance --base-url https://sutura-case
 | 2026-09-05 | Google Rich Results Test on `/` | 1 valid item, Software Apps (`SoftwareApplication` "Sutura"); one non-critical note: optional `aggregateRating` absent, left out on purpose |
 | 2026-09-05 | Data check in a browser after Accept | GA4 Realtime 1 active user with `page_view`; Clarity 2 sessions; Vercel Analytics 3 visitors, 5 page views. No cookie before Accept; `sutura-consent=granted` after |
 | 2026-09-05 | Vercel firewall | System DDoS mitigation challenged this machine's IP after a 45 s curl poll loop (13 requests per burst). Temporary and IP-scoped; crawlers unaffected. Poll the live site no more than once a minute |
+| 2026-09-06 | Google Search Console: URL Inspection of the 8 URLs | `/` "URL is on Google", page indexed. `/replay/javascript-repair/`, `/replay/python-repair/`, `/replay/flaky-failure/`, `/replay/upstream-incident/` "Discovered - currently not indexed", sitemap noted as source. `/about/`, `/replay/greenwash-trap/`, `/privacy/` "URL is unknown to Google", no referring sitemap reported although the live `sitemap.xml` lists all 8 (Google-side lag) |
+| 2026-09-06 | Google Search Console: Request indexing for the 7 non-indexed URLs | Refused again, "Quota Exceeded", on `/about/` and `/replay/javascript-repair/` (10:00 CEST); the refusal is property-wide, so the other five were not attempted. `/` was not re-requested because it is already indexed. Retry on 2026-09-07; if refused a third time, stop re-requesting and rely on sitemap crawling, which already indexed `/` |
 
 ## Monitoring cadence
 
