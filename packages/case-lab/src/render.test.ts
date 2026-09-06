@@ -125,6 +125,64 @@ describe('renderResultBody', () => {
     expect(html).toContain(`>${MODE_LABELS.live}</span>`);
   });
 
+  it('reports an unknown cost as unknown, never as zero', () => {
+    const base = byId('javascript-repair');
+    const unknown = {
+      ...base,
+      cost: { inferenceUsd: null, sandboxUsd: null, status: 'partial' },
+    } as unknown as CaseLabResult;
+    const html = renderResultBody(unknown, caseLabCase('javascript-repair'));
+
+    expect(html).toContain('Some costs or billing units are unconfirmed.');
+    expect(html).toContain('<dt>Inference cost</dt><dd>unknown</dd>');
+    expect(html).toContain('<dt>Sandbox cost</dt><dd>unknown</dd>');
+    expect(html).not.toContain('USD 0.000000');
+  });
+
+  it('names an unconfirmed billing unit rather than converting it', () => {
+    const base = byId('javascript-repair');
+    const file = base.caseFile!;
+    const raw = {
+      ...base,
+      cost: { inferenceUsd: 0.0012, sandboxUsd: null, status: 'partial' },
+      caseFile: {
+        ...file,
+        verification: {
+          ...(file.verification ?? {}),
+          costs: {
+            sandbox: [
+              { rawAmount: 42, rawUnit: 'credits' },
+              { rawAmount: 7 },
+              { rawUnit: 'gpu-seconds' },
+            ],
+          },
+        },
+      },
+    } as unknown as CaseLabResult;
+    const html = renderResultBody(raw, caseLabCase('javascript-repair'));
+
+    expect(html).toContain('<dt>Provider raw amounts</dt>');
+    expect(html).toContain('42 (credits)');
+    expect(html).toContain('7 (unit unconfirmed)');
+    expect(html).toContain('unknown (gpu-seconds)');
+    expect(html).toContain('<dt>Sandbox cost</dt><dd>unknown</dd>');
+  });
+
+  it('does not record a peak memory or an operation count it never measured', () => {
+    const base = byId('javascript-repair');
+    const file = base.caseFile!;
+    const unmeasured = {
+      ...base,
+      elapsedMs: undefined,
+      caseFile: { ...file, stages: [{ ...file.stages[0]!, metrics: {}, operationId: undefined }] },
+    } as unknown as CaseLabResult;
+    const html = renderResultBody(unmeasured, caseLabCase('javascript-repair'));
+
+    expect(html).toContain('<dt>Peak memory</dt><dd>not recorded</dd>');
+    expect(html).toContain('<dt>Elapsed</dt><dd>not recorded</dd>');
+    expect(html).toContain('<dt>Sandbox stages</dt><dd>1 (0 with an operation id)</dd>');
+  });
+
   it('renders nothing when a case carries no counterfactual evidence', () => {
     expect(renderCounterfactual(undefined)).toBe('');
     expect(renderCounterfactual(byId('javascript-repair').caseFile)).toBe('');

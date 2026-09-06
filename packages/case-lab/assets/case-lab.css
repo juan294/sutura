@@ -502,3 +502,33 @@ th {
   /* The subject hash is one 40-character token; without this it runs off a narrow screen. */
   overflow-wrap: anywhere;
 }
+
+/*
+ * Execution internals. The content is always in the document, so a reader who
+ * searches the page or reads it without JavaScript still finds every hash and
+ * every rejected candidate; it only starts closed.
+ */
+.execution {
+  margin: 1.25rem 0;
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+}
+
+.execution > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0.25rem 0;
+}
+
+.execution > summary:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.command {
+  overflow-x: auto;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: var(--sheet);
+  border: 1px solid var(--line);
+}

@@ -36,7 +36,7 @@ Costs display priced inference estimate, raw/confirmed sandbox costs with units 
 - [x] Render tests cover all six states; no infrastructure/insufficient result gets accepted color/text or green scenario expectation.
 - [x] Regression comparison binds the same baseline, exact two diff hashes, old visible test and new independent checks. Historical artifacts retain original mode/hash and annotation.
 - [x] Replay tests execute twice with network/provider spies and compare semantic outputs; mismatch, unsupported version and missing artifact have explicit recorded fallback.
-- [ ] Browser interaction tests cover keyboard tabs, focus, expanded evidence, status announcements, responsive layouts and live-button readiness/quota transitions. Cost fixtures cover unknown units and partial records.
+- [x] Browser interaction tests cover keyboard tabs, focus, expanded evidence, status announcements, responsive layouts and live-button readiness/quota transitions. Cost fixtures cover unknown units and partial records.
 - [x] `pnpm --filter @sutura/case-lab test` passes; run local build and existing acceptance validator. No hosted screenshots or preview deployment needed.
 
 ## Manual success criteria
@@ -57,12 +57,10 @@ Overclaiming is tested rather than trusted: `FORBIDDEN_VERDICT_CLAIMS` covers "u
 
 One constraint this surfaced: the site bundle is built for the browser, so `escapeHtml` could not move into `util.ts`, which imports `node:fs`. It now lives in a dependency-free `html.ts` that both renderers import, which also removes the circular import between `render.ts` and `verdict.ts`.
 
-Not built, and not claimed:
-
 - The two-patch regression comparison is built. It binds one baseline, exactly two patches by exact diff hash, the original failing test command and the independent checks, and refuses every shape that would let the page imply a distinction the evidence does not support: fewer or more than two patches, the same patch listed twice, a patch that did not pass the original test, an inexact baseline or diff hash, a duplicate check id, and, most importantly, a check set where no check separates the two patches. The render marks which checks separate them and which agree. 9 tests.
 - Replay determinism is covered. The catalog replays twice and the semantic projection, case, mode, outcome, expectation match and result hash, is identical, with a spy asserting no `fetch` call occurred. A bundle that exists but cannot replay now becomes a labelled recorded view carrying `recordedFrom.replayFallbackReason`, rather than throwing or being quietly relabelled as a replay; a case with no bundle at all carries no reason, so the two situations stay distinguishable.
-- Browser interaction tests for keyboard tabs, focus, expanded evidence, status announcements, responsive layouts and live-button readiness or quota transitions; cost fixtures for unknown units and partial records.
-- Live-control readiness states and the concise CLI verify route shown in the page.
+Everything this phase specifies is now built. The remaining Case Lab work in
+the parent plan is public deployment, which is phase 11.
 
 ## Manual inspection — September 6
 
@@ -93,3 +91,40 @@ no overlap, document width exactly 375. Keyboard-only inspection at desktop
 width found 13 focusable controls, no negative `tabindex`, and a `main`
 landmark. The site has no sign-in, so the captured state is the signed-out
 state. `case-lab acceptance --offline` passes all 17 checks against this build.
+
+## Progress record — browser behaviour and the verify route
+
+The execution internals now sit in one closed `<details>` at the end of the
+page: identity, the search tree, the candidate patches, the rejected patches,
+cost, links, the source line and the result hash. The content is always in the
+document, so a reader who searches the page or reads it without JavaScript
+still finds every hash and every rejected candidate; only the initial state
+changed. The first screen carries the verdict, the failure, the behaviour that
+changed and the checks that decided it.
+
+The page names the route for a patch it did not produce. The `sutura verify`
+command is filled in from the run's own commits when it recorded exact ones,
+and shows placeholders with a sentence saying why when it did not. Every
+recorded case in the catalog is a local run whose policy commit is `local`, so
+the placeholder branch is what the current site shows; a test covers each
+branch. Uploading a patch stays a command-line and Action route.
+
+`client.ts` is now a four-line bundle entry over `client-app.ts`, which runs
+nothing on import. That let the browser tests exercise the real module rather
+than a copy of it.
+
+19 browser tests run the real markup and the real module in jsdom: the
+disclosure order and its keyboard operation, the tab order, the verify command
+in both branches, the live-button transitions (not configured, disabled,
+enabled, unreachable, quota refusal with the wait, an unknown case id that
+sends no request), the single polite status region, and the consent banner
+including that no tracker is called before a visitor accepts. Three cost tests
+cover an unknown cost that must never read as zero, an unconfirmed billing
+unit, and metrics that were never measured.
+
+jsdom does not lay a page out, so the two responsive tests assert the
+stylesheet rules the measured narrow layout depends on, and the measurements
+themselves live in `docs/demo/case-lab/README.md`. `jsdom` is a new dev
+dependency of `@sutura/case-lab`.
+
+Case Lab suite: 219 tests. `case-lab acceptance --offline`: 17 of 17.

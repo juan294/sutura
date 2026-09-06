@@ -361,26 +361,77 @@ function renderSource(result: CaseLabResult): string {
   return '';
 }
 
+/**
+ * The Action setup and verify documentation. No fragment: `isPublicHttpsUrl`
+ * refuses a URL that carries one, so a fragment would render as inert text.
+ */
+const ACTION_SETUP_URL = 'https://github.com/juan294/sutura/blob/main/README.md';
+const EXACT_SHA = /^[a-f0-9]{40}$/u;
+
+/**
+ * The route a reader takes to check a patch this page did not produce.
+ *
+ * The command is filled in from this result's own identities, so a reader can
+ * copy it rather than assemble it. A run whose policy commit is not an exact
+ * commit (a local run records `local`) gets the shape of the command and says
+ * which identity is missing, rather than a command that would not run.
+ */
+function renderVerify(result: CaseLabResult): string {
+  const sourceSha = result.identity.demoSha;
+  const policyBaseSha = result.caseFile?.policy.baseSha;
+  const usable = sourceSha !== undefined && EXACT_SHA.test(sourceSha)
+    && policyBaseSha !== undefined && EXACT_SHA.test(policyBaseSha);
+  const command = `sutura verify \\
+  --case-dir <checkout> \\
+  --source-sha ${usable ? sourceSha : '<failing commit>'} \\
+  --policy-base-sha ${usable ? policyBaseSha : '<trusted policy commit>'} \\
+  --candidate-diff <patch file> \\
+  --failing-command diagnosed \\
+  --format json`;
+  const note = usable
+    ? 'The two commits are this run\u2019s own: the commit that failed, and the trusted policy commit chosen by the operator.'
+    : 'This run did not record an exact failing commit and policy commit, so both are shown as placeholders. Verification is always tied to exact commits.';
+  return section('verify', 'Check a patch this page did not produce', `<p>${escapeHtml(note)} A patch cannot ask for a more permissive policy by carrying one, and no green log is accepted in place of execution.</p>
+<pre class="command"><code>${escapeHtml(command)}</code></pre>
+<p>${anchor(ACTION_SETUP_URL, 'The same route runs as a GitHub Action')} and needs no repository write access. Uploading a patch stays a command-line and Action route; this page never runs one.</p>`);
+}
+
+/** The disclosure that holds the execution internals. Its content is always in the HTML. */
+export const EXECUTION_DETAIL_SUMMARY = 'Execution and cost detail';
+
+/**
+ * The story a reader follows: the verdict, then the failure, the behavior it
+ * changed, and the checks that decided it. Model, branch, trace and cost
+ * detail is real and complete but starts closed, so the first screen carries
+ * no infrastructure jargon.
+ */
 export function renderResultBody(result: CaseLabResult, item: CaseLabCase): string {
   const file = result.caseFile;
-  return [
-    renderHeader(result, item),
-    renderVerdict(result, item),
-    renderContext(result),
+  const execution = [
     renderIdentity(result),
-    renderEvidence(result, item),
-    renderDiagnosis(file),
-    renderRecovery(file),
     renderSearch(file),
     renderCandidates(file),
     renderRejections(file),
-    renderCounterfactual(file),
-    renderAudit(file),
-    renderOutcome(result),
     renderCost(result),
     renderLinks(result.links, result.mode),
     renderSource(result),
     `<p class="hash">Result hash <code>${escapeHtml(result.resultHash)}</code></p>`,
+  ].filter((part) => part.length > 0).join('\n');
+  return [
+    renderHeader(result, item),
+    renderVerdict(result, item),
+    renderContext(result),
+    renderEvidence(result, item),
+    renderDiagnosis(file),
+    renderRecovery(file),
+    renderCounterfactual(file),
+    renderAudit(file),
+    renderOutcome(result),
+    renderVerify(result),
+    `<details class="execution">
+<summary>${EXECUTION_DETAIL_SUMMARY}</summary>
+${execution}
+</details>`,
   ].join('\n');
 }
 
