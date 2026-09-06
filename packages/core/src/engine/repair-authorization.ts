@@ -87,6 +87,24 @@ export function isAuthorizedRepairTarget(session: RepairAuthorizationSession, ba
   return grant !== undefined && source.startLine === 1 && !source.truncated && digest(source.content) === grant.excerptSha256;
 }
 
+/**
+ * The single position at or after `from` whose lines equal the hunk's baseline
+ * context. Locating by content rather than by the declared line number matches
+ * what `git apply` searches for, so a correct repair is not refused over a hunk
+ * header offset. An absent or repeated context is refused, which keeps the
+ * application unique and independent of any number the candidate supplies.
+ */
+function hunkPosition(lines: readonly string[], old: readonly string[], from: number): number {
+  let found = -1;
+  for (let index = from; index + old.length <= lines.length; index += 1) {
+    if (!old.every((line, offset) => lines[index + offset] === line)) continue;
+    if (found !== -1) throw new Error('diff matches more than one baseline position');
+    found = index;
+  }
+  if (found === -1) throw new Error('diff does not match exact baseline source');
+  return found;
+}
+
 /** Apply only exact-context non-overlapping hunks to the controller-held complete baseline. */
 function patchedSource(source: string, diff: string, path: string): string {
   const parsed = parseUnifiedDiff(diff);
@@ -94,15 +112,14 @@ function patchedSource(source: string, diff: string, path: string): string {
   const file = parsed.files[0]!;
   if (file.deleted || file.renamed || file.oldPath !== path || file.newPath !== path) throw new Error('grant cannot authorize file creation, rename, or deletion');
   const newline = source.endsWith('\n'); const lines = source.split('\n'); if (newline) lines.pop();
-  let offset = 0; let lastEnd = 0;
+  let cursor = 0;
   for (const hunk of file.hunks) {
-    const match = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/u.exec(hunk.header);
-    if (!match || hunk.lines.some((line) => line.startsWith('\\'))) throw new Error('unsupported hunk or newline change');
-    const start = Number(match[1]) - 1; const old: string[] = []; const next: string[] = [];
+    if (hunk.lines.some((line) => line.startsWith('\\'))) throw new Error('unsupported newline change');
+    const old: string[] = []; const next: string[] = [];
     for (const line of hunk.lines) { if (line[0] === ' ' || line[0] === '-') old.push(line.slice(1)); if (line[0] === ' ' || line[0] === '+') next.push(line.slice(1)); }
-    if (start < lastEnd || start < 0 || canonicalJson(lines.slice(start + offset, start + offset + old.length)) !== canonicalJson(old)) throw new Error('diff does not match exact baseline source');
-    if (Number(match[3]) - 1 !== start + offset) throw new Error('new hunk position changed');
-    lines.splice(start + offset, old.length, ...next); offset += next.length - old.length; lastEnd = start + old.length;
+    if (old.length === 0) throw new Error('hunk declares no baseline context to locate');
+    const at = hunkPosition(lines, old, cursor);
+    lines.splice(at, old.length, ...next); cursor = at + next.length;
   }
   return lines.join('\n') + (newline ? '\n' : '');
 }

@@ -53,6 +53,34 @@ describe('controller repair authorization', () => {
     expect((await authorizeRepairCandidate(session, baseline, diff(before, imports + next))).ok).toBe(false);
   });
 
+  it('locates a hunk by its baseline context rather than its declared line number', async () => {
+    const { session } = await setup();
+    const patch = diff(before, before.replace('expect(load())', 'expect(await load())'));
+    const shifted = patch.replace('@@ -1,', '@@ -7,').replace(' +1,', ' +7,');
+
+    expect(shifted).not.toBe(patch);
+    expect((await authorizeRepairCandidate(session, baseline, shifted)).ok).toBe(true);
+  });
+
+  it('refuses a hunk with an absent, repeated or missing baseline context', async () => {
+    const repeated = `${imports}test("a", async () => { expect(load()).toBe("ok"); });\ntest("a", async () => { expect(load()).toBe("ok"); });\n`;
+    const { session } = await setup(repeated);
+    const one = 'test("a", async () => { expect(load()).toBe("ok"); });';
+    const hunk = (header: string, lines: string[]) => [
+      'diff --git a/case.test.js b/case.test.js', '--- a/case.test.js', '+++ b/case.test.js', header, ...lines, '',
+    ].join('\n');
+
+    expect((await authorizeRepairCandidate(session, baseline, hunk('@@ -2,1 +2,1 @@', [
+      `-${one}`, `+${one.replace('expect(load())', 'expect(await load())')}`,
+    ]))).violations[0]).toContain('more than one baseline position');
+    expect((await authorizeRepairCandidate(session, baseline, hunk('@@ -1,1 +1,1 @@', [
+      '-test("absent", () => {});', '+test("absent", async () => {});',
+    ]))).violations[0]).toContain('does not match exact baseline source');
+    expect((await authorizeRepairCandidate(session, baseline, hunk('@@ -1,0 +1,1 @@', [
+      '+test("added", () => {});',
+    ]))).violations[0]).toContain('no baseline context to locate');
+  });
+
   it('permits only necessary enclosing async syntax', async () => {
     const old = `import { test } from 'vitest';\ntest("value", () => { expect(load()).toBe("ok"); });\n`;
     const { session } = await setup(old);
