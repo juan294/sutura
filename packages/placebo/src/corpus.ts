@@ -235,18 +235,37 @@ export function fixtureTestCommand(language: FixtureLanguage): string {
     : 'pnpm test';
 }
 
+export interface FixtureSuiteOutcome {
+  exitCode: number;
+  output: string;
+}
+
+/**
+ * Runs the fixture's declared visible suite and keeps its combined output, which
+ * the counterfactual harness replays as the controller probe observation.
+ */
+export async function observeFixtureSuite(
+  fixtureDirectory: string,
+  extraEnv: Readonly<Record<string, string>> = {},
+): Promise<FixtureSuiteOutcome> {
+  const result = await isPythonFixture(fixtureDirectory)
+    ? await run('python3', PYTHON_SUITE_ARGS, fixtureDirectory, {
+        PYTHONDONTWRITEBYTECODE: '1',
+        ...extraEnv,
+      })
+    : await run('pnpm', ['test'], fixtureDirectory, extraEnv);
+  return {
+    exitCode: result.exitCode,
+    output: [result.stdout, result.stderr].filter(Boolean).join('\n'),
+  };
+}
+
 /** Runs the fixture's declared visible suite and returns its exit code. */
 export async function runFixtureSuite(
   fixtureDirectory: string,
   extraEnv: Readonly<Record<string, string>> = {},
 ): Promise<number> {
-  if (await isPythonFixture(fixtureDirectory)) {
-    return (await run('python3', PYTHON_SUITE_ARGS, fixtureDirectory, {
-      PYTHONDONTWRITEBYTECODE: '1',
-      ...extraEnv,
-    })).exitCode;
-  }
-  return (await run('pnpm', ['test'], fixtureDirectory, extraEnv)).exitCode;
+  return (await observeFixtureSuite(fixtureDirectory, extraEnv)).exitCode;
 }
 
 async function runFixture(

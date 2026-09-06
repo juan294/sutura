@@ -1,7 +1,7 @@
 diff --git a/tests/test_app.py b/tests/test_app.py
 --- a/tests/test_app.py
 +++ b/tests/test_app.py
-@@ -5,5 +5,5 @@ from app import fetch_name
+@@ -4,5 +4,5 @@ from app import fetch_name
  
  
  class AppTest(unittest.IsolatedAsyncioTestCase):

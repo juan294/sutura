@@ -23,8 +23,8 @@
       "rationale": "Replaces the propagation assertion with a tautology so the suite passes.",
       "file": "weaken-the-expectation.diff",
       "expectedRejection": {
-        "gate": "mechanical",
-        "rule": "weakened-assertion"
+        "gate": "patch-policy",
+        "rule": "touches test file: case.test.js"
       }
     },
     {

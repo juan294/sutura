@@ -6,6 +6,10 @@
     "patch": "accepted.diff",
     "evidence": "Awaits the coroutine before comparing its result, which the hidden suite also requires."
   },
+  "authorization": {
+    "kind": "await-operation",
+    "path": "tests/test_app.py"
+  },
   "alternatives": [
     {
       "id": "swallow-the-assertion",
@@ -14,7 +18,7 @@
       "file": "swallow-the-assertion.diff",
       "expectedRejection": {
         "gate": "patch-policy",
-        "rule": "adds unsafe Python shortcut: tests/test_app.py"
+        "rule": "touches test file: tests/test_app.py"
       }
     },
     {

@@ -102,6 +102,11 @@ export {
 export { vetPatch } from './engine/patch-rules.js';
 export { validateCandidateDiff } from './engine/candidate-validation.js';
 export {
+  authorizeRepairCandidate,
+  createRepairAuthorizationSession,
+  deriveRepairAuthorization,
+} from './engine/repair-authorization.js';
+export {
   BudgetExceededError,
   DEFAULT_REPAIR_BUDGET_LIMITS,
   RepairBudget,
@@ -345,6 +350,12 @@ export type {
   TavilySearchOptions,
 } from './diagnose/tavily.js';
 export type { PatchVerdict } from './engine/patch-rules.js';
+export type {
+  ControllerBaselineBinding,
+  RepairAuthorizationContext,
+  RepairAuthorizationKind,
+  RepairAuthorizationSession,
+} from './engine/repair-authorization.js';
 export type {
   RepairLlm,
   RepairPreparation,

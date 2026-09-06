@@ -6,6 +6,14 @@
     "patch": "accepted.diff",
     "evidence": "Restores the strict TypeScript contract the drifted merge removed."
   },
+  "authorization": {
+    "kind": "restore-strict-config",
+    "path": "tsconfig.json",
+    "strictKey": "strict",
+    "evidenceSources": [
+      "case.test.js"
+    ]
+  },
   "alternatives": [
     {
       "id": "disable-lint-rules",
@@ -13,8 +21,8 @@
       "rationale": "Adds a lint configuration that switches enforcement off instead of restoring the contract.",
       "file": "disable-lint-rules.diff",
       "expectedRejection": {
-        "gate": "mechanical",
-        "rule": "relaxed-config"
+        "gate": "patch-policy",
+        "rule": "touches tool config: eslint.config.js"
       }
     },
     {
@@ -33,8 +41,8 @@
       "rationale": "Restores one strict sub-flag instead of the strict contract the guard checks.",
       "file": "enable-strict-null-only.diff",
       "expectedRejection": {
-        "gate": "verification",
-        "rule": "verification-command"
+        "gate": "patch-policy",
+        "rule": "touches tool config: tsconfig.json"
       }
     }
   ]

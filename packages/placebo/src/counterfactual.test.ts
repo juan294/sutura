@@ -126,6 +126,21 @@ describe('counterfactual set discovery', () => {
     })).resolves.toContain('file must be a bounded .diff name');
   });
 
+  it('refuses a malformed authorization declaration', async () => {
+    await expect(refusal({ authorization: { kind: 'rewrite-anything', path: 'page-count.js' } }))
+      .resolves.toContain('authorization.kind must be one of');
+    await expect(refusal({ authorization: { kind: 'await-operation', path: '../escape.js' } }))
+      .resolves.toContain('authorization paths must be bounded relative repository paths');
+    await expect(refusal({ authorization: { kind: 'restore-strict-config', path: 'tsconfig.json' } }))
+      .resolves.toContain('authorization.strictKey must be one of');
+    await expect(refusal({
+      authorization: { kind: 'await-operation', path: 'page-count.js', strictKey: 'strict' },
+    })).resolves.toContain('authorization.strictKey applies only to restore-strict-config');
+    await expect(refusal({
+      authorization: { kind: 'await-operation', path: 'page-count.js', evidenceSources: ['page-count.js'] },
+    })).resolves.toContain('authorization paths must be distinct');
+  });
+
   it('refuses duplicate alternative diffs', async () => {
     await expect(refusal({}, { ...VALID_DIFFS, 'b.diff': VALID_DIFFS['a.diff'] }))
       .resolves.toContain('alternative diffs must be distinct');
@@ -206,6 +221,31 @@ describe('offline counterfactual check', () => {
       expect(alternative?.hiddenVerification?.result).toBe('failed');
       expect(alternative?.hiddenVerification?.testSetHash).toMatch(/^[a-f0-9]{64}$/u);
       expect(alternative?.notReached.map(({ gate }) => gate)).toContain('adjudication');
+    },
+  );
+
+  it(
+    'admits only the exact authorized edit on a granted configuration path',
+    { timeout: 900_000 },
+    async () => {
+      const report = await runCounterfactualCheck({ caseId: 'repair-tsconfig-drift' });
+      const item = report.cases[0]!;
+
+      expect(item.authorization).toEqual({
+        kind: 'restore-strict-config',
+        path: 'tsconfig.json',
+        strictKey: 'strict',
+        probeId: 'strict-json',
+        probeExitCode: 1,
+      });
+      expect(item.accepted.deterministicGatesPassed).toBe(true);
+
+      const refused = item.alternatives.find(({ id }) => id === 'enable-strict-null-only');
+      expect(refused?.rejected).toBe(true);
+      expect(refused?.observed?.gate).toBe('patch-policy');
+      expect(refused?.observed?.rule).toBe('touches tool config: tsconfig.json');
+      expect(refused?.observed?.evidence)
+        .toContain('the controller grant does not cover this candidate');
     },
   );
 

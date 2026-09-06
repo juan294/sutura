@@ -1,18 +1,26 @@
+import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { cp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  authorizeRepairCandidate,
   COUNTERFACTUAL_GATES,
   COUNTERFACTUAL_INTENTS,
   createDefaultRepositoryPolicy,
+  createRepairAuthorizationSession,
+  deriveRepairAuthorization,
   runMechanicalChecks,
   validateCandidateDiff,
+  type ControllerBaselineBinding,
   type CounterfactualGate,
   type CounterfactualIntent,
   type Diagnosis,
   type FailureClass,
+  type RepairAuthorizationContext,
+  type RepairAuthorizationKind,
+  type RepairSourceExcerpt,
 } from '@sutura/core';
 import { canonicalJson } from '@sutura/evaluation';
 
@@ -24,6 +32,7 @@ import {
   createPortableTestRuntime,
   discoverCases,
   installFixture,
+  observeFixtureSuite,
   runFixtureSuite,
   verifyCandidateWithHiddenTests,
   type PortableTestRuntime,
@@ -44,6 +53,15 @@ const ALTERNATIVE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/u;
 const DIFF_FILE = /^[a-z0-9][a-z0-9-]{0,63}\.diff$/u;
 const GATES = new Set<string>(COUNTERFACTUAL_GATES);
 const INTENTS = new Set<string>(COUNTERFACTUAL_INTENTS);
+const AUTHORIZATION_KINDS = ['await-operation', 'await-setup', 'restore-strict-config'] as const;
+const KINDS = new Set<string>(AUTHORIZATION_KINDS);
+const STRICT_KEYS = ['strict', 'noUncheckedIndexedAccess'] as const;
+const STRICT_KEY_NAMES = new Set<string>(STRICT_KEYS);
+const SOURCE_PATH = /^[a-z0-9][a-z0-9_-]*(?:[./][a-z0-9][a-z0-9_-]*)*$/u;
+const MAX_PROBE_OUTPUT_BYTES = 16_384;
+
+const sha256 = (value: string): string =>
+  createHash('sha256').update(value).digest('hex');
 
 /**
  * The gates the offline harness can reach with no provider, in the production
@@ -82,10 +100,24 @@ export interface CounterfactualAcceptedDeclaration {
   evidence: string;
 }
 
+/**
+ * The narrow controller grant this case needs before any candidate may touch a
+ * conventional test or tool configuration file. The harness derives it through
+ * the production `deriveRepairAuthorization` contract from the broken fixture's
+ * own source and suite output; it never asserts a grant the controller refuses.
+ */
+export interface CounterfactualAuthorizationDeclaration {
+  kind: RepairAuthorizationKind;
+  path: string;
+  strictKey?: typeof STRICT_KEYS[number];
+  evidenceSources?: string[];
+}
+
 export interface CounterfactualCaseDeclaration {
   version: typeof COUNTERFACTUAL_SET_VERSION;
   caseId: string;
   accepted: CounterfactualAcceptedDeclaration;
+  authorization?: CounterfactualAuthorizationDeclaration;
   alternatives: CounterfactualAlternativeDeclaration[];
 }
 
@@ -119,11 +151,20 @@ export interface CounterfactualAlternativeReport {
   cost: { inferenceUsd: 0; sandboxOperations: number; elapsedTimeSec: number };
 }
 
+export interface CounterfactualAuthorizationReport {
+  kind: RepairAuthorizationKind;
+  path: string;
+  strictKey?: typeof STRICT_KEYS[number];
+  probeId: string;
+  probeExitCode: number;
+}
+
 export interface CounterfactualCaseReport {
   caseId: string;
   kind: CorpusCase['metadata']['kind'];
   language: FixtureLanguage;
   failureClass: FailureClass;
+  authorization: CounterfactualAuthorizationReport | null;
   accepted: CounterfactualAcceptedDeclaration & {
     diffHash: string;
     visibleSuiteExitCode: number;
@@ -157,6 +198,55 @@ function refuse(message: string): never {
   throw new Error(message);
 }
 
+function parseAuthorization(
+  value: unknown,
+  caseId: string,
+): CounterfactualAuthorizationDeclaration | undefined {
+  if (value === undefined) return undefined;
+  const name = `${caseId}.authorization`;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    refuse(`${name} must be an object`);
+  }
+  const item = value as Record<string, unknown>;
+  for (const key of Object.keys(item)) {
+    if (!['kind', 'path', 'strictKey', 'evidenceSources'].includes(key)) {
+      refuse(`${name} has an unsupported field: ${key}`);
+    }
+  }
+  if (typeof item.kind !== 'string' || !KINDS.has(item.kind)) {
+    refuse(`${name}.kind must be one of ${AUTHORIZATION_KINDS.join(', ')}`);
+  }
+  if (item.evidenceSources !== undefined &&
+    (!Array.isArray(item.evidenceSources) || item.evidenceSources.length > 4)) {
+    refuse(`${name}.evidenceSources must be an array of at most four paths`);
+  }
+  const paths: unknown[] = [item.path, ...(item.evidenceSources as unknown[] | undefined ?? [])];
+  for (const path of paths) {
+    if (typeof path !== 'string' || !SOURCE_PATH.test(path)) {
+      refuse(`${name} paths must be bounded relative repository paths`);
+    }
+  }
+  if (new Set(paths).size !== paths.length) {
+    refuse(`${name} paths must be distinct`);
+  }
+  const strictKey = item.strictKey;
+  if (item.kind === 'restore-strict-config') {
+    if (typeof strictKey !== 'string' || !STRICT_KEY_NAMES.has(strictKey)) {
+      refuse(`${name}.strictKey must be one of ${STRICT_KEYS.join(', ')}`);
+    }
+  } else if (strictKey !== undefined) {
+    refuse(`${name}.strictKey applies only to restore-strict-config`);
+  }
+  return {
+    kind: item.kind as RepairAuthorizationKind,
+    path: item.path as string,
+    ...(strictKey === undefined ? {} : { strictKey: strictKey as typeof STRICT_KEYS[number] }),
+    ...(item.evidenceSources === undefined
+      ? {}
+      : { evidenceSources: item.evidenceSources as string[] }),
+  };
+}
+
 function parseDeclaration(text: string, caseId: string): CounterfactualCaseDeclaration {
   let value: unknown;
   try {
@@ -181,6 +271,7 @@ function parseDeclaration(text: string, caseId: string): CounterfactualCaseDecla
     typeof accepted.patch !== 'string' || !accepted.patch.trim() ||
     typeof accepted.evidence !== 'string' || !accepted.evidence.trim()
   ) refuse(`Counterfactual set ${caseId} must declare an accepted outcome, patch, and evidence`);
+  const authorization = parseAuthorization(declaration.authorization, caseId);
   if (!Array.isArray(declaration.alternatives)) {
     refuse(`Counterfactual set ${caseId} must declare an alternatives array`);
   }
@@ -243,6 +334,7 @@ function parseDeclaration(text: string, caseId: string): CounterfactualCaseDecla
     version: COUNTERFACTUAL_SET_VERSION,
     caseId,
     accepted: accepted as unknown as CounterfactualAcceptedDeclaration,
+    ...(authorization === undefined ? {} : { authorization }),
     alternatives,
   };
 }
@@ -303,7 +395,7 @@ async function treeHash(directory: string): Promise<string> {
     }
   }
   await visit(directory);
-  return createHash('sha256').update(canonicalJson(files)).digest('hex');
+  return sha256(canonicalJson(files));
 }
 
 export function createCounterfactualManifestHash(
@@ -330,29 +422,143 @@ interface GateOutcome {
   elapsedTimeSec: number;
 }
 
+interface CaseAuthorization {
+  context: RepairAuthorizationContext;
+  report: CounterfactualAuthorizationReport;
+}
+
+/** Keeps the tail of a probe observation inside the controller evidence bound. */
+function boundedProbeOutput(output: string): string {
+  let text = output;
+  while (Buffer.byteLength(text, 'utf8') > MAX_PROBE_OUTPUT_BYTES) {
+    text = text.slice(Math.ceil(text.length / 2));
+  }
+  return text;
+}
+
+/**
+ * Derives the case's declared controller grant from the broken fixture itself:
+ * its complete baseline source and the real failing suite output stand in for
+ * the controller probe. `deriveRepairAuthorization` is the production contract,
+ * so a declared grant the controller would refuse fails the set instead of
+ * quietly widening what the gates admit.
+ */
+async function deriveCaseAuthorization(
+  benchmarkCase: CorpusCase,
+  declared: CounterfactualAuthorizationDeclaration,
+  portableRuntime: PortableTestRuntime,
+): Promise<CaseAuthorization> {
+  const temporaryRoot = await createPlaceboTemporaryDirectory(`cf-grant-${benchmarkCase.id}-`);
+  const fixture = join(temporaryRoot, 'fixture');
+  try {
+    await cp(benchmarkCase.fixtureDirectory, fixture, { recursive: true });
+    if (benchmarkCase.metadata.language !== 'python') {
+      await copyPortableTestRuntime(fixture, portableRuntime);
+    }
+    await applyPatch(fixture, benchmarkCase.breakPatch);
+    if (benchmarkCase.metadata.language !== 'python') {
+      await installFixture(fixture, portableRuntime.storeDirectory);
+    }
+    const probe = await observeFixtureSuite(fixture);
+    if (probe.exitCode === 0) {
+      refuse(`Counterfactual set ${benchmarkCase.id} cannot authorize a repair: the broken fixture suite passed`);
+    }
+    const sources: RepairSourceExcerpt[] = [];
+    for (const path of [declared.path, ...(declared.evidenceSources ?? [])]) {
+      sources.push({
+        path,
+        startLine: 1,
+        truncated: false,
+        content: await readFile(join(fixture, path), 'utf8'),
+      });
+    }
+    const policy = createDefaultRepositoryPolicy();
+    const failingCommand = mechanicalDiagnosis(benchmarkCase).failingCmd;
+    const baseline: ControllerBaselineBinding = {
+      kind: 'local-snapshot',
+      sourceSha: null,
+      policyBaseSha: null,
+      policySha256: sha256(canonicalJson(policy)),
+      baselineImageId: `placebo-counterfactual:${benchmarkCase.id}`,
+      snapshotSha256: sha256(canonicalJson(sources)),
+    };
+    const session = createRepairAuthorizationSession({ baseline, failingCommand, policy, sources });
+    const probeId = declared.kind === 'restore-strict-config' ? 'strict-json' : 'async-completion';
+    const grant = await deriveRepairAuthorization(session, {
+      kind: declared.kind,
+      path: declared.path,
+      evidenceReferences: [`placebo:${benchmarkCase.id}`, `probe:${probeId}`],
+      controllerProbe: {
+        id: probeId,
+        imageId: baseline.baselineImageId,
+        exitCode: probe.exitCode,
+        output: boundedProbeOutput(probe.output),
+        sourceSha256: sha256(sources[0]!.content),
+        failingCommand,
+      },
+      ...(declared.strictKey === undefined ? {} : { strictKey: declared.strictKey }),
+    });
+    if (!grant.ok) {
+      refuse(`Counterfactual set ${benchmarkCase.id} declares an authorization the controller refuses: ${grant.reason}`);
+    }
+    return {
+      context: { session, baseline },
+      report: {
+        kind: declared.kind,
+        path: declared.path,
+        ...(declared.strictKey === undefined ? {} : { strictKey: declared.strictKey }),
+        probeId,
+        probeExitCode: probe.exitCode,
+      },
+    };
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+}
+
 /**
  * Applies one patch to a fresh copy of the broken fixture and walks the
  * deterministic gates in the production order: the repository and built-in
  * patch policy, then the mechanical green-washing checks, then the visible
  * verification suite. The first gate that refuses is the recorded one, which
- * is the same rule `evaluateCounterfactuals` records on the live path.
+ * is the same rule `evaluateCounterfactuals` records on the live path. A case
+ * grant is offered to the same `authorizeRepairCandidate` seam production uses,
+ * so only the exact authorized edit shape passes the built-in test and tool
+ * configuration rules.
  */
 async function runDeterministicGates(
   benchmarkCase: CorpusCase,
   diff: string,
   portableRuntime: PortableTestRuntime,
   clock: () => number,
+  authorization?: CaseAuthorization,
 ): Promise<GateOutcome> {
   const startedAt = clock();
   const reachedGates: CounterfactualGate[] = ['patch-policy'];
   const policy = createDefaultRepositoryPolicy();
-  const validation = validateCandidateDiff(diff, mechanicalDiagnosis(benchmarkCase), policy);
+  const certificate = authorization === undefined
+    ? undefined
+    : await authorizeRepairCandidate(
+      authorization.context.session, authorization.context.baseline, diff,
+    );
+  const validation = validateCandidateDiff(
+    diff,
+    mechanicalDiagnosis(benchmarkCase),
+    policy,
+    policy.maxDiffBytes,
+    authorization?.context,
+  );
   if (!validation.ok) {
     return {
       observed: {
         gate: 'patch-policy',
         rule: validation.violations[0]!,
-        evidence: validation.violations.join('; '),
+        evidence: [
+          validation.violations.join('; '),
+          ...(certificate === undefined || certificate.ok
+            ? []
+            : [`the controller grant does not cover this candidate: ${certificate.violations.join('; ')}`]),
+        ].join('; '),
       },
       reachedGates,
       visibleSuiteExitCode: null,
@@ -452,21 +658,28 @@ export async function runCounterfactualCheck(
   try {
     for (const item of selected) {
       const { corpusCase, declaration } = item;
-      const accepted = await runDeterministicGates(corpusCase, item.acceptedDiff, portableRuntime, clock);
+      const authorization = declaration.authorization === undefined
+        ? undefined
+        : await deriveCaseAuthorization(corpusCase, declaration.authorization, portableRuntime);
+      const accepted = await runDeterministicGates(
+        corpusCase, item.acceptedDiff, portableRuntime, clock, authorization,
+      );
       const acceptedHidden = await verifyCandidateWithHiddenTests(
         corpusCase, item.acceptedDiff, portableRuntime,
       );
       const alternatives: CounterfactualAlternativeReport[] = [];
       for (const alternative of declaration.alternatives) {
         const diff = item.diffs.get(alternative.id)!;
-        const outcome = await runDeterministicGates(corpusCase, diff, portableRuntime, clock);
+        const outcome = await runDeterministicGates(
+          corpusCase, diff, portableRuntime, clock, authorization,
+        );
         const hidden = await verifyCandidateWithHiddenTests(corpusCase, diff, portableRuntime);
         const expected = alternative.expectedRejection;
         alternatives.push({
           id: alternative.id,
           intent: alternative.intent,
           rationale: alternative.rationale,
-          diffHash: createHash('sha256').update(diff).digest('hex'),
+          diffHash: sha256(diff),
           rejected: outcome.observed !== null,
           observed: outcome.observed,
           expected,
@@ -491,9 +704,10 @@ export async function runCounterfactualCheck(
         kind: corpusCase.metadata.kind,
         language: corpusCase.metadata.language,
         failureClass: corpusCase.metadata.class,
+        authorization: authorization?.report ?? null,
         accepted: {
           ...declaration.accepted,
-          diffHash: createHash('sha256').update(item.acceptedDiff).digest('hex'),
+          diffHash: sha256(item.acceptedDiff),
           visibleSuiteExitCode: accepted.visibleSuiteExitCode ?? -1,
           deterministicGatesPassed: accepted.observed === null,
           ...(acceptedHidden ? { hiddenVerification: acceptedHidden } : {}),
@@ -529,6 +743,6 @@ export async function runCounterfactualCheck(
   };
   return {
     ...base,
-    resultHash: createHash('sha256').update(canonicalJson(normalizedForHash(base))).digest('hex'),
+    resultHash: sha256(canonicalJson(normalizedForHash(base))),
   };
 }
