@@ -72,3 +72,23 @@ export type {
   SplitCase,
   SplitCounts,
 } from './blinded.js';
+export {
+  buildQualityPrompt,
+  parseQualityPrediction,
+  QUALITY_LABELS,
+  QUALITY_MAX_CITATIONS,
+  QUALITY_MAX_OUTPUT_TOKENS,
+  QUALITY_PROMPT_VARIANTS,
+  QUALITY_TASK_VERSION,
+  QualityTaskError,
+  qualityResponseSchema,
+  scoreQualityPredictions,
+} from './quality-task.js';
+export type {
+  QualityLabel,
+  QualityPrediction,
+  QualityPromptVariant,
+  QualityScore,
+  QualityScoredItem,
+  QualityTruth,
+} from './quality-task.js';

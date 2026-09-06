@@ -79,6 +79,10 @@ Implemented source: this phase's commit. No provider call, Data Lab upload, batc
 Not built in this pass, and not claimed:
 
 - The standalone NeMo `EvaluationHarness` invocation, `packages/evaluation/scripts/evaluate-atif.py` and its installed smoke test are absent. That acceptance item explicitly rejects a hand-written scorer, and it needs a pinned `nvidia-nat-eval` revision inspected and locked first.
-- The v2 quality task, the two pre-registered prompt variants and the paired Data Lab batch are not built; no prompt was constructed or sent.
+- The v2 quality task and its two pre-registered prompt variants are built. `buildQualityPrompt` serves `direct-rubric-v2` and `evidence-citation-v2` over byte-identical inputs, differing only in the instruction, which is what makes comparing them meaningful. The record is asserted label-free immediately before serialization, so a caller cannot reach the prompt with an unblinded record and have it sent anyway, and a variant that was not pre-registered is refused rather than tuned in after seeing results. The response schema is closed over the three labels with bounded citations and a calibrated confidence.
+
+  `scoreQualityPredictions` keeps unknown truth and unanswered records out of accuracy and reports them as their own counts, so a run that returned half its answers cannot look like a run that answered them correctly. Balanced accuracy averages per-class recall, so always predicting the majority label scores 0.5 rather than 0.9. False approval and false refusal are separate rates, abstention is its own rate rather than a wrong answer, and confidence is reported separately for correct and incorrect decisions. Nothing scorable returns nulls rather than zeros. 23 tests.
+
+  The paired Data Lab batch itself is still not built; no prompt was constructed or sent, and no provider or upload was touched.
 - The immutable 100-case inventory is not assembled. `freezeSplitByRootFamily` enforces the 60/20/20 contract but no corpus has been frozen through it, and no split hashes are published.
 - Balanced accuracy, false-approval and false-refusal scoring, calibration and cost accounting are not implemented.
