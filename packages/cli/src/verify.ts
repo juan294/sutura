@@ -3,12 +3,13 @@ import { open } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import {
-  createDefaultRepositoryPolicy,
   validateVerifyRequest,
+  type RepositoryPolicy,
   type ValidatedVerifyRequest,
 } from '@sutura/core';
 
 import type { VerifyArguments } from './args.js';
+import { assertCleanCheckoutAt, readTrustedPolicyAtCommit } from './verify-source.js';
 
 /** A supplied patch is bounded well below the policy diff limit before reading. */
 export const MAX_CANDIDATE_DIFF_FILE_BYTES = 1024 * 1024;
@@ -62,21 +63,36 @@ export async function readCandidateDiffFile(path: string): Promise<string> {
 
 export interface VerifyPreparation {
   request: ValidatedVerifyRequest;
-  /** The trusted command map the operator supplied for this repository. */
+  policy: RepositoryPolicy;
+  /** Where the trusted policy came from: the chosen commit, or built-in defaults. */
+  policySource: 'repository' | 'default';
+  policySha: string;
+  /** The trusted command map this policy declares. */
   trustedCommands: Readonly<Record<string, string>>;
 }
 
 /**
  * Turns parsed arguments into a validated verification request.
  *
- * Reading and validation happen before anything executes, so an untrusted
- * command, an unparseable patch or a protected path is refused without a
- * sandbox ever starting.
+ * The order matters. The checkout is confirmed to sit exactly on the declared
+ * source, the trusted policy is read from the operator's chosen commit rather
+ * than from the working tree or the patch, and only then is the candidate
+ * validated against it. All of that happens before anything executes, so an
+ * untrusted command, an unparseable patch or a protected path is refused
+ * without a sandbox ever starting.
  */
 export async function prepareVerify(
   request: VerifyArguments,
-  trustedCommands: Readonly<Record<string, string>> = { diagnosed: 'pnpm test' },
+  overrides: { skipCheckout?: boolean; trustedCommands?: Readonly<Record<string, string>> } = {},
 ): Promise<VerifyPreparation> {
+  if (overrides.skipCheckout !== true) {
+    await assertCleanCheckoutAt(request.caseDir, request.sourceSha);
+  }
+  const loaded = await readTrustedPolicyAtCommit(request.caseDir, request.policyBaseSha);
+  const trustedCommands = overrides.trustedCommands ?? Object.fromEntries(
+    loaded.policy.requiredCommands.map((command, index) =>
+      [index === 0 ? 'diagnosed' : `required-${index}`, command]),
+  );
   const candidateDiff = await readCandidateDiffFile(request.candidateDiff);
   const validated = validateVerifyRequest({
     caseDir: request.caseDir,
@@ -85,6 +101,12 @@ export async function prepareVerify(
     candidateDiff,
     failureCommandId: request.failingCommand,
     ...(request.runtime === undefined ? {} : { runtimeId: request.runtime }),
-  }, createDefaultRepositoryPolicy(), trustedCommands);
-  return { request: validated, trustedCommands };
+  }, loaded.policy, trustedCommands);
+  return {
+    request: validated,
+    policy: loaded.policy,
+    policySource: loaded.source,
+    policySha: loaded.sha,
+    trustedCommands,
+  };
 }

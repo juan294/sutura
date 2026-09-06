@@ -140,38 +140,64 @@ describe('candidate diff file reading', () => {
 });
 
 describe('verify preparation', () => {
-  const base: VerifyArguments = {
+  let repo: string;
+  let repoSha: string;
+
+  beforeAll(async () => {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const exec = promisify(execFile);
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 't@example.invalid',
+      GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 't@example.invalid',
+    };
+    repo = join(root, 'repo');
+    await exec('git', ['init', '-q', '-b', 'main', repo], { env });
+    await writeFile(join(repo, 'page-count.js'), 'const a = 1;\n');
+    await writeFile(join(repo, '.sutura.json'), JSON.stringify({
+      version: 1, requiredCommands: ['pnpm test'],
+    }));
+    await exec('git', ['-C', repo, 'add', '-A'], { env });
+    await exec('git', ['-C', repo, 'commit', '-qm', 'base'], { env });
+    repoSha = (await exec('git', ['-C', repo, 'rev-parse', 'HEAD'], { env })).stdout.trim();
+  }, 60_000);
+
+  const base = (): VerifyArguments => ({
     command: 'verify',
-    caseDir: '/tmp/checkout',
-    sourceSha: SOURCE_SHA,
-    policyBaseSha: POLICY_SHA,
-    candidateDiff: '',
+    caseDir: repo,
+    sourceSha: repoSha,
+    policyBaseSha: repoSha,
+    candidateDiff: diffPath,
     failingCommand: 'diagnosed',
     format: 'json',
-  };
+  });
 
-  it('validates the patch and identities before anything executes', async () => {
-    const prepared = await prepareVerify({ ...base, candidateDiff: diffPath });
+  it('reads the trusted policy from the chosen commit and validates the patch', async () => {
+    const prepared = await prepareVerify(base());
 
+    expect(prepared.policySource).toBe('repository');
+    expect(prepared.trustedCommands).toEqual({ diagnosed: 'pnpm test' });
     expect(prepared.request).toMatchObject({
-      sourceSha: SOURCE_SHA,
-      policyBaseSha: POLICY_SHA,
-      failingCommand: 'pnpm test',
-      changedFiles: ['page-count.js'],
+      sourceSha: repoSha, failingCommand: 'pnpm test', changedFiles: ['page-count.js'],
     });
   });
 
-  it('refuses a failing command the operator did not trust', async () => {
-    await expect(prepareVerify({ ...base, candidateDiff: diffPath, failingCommand: 'rm -rf /' }))
+  it('refuses a checkout that is not the declared source', async () => {
+    await expect(prepareVerify({ ...base(), sourceSha: 'd'.repeat(40) }))
+      .rejects.toThrow(/not the declared source/u);
+  });
+
+  it('refuses a failing command the trusted policy did not declare', async () => {
+    await expect(prepareVerify({ ...base(), failingCommand: 'rm -rf /' }))
       .rejects.toThrow(/is not trusted/u);
   });
 
   it('refuses a patch that reaches the trusted policy declaration', async () => {
     const policyPatch = join(root, 'policy.diff');
-    await writeFile(policyPatch, DIFF
-      .replaceAll('page-count.js', '.sutura.json'));
+    await writeFile(policyPatch, DIFF.replaceAll('page-count.js', '.sutura.json'));
 
-    await expect(prepareVerify({ ...base, candidateDiff: policyPatch }))
+    await expect(prepareVerify({ ...base(), candidateDiff: policyPatch }))
       .rejects.toThrow(/trusted policy declaration/u);
   });
 
@@ -179,7 +205,7 @@ describe('verify preparation', () => {
     const garbage = join(root, 'garbage.diff');
     await writeFile(garbage, 'this is not a diff\n');
 
-    await expect(prepareVerify({ ...base, candidateDiff: garbage }))
+    await expect(prepareVerify({ ...base(), candidateDiff: garbage }))
       .rejects.toThrow(/complete unified diff/u);
   });
 });

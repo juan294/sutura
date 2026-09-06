@@ -114,9 +114,12 @@ The Action route takes no repository port and returns no pull-request intent, so
 
 `action.yml` gains the four verification inputs at both the package and repository root, with the root keeping its own `main` path.
 
+Identity and trust now come from Git rather than from arguments alone. `assertCleanCheckoutAt` refuses a checkout sitting on a different commit, a tracked modification, an untracked file and a directory that is not a checkout, because a patch is verified against a specific source state and anything else would execute bytes the identity does not name. `readTrustedPolicyAtCommit` reads `.sutura.json` from the operator's chosen commit through a bounded Git object read — never from the working tree and never from the patch — so a patch cannot supply a more permissive policy by carrying one. A commit that removed the declaration falls back to versioned built-in defaults, an unavailable commit and an invalid declaration are refused rather than guessed, and the trusted command map is derived from that policy instead of a hardcoded default. 11 tests, plus the preparation tests now running against a real Git checkout.
+
 One defect this pass found and fixed: the Action input reader trimmed the candidate patch, which strips the trailing newline a unified diff needs. Patch bytes are now preserved exactly and only checked for presence.
 
 Not built in this pass, and not claimed:
-- Source snapshotting from a clean checkout, bounded Git object reads of `.sutura.json` at the trusted policy commit, and detection of source changing during snapshotting are specified but not implemented. Both routes validate the request and stop there; neither yet prepares a sandbox, reproduces the failure or executes the shared gate stack, so `verifyExternalPatch` is reachable from tests but not from the command.
-- The trusted command map is a fixed default in both routes rather than being resolved from the repository policy at the trusted commit.
+- Neither route yet prepares a sandbox, reproduces the failure or executes the shared gate stack, so `verifyExternalPatch` is reachable from tests but not from the command. Both stop after establishing identity and validating the request.
+- Source snapshotting into an immutable temporary copy, and detection of source changing during snapshotting, are not implemented. The checkout is confirmed clean at the declared commit, which is the identity half of that requirement, not the isolation half.
+- The Action route still uses a fixed trusted command map; only the CLI resolves it from the policy at the trusted commit.
 - No external-patch fixtures from two agent sources exist; phase 10 owns that evidence.
