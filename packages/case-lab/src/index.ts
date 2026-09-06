@@ -169,3 +169,16 @@ export { CaseLabPinError, DEMO_WORKFLOW_FILE, parseDemoWorkflowPins, verifyPin, 
 export type { DemoWorkflowPins } from './pin.js';
 export { normalizeOutcome, publishResult } from './publish.js';
 export type { PublishInputs } from './publish.js';
+export {
+  buildTwoPatchComparison,
+  RegressionComparisonError,
+  renderTwoPatchComparison,
+} from './regression.js';
+export type {
+  ComparisonArm,
+  ComparisonBaseline,
+  IndependentCheck,
+  TwoPatchComparison,
+} from './regression.js';
+export { caseVerdict, FORBIDDEN_VERDICT_CLAIMS, renderVerdict } from './verdict.js';
+export type { CaseVerdict, VerdictTone } from './verdict.js';

@@ -59,7 +59,7 @@ One constraint this surfaced: the site bundle is built for the browser, so `esca
 
 Not built, and not claimed:
 
-- The two-patch regression comparison binding one baseline to two exact diff hashes, the old visible test and the new independent checks.
+- The two-patch regression comparison is built. It binds one baseline, exactly two patches by exact diff hash, the original failing test command and the independent checks, and refuses every shape that would let the page imply a distinction the evidence does not support: fewer or more than two patches, the same patch listed twice, a patch that did not pass the original test, an inexact baseline or diff hash, a duplicate check id, and, most importantly, a check set where no check separates the two patches. The render marks which checks separate them and which agree. 9 tests.
 - Replay executed twice with network and provider spies compared for semantic equality, and the labelled recorded fallback for a record that cannot replay.
 - Browser interaction tests for keyboard tabs, focus, expanded evidence, status announcements, responsive layouts and live-button readiness or quota transitions; cost fixtures for unknown units and partial records.
 - Live-control readiness states, the concise CLI verify route shown in the page, and the manual narrow and desktop inspection with saved screenshots.
