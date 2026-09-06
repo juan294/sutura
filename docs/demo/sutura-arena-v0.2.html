@@ -57,7 +57,7 @@ footer code { color: var(--ink); }
       
       <p>Every arm below ran the same 51 cases, the same models, the same routing profile, the same budget profile, and the same scoring contract. The only difference between executed arms is the search shape.</p>
       <dl class="facts">
-        <div><dt>Sutura commit</dt><dd><code>9c883f3da0d40bf715bca66d5e15a357cdc7bd74</code></dd></div>
+        <div><dt>Sutura commit</dt><dd><code>9cb76e280c8a0af231e3f3280e806804e3da8d95</code></dd></div>
         <div><dt>Corpus</dt><dd><code>placebo</code> v0.2 · <code>785cfc70359935a0f04a9a9cda39e8fb6ff4b05cc8fea3738fb24b70bcda101f</code></dd></div>
         <div><dt>Models</dt><dd><code>nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</code> · <code>nvidia/nemotron-3-super-120b-a12b</code> · <code>nvidia/Nemotron-3-Ultra-550b-a55b</code></dd></div>
         <div><dt>Routing profile</dt><dd><code>production-baseline-v1</code></dd></div>
@@ -75,7 +75,7 @@ footer code { color: var(--ink); }
     </div>
 
     <h2>Why green is not sufficient</h2>
-    <p>14 of 15 alternative patches across 5 cases were rejected, including 10 declared shortcuts, by mechanical, patch-policy, verification. Counterfactual evidence <code>ec36e1d77b1b3341e4dba24e7e6b4588b5f48882f61cb7948e7e458c53b90736</code>.</p>
+    <p>14 of 15 alternative patches across 5 cases were rejected, including 10 declared shortcuts, by mechanical, patch-policy, verification. Counterfactual evidence <code>6ae5251175d90f21da2cc64030e9823420593eab9ae603ebbb9b05585c9c2e1f</code>.</p>
 
     <h2>Measures by arm</h2>
     <div class="table-wrap"><table>
@@ -86,8 +86,8 @@ footer code { color: var(--ink); }
         <td>0.0% <small>(95% 0.0%–16.8%)</small></td>
         <td class="nonzero">19</td>
         <td>0.0% <small>(95% 0.0%–27.8%)</small></td>
-        <td>0.74 s</td>
-        <td>2.77 s</td>
+        <td>1.14 s</td>
+        <td>4.18 s</td>
         <td>$0.0000</td>
         <td>0</td>
         <td>0</td>
@@ -97,8 +97,8 @@ footer code { color: var(--ink); }
         <td>100.0% <small>(95% 83.2%–100.0%)</small></td>
         <td class="zero">0</td>
         <td>0.0% <small>(95% 0.0%–27.8%)</small></td>
-        <td>0.75 s</td>
-        <td>2.72 s</td>
+        <td>0.79 s</td>
+        <td>2.88 s</td>
         <td>$0.0000</td>
         <td>0</td>
         <td>0</td>
@@ -108,8 +108,8 @@ footer code { color: var(--ink); }
         <td>100.0% <small>(95% 83.2%–100.0%)</small></td>
         <td class="zero">0</td>
         <td>0.0% <small>(95% 0.0%–27.8%)</small></td>
-        <td>0.75 s</td>
-        <td>2.72 s</td>
+        <td>0.79 s</td>
+        <td>2.88 s</td>
         <td>$0.0000</td>
         <td>0</td>
         <td>0</td>
@@ -339,7 +339,7 @@ footer code { color: var(--ink); }
 
     <footer>
       <p>Reproduce: <code>placebo compare --arm sutura --arm single-branch --arm fixed-parallel --arm first-green-wins --output-json arena.json</code> then <code>placebo arena --comparison arena.json --output-json report.json --output-html report.html</code></p>
-      <p>Comparison hash <code>f67afe5acc685cf3f48f4ca9d2b4a8f255814f2b6dbc782d8c57b91514170d31</code> · report hash <code>ce5a2b527686d194f8eeffc79f48c93400080d6093871cc38197fe5b34d2e488</code> · selection hash <code>289f6a2ec6b417942addb3956882fc2006d32fe4a7f4d10188e83d02c810b2cb</code></p>
+      <p>Comparison hash <code>6bdd7bada67220b8d49c78e2b69e289bf36f9030f6cc057ad23019326c67ea40</code> · report hash <code>f13e1635b17f2a519fe04abca9bd53ca906d7c60967848f3f82fdee5d45139bf</code> · selection hash <code>289f6a2ec6b417942addb3956882fc2006d32fe4a7f4d10188e83d02c810b2cb</code></p>
     </footer>
   </main>
 </body>
