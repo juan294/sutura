@@ -36,9 +36,10 @@
     "build": "pnpm -r build",
     "verify:bundle": "pnpm run build && node scripts/verify-bundle.mjs",
     "ci:fast": "pnpm run test:release-contracts && pnpm run test:readme && pnpm run typecheck && pnpm run lint && pnpm run verify:bundle && pnpm --filter sutura --filter @sutura/action test",
-    "ci:local": "pnpm run test:release-contracts && pnpm run test:readme && pnpm run verify:readme-setup && pnpm run test:atif && pnpm --filter placebo run smoke:offline && pnpm run typecheck && pnpm run lint && pnpm run verify:bundle && pnpm run test && pnpm run test:package",
+    "ci:local": "pnpm run test:release-contracts && pnpm run test:readme && pnpm run verify:readme-setup && pnpm run test:atif && pnpm run test:atif-eval && pnpm --filter placebo run smoke:offline && pnpm run typecheck && pnpm run lint && pnpm run verify:bundle && pnpm run test && pnpm run test:package",
     "verify:readme-setup": "node scripts/verify-readme-setup.mjs README.md --local-source .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:atif-eval": "uv run --project packages/evaluation python packages/evaluation/scripts/test_evaluate_atif.py"
   },
   "devDependencies": {
     "@types/node": "^26.4.0",
