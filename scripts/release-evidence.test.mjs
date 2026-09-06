@@ -14,6 +14,8 @@ import {
   assertReleaseReady,
   createGitHubEvidenceVerifier,
   main,
+  RELEASE_EVIDENCE_IDS,
+  VERIFIED_PROGRAM_EVIDENCE_IDS,
   verifyDogfoodStreak,
 } from './release-evidence.mjs';
 
@@ -71,6 +73,11 @@ function evidence(overrides = {}) {
       { id: 'benchmark', required: true, status: 'pending', candidate: SHA, evidence: [], authorizationGate: 'live provider benchmark' },
       { id: 'feedback', required: true, status: 'passed', candidate: SHA, evidence: [remoteEvidence(3)] },
       { id: 'devpost', required: true, status: 'pending', candidate: SHA, evidence: [], authorizationGate: 'Devpost update' },
+      { id: 'sponsor-experiments', required: true, status: 'pending', candidate: SHA, evidence: [], authorizationGate: 'approved paid run manifest' },
+      { id: 'challenge-evidence', required: true, status: 'pending', candidate: SHA, evidence: [], authorizationGate: 'live challenge execution' },
+      { id: 'external-patch-evidence', required: true, status: 'pending', candidate: SHA, evidence: [], authorizationGate: 'two independent agent sources' },
+      { id: 'adoption-study', required: true, status: 'pending', candidate: SHA, evidence: [], authorizationGate: 'participant sessions' },
+      { id: 'judging-readiness', required: true, status: 'passed', candidate: SHA, evidence: [remoteEvidence(4)] },
     ],
     ...overrides,
   };
@@ -78,10 +85,12 @@ function evidence(overrides = {}) {
 
 test('records real authorization gates as pending and cannot declare release readiness', () => {
   const report = analyze(evidence());
-  assert.equal(report.passedCount, 3);
+  assert.equal(report.passedCount, 4);
   assert.equal(report.ready, false);
   assert.deepEqual(report.requiredMisses, [
-    'benchmark', 'demo', 'devpost', 'dogfood', 'github-release', 'marketplace', 'npm', 'public-matrix',
+    'adoption-study', 'benchmark', 'challenge-evidence', 'demo', 'devpost', 'dogfood',
+    'external-patch-evidence', 'github-release', 'marketplace', 'npm', 'public-matrix',
+    'sponsor-experiments',
   ]);
   assert.match(report.resultHash, /^[a-f0-9]{64}$/u);
   assert.throws(() => assertReleaseReady(report), /not ready/u);
@@ -333,4 +342,59 @@ test('CLI validates bounded input before exclusively writing a deterministic man
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+
+test('the verified repair program requirements are additive and each blocks readiness', () => {
+  const complete = evidence({
+    checks: evidence().checks.map((check) => ({
+      ...check,
+      status: 'passed',
+      evidence: [remoteEvidence(1)],
+      authorizationGate: undefined,
+    })).map(({ authorizationGate: _gate, ...check }) => check),
+  });
+
+  // The eleven original requirements are still required.
+  for (const id of [
+    'benchmark', 'candidate-matrix', 'demo', 'devpost', 'dogfood', 'feedback',
+    'github-release', 'local-gate', 'marketplace', 'npm', 'public-matrix',
+  ]) {
+    assert.ok(RELEASE_EVIDENCE_IDS.includes(id), `${id} is no longer required`);
+  }
+
+  assert.equal(analyze(complete).ready, true);
+
+  // Each new requirement blocks final readiness on its own.
+  for (const id of VERIFIED_PROGRAM_EVIDENCE_IDS) {
+    const missing = analyze({
+      ...complete,
+      checks: complete.checks.map((check) => (check.id === id
+        ? { ...check, status: 'pending', evidence: [], authorizationGate: `${id} authorization` }
+        : check)),
+    });
+    assert.equal(missing.ready, false, `${id} did not block readiness`);
+    assert.deepEqual(missing.requiredMisses, [id]);
+    assert.throws(() => assertReleaseReady(missing), new RegExp(id, 'u'));
+  }
+
+  // Dropping a new requirement entirely is refused, not silently accepted.
+  assert.throws(() => analyze({
+    ...complete,
+    checks: complete.checks.filter(({ id }) => id !== 'sponsor-experiments'),
+  }), /complete and unique/u);
+});
+
+test('judging readiness is about being ready to check, not about having checked', () => {
+  const complete = evidence({
+    checks: evidence().checks.map(({ authorizationGate: _gate, ...check }) => ({
+      ...check, status: 'passed', evidence: [remoteEvidence(1)],
+    })),
+  });
+
+  // A submission in October cannot be blocked on a December window: the
+  // requirement is the readiness record, and it can pass before the window.
+  assert.equal(analyze(complete).ready, true);
+  assert.ok(!RELEASE_EVIDENCE_IDS.includes('judging-access-completed'));
+  assert.ok(VERIFIED_PROGRAM_EVIDENCE_IDS.includes('judging-readiness'));
 });

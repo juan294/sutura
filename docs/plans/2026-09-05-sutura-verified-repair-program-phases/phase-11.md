@@ -34,7 +34,7 @@ writePilotEvidence(finalSubmissionReady=false, actualPublicArtifacts)
 
 - [x] Release/installation validators reject mismatched package version, wrong Action SHA, unpublished or redirected package identity and stale demo pin.
 - [ ] Public matrix passes all eight actual cases with preserved behavior; failed/incomplete cases block pilot acceptance for trials.
-- [ ] Existing required evidence list still includes benchmark, candidate/public matrices, demo, dogfood, feedback, Devpost, local gate, Marketplace, npm and GitHub release. New feature/experiment/adoption requirements are additive and final readiness remains false when missing.
+- [x] Existing required evidence list still includes benchmark, candidate/public matrices, demo, dogfood, feedback, Devpost, local gate, Marketplace, npm and GitHub release. New feature/experiment/adoption requirements are additive and final readiness remains false when missing.
 - [ ] Fresh-clone install, verify CLI, read-only Action dispatch, Case Lab replay/live availability and evidence links pass through actual public artifacts after publication.
 
 ## Manual success criteria and stop
@@ -49,4 +49,9 @@ The validators are built and can be written before anything is published because
 
 The eight-case public matrix blocks pilot acceptance on any failed, incomplete or behaviour-breaking case rather than averaging it away, and a complete pilot still reports `submissionReady: false`: publication and outreach stay separate decisions. 7 tests, wired into `test:release-contracts`.
 
-Still blocked, and not claimed: every criterion that needs a published artifact.
+The required evidence list is extended additively in the same pass that phase
+13 records: the eleven existing checks are unchanged and five are added, each
+of which makes final readiness false on its own while it is pending.
+
+Still blocked, and not claimed: every criterion that needs a published
+artifact.

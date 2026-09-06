@@ -18,9 +18,26 @@ import {
   validateDogfoodLedger,
 } from './dogfood.mjs';
 
+/**
+ * Every required check. New requirements are additive: the existing eleven
+ * stay, and final readiness stays false while any of them is missing.
+ *
+ * The last four were added by the verified repair program. `judging-readiness`
+ * is deliberately about being ready to check in December, not about having
+ * checked: an October submission cannot be blocked on a window that has not
+ * opened.
+ */
 export const RELEASE_EVIDENCE_IDS = Object.freeze([
   'benchmark', 'candidate-matrix', 'demo', 'devpost', 'dogfood', 'feedback',
   'github-release', 'local-gate', 'marketplace', 'npm', 'public-matrix',
+  'sponsor-experiments', 'challenge-evidence', 'external-patch-evidence',
+  'adoption-study', 'judging-readiness',
+]);
+
+/** Checks the verified repair program added, kept nameable on their own. */
+export const VERIFIED_PROGRAM_EVIDENCE_IDS = Object.freeze([
+  'sponsor-experiments', 'challenge-evidence', 'external-patch-evidence',
+  'adoption-study', 'judging-readiness',
 ]);
 export const ACTION_EXECUTABLE_PATHS = Object.freeze([
   'action.yml',

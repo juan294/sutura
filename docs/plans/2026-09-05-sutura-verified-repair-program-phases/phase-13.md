@@ -41,7 +41,7 @@ readBackSubmittedStateAndArchiveConfirmation()
 ## Automated success criteria
 
 - [ ] Full local gates, package/Action/public matrices, release contracts, source/policy/model/image consistency and public pin checks pass for declared final identities.
-- [ ] New release-contract mutations prove that missing sponsor experiments, challenge/external evidence, adoption or judging operations-readiness records block final readiness. Completed December access checks are not a prerequisite for October submission.
+- [x] New release-contract mutations prove that missing sponsor experiments, challenge/external evidence, adoption or judging operations-readiness records block final readiness. Completed December access checks are not a prerequisite for October submission.
 - [ ] Public-link/anchor validation, archive reproducibility and secret scanning pass; numeric claims derive from machine-readable outcomes and correct denominators.
 - [ ] Media metadata confirms duration below 180 seconds; captions/transcript timestamps fit the actual file. Replay performs no provider calls; live path has finite quotas and real terminal behavior.
 
@@ -52,3 +52,29 @@ Review actual signed-out desktop/mobile demo, playable video and concise criteri
 ## Progress record — September 6
 
 Not started. Depends on phase 12 trial evidence and on a recorded video and Devpost submission, none of which exist. The intended freeze and submission dates are in the future.
+
+## Progress record — September 6
+
+Final submission needs published artifacts, a recorded video and the completed
+evidence from phases 10 to 12. **Nothing was submitted, published or recorded.**
+
+The release contract is extended, additively. The eleven existing required
+checks stay exactly as they were, and five are added: `sponsor-experiments`,
+`challenge-evidence`, `external-patch-evidence`, `adoption-study` and
+`judging-readiness`. A test asserts each of the original eleven is still
+required, that a complete set is ready, and that turning any one of the five
+back to pending makes readiness false and names that check as the only miss.
+Dropping one of them from the set entirely is refused rather than accepted as a
+shorter list.
+
+`judging-readiness` is deliberately about being ready to check in December
+rather than about having checked. There is no `judging-access-completed`
+requirement, and a complete October set is ready without one, because a
+submission cannot be blocked on a window that has not opened. The December
+checks themselves are phase 14's own criteria.
+
+11 tests in `release-evidence.test.mjs`; the full `test:release-contracts`
+suite passes 209.
+
+Still blocked, and not claimed: every criterion that needs a final artifact,
+the recorded media, or the completed phase 10 to 12 evidence.

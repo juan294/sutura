@@ -26,8 +26,11 @@ describe('versioned pagination preservation regression', () => {
       hiddenVerification: true,
     });
     const committed = JSON.parse(await readFile(new URL('../../../docs/demo/placebo-v0.2-corpus.json', import.meta.url), 'utf8')) as { corpusHash: string };
+    // The frozen slice and its committed hash are what every historical score
+    // refers to; adding versioned cases must never move either.
     expect((await createCorpusManifest()).corpusHash).toBe(committed.corpusHash);
-    expect((await createCorpusManifest(expanded)).cases).toHaveLength(62);
+    expect((await createCorpusManifest(expanded)).cases).toHaveLength(100);
+    expect((await createCorpusManifest(expanded)).corpusHash).not.toBe(committed.corpusHash);
   });
 
   it('retains the exact recorded patch bytes and release identity', async () => {
