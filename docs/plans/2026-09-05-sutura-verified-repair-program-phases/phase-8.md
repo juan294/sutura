@@ -49,4 +49,17 @@ Follow the parent plan's implementation/review/fix/simplification loop. Run focu
 
 ## Progress record — September 6
 
-Not started. No source, test, artifact, message or dispatch belonging to this phase exists.
+The verdict-first region is built. `caseVerdict` turns a result into a headline, a one-sentence reason a reader can act on without reading anything below it, a recommended next action, and an evidence line naming the mode, exact subject and timestamp. `renderVerdict` places it directly under the header, above every execution detail.
+
+Only a fixed outcome carries the accepted tone; refused, flaky, gave-up and infra-stop each get their own, and a test asserts across every outcome that nothing else can take `verdict-accepted`. The tone is a class rather than inline colour, so a later template change cannot style a stopped run as an acceptance. An infrastructure stop says explicitly that no conclusion should be drawn from it.
+
+Overclaiming is tested rather than trusted: `FORBIDDEN_VERDICT_CLAIMS` covers "universally safe", "proven correct", "production-certified", "guaranteed", "bug-free" and "fully verified", and every outcome's full text is checked against all of them. A historical record reads as a historical record rather than as a run that just happened, and an outcome that missed its expectation says so instead of presenting the outcome alone. 20 tests, and the existing 185-test Case Lab suite still passes.
+
+One constraint this surfaced: the site bundle is built for the browser, so `escapeHtml` could not move into `util.ts`, which imports `node:fs`. It now lives in a dependency-free `html.ts` that both renderers import, which also removes the circular import between `render.ts` and `verdict.ts`.
+
+Not built, and not claimed:
+
+- The two-patch regression comparison binding one baseline to two exact diff hashes, the old visible test and the new independent checks.
+- Replay executed twice with network and provider spies compared for semantic equality, and the labelled recorded fallback for a record that cannot replay.
+- Browser interaction tests for keyboard tabs, focus, expanded evidence, status announcements, responsive layouts and live-button readiness or quota transitions; cost fixtures for unknown units and partial records.
+- Live-control readiness states, the concise CLI verify route shown in the page, and the manual narrow and desktop inspection with saved screenshots.

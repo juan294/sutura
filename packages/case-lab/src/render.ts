@@ -4,6 +4,8 @@
  * browser-safe helpers and types, and uses no Node API.
  */
 import { recoverySummary } from '@sutura/core/recovery-summary';
+import { escapeHtml } from './html.js';
+import { renderVerdict } from './verdict.js';
 import { expectedOutcomeFor, touchesTests, type CaseLabCase, type CaseLabOutcome } from './cases.js';
 import { MODES, MODE_LABELS, OUTCOME_LABELS, isPublicHttpsUrl, type CaseLabMode } from './labels.js';
 import type {
@@ -16,19 +18,7 @@ import type {
 
 export { LIVE_REQUEST_ID_PATTERN as LIVE_REQUEST_ID, MODE_LABELS, OUTCOME_LABELS } from './labels.js';
 
-export function escapeHtml(value: string): string {
-  return value.replace(
-    /[&<>"']/g,
-    (character) =>
-      ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#39;',
-      })[character]!,
-  );
-}
+export { escapeHtml } from './html.js';
 
 function usd(value: number | null): string {
   if (value === null) return 'unknown';
@@ -356,6 +346,7 @@ export function renderResultBody(result: CaseLabResult, item: CaseLabCase): stri
   const file = result.caseFile;
   return [
     renderHeader(result, item),
+    renderVerdict(result, item),
     renderEvidence(result, item),
     renderDiagnosis(file),
     renderRecovery(file),
