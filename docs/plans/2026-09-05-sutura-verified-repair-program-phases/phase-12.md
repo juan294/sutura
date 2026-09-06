@@ -34,7 +34,7 @@ All material setup/verification/UX defects discovered in this scope must be reso
 
 - [ ] Existing validator accepts three genuine public-install records bound to real artifacts and required language/classification mix; ledger reconciles every attempted session.
 - [ ] Review scorer reproduces first unaided results from records; assistance, missing answers and failed sessions cannot vanish.
-- [ ] Public export checks reject secrets/private contacts/unconsented quotes and broken release/source hashes.
+- [x] Public export checks reject secrets/private contacts/unconsented quotes and broken release/source hashes.
 - [ ] Every code fix has a named reproduction, targeted regression, independent review, standard sequential gates and bundle parity when applicable.
 - [ ] Any changed behavior invalidates and reruns dependent phase 10/11 evidence according to the parent's identity rules. Do not reuse pilot results as exact-final acceptance.
 
@@ -45,3 +45,22 @@ Three valid independent installs and five real review sessions completed; publis
 ## Progress record — September 6
 
 Not started, and not completable by an agent. This phase requires three independent developers installing Sutura in unfamiliar repositories and five people reviewing verification evidence. The phase text states it directly: human participation and consent cannot be manufactured with agents. It also depends on an accepted phase 11 public pilot. No participant was contacted and no message was sent.
+
+## Progress record — September 6
+
+Every measured criterion here needs real consenting participants, which phase 9
+prepared and nobody has been asked to join. **No participant was contacted and
+no session was held.**
+
+The public export check is built, because it can be written before there is
+anything to export and must exist before there is. `scripts/study-export.mjs`
+refuses an export carrying anything shaped like a credential, a private contact
+detail such as an email address, a phone number or a social profile, at any
+depth rather than only at the top level. It refuses a quote unless the
+participant consented to that exact quote, matched by hash: consent to take
+part is not consent to be quoted, and consent to one quote is not consent to a
+longer version of it. It refuses a real name in place of a pseudonymous
+participant id, a participant appearing twice, and a release or source identity
+that is not an exact commit. 6 tests, wired into `test:release-contracts`.
+
+Still blocked, and not claimed: everything that needs a genuine session.

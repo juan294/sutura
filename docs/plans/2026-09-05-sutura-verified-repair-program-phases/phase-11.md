@@ -32,7 +32,7 @@ writePilotEvidence(finalSubmissionReady=false, actualPublicArtifacts)
 
 ## Automated success criteria
 
-- [ ] Release/installation validators reject mismatched package version, wrong Action SHA, unpublished or redirected package identity and stale demo pin.
+- [x] Release/installation validators reject mismatched package version, wrong Action SHA, unpublished or redirected package identity and stale demo pin.
 - [ ] Public matrix passes all eight actual cases with preserved behavior; failed/incomplete cases block pilot acceptance for trials.
 - [ ] Existing required evidence list still includes benchmark, candidate/public matrices, demo, dogfood, feedback, Devpost, local gate, Marketplace, npm and GitHub release. New feature/experiment/adoption requirements are additive and final readiness remains false when missing.
 - [ ] Fresh-clone install, verify CLI, read-only Action dispatch, Case Lab replay/live availability and evidence links pass through actual public artifacts after publication.
@@ -43,4 +43,10 @@ Inspect actual signed-out public result on desktop/mobile and the immutable evid
 
 ## Progress record — September 6
 
-Not started, and blocked on authorization rather than on effort. Publication of a public package, an immutable Action and a Case Lab deployment requires explicit release authorization, and it depends on phase 10 candidate gates that have not run. Nothing was published, tagged or deployed.
+Publication is blocked on authorization rather than on effort. A public package, an immutable Action and a Case Lab deployment need explicit release authorization, and they depend on phase 10 candidate gates that have not run. **Nothing was published, tagged or deployed, and no registry was contacted.**
+
+The validators are built and can be written before anything is published because they take what a caller already observed rather than fetching it. `scripts/pilot-artifacts.mjs` refuses a version the registry does not serve, a package with no published version at all, a name the registry resolves differently, a tarball from a path the release never named, and an integrity value that is not an exact sha512. It refuses an Action pinned by tag rather than by commit, a pin that differs from the published Action, and a release tag that resolves to a different commit, because a tag can move and an identity cannot. It refuses a demo pin that does not match the demo's actual commit rather than refreshing it, since a stale pin makes published evidence describe a state that no longer exists.
+
+The eight-case public matrix blocks pilot acceptance on any failed, incomplete or behaviour-breaking case rather than averaging it away, and a complete pilot still reports `submissionReady: false`: publication and outreach stay separate decisions. 7 tests, wired into `test:release-contracts`.
+
+Still blocked, and not claimed: every criterion that needs a published artifact.

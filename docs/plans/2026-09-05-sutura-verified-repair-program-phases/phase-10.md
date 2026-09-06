@@ -61,7 +61,7 @@ unfreeze only after every dispatched job is terminal/accounted
 
 ## Automated success criteria
 
-- [ ] Local manifest/evidence tests reject changed candidate/model/price/corpus, missing/duplicated results, relabeled modes, unauthorized expansion and negative/unknown cost conflation.
+- [x] Local manifest/evidence tests reject changed candidate/model/price/corpus, missing/duplicated results, relabeled modes, unauthorized expansion and negative/unknown cost conflation.
 - [ ] All mandatory release and known-danger controls pass; new capability evidence is linked to actual terminal jobs and immutable source.
 - [ ] `pnpm run test:release-contracts`, new direct evidence tests, real NeMo evaluation and all standard gates pass locally before remote actions; repeat local checks after relevant fixes.
 - [ ] Blinded Data Lab job outputs and NeMo item outputs exist, including errors/unknowns; comparison calculations reproduce from stored files without provider access.
@@ -73,4 +73,12 @@ Independent reviewer samples one correct repair, one false-approval trap, one ab
 
 ## Progress record — September 6
 
-Not started, and blocked on authorization rather than on effort. This phase measures the product with real providers, which the parent plan gates: all remote budgets start at zero authorized, and a concrete run manifest with finite caps and a verified price-based maximum must be approved before any dispatch. No job was prepared, dispatched or cancelled, and no provider credential was read.
+Every remote step is blocked on authorization rather than on effort. This phase measures the product with real providers, which the parent plan gates: all remote budgets start at zero authorized, and a concrete run manifest with finite caps and a verified price-based maximum must be approved before any dispatch. **No job was prepared, dispatched or cancelled, and no provider credential was read.**
+
+The local half is built. `scripts/verified-program-evidence.mjs` defines the run manifest and the evidence contract a paid measurement must satisfy, and nothing in it dispatches, spends or contacts a provider.
+
+A manifest states every cap explicitly: subjects, repetitions, maximum output tokens, sandbox operations, elapsed time, inference spend, raw sandbox units and concurrency. None has a default, because a missing cap is a refusal rather than an implied infinity: a run that could not have been costed in advance cannot be authorized in advance either. A zero, negative or infinite cap is refused the same way. The manifest also needs an exact candidate commit, image digest, corpus hash, split hash and config hash, a model list with both prices and a price date, and a stated stop policy, because a run with no stated stop can only end by exhausting a cap. `manifestMaximumUsd` prices the ceiling from the caps rather than an average, and never reports more than the spend cap.
+
+`validateRunEvidence` answers one question in several ways: does this evidence describe the run that was authorized? It refuses a result under a different candidate, image, corpus, split or config; a different model or a different price for the same model; a missing subject, a duplicated subject, or a subject the manifest never authorized; a recorded result presented as live; a result that never reached a terminal state, while counting an explicit cancellation as the evidence it is; an unknown inference cost, a negative one, and a sandbox amount with no confirmed unit; and a run that spent past its own cap. An unconfirmed sandbox amount is reported as its own count rather than folded into a total. 15 tests, wired into `test:release-contracts`.
+
+Still blocked, and not claimed: every criterion that needs a dispatched job. No manifest has been submitted for authorization, and none will be without an explicit request.

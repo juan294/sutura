@@ -34,7 +34,7 @@ on December15 after judging access window:
 
 ## Automated success criteria
 
-- [ ] Local checker tests distinguish HTTP success from wrong pin/stale result, private artifacts, expired metadata and unavailable live service; it never dispatches implicitly.
+- [x] Local checker tests distinguish HTTP success from wrong pin/stale result, private artifacts, expired metadata and unavailable live service; it never dispatches implicitly.
 - [ ] Durable artifact integrity/link checks pass without logged-in GitHub access; source/evidence identities remain final.
 - [ ] Quota/credential expiry/outage tests preserve labeled fallback and do not mint new unlimited permissions or expose secrets.
 - [ ] Any implementation or deployment fix receives focused and standard sequential local gates before its separately authorized remote action.
@@ -46,3 +46,27 @@ Owner confirms actual monitoring/rotation mechanism, finite remaining budget and
 ## Progress record — September 6
 
 Not started. This is a bounded operational phase that runs through December 15, 2026, after submission. It cannot be completed ahead of the judging window it covers.
+
+## Progress record — September 6
+
+This phase runs inside a December judging window that has not opened, against
+artifacts that have not been published. **Nothing was checked remotely and no
+credential was read.**
+
+The checker is built. `scripts/judging-access.mjs` answers what a judge would
+find, and HTTP success alone is never the answer: a page that loads while
+serving a different pin is `wrong-pin`, one serving a different result hash is
+`stale-result`, and one whose metadata has expired is `expired-metadata` even
+though it loaded. A 401 or 403 is reported as a private artifact rather than an
+outage, because that is exactly what a judge without an account would see, and
+a 429 is reported as an exhausted quota rather than a failure.
+
+It never dispatches: any mutating method is refused as an implicit dispatch, so
+a checker cannot spend money to answer a question about availability. An
+unavailable live path is allowed, and falls back to the labelled recording; what
+is refused is a report with no fallback at all, one where neither path works,
+and one that would use a scope nobody authorized. 8 tests, wired into
+`test:release-contracts`.
+
+Still blocked, and not claimed: every criterion that needs a published artifact
+or the December window.
