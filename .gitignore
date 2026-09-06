@@ -56,3 +56,5 @@ docs/plans/2026-08-27-sutura-core-phases/
 
 # Vercel CLI link and pulled environment (Case Lab deploy)
 .vercel/
+__pycache__/
+*.pyc
