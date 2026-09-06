@@ -46,4 +46,17 @@ Follow the parent plan's implementation/review/fix/simplification loop. Run focu
 
 ## Progress record — September 6
 
-Not started. No source, test, artifact, message or dispatch belonging to this phase exists.
+`scripts/review-study.mjs` implements the study's integrity machinery. **No participant was contacted, no message was sent, and no session was scheduled.**
+
+The attempt ledger is append-only and keeps every invited person whatever happened to them. A study that quietly drops the people who withdrew or failed reports the success rate of the people who succeeded, which is not a finding, so the ledger hash changes when a failed attempt is removed. Duplicate participant ids are refused, consent is an explicit decision rather than an absence, and a participant who has not consented cannot progress past invited or withdrawn.
+
+Review scoring counts only answers given before any hint. An answer produced after help is a different measurement and is reported separately, because a study that counts assisted answers as unaided measures the assistance. An assisted answer labelled unaided is refused outright, as are an empty answer, a non-positive or absurd duration, a missing grade and a repeated task for one participant. The sixty-second target is reported beside correctness rather than merged into it, as a count over a small sample rather than a rate claim.
+
+The paired review-impact exercise refuses the three ways it could quietly become meaningless: showing Sutura's verdict inside the ordinary-CI arm, giving one participant the same defect twice so the second decision measures memory, and an unbalanced condition order that would let a practice effect read as an effect of the evidence. It reports correctness beside median time rather than instead of it, and carries the small-sample caveat in the output itself. 18 tests, wired into `test:release-contracts` so they run in every local and hosted gate.
+
+Not built, and not claimed:
+
+- `docs/adoption/verified-repair-study.md`, the recruitment message, the intended cohort and the consent text. These are participant-facing artifacts and the phase requires explicit authorization before any of them is sent; drafting them is in scope, sending is not.
+- The frozen four-task review set with hidden assessor answers, and the two counterbalanced task packs.
+- The two external-agent patch-source task packs.
+- The rehearsal mode that uses local packed artifacts and must never satisfy public-install acceptance.
