@@ -125,7 +125,7 @@ The with/without-Tavily local test establishes that the code consumes grounding 
 - [x] Two is the total changed-file cap everywhere, including generated artifacts and final audit.
 - [x] All Phase 2 authorization, existing policy, test bypass and Python shortcut controls remain enforced.
 - [x] Dependency preparation maintains minimal inputs, approved egress boundaries, disabled scripts and frozen final installation.
-- [ ] Whole-transaction identity, replay, budget reservations, cancellation and audit evidence agree.
+- [x] Whole-transaction identity, replay, budget reservations, cancellation and audit evidence agree.
 - [x] Unsupported three-file migrations, formats and oversized artifacts yield explicit abstentions.
 - [x] Process-spawning tests declare explicit timeouts of at least 30 seconds.
 
@@ -166,9 +166,8 @@ Controller-owned target selection decides which files may change together before
 
 Local verification: workspace typecheck, lint and build passed; `verify:bundle` reported parity; focused `repair-targets` (12), `two-file-repair` (12) and `dependency-transaction` (28) suites passed; the core suite passed 1,419 tests with nine credential-gated skips. `repair-two-file-export-contract` and `python-repair-two-file-call-contract` fail after either partial patch and pass only as a complete transaction, and the Python case's hidden preservation checks fail on the partial patch and pass on the complete one. Both fixtures carry `evaluationRevision`, so the frozen default corpus selection and its `corpusHash` are unchanged and the committed counterfactual evidence stays valid.
 
-Outstanding for this phase, not claimed as done:
-
-- Whole-transaction identity, replay and budget-reservation agreement is not separately verified end to end; the existing single-file replay contracts continue to pass unchanged. That criterion stays unticked.
+Outstanding at the time of that record: whole-transaction identity, replay and
+budget-reservation agreement. That is now built; see the section below.
 
 ## Acceptance fixtures completed — September 6
 
@@ -181,3 +180,38 @@ The four remaining controls from the acceptance table now exist and execute, all
 `trap-two-file-test-shortcut` pairs a legitimate caller edit with a weakened expectation, and `trap-two-file-third-path` smuggles a third changed path into an otherwise correct repair. Both fake fixes make the visible suite green, and the self-check confirms that. Each is refused by the seam that actually applies: the built-in patch policy names `touches test file: case.test.js` for the first, and the transaction cap refuses the second, whose three changed paths the built-in rules alone find unobjectionable.
 
 One boundary worth stating: `validateDependencyManifestChange` deliberately refuses `file:` specifiers, and offline vendoring requires them, so the grounded registry-version validator remains proved by unit controls rather than by this fixture. The fixture proves the pairing, the frozen installation and the transaction boundary.
+
+## Whole-transaction agreement — September 6
+
+`two-file-transaction-evidence.test.ts` holds the four records of one two-file
+repair against each other, and against the partial patches the transaction must
+never be confused with. The attempt runs through `runControlledRepairAttempt`
+with the two-slot contract, a stub provider and an in-memory sandbox reporting
+the complete diff, so each assertion is made on a real submitted candidate
+rather than on a constructed one.
+
+Identity: the candidate's diff carries both `diff --git` headers, its hash is
+the hash of the complete diff, and it equals neither half. `findSelectedCandidate`
+matches the whole transaction and refuses a half carrying the same candidate id,
+so a record cannot name the transaction and hold one of its files.
+
+Budget: a two-file transaction charges one branch and one model turn, the same
+as a one-file repair, because the transaction is one attempt rather than one per
+file. With the branch budget spent, the attempt gives up as a budget failure,
+carries no candidate and never asks the provider. An already-cancelled branch
+does the same and charges no model turn, so neither exhaustion nor cancellation
+can leave a partial patch behind.
+
+Audit: the complete diff is what the audit reads. `validateCandidateDiff`
+reports both paths, the diff bytes of the whole transaction, and no mechanical
+violation. A third changed path in the same sandbox diff is refused before
+submission, naming the transaction cap, even though the built-in patch rules
+alone find the three paths unobjectionable.
+
+Replay: evidence recorded under the transaction diff hash decodes only against
+that identity. Substituting either half's hash as the expected identity is
+refused, and a half's evidence carries a different comparison identity and a
+different integrity hash, so a replay cannot silently accept one file of a
+two-file repair.
+
+9 tests. The core suite passes 1,621 tests with nine credential-gated skips.
