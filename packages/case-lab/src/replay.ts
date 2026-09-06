@@ -100,6 +100,8 @@ export function caseFileCost(caseFile: CaseLabCaseFile): VerificationCostSummary
 export interface RecordedResultOptions {
   readonly release: ReleaseIdentity;
   readonly now: () => Date;
+  /** Set when a replay bundle existed but could not be replayed. */
+  readonly replayFallbackReason?: string;
 }
 
 export function recordedResult(
@@ -128,6 +130,9 @@ export function recordedResult(
       runUrl: ledgerEntry.runUrl,
       subjectSha: evidence.result.subjectSha,
       recordedAt: ledgerEntry.recordedAt,
+      ...(options.replayFallbackReason === undefined
+        ? {}
+        : { replayFallbackReason: options.replayFallbackReason }),
     },
     cost,
     elapsedMs: evaluation.elapsedTimeMs,
@@ -228,15 +233,26 @@ function resolveOptions(options: ReplayCatalogOptions): ResolvedCatalogOptions {
 
 async function resultFor(item: CaseLabCase, resolved: ResolvedCatalogOptions): Promise<CaseLabResult> {
   const bundlePath = resolve(resolved.replayDir, `${item.id}.json`);
+  let replayFallbackReason: string | undefined;
   if (existsSync(bundlePath)) {
-    const { value, sha256 } = readReplayBundleFile(bundlePath);
-    return replayedResult(item, value, {
-      release: resolved.release, now: resolved.now, fixtureSha256: sha256,
-      ...(resolved.replay === undefined ? {} : { replay: resolved.replay }),
-    });
+    try {
+      const { value, sha256 } = readReplayBundleFile(bundlePath);
+      return await replayedResult(item, value, {
+        release: resolved.release, now: resolved.now, fixtureSha256: sha256,
+        ...(resolved.replay === undefined ? {} : { replay: resolved.replay }),
+      });
+    } catch (error) {
+      // A bundle that cannot replay becomes a labelled recorded view, never a
+      // result quietly relabelled as a replay.
+      replayFallbackReason = error instanceof Error ? error.message.slice(0, 240) : String(error);
+    }
   }
   resolved.evidence ??= loadRecordedEvidence(resolved.rootDir);
-  return recordedResult(item, resolved.evidence, { release: resolved.release, now: resolved.now });
+  return recordedResult(item, resolved.evidence, {
+    release: resolved.release,
+    now: resolved.now,
+    ...(replayFallbackReason === undefined ? {} : { replayFallbackReason }),
+  });
 }
 
 /** One deterministic result for one case: a complete replay bundle when present, else the recorded live result. */

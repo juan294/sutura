@@ -63,6 +63,11 @@ export interface CaseLabResultBase {
     readonly runUrl: string;
     readonly subjectSha: string;
     readonly recordedAt: string;
+    /**
+     * Why a replay bundle was present but not used. A record shown because
+     * replay failed must say so rather than looking like a plain recording.
+     */
+    readonly replayFallbackReason?: string;
   };
   readonly replayedFrom?: {
     readonly bundleSha256: string;
@@ -509,6 +514,9 @@ function base(value: unknown): CaseLabResultBase {
       runUrl: publicGitHubUrl(recorded.runUrl, 'recordedFrom.runUrl'),
       subjectSha: sha(recorded.subjectSha, 'recordedFrom.subjectSha'),
       recordedAt: isoTimestamp(recorded.recordedAt, 'recordedFrom.recordedAt'),
+      ...(recorded.replayFallbackReason === undefined
+        ? {}
+        : { replayFallbackReason: text(recorded.replayFallbackReason, 'recordedFrom.replayFallbackReason', 240) }),
     };
   } else if (raw.recordedFrom !== undefined) {
     throw new CaseLabResultError('recordedFrom is allowed only for a recorded result');

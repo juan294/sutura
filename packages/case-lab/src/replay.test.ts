@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createCompleteReplayBundleForTest } from '@sutura/core';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { CASE_LAB_CASES, caseLabCase } from './cases.js';
 import { loadRecordedEvidence } from './evidence.js';
@@ -16,7 +16,7 @@ import {
   replayedResult,
   REPOSITORY_ROOT,
 } from './replay.js';
-import { validateCaseLabResult } from './result.js';
+import { validateCaseLabResult, type CaseLabResult } from './result.js';
 
 const NOW = () => new Date('2026-09-04T12:00:00.000Z');
 const RELEASE = loadRelease();
@@ -127,4 +127,54 @@ describe('deterministic results', () => {
     expect(recorded.mode).toBe('recorded');
     await expect(deterministicResult('unknown', { replayDir, now: NOW })).rejects.toThrow('caseId must be one of');
   });
+});
+
+describe('replay determinism and fallback', () => {
+  it('produces the same semantic result twice with no network call', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const replayDir = mkdtempSync(join(tmpdir(), 'case-lab-twice-'));
+    try {
+      const first = await replayCatalog({ replayDir, now: NOW });
+      const second = await replayCatalog({ replayDir, now: NOW });
+
+      const semantic = (results: CaseLabResult[]): unknown =>
+        results.map(({ caseId, mode, outcome, matchesExpectation, resultHash }) =>
+          ({ caseId, mode, outcome, matchesExpectation, resultHash }));
+
+      expect(semantic(second)).toEqual(semantic(first));
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+      rmSync(replayDir, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  it('falls back to a labelled recorded view when a bundle cannot replay', async () => {
+    const replayDir = mkdtempSync(join(tmpdir(), 'case-lab-bad-bundle-'));
+    try {
+      writeFileSync(
+        join(replayDir, 'flaky-failure.json'),
+        JSON.stringify({ schemaVersion: 'not-a-supported-version' }),
+      );
+      const result = await deterministicResult('flaky-failure', { replayDir, now: NOW });
+
+      expect(result.mode).toBe('recorded');
+      expect(result.replayedFrom).toBeUndefined();
+      expect(result.recordedFrom?.replayFallbackReason).toBeTruthy();
+    } finally {
+      rmSync(replayDir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('records no fallback reason when no bundle was present at all', async () => {
+    const replayDir = mkdtempSync(join(tmpdir(), 'case-lab-no-bundle-'));
+    try {
+      const result = await deterministicResult('flaky-failure', { replayDir, now: NOW });
+
+      expect(result.mode).toBe('recorded');
+      expect(result.recordedFrom?.replayFallbackReason).toBeUndefined();
+    } finally {
+      rmSync(replayDir, { recursive: true, force: true });
+    }
+  }, 60_000);
 });
