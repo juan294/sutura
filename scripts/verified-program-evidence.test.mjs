@@ -32,8 +32,9 @@ function manifest(overrides = {}) {
       priceAsOf: '2026-09-06',
     }],
     caps: {
-      subjects: 2, repetitions: 1, maxOutputTokens: 1_000, sandboxOperations: 20,
-      elapsedTimeSec: 600, inferenceUsd: 1, rawSandboxUnits: 100, concurrency: 1,
+      subjects: 2, repetitions: 1, modelTurnsPerSubject: 8, maxOutputTokens: 1_000,
+      sandboxOperations: 20, elapsedTimeSec: 600, inferenceUsd: 1,
+      rawSandboxUnits: 100, concurrency: 1,
     },
     stopPolicy: 'Stop on the first mandatory gate failure or on any cap.',
     subjects: ['case-a', 'case-b'],
@@ -118,13 +119,19 @@ test('a manifest cannot list more subjects than it capped, or list one twice', (
   }))), 'duplicate-subject');
 });
 
-test('the priced maximum comes from the caps and never exceeds the spend cap', () => {
-  const maximum = manifestMaximumUsd(manifest());
+test('the priced maximum prices every permitted turn, not one per subject', () => {
+  const base = manifest();
+  const maximum = manifestMaximumUsd(base);
 
-  assert.ok(maximum > 0);
-  assert.ok(maximum <= manifest().caps.inferenceUsd);
+  // 2 subjects x 1 repetition x 8 turns at (0.5 + 1.5)/million x 1000 tokens.
+  assert.ok(Math.abs(maximum - 0.032) < 1e-9, `unexpected ceiling ${maximum}`);
+  // Allowing more turns per subject costs more; pricing one turn would not move.
   assert.ok(manifestMaximumUsd(manifest({
-    caps: { ...manifest().caps, subjects: 100, inferenceUsd: 1 },
+    caps: { ...base.caps, modelTurnsPerSubject: 16 },
+  })) > maximum);
+  // The spend cap is still the ceiling of the ceiling.
+  assert.ok(manifestMaximumUsd(manifest({
+    caps: { ...base.caps, subjects: 100, inferenceUsd: 1 },
   })) <= 1);
 });
 

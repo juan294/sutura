@@ -21,8 +21,9 @@ const SUBJECT_ID = /^[a-z0-9][a-z0-9._-]{0,127}$/u;
 
 /** Every cap a manifest must state. None has a default. */
 export const REQUIRED_CAPS = Object.freeze([
-  'subjects', 'repetitions', 'maxOutputTokens', 'sandboxOperations',
-  'elapsedTimeSec', 'inferenceUsd', 'rawSandboxUnits', 'concurrency',
+  'subjects', 'repetitions', 'modelTurnsPerSubject', 'maxOutputTokens',
+  'sandboxOperations', 'elapsedTimeSec', 'inferenceUsd', 'rawSandboxUnits',
+  'concurrency',
 ]);
 
 /** The identities a result must agree with, one by one. */
@@ -94,7 +95,10 @@ export function validateRunManifest(manifest) {
   for (const cap of REQUIRED_CAPS) {
     if (!Object.hasOwn(caps, cap)) refuse('unbounded-cap', `caps.${cap} has no default and must be stated`);
   }
-  for (const cap of ['subjects', 'repetitions', 'maxOutputTokens', 'sandboxOperations', 'concurrency']) {
+  for (const cap of [
+    'subjects', 'repetitions', 'modelTurnsPerSubject', 'maxOutputTokens',
+    'sandboxOperations', 'concurrency',
+  ]) {
     positiveInteger(caps[cap], `caps.${cap}`);
   }
   for (const cap of ['elapsedTimeSec', 'inferenceUsd', 'rawSandboxUnits']) {
@@ -123,13 +127,18 @@ export function validateRunManifest(manifest) {
  * This is what an authorization is given against. It is deliberately the
  * ceiling rather than an estimate: a request that can only be approved on an
  * optimistic average is not a bounded request.
+ *
+ * Every turn is priced at the most expensive model the manifest names, with
+ * the full input and output allowance, and a subject may take
+ * `modelTurnsPerSubject` of them in each repetition. Pricing one turn per
+ * subject would understate a repair that is allowed eight.
  */
 export function manifestMaximumUsd(manifest) {
   const valid = validateRunManifest(manifest);
   const perTurnUsd = Math.max(...valid.models.map(({ inputPerMillionUsd, outputPerMillionUsd }) =>
     (inputPerMillionUsd + outputPerMillionUsd) * (valid.caps.maxOutputTokens / 1_000_000)));
-  const ceiling = perTurnUsd * valid.caps.subjects * valid.caps.repetitions;
-  return Math.min(ceiling, valid.caps.inferenceUsd);
+  const turns = valid.caps.subjects * valid.caps.repetitions * valid.caps.modelTurnsPerSubject;
+  return Math.min(perTurnUsd * turns, valid.caps.inferenceUsd);
 }
 
 function costOf(result, name) {
