@@ -351,7 +351,7 @@ The committed [manifest](docs/demo/sutura-evaluation-manifest-v1.json) and
 [ATIF trajectory](docs/demo/sutura-trajectory-v1.atif.json) are sanitized
 examples. The trajectory passes `nat.atif.trajectory.Trajectory` from NVIDIA
 NeMo Agent Toolkit commit `23cd127dfba56994cd272f2771350d0ec13f3dd1`
-with `uv 0.12.7`:
+with `uv 0.12.x`:
 
 ```text
 uv run --project packages/evaluation python packages/evaluation/scripts/validate-atif.py docs/demo/sutura-trajectory-v1.atif.json
