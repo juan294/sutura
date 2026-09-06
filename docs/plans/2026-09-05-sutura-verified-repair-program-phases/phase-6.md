@@ -69,3 +69,16 @@ Reuse existing comparison arms and Wilson intervals. Extend observation records 
 ## Phase gate
 
 Follow the parent plan's implementation/review/fix/simplification loop. Run focused checks and the standard local commands sequentially: `pnpm run typecheck`, `pnpm run lint`, `pnpm run test`, `pnpm run build`. Rebuild the committed Action bundle for core/Action changes, run `pnpm run verify:bundle`, and complete `pnpm run ci:local` before any later push involving core. New process/build/sandbox tests use explicit timeouts of at least 30 seconds. Inspect actual hosted triggers before any push; never create a Vercel preview or use hosted CI to debug. Record actual results and the integrated source identity; stop after this phase. Remote actions and participant messages require the concrete authorization described in the parent plan.
+
+## Progress record — September 6
+
+Implemented source: this phase's commit. No provider call, Data Lab upload, batch job or paid evaluation occurred.
+
+`packages/evaluation/src/blinded.ts` implements the contamination controls. `blindExecutedRecord` keeps the failure, candidate diff, public contracts and executed observations — the candidate is deliberately retained, because this is an offline evaluator of candidate quality, unlike phase 4 challenge generation — and removes case kind, expected outcome, final verdict, adjudicator recommendation, hidden tests and results, agent identity, and any changed path whose name carries a label. `assertNoForbiddenMetadata` fails on a forbidden key nested anywhere in a prompt-bound structure. `freezeSplitByRootFamily` assigns whole root families, so a synthetic mutation can never land in a different split from the case it derives from, and produces the same assignments and split hash for the same corpus in any input order. 30 tests.
+
+Not built in this pass, and not claimed:
+
+- The standalone NeMo `EvaluationHarness` invocation, `packages/evaluation/scripts/evaluate-atif.py` and its installed smoke test are absent. That acceptance item explicitly rejects a hand-written scorer, and it needs a pinned `nvidia-nat-eval` revision inspected and locked first.
+- The v2 quality task, the two pre-registered prompt variants and the paired Data Lab batch are not built; no prompt was constructed or sent.
+- The immutable 100-case inventory is not assembled. `freezeSplitByRootFamily` enforces the 60/20/20 contract but no corpus has been frozen through it, and no split hashes are published.
+- Balanced accuracy, false-approval and false-refusal scoring, calibration and cost accounting are not implemented.

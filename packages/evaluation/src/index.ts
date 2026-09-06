@@ -56,3 +56,19 @@ export type {
   DataLabRow,
   DataLabUploadedExperimentRecord,
 } from './datalab.js';
+export {
+  assertNoForbiddenMetadata,
+  blindExecutedRecord,
+  BlindingError,
+  FORBIDDEN_BLINDED_KEYS,
+  freezeSplitByRootFamily,
+} from './blinded.js';
+export type {
+  BlindedLabel,
+  BlindedRecord,
+  EvaluationSplit,
+  ExecutedRecord,
+  FrozenSplit,
+  SplitCase,
+  SplitCounts,
+} from './blinded.js';
