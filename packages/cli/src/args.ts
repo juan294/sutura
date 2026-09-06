@@ -8,6 +8,7 @@ export const USAGE = [
   '  sutura init [--workflow <name>] [--repo <owner/repo>] [--action-sha <commit>] [--force] [--no-tavily]',
   '  sutura doctor [--repo <owner/repo>] [--action-sha <commit>]',
   '  sutura heal --case-dir <dir> --format json [--candidate-diff <diff>] [--alternatives-file <file>] [--routing-profile <id>] [--runtime <auto|node|python>] [--no-tavily]',
+  '  sutura verify --case-dir <dir> --source-sha <commit> --policy-base-sha <commit> --candidate-diff <file> --failing-command <id> [--runtime <auto|node|python>] --format json',
   '  sutura audit --case-dir <dir> --candidate-diff <file> --before-log <file> --after-log <file> --format json',
   '  sutura replay --bundle <file> --format json [--runtime <auto|node|python>]',
   '  sutura eval validate --manifest <file>',
@@ -44,6 +45,24 @@ export interface InitArguments {
   actionSha?: string;
   force: boolean;
   tavilyEnabled: boolean;
+}
+
+/**
+ * Execution-backed verification of a patch this tool did not write. Every
+ * identity is exact and required: a branch name or short sha cannot stand in
+ * for the commit that failed, and the trusted policy commit is chosen by the
+ * operator rather than by the patch. The candidate is always a file path, never
+ * inline bytes, so a large diff never has to survive argv.
+ */
+export interface VerifyArguments {
+  command: 'verify';
+  caseDir: string;
+  sourceSha: string;
+  policyBaseSha: string;
+  candidateDiff: string;
+  failingCommand: string;
+  runtime?: 'node' | 'python';
+  format: 'json';
 }
 
 export interface AuditArguments {
@@ -91,6 +110,7 @@ export interface EvalExportArguments {
 
 export type CliArguments =
   | HealArguments
+  | VerifyArguments
   | AuditArguments
   | ReplayArguments
   | InitArguments
@@ -246,6 +266,45 @@ function parseInit(args: readonly string[]): InitArguments {
   };
 }
 
+function parseVerify(args: readonly string[]): VerifyArguments {
+  const values = new Map<string, string>();
+  const required = ['--case-dir', '--source-sha', '--policy-base-sha', '--candidate-diff', '--failing-command', '--format'];
+  const allowed = new Set([...required, '--runtime']);
+  for (let index = 1; index < args.length; index += 2) {
+    const flag = args[index];
+    if (!flag || !allowed.has(flag)) throw new CliUsageError(`Unknown argument: ${flag ?? '(missing)'}`);
+    if (values.has(flag)) throw new CliUsageError(`Duplicate argument: ${flag}`);
+    values.set(flag, nonEmptyValue(args, index, flag));
+  }
+  for (const flag of required) {
+    if (!values.has(flag)) throw new CliUsageError(`${flag} is required`);
+  }
+  if (values.get('--format') !== 'json') throw new CliUsageError('--format must be json');
+  for (const flag of ['--source-sha', '--policy-base-sha']) {
+    const value = values.get(flag) as string;
+    if (!/^[a-f0-9]{40}$/u.test(value)) {
+      throw new CliUsageError(`${flag} must be an exact lowercase 40-character commit`);
+    }
+  }
+  const runtimeValue = values.get('--runtime');
+  if (runtimeValue !== undefined && !['auto', 'node', 'python'].includes(runtimeValue)) {
+    throw new CliUsageError('--runtime must be auto, node, or python');
+  }
+  const runtime = runtimeValue === undefined || runtimeValue === 'auto'
+    ? undefined
+    : runtimeValue as 'node' | 'python';
+  return {
+    command: 'verify',
+    caseDir: values.get('--case-dir') as string,
+    sourceSha: values.get('--source-sha') as string,
+    policyBaseSha: values.get('--policy-base-sha') as string,
+    candidateDiff: values.get('--candidate-diff') as string,
+    failingCommand: values.get('--failing-command') as string,
+    ...(runtime === undefined ? {} : { runtime }),
+    format: 'json',
+  };
+}
+
 function parseAudit(args: readonly string[]): AuditArguments {
   const values = new Map<string, string>();
   const allowed = new Set(['--case-dir', '--candidate-diff', '--before-log', '--after-log', '--format']);
@@ -362,6 +421,7 @@ export function parseArgs(args: readonly string[]): CliArguments {
   if (args.length === 1 && (args[0] === '--help' || args[0] === 'help')) return { command: 'help' };
   if (args.length === 1 && (args[0] === '--version' || args[0] === 'version')) return { command: 'version' };
   if (args[0] === 'heal') return parseHeal(args);
+  if (args[0] === 'verify') return parseVerify(args);
   if (args[0] === 'audit') return parseAudit(args);
   if (args[0] === 'replay') return parseReplay(args);
   if (args[0] === 'init') return parseInit(args);

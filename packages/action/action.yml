@@ -29,6 +29,18 @@ inputs:
     description: Price-verified model-selection profile. Incomplete profiles cannot change defaults.
     required: false
     default: production-baseline-v1
+  source-sha:
+    description: Exact 40-character commit whose failure is being verified. Required only by the verification route.
+    required: false
+  policy-base-sha:
+    description: Exact 40-character commit supplying the operator-trusted repository policy. A supplied patch cannot choose it.
+    required: false
+  candidate-diff:
+    description: Unified diff produced by another agent, verified as supplied. This route never authors a replacement or writes to the repository.
+    required: false
+  failing-command:
+    description: Identifier of the trusted failing command to reproduce. Must resolve through the trusted command map, not arbitrary text.
+    required: false
   require-fixed:
     description: Fail the action unless Sutura produces a fixed outcome. Intended for strict self-hosting and acceptance gates.
     required: false

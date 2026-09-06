@@ -10,6 +10,7 @@ import {
   type HealArguments,
   type InitArguments,
   type ReplayArguments,
+  type VerifyArguments,
 } from './args.js';
 import { doctorSutura, type DoctorResult } from './doctor.js';
 import { detectLocalRuntimeId, healFromEnvironment } from './heal.js';
@@ -17,6 +18,7 @@ import { auditFromEnvironment } from './heal.js';
 import { installSutura, type SetupResult } from './setup.js';
 import { runEvaluationCommand } from './eval.js';
 import { replayFromFile } from './replay.js';
+import { prepareVerify } from './verify.js';
 
 export interface CliIo {
   write?: (value: string) => void;
@@ -28,6 +30,7 @@ export interface CliDependencies {
   init?: (request: InitArguments) => Promise<SetupResult>;
   doctor?: (request: DoctorArguments) => Promise<DoctorResult>;
   audit?: (request: AuditArguments) => Promise<AuditFile>;
+  verify?: (request: VerifyArguments) => Promise<unknown>;
   replay?: (request: ReplayArguments) => Promise<CaseFile>;
 }
 
@@ -120,6 +123,18 @@ export async function runCli(
     try {
       const lines = await runEvaluationCommand(request);
       write(`${lines.join('\n')}\n`);
+      return 0;
+    } catch (error) {
+      writeError(`${publicError(error)}\n`);
+      return 1;
+    }
+  }
+  if (request.command === 'verify') {
+    try {
+      const result = dependencies.verify === undefined
+        ? await prepareVerify(request)
+        : await dependencies.verify(request);
+      write(`${JSON.stringify(result)}\n`);
       return 0;
     } catch (error) {
       writeError(`${publicError(error)}\n`);

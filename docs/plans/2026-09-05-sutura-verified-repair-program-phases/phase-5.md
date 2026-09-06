@@ -104,8 +104,19 @@ Implemented source: `f82a055`. No push, provider inference, deployment or hosted
 
 `packages/core/src/verify.ts` verifies a supplied patch through phase 4's shared evaluator rather than a second gate stack. `validateVerifyRequest` enforces every trust input before anything executes and before any provider call: exact 40-character `source-sha` and `policy-base-sha`, a failing command that resolves through the trusted command map rather than printable-text validation, a bounded and parseable candidate diff, the phase 3 two-file transaction cap, and refusal of any path reaching `.sutura.json`, controller or evaluator storage, hidden tests, challenge sets or a sensitive file. Challenge mode defaults to `required`, so a missing contract abstains as `insufficient` instead of approving on the visible suite; an infrastructure stop stays distinct from a refusal; and `generatedReplacement: false` is a structural property of the result. 23 tests, and a test proves no gate runs when validation refuses.
 
-Not built in this pass, and not claimed:
+## Second pass — September 6
 
-- `packages/cli/src/verify.ts` and `packages/action/src/verify.ts` are not added, so `sutura verify` is not yet a command and the Action has no separate verification route. The core contract exists and is tested; the argument parsing, bounded diff-file reading, Action metadata, help text and rebuilt bundle wiring remain.
-- Source snapshotting from a clean checkout, bounded Git object reads of `.sutura.json` at the trusted policy commit, and detection of source changing during snapshotting are specified but not implemented; the core entry point takes already-read bytes.
+`sutura verify` is a command and the Action has a separate verification route.
+
+The CLI parses the full argument set, requires every identity and refuses a short sha, an uppercase sha, a branch name or a 41-character value for either commit, alongside unknown, duplicated and non-JSON arguments. `readCandidateDiffFile` opens the patch once and makes every check against that same handle, so the bytes verified are the bytes measured; a directory, a non-regular file and an oversized file are refused before any content is read. Validation runs before anything executes, so an untrusted command, an unparseable patch or a protected path is refused without a sandbox starting. 23 tests.
+
+The Action route takes no repository port and returns no pull-request intent, so there is no path from it to a branch, commit, comment or check-run write. That is a property of the signature rather than a rule the function remembers, and a test asserts the module never references the repository client or Octokit. Refusals surface as reason codes rather than echoing request detail. The trusted policy commit comes from workflow configuration, so a pull request cannot ask for a more permissive policy by supplying one in its patch. 16 tests.
+
+`action.yml` gains the four verification inputs at both the package and repository root, with the root keeping its own `main` path.
+
+One defect this pass found and fixed: the Action input reader trimmed the candidate patch, which strips the trailing newline a unified diff needs. Patch bytes are now preserved exactly and only checked for presence.
+
+Not built in this pass, and not claimed:
+- Source snapshotting from a clean checkout, bounded Git object reads of `.sutura.json` at the trusted policy commit, and detection of source changing during snapshotting are specified but not implemented. Both routes validate the request and stop there; neither yet prepares a sandbox, reproduces the failure or executes the shared gate stack, so `verifyExternalPatch` is reachable from tests but not from the command.
+- The trusted command map is a fixed default in both routes rather than being resolved from the repository policy at the trusted commit.
 - No external-patch fixtures from two agent sources exist; phase 10 owns that evidence.
