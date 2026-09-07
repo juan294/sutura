@@ -461,3 +461,47 @@ test('a ledger holds one entry per case in the expanded selection, not only the 
   const tooMany = createPlaceboLedger(Array.from({ length: 101 }, (_unused, index) => entry(index)));
   assert.throws(() => validatePlaceboLedger(tooMany), /schema or resultHash is invalid/u);
 });
+
+test('continuing past a recorded infrastructure stop needs a deliberate opt-in', async () => {
+  const entry = {
+    artifactName: 'sutura-placebo-pl-1-flaky-timer-race',
+    artifactSha256: 'a'.repeat(64),
+    caseId: 'flaky-timer-race',
+    controllerSha: 'c'.repeat(40),
+    evaluationCount: 1,
+    inferenceUsd: 0.001,
+    outcomes: ['infra-stop'],
+    packageContentHash: 'd'.repeat(64),
+    packageIntegrity: 'f'.repeat(64),
+    recordedAt: '2026-09-07T12:00:00.000Z',
+    resultHash: 'e'.repeat(64),
+    runId: '1001',
+    runUrl: 'https://github.com/juan294/sutura/actions/runs/1001',
+    sandboxUsd: 0.06,
+    subjectSha: 'c'.repeat(40),
+    totalUsd: 0.061,
+  };
+  const options = {
+    controllerSha: 'c'.repeat(40), subjectSha: 'c'.repeat(40),
+    caseId: 'repair-off-by-one', capUsd: 10, initialReserveUsd: 0.5,
+  };
+  const dependencies = {
+    gate: async () => undefined,
+    readLedger: async () => createPlaceboLedger([entry]),
+    runCase: async () => 'dispatched',
+  };
+
+  const previous = process.env.SUTURA_ALLOW_INFRA_STOP_LEDGER;
+  delete process.env.SUTURA_ALLOW_INFRA_STOP_LEDGER;
+  try {
+    await assert.rejects(() => runSinglePlaceboCase(options, dependencies),
+      /refuses to continue an infrastructure-stop ledger/u);
+
+    // The opt-in continues; it never removes the recorded infra-stop.
+    process.env.SUTURA_ALLOW_INFRA_STOP_LEDGER = '1';
+    assert.equal(await runSinglePlaceboCase(options, dependencies), 'dispatched');
+  } finally {
+    if (previous === undefined) delete process.env.SUTURA_ALLOW_INFRA_STOP_LEDGER;
+    else process.env.SUTURA_ALLOW_INFRA_STOP_LEDGER = previous;
+  }
+});

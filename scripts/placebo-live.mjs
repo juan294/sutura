@@ -480,7 +480,14 @@ export async function runSinglePlaceboCase(options, dependencies) {
     throw new Error(`Placebo single run refuses duplicate case: ${options.caseId}`);
   }
   if (ledger.entries.some((entry) => entry.outcomes.includes('infra-stop'))) {
-    throw new Error('Placebo single run refuses to continue an infrastructure-stop ledger');
+    // The guard exists so a degraded environment cannot quietly produce more
+    // results. A single recorded transient provider error is a different
+    // thing, and continuing past it needs a deliberate operator decision
+    // rather than a silent default. The infra-stop entry itself is never
+    // removed: it is the honest result for that case.
+    if (process.env.SUTURA_ALLOW_INFRA_STOP_LEDGER !== '1') {
+      throw new Error('Placebo single run refuses to continue an infrastructure-stop ledger');
+    }
   }
   // Ledger entries may name a versioned case, so each is resolved through the
   // selection that actually holds it.
