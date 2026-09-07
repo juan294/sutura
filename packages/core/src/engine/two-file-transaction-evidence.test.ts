@@ -283,3 +283,37 @@ describe('two-file transaction replay', () => {
     expect(half.integritySha256).not.toBe(whole.integritySha256);
   });
 });
+
+describe('a supplied patch obeys the same transaction cap', () => {
+  /**
+   * trap-two-file-third-path was approved live on 2026-09-07: a supplied
+   * candidate changed three files where the transaction permits two. The cap
+   * lived only in the repair tools, which a supplied patch never reaches.
+   */
+  const thirdPath = `${transaction}${fileDiff('package.json', '{"name":"x"}\n', '{"name":"y"}\n')}`;
+
+  it('refuses a supplied candidate that changes a third file', async () => {
+    const { policyVerdictForTest } = await import('../heal.js');
+    const policy = createDefaultRepositoryPolicy();
+
+    const twoFiles = policyVerdictForTest({ id: 'supplied', diff: transaction, rationale: 'r' }, diagnosis, policy);
+    expect(twoFiles.ok).toBe(true);
+
+    const threeFiles = policyVerdictForTest({ id: 'supplied', diff: thirdPath, rationale: 'r' }, diagnosis, policy);
+    expect(threeFiles.ok).toBe(false);
+    expect(threeFiles.violations.join(' ')).toMatch(/permits at most 2/u);
+  });
+
+  it('applies the cap to a supplied patch and a generated one alike', async () => {
+    const { policyVerdictForTest } = await import('../heal.js');
+    const policy = createDefaultRepositoryPolicy();
+
+    // The generated path refuses it through the repair tools.
+    const generated = validateCandidateDiff(thirdPath, diagnosis, policy);
+    expect(generated.changedFiles).toHaveLength(3);
+
+    // The supplied path must reach the same conclusion, not a weaker one.
+    expect(policyVerdictForTest({ id: 'supplied', diff: thirdPath, rationale: 'r' }, diagnosis, policy).ok)
+      .toBe(false);
+  });
+});

@@ -24,6 +24,8 @@ import type {
 } from './domain.js';
 import { MAX_STAGE_EVIDENCE_ENTRIES } from './config.js';
 import { vetPatch } from './engine/patch-rules.js';
+import { parseUnifiedDiff } from './diff/unified.js';
+import { repairTargetFileCap } from './engine/repair-targets.js';
 import {
   race,
   selectWinner,
@@ -693,13 +695,44 @@ function makeCaseFile(
   };
 }
 
+/**
+ * Every gate a candidate must pass before it is raced, whoever wrote it.
+ *
+ * The transaction file cap is applied here rather than only in the repair
+ * tools, because a supplied patch never passes through them. Without it a
+ * supplied candidate could change more files than a generated one is allowed
+ * to, which is how trap-two-file-third-path was approved live on 2026-09-07.
+ */
+export function policyVerdictForTest(
+  candidate: Candidate,
+  diagnosis: Diagnosis,
+  policy: RepositoryPolicy,
+): ReturnType<typeof vetPatch> {
+  return policyVerdict(candidate, diagnosis, policy);
+}
+
 function policyVerdict(
   candidate: Candidate,
   diagnosis: Diagnosis,
   policy: RepositoryPolicy,
 ): ReturnType<typeof vetPatch> {
   const builtIn = vetPatch(candidate.diff, diagnosis);
-  return builtIn.ok ? evaluatePatchPolicy(candidate.diff, policy) : builtIn;
+  if (!builtIn.ok) return builtIn;
+  const repositoryVerdict = evaluatePatchPolicy(candidate.diff, policy);
+  if (!repositoryVerdict.ok) return repositoryVerdict;
+  const parsed = parseUnifiedDiff(candidate.diff);
+  const changedFiles = [...new Set(parsed.files.flatMap(({ oldPath, newPath }) =>
+    [oldPath, newPath].filter((path): path is string => path !== null)))];
+  const cap = repairTargetFileCap(policy);
+  if (changedFiles.length > cap) {
+    return {
+      ok: false,
+      violations: [
+        `changes ${changedFiles.length} files; the repair transaction permits at most ${cap}`,
+      ],
+    };
+  }
+  return repositoryVerdict;
 }
 
 function enforceWinnerPolicy(
