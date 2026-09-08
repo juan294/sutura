@@ -54,6 +54,22 @@ export async function runRecoveryControllerCase(caseId: string, options: { rewri
     const llm: RepairFailureContext['llm'] = {
       modelQuote: (tier) => ({ role: tier, modelId: `local-scripted-${tier}`, profileId: 'local-control', price: { input: 0.1, output: 0.1 } }),
       async chat(tier, messages, settings) {
+        if (settings?.purpose === 'challenge-generation') {
+          inferenceCalls.push('challenge-generation');
+          const input = request(messages) as { contractExcerpts: Array<{ contractId: string; path: string; excerpt: string }> };
+          const challenges = input.contractExcerpts.map(({ contractId, path, excerpt }, index) => {
+            const declared = JSON.parse(excerpt) as { sourceSha256: string; relationId: string; contract: { kind: string; examples?: Array<{ args: unknown[] }> } };
+            if (declared.contract.kind !== 'exact' || !declared.contract.examples?.[0]) throw new Error('Unregistered recovery preservation contract');
+            return {
+              id: `preservation-${index}`, kind: 'preservation',
+              contractRefs: [{ path, sha256: declared.sourceSha256, startLine: 1, endLine: 1 }],
+              rationale: 'Preserve the declared asynchronous profile behavior',
+              probeId: `preservation-${index}`, inputs: declared.contract.examples[0].args,
+              contractId, relationId: declared.relationId,
+            };
+          });
+          return { text: JSON.stringify({ challenges }), usd: 0.000001 };
+        }
         if (tier === 'nano') {
           inferenceCalls.push('diagnosis');
           return { text: JSON.stringify({ class: initialClass, confidence: 0.49, signals: ['local-real-reproduction'], failingCmd: observedCommand, errorExcerpt: (before.stderr || before.stdout).slice(-2000) }), usd: 0.000001 };

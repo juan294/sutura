@@ -81,6 +81,16 @@ describe('real repairFailure diagnosis recovery', () => {
     expect(result.baselineAfterExitCode).not.toBe(0);
     if (!deceptive) {
       expect(result.caseFile.audit?.approved).toBe(true);
+      if (caseId.endsWith('-preservation')) {
+        expect(result.inferenceCalls.filter((purpose) => purpose === 'challenge-generation')).toHaveLength(1);
+        expect(result.inferenceCalls.indexOf('challenge-generation')).toBeLessThan(result.inferenceCalls.indexOf('repair'));
+        const verification = result.caseFile.verificationRuns?.find((record) => record.verification.status === 'passed');
+        expect(verification?.verification.challengeAssurance).toBe(true);
+        expect(verification?.subjects.filter((subject) => subject.subject === 'baseline')).toHaveLength(2);
+        expect(verification?.subjects.filter((subject) => subject.subject === 'candidate')).toHaveLength(2);
+        expect(verification?.subjects.every((subject) => subject.status === 'passed' && /^[a-f0-9]{64}$/u.test(subject.observationSha256 ?? ''))).toBe(true);
+      }
+
       expect(result.caseFile.stages.some((stage) => stage.note === 'Fresh suite rerun')).toBe(true);
       expect(result.selectedDiff).toBeDefined();
       if (caseId.includes('indexed-access')) {
