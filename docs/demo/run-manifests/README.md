@@ -4,7 +4,7 @@ Each manifest binds one measurement to its candidate, configuration, subjects an
 
 ## Current request
 
-[Stage 3 v3 readiness](development-validation-v3-readiness.md) is the current proposed request: 80 development/validation subjects, candidate `ba408402f7ceaae0d291fca300280326f7cd2241`, and a proposed **USD 25 cumulative cap, with USD 0 authorized**. Nothing has been dispatched under v3. The [saved configuration](development-validation-v3-config.json) fixes the production baseline routing and existing per-subject budgets. It does not select the experimental adaptive profile.
+[Stage 3 v4 readiness](development-validation-v4-readiness.md) is the replacement request after a test-only CI guard-coverage correction: 80 development/validation subjects on `8657553608b04f5882eda7517068ad80f7d04aae`, asking to carry forward the **existing USD 25 total allowance**, with no additional budget. Replacement-manifest authorization is pending. Retain USD 1 for prerequisite canaries and limit the case controller to USD 24. No Stage 3 cases have run. The [saved configuration](development-validation-v4-config.json) retains the fixed production baseline and existing per-subject budgets.
 
 The expanded verification path invalidates the earlier runtime/cost extrapolations. The readiness request distinguishes the validator's USD 10.48576 token calculation, the USD 20 aggregate repair-inference envelope at unchanged defaults, unknown sandbox billing and the proposed cumulative cap. None is a promise of a completed 80-case run.
 
@@ -16,7 +16,8 @@ The expanded verification path invalidates the earlier runtime/cost extrapolatio
 | 2 | `development-smoke-v1` | Historical six-control smoke passed, including a live two-file transaction. Later defects prevent treating it as current quality evidence. |
 | 3 | `development-validation-v1` | Stopped after a false approval; cumulative restart accounting was subsequently fixed. Retain the original manifests, costs and failed evidence. |
 | 3 | `development-validation-v2` | Superseded, unexecuted request for the earlier candidate. |
-| 3 | `development-validation-v3` | Current proposed request, not authorized or dispatched. |
+| 3 | `development-validation-v3` | Cap and push approved; candidate failed final CI guard coverage. Prerequisite canary passed; zero cases dispatched. Superseded case request. |
+| 3 | `development-validation-v4` | Replacement after test-only coverage correction. Same total allowance requested; pending replacement-manifest approval. |
 | 4 | Not prepared | Held-out 20 require a separate cap and frozen configuration after Stage 3 is read. |
 
 Each stage gates the next. Stop dependent jobs after a failed control or incomplete run. No clean repair rate exists for the new candidate yet. Paid Data Lab comparisons and other roadmap experiments need their own concrete requests; Stage 3 does not authorize them.
@@ -31,7 +32,7 @@ From the repository root, validate the saved request without contacting a provid
 node --input-type=module -e "
 import { manifestMaximumUsd, validateRunManifest } from './scripts/verified-program-evidence.mjs';
 import { readFileSync } from 'node:fs';
-const m = JSON.parse(readFileSync('docs/demo/run-manifests/development-validation-v3.json', 'utf8'));
+const m = JSON.parse(readFileSync('docs/demo/run-manifests/development-validation-v4.json', 'utf8'));
 console.log(validateRunManifest(m).manifestHash, manifestMaximumUsd(m));
 "
 ```
@@ -40,7 +41,7 @@ The validator prices the maximum listed model with equal input/output token allo
 
 ## Before dispatch
 
-Follow the exact candidate, remote checks, credential-presence checks, commands and stop procedure in [v3 readiness](development-validation-v3-readiness.md). Push authorization and paid-run authorization are separate. Check secrets by presence only; never print their values. The push freeze remains enabled until every dispatched job is terminal or its cancellation and billing are reconciled.
+Follow the exact candidate, remote checks, credential-presence checks, commands and stop procedure in [v4 readiness](development-validation-v4-readiness.md). Push authorization and paid-run authorization are separate. Check secrets by presence only; never print their values. The push freeze remains enabled until every dispatched job is terminal or its cancellation and billing are reconciled.
 
 ## Cumulative controller accounting
 

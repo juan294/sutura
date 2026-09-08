@@ -1,6 +1,6 @@
 # Stage 3 v3 readiness
 
-Prepared September 8, 2026. **Authorization remains USD 0. Nothing has been dispatched under this manifest.** The proposed cumulative cap is **USD 25**, across all attempts under the manifest. Approval of v1 or v2 grants no authority for v3.
+Prepared September 8, 2026; historical candidate request. **Juan approved USD 25 and the exact candidate push. Zero Stage 3 cases were dispatched.** The candidate failed the final CI guard coverage gate; its separately recorded prerequisite canary passed. The [v4 replacement request](development-validation-v4-readiness.md) preserves that evidence and asks to carry the same total allowance forward. Do not execute the superseded v3 case request.
 
 The [manifest](development-validation-v3.json) binds candidate `ba408402f7ceaae0d291fca300280326f7cd2241`: complete shared runtime verification, canonical executed evidence, source binding, read-only external verification, and cumulative manifest accounting. Its 80 development/validation subjects retain the exact v2 order. The held-out paid evaluation remains unopened and needs a separate decision after Stage 3 is read.
 
