@@ -124,12 +124,13 @@ describe('snapshotCleanSourceAt', () => {
       'a.js': 'export const a = 1;\n',
       'b.js': 'export const b = 2;\n',
     });
-    const changed = snapshotCleanSourceAt(dir, sha);
+    // Attach the handler before the concurrent write can make Git reject.
+    const changed = snapshotCleanSourceAt(dir, sha).catch((error: unknown) => error);
     // The copy reads a.js, then b.js; rewriting a.js during the copy leaves the
     // snapshot describing neither the old source nor the new one.
     await writeFile(join(dir, 'a.js'), 'export const a = 99;\n');
 
-    expect(reasonOf(await changed.catch((error: unknown) => error)))
+    expect(reasonOf(await changed))
       .toMatch(/source-changed-during-snapshot|dirty-checkout/u);
     await chmod(dir, 0o755).catch(() => undefined);
   }, 60_000);
