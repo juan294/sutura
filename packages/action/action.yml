@@ -112,10 +112,10 @@ inputs:
     required: false
 
 outputs:
-  verification-status:
-    description: Terminal supplied-patch verification status in verify mode.
   outcome:
     description: Final Sutura outcome for the failed run.
+  verification-status:
+    description: Terminal supplied-patch verification status in verify mode.
 
 runs:
   using: node24
