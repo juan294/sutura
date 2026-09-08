@@ -70,7 +70,7 @@ unfreeze only after every dispatched job is terminal/accounted
 
 - [x] Local manifest/evidence tests reject changed candidate/model/price/corpus, missing/duplicated results, relabeled modes, unauthorized expansion and negative/unknown cost conflation.
 - [ ] All mandatory release and known-danger controls pass; new capability evidence is linked to actual terminal jobs and immutable source.
-- [ ] `pnpm run test:release-contracts`, new direct evidence tests, real NeMo evaluation and all standard gates pass locally before remote actions; repeat local checks after relevant fixes.
+- [x] `pnpm run test:release-contracts`, new direct evidence tests, real NeMo evaluation and all standard gates pass locally before remote actions; repeat local checks after relevant fixes. September 8 verification and the fixture-only rerun scope are recorded in the parent completion entry.
 - [ ] Blinded Data Lab job outputs and NeMo item outputs exist, including errors/unknowns; comparison calculations reproduce from stored files without provider access.
 - [ ] Published experiment integrity covers measured timing and exact source data; raw unconfirmed sandbox units remain explicit.
 
