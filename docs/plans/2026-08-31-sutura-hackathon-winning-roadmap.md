@@ -637,3 +637,16 @@ was implemented or authorized by this checkpoint.
 Juan approved all recommended scope and requested `/plan`. The [verified repair program](2026-09-05-sutura-verified-repair-program.md) carries fourteen phases: truthful baseline, diagnosis recovery, two-file repair, independent contract-backed probes, external verification, Data Lab/NeMo/Arena evaluation, adaptive routing, Case Lab UX, maintainer-study preparation, live measured evidence, pilot release, real trials/fixes, final submission, and judging access through December 15.
 
 No feature implementation, push, deployment, participant outreach or paid run was performed by this planning task. Only phases 6 and 9 are batch eligible. Existing release obligations remain; pilot readiness, final submission readiness and fulfilled judging access are separate states. Consult the new plan for current dependencies and exact phase gates.
+
+### September 8 cumulative spend follow-up
+
+The local Placebo controller now accounts by paid-run manifest in the Git common
+directory, independently of replaceable result ledgers. Reinitialization,
+manifest/cap drift, concurrent dispatch and unresolved costs fail closed. The
+[controller procedure](../demo/run-manifests/README.md#cumulative-controller-accounting)
+records the recovery boundary and the remaining per-case billing limitation.
+The new [Stage 3 request](../demo/run-manifests/development-validation-v2-readiness.md)
+retains all 80 development/validation subjects. Authorization remains USD 0;
+no paid run, publication or outreach was performed in this follow-up. The
+held-out stage remains gated on reading Stage 3. Local implementation is not a
+clean quality measurement or acceptance of the measurement phases.

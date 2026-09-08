@@ -14,6 +14,7 @@ import {
 } from './evidence-contract.mjs';
 import { RELEASE_VERSION } from './install-test-lib.mjs';
 import { requireActivePushFreeze } from './push-freeze.mjs';
+import { initializeManifestSpend, withManifestSpend } from './manifest-spend.mjs';
 
 const execFileAsync = promisify(execFile);
 const ROOT = resolve(import.meta.dirname, '..');
@@ -665,13 +666,13 @@ export async function dispatchPlaceboWorkflow(input, dependencies = {}) {
   ]);
 }
 
-async function runRemoteCase({ controllerSha, subjectSha, caseId, skipGate = false, counterfactual = false }) {
+async function runRemoteCase({ controllerSha, subjectSha, caseId, skipGate = false, counterfactual = false,
+  controllerId = `pl-${Date.now()}-${randomUUID().slice(0, 8)}` }) {
   if (!skipGate) await gatePlaceboLive(controllerSha, subjectSha);
   // A case outside the frozen slice is served from the expanded manifest; the
   // frozen one is never widened to accommodate it.
   const corpus = loadCorpusSync(needsExpandedSelection(caseId));
   corpusCase(corpus, caseId);
-  const controllerId = `pl-${Date.now()}-${randomUUID().slice(0, 8)}`;
   await dispatchPlaceboWorkflow({ controllerSha, subjectSha, caseId, controllerId, counterfactual });
   const run = await pollRun(controllerId, caseId, controllerSha);
   const expectedArtifactName = `sutura-placebo-${controllerId}-${caseId}`;
@@ -749,6 +750,18 @@ async function artifactCommand(args) {
 export async function main(args = process.argv.slice(2)) {
   const commandName = args[0];
   if (commandName === 'artifact') return artifactCommand(args);
+  let spendOptions;
+  if (['init-spend', 'run', 'streak'].includes(commandName)) {
+    const bounds = validateLiveSpendBounds(Number(valueAfter(args, '--cap-usd')),
+      Number(valueAfter(args, '--initial-reserve-usd')), 'Placebo');
+    const commonDirectory = await command('git', ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+    spendOptions = {
+      directory: join(commonDirectory, 'sutura-manifest-spend'),
+      manifest: JSON.parse(await readFile(valueAfter(args, '--run-manifest'), 'utf8')),
+      ...bounds,
+    };
+    if (commandName === 'init-spend') return initializeManifestSpend(spendOptions);
+  }
   const controllerSha = valueAfter(args, '--controller-sha');
   const subjectSha = valueAfter(args, '--subject-sha');
   if (commandName === 'gate') return gatePlaceboLive(controllerSha, subjectSha);
@@ -763,9 +776,8 @@ export async function main(args = process.argv.slice(2)) {
     }, {
       gate: gatePlaceboLive,
       readLedger: readLedgerDefault,
-      runCase: () => runRemoteCase({
-        controllerSha, subjectSha, caseId, skipGate: true, counterfactual,
-      }),
+      runCase: () => withManifestSpend({ ...spendOptions, controllerSha, subjectSha, caseId },
+        ({ controllerId }) => runRemoteCase({ controllerSha, subjectSha, caseId, controllerId, skipGate: true, counterfactual })),
     }));
   }
   if (commandName === 'streak') {
@@ -775,9 +787,11 @@ export async function main(args = process.argv.slice(2)) {
         controllerSha, subjectSha, authorize: args.includes('--authorize'),
         capUsd: Number(valueAfter(args, '--cap-usd')),
         initialReserveUsd: Number(valueAfter(args, '--initial-reserve-usd')),
+        caseIds: spendOptions.manifest.subjects,
       }, {
         readLedger: readLedgerDefault,
-        runCase: (caseId) => runRemoteCase({ controllerSha, subjectSha, caseId, skipGate: true }),
+        runCase: (caseId) => withManifestSpend({ ...spendOptions, controllerSha, subjectSha, caseId },
+          ({ controllerId }) => runRemoteCase({ controllerSha, subjectSha, caseId, controllerId, skipGate: true })),
       });
     });
   }
@@ -793,7 +807,7 @@ export async function main(args = process.argv.slice(2)) {
     });
     return finalized;
   }
-  throw new Error('Usage: placebo-live.mjs gate|run|streak|finalize with exact controller and subject SHAs');
+  throw new Error('Usage: placebo-live.mjs init-spend|gate|run|streak|finalize with exact controller and subject SHAs');
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

@@ -505,3 +505,12 @@ test('continuing past a recorded infrastructure stop needs a deliberate opt-in',
     else process.env.SUTURA_ALLOW_INFRA_STOP_LEDGER = previous;
   }
 });
+
+test('paid CLI commands require a run manifest before gating or dispatch', async () => {
+  for (const command of ['run', 'streak']) {
+    await assert.rejects(() => main([
+      command, '--controller-sha', CONTROLLER_SHA, '--subject-sha', SUBJECT_SHA,
+      '--case', 'repair-off-by-one', '--authorize', '--cap-usd', '1', '--initial-reserve-usd', '0.2',
+    ]), /--run-manifest requires a value/u);
+  }
+});

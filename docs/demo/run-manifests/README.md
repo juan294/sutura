@@ -96,3 +96,44 @@ The manifest caps `rawSandboxUnits` separately and does not convert it to
 dollars, because the provider's raw unit is unconfirmed. Recording an
 unconfirmed unit as a dollar figure would state a precision the evidence does
 not have.
+
+## Cumulative controller accounting
+
+The Placebo CLI now requires `--run-manifest` for both `run` and `streak`.
+Before the first authorized dispatch, initialize its account once with
+`init-spend`, using the same `--run-manifest`, `--cap-usd` and
+`--initial-reserve-usd` arguments intended for the run. Initialization is local
+bookkeeping, not spending authorization. Never initialize a historical manifest
+with a zero balance: the pre-fix v1 history remains closed and over budget.
+
+The account lives under `sutura-manifest-spend/` in the Git common directory.
+All worktrees of this clone share it. It is separate from the replaceable case
+ledger, and exclusive creation refuses a second initialization. Each dispatch
+binds the manifest hash, exact candidate, listed subject and cumulative cap.
+Both inference and reported sandbox cost count, including repeated cases after
+a result-ledger reset. A changed hash or cap under the same manifest id is
+refused. A separate clone is not a continuation controller: transfer and verify
+the original account before any authorized continuation there.
+
+Before dispatch the controller durably records a pending reservation and the
+unique controller id used in the GitHub run title. Concurrent controllers are
+locked out. Completion records the actual cost; a crash, failed workflow,
+unknown cost or invalid artifact leaves the reservation pending and blocks
+further spending. An unexpectedly expensive case can exceed the historical
+maximum reserve. This change closes restart resets; it does not impose a
+provider-side hard billing limit within an already running case.
+
+For recovery, first prove the original controller process has exited and find
+the exact GitHub run using the pending controller id. Wait for terminal state
+and retrieve its validated artifact and cost, or establish provider billing if
+no complete artifact exists. Preserve a copy of the account and case ledger.
+Only reconcile a pending entry against that exact run and measured cost; never
+clear it as zero merely because dispatch or download failed. Remove a stale
+lock only after proving no controller owns it. There is no automatic recovery
+command: unresolved billing keeps the run blocked. Account files are private
+local operational state and must not be deleted as worktree cleanup.
+
+The [v2 readiness request](development-validation-v2-readiness.md) retains the
+80 subjects and proposes a fresh USD 10 cumulative cap, with USD 0 authorized.
+It records the fixed controller candidate and the remote identity checks
+required before a paid run.
