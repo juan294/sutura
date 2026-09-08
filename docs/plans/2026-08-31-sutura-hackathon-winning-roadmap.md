@@ -14,7 +14,7 @@ Submission deadline: 2026-10-30 at 10:00 PDT
 
 Planned submission date: 2026-10-29
 
-Current phase: Planning complete for the approved full verified-repair scope; implementation begins with Phase 1 of the [September 5 verified repair program](2026-09-05-sutura-verified-repair-program.md).
+Current phase: Known local implementation complete as of September 8; paid measurements, independent human review, publication, participant studies and submission/judging evidence remain open. See the [September 5 verified repair program](2026-09-05-sutura-verified-repair-program.md#local-completion--september-8-2026) for exact verification and remaining gates.
 
 Detailed plan: [Verified repair program and fourteen phase files](2026-09-05-sutura-verified-repair-program.md).
 
