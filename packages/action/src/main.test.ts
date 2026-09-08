@@ -141,3 +141,9 @@ describe('runAction input guards', () => {
     expect(setFailed).toHaveBeenCalledWith('GITHUB_RUN_ID must be a positive decimal id');
   });
 });
+
+ it('dispatches verify mode without constructing repair orchestration',async()=>{
+ const verify=vi.fn(async()=>({status:'refused' as const}));const setFailed=vi.fn();
+ await runAction({readAction:()=>({mode:'verify',githubToken:'token',runId:'77',triageN:1,requireFixed:false,captureReplay:false,environment:{}}),loadConfiguration:()=>({contreeToken:'token',contreeProject:'project'} as never),repository:()=>({owner:'owner',repo:'repo'}),environment:{GITHUB_RUN_ID:'88'},readVerification:()=>({sourceSha:SHA,policyBaseSha:SHA,candidateDiff:'diff',failingCommandId:'diagnosed'}),verify,setFailed});
+ expect(verify).toHaveBeenCalledOnce();expect(setFailed).toHaveBeenCalledWith('Sutura verification: refused');
+ });

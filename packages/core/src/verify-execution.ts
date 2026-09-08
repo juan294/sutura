@@ -1,6 +1,8 @@
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 
+import { BudgetExceededError } from './engine/repair-budget.js';
+import { boundedTail } from './text/bounded-tail.js';
 import { runMechanicalChecks } from './audit/mechanical.js';
 import { shellQuote } from './engine/shell.js';
 import { SNAPSHOT_CWD, type Executor, type ImageId, type RunResult } from './executor/types.js';
@@ -22,6 +24,7 @@ export type ReproductionStatus = 'reproduced' | 'baseline-passes' | 'intermitten
 export interface VerifyReproduction {
   status: ReproductionStatus;
   exitCodes: number[];
+  output?: string;
   /** The prepared baseline image, absent when preparation itself stopped. */
   baselineImage?: ImageId;
   /** Set only for `infra-stop`, naming the command that could not complete. */
@@ -64,7 +67,8 @@ export async function prepareAndReproduce(
   let baseImage: ImageId;
   try {
     baseImage = await ports.executor.importImage(ports.baseImageRef ?? runtime.imageRef);
-  } catch {
+  } catch (error) {
+    if (error instanceof BudgetExceededError) throw error;
     return { status: 'infra-stop', exitCodes: [], failedCommand: 'importImage' };
   }
   const prepared = await prepareSandbox(
@@ -75,11 +79,13 @@ export async function prepareAndReproduce(
   }
 
   const exitCodes: number[] = [];
+  let output = '';
   for (let attempt = 1; attempt <= VERIFY_REPRODUCTION_RUNS; attempt += 1) {
     let result: RunResult;
     try {
       result = await ports.executor.run(prepared.imageId, request.failingCommand, { cwd: SNAPSHOT_CWD });
-    } catch {
+    } catch (error) {
+    if (error instanceof BudgetExceededError) throw error;
       return {
         status: 'infra-stop', exitCodes, baselineImage: prepared.imageId,
         failedCommand: request.failingCommand,
@@ -93,6 +99,7 @@ export async function prepareAndReproduce(
       parentImageId: prepared.imageId,
       note: 'Observed failing command on the untouched baseline',
     });
+    output = boundedTail(`${result.stdout}\n${result.stderr}`, { maxLines: 100, maxCharacters: 4000, maxBytes: 4000 });
     exitCodes.push(result.exitCode);
   }
 
@@ -100,7 +107,7 @@ export async function prepareAndReproduce(
   const status: ReproductionStatus = failed === exitCodes.length
     ? 'reproduced'
     : failed === 0 ? 'baseline-passes' : 'intermittent';
-  return { status, exitCodes, baselineImage: prepared.imageId };
+  return { status, exitCodes, baselineImage: prepared.imageId, output };
 }
 
 export interface VerifyVisibleResult {
@@ -130,7 +137,8 @@ export async function applyAndRun(
   let applied: RunResult;
   try {
     applied = await ports.executor.run(baselineImage, apply, { cwd: SNAPSHOT_CWD });
-  } catch {
+  } catch (error) {
+    if (error instanceof BudgetExceededError) throw error;
     return { status: 'infra-stop', applyExitCode: -1, testExitCode: null, output: '' };
   }
   ports.stages?.record({
@@ -153,7 +161,8 @@ export async function applyAndRun(
   let tested: RunResult;
   try {
     tested = await ports.executor.run(applied.imageId, request.failingCommand, { cwd: SNAPSHOT_CWD });
-  } catch {
+  } catch (error) {
+    if (error instanceof BudgetExceededError) throw error;
     return {
       status: 'infra-stop', applyExitCode: 0, testExitCode: null,
       candidateImage: applied.imageId, output: '',
@@ -171,7 +180,7 @@ export async function applyAndRun(
     status: tested.exitCode === 0 ? 'passed' : 'failed',
     applyExitCode: 0,
     testExitCode: tested.exitCode,
-    candidateImage: tested.imageId,
+    candidateImage: applied.imageId,
     output: `${tested.stdout}${tested.stderr}`,
   };
 }

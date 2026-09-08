@@ -12,13 +12,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
-import { InMemoryExecutor, type InMemoryRunResult } from '@sutura/core';
+import { InMemoryExecutor, type HealLlm, type InMemoryRunResult } from '@sutura/core';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { VerifyArguments } from './args.js';
 import { executeVerify } from './verify.js';
 
 const exec = promisify(execFile);
+const llm = { modelQuote: () => ({ price: { input: 0.1, output: 0.1 } }), chat: async () => ({ text: '{"approved":true,"reasoning":"Correct"}', usd: 0.0001 }) } as unknown as HealLlm;
 const cleanups: Array<() => Promise<void>> = [];
 
 const DIFF = [
@@ -74,7 +75,7 @@ function repairingSandbox(command: string): InMemoryExecutor {
   return new InMemoryExecutor((cmd) => {
     if (cmd !== command) return result(0);
     observed += 1;
-    return result(observed <= 2 ? 1 : 0);
+    return result(observed <= 2 ? 1 : 0, 'AssertionError: expected 3');
   });
 }
 
@@ -87,7 +88,7 @@ describe('executeVerify', () => {
     const { dir, sha, diffPath } = await checkout();
     const executor = repairingSandbox('pnpm test');
 
-    const outcome = await executeVerify(args(dir, sha, diffPath), { executor });
+    const outcome = await executeVerify(args(dir, sha, diffPath), { executor, llm });
 
     expect(outcome.source.sourceSha).toBe(sha);
     expect(outcome.source.snapshotSha256).toMatch(/^[a-f0-9]{64}$/u);
@@ -97,20 +98,22 @@ describe('executeVerify', () => {
     expect(outcome.request.failingCommand).toBe('pnpm test');
     expect(outcome.reproduction).toBe('reproduced');
     expect(outcome.generatedReplacement).toBe(false);
+    expect(outcome.evidence.mode).toBe('local');
+    expect(JSON.parse(outcome.verificationArtifact.bytes)).toEqual(outcome.evidence);
 
     const status = new Map(outcome.observations.map((item) => [item.gate, item.status]));
     expect(status.get('reproduction')).toBe('passed');
     expect(status.get('visible')).toBe('passed');
-    expect(status.get('audit')).toBe('not-run');
+    expect(status.get('audit')).toBe('passed');
     expect(outcome.status).toBe('insufficient');
-    expect(outcome.blockingGate).toBe('audit');
+    expect(outcome.blockingGate).toBe('challenges');
   }, 60_000);
 
   it('removes the temporary copy whether the run succeeds or fails', async () => {
     const { dir, sha, diffPath } = await checkout();
     const executor = repairingSandbox('pnpm test');
 
-    await executeVerify(args(dir, sha, diffPath), { executor });
+    await executeVerify(args(dir, sha, diffPath), { executor, llm });
     const snapshots = executor.calls.filter((call) => call.kind === 'snapshot');
 
     expect(snapshots.length).toBeGreaterThan(0);
@@ -125,7 +128,7 @@ describe('executeVerify', () => {
     await writeFile(join(dir, 'page-count.js'), 'export const pages = () => 0;\n');
     const executor = repairingSandbox('pnpm test');
 
-    await expect(executeVerify(args(dir, sha, diffPath), { executor }))
+    await expect(executeVerify(args(dir, sha, diffPath), { executor, llm }))
       .rejects.toThrow(/tracked or untracked changes/u);
     expect(executor.calls).toHaveLength(0);
   }, 60_000);
@@ -134,7 +137,7 @@ describe('executeVerify', () => {
     const { dir, sha, diffPath } = await checkout();
     const executor = new InMemoryExecutor(() => result(0));
 
-    const outcome = await executeVerify(args(dir, sha, diffPath), { executor });
+    const outcome = await executeVerify(args(dir, sha, diffPath), { executor, llm });
 
     expect(outcome.reproduction).toBe('baseline-passes');
     expect(outcome.status).toBe('insufficient');

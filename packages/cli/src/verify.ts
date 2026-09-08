@@ -1,19 +1,19 @@
-import { Buffer } from 'node:buffer';
-import { open } from 'node:fs/promises';
-import { resolve } from 'node:path';
 
 import {
   ContreeExecutor,
-  evaluateVerification,
-  sandboxVerificationGates,
+  readBoundedRegularFile,
+  executeExternalVerification,
+  createTokenFactoryClient,
   trustedCommandsFromPolicy,
   validateVerifyRequest,
-  verificationApproved,
+  type HealLlm,
+  type ExternalVerificationResult,
   type Executor,
   type RepositoryPolicy,
   type SharedVerificationOutcome,
   type ValidatedVerifyRequest,
   type VerifyReproduction,
+  type VerificationMode,
 } from '@sutura/core';
 
 import type { VerifyArguments } from './args.js';
@@ -38,34 +38,10 @@ export class VerifyInputError extends Error {
  * oversized file is refused before any content is read into memory.
  */
 export async function readCandidateDiffFile(path: string): Promise<string> {
-  const resolved = resolve(path);
-  let handle;
   try {
-    handle = await open(resolved, 'r');
-  } catch {
-    throw new VerifyInputError(`Candidate diff file could not be opened: ${path}`);
-  }
-  try {
-    const stats = await handle.stat();
-    if (stats.isSymbolicLink()) {
-      throw new VerifyInputError(`Candidate diff file must not be a symbolic link: ${path}`);
-    }
-    if (!stats.isFile()) {
-      throw new VerifyInputError(`Candidate diff must be a regular file: ${path}`);
-    }
-    if (stats.size > MAX_CANDIDATE_DIFF_FILE_BYTES) {
-      throw new VerifyInputError(
-        `Candidate diff is ${stats.size} bytes; at most ${MAX_CANDIDATE_DIFF_FILE_BYTES} are read`,
-      );
-    }
-    const buffer = Buffer.alloc(stats.size);
-    const { bytesRead } = await handle.read(buffer, 0, stats.size, 0);
-    if (bytesRead !== stats.size) {
-      throw new VerifyInputError(`Candidate diff changed while it was being read: ${path}`);
-    }
-    return buffer.toString('utf8');
-  } finally {
-    await handle.close();
+    return (await readBoundedRegularFile(path, MAX_CANDIDATE_DIFF_FILE_BYTES)).toString('utf8');
+  } catch (error) {
+    throw new VerifyInputError(`Candidate diff file could not be read: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -124,6 +100,10 @@ export interface VerifyExecutionResult {
   /** The immutable copy that executed, bound by hash. */
   source: { sourceSha: string; snapshotSha256: string; files: number };
   reproduction: VerifyReproduction['status'];
+  challenges: ExternalVerificationResult['challenges'];
+  budget: ExternalVerificationResult['budget'];
+  evidence: ExternalVerificationResult['evidence'];
+  verificationArtifact: ExternalVerificationResult['verificationArtifact'];
   observations: SharedVerificationOutcome['observations'];
   blockingGate: SharedVerificationOutcome['blockingGate'];
   challengeAssurance: boolean;
@@ -132,10 +112,9 @@ export interface VerifyExecutionResult {
 }
 
 export interface VerifyRuntime {
+  mode?: VerificationMode;
   executor: Executor;
-  /** Gates this route does not execute itself, such as the audit stack. */
-  delegated?: Parameters<typeof sandboxVerificationGates>[2];
-  challengeMode?: 'required' | 'optional' | 'disabled';
+  llm: HealLlm;
 }
 
 /**
@@ -153,22 +132,15 @@ export async function executeVerify(
   const prepared = await prepareVerify(request);
   const snapshot = await snapshotCleanSourceAt(request.caseDir, request.sourceSha);
   try {
-    const gates = await sandboxVerificationGates(
-      prepared.request,
-      { executor: runtime.executor, sourceDir: snapshot.dir },
-      runtime.delegated ?? {},
-    );
-    const outcome = await evaluateVerification({
-      challengeMode: runtime.challengeMode ?? 'required',
-      runGate: gates.runGate,
+    const executed = await executeExternalVerification({
+      request: prepared.request, policy: prepared.policy,
+      executor: runtime.executor, llm: runtime.llm, sourceDir: snapshot.dir,
+      snapshotSha256: snapshot.snapshotSha256, policySha256: prepared.policySha,
+      mode: runtime.mode ?? 'local',
     });
-    const status: VerifyExecutionResult['status'] = verificationApproved(outcome)
-      ? 'verified-supplied-patch'
-      : outcome.status === 'infra-stop'
-        ? 'infra-stop'
-        : outcome.status === 'insufficient' ? 'insufficient' : 'refused';
+    const outcome = executed.verification;
     return {
-      status,
+      status: executed.status,
       request: prepared.request,
       policySource: prepared.policySource,
       policySha: prepared.policySha,
@@ -177,7 +149,11 @@ export async function executeVerify(
         snapshotSha256: snapshot.snapshotSha256,
         files: snapshot.files.length,
       },
-      reproduction: gates.reproduction.status,
+      reproduction: executed.reproduction.status,
+      challenges: executed.challenges,
+      budget: executed.budget,
+      evidence: executed.evidence,
+      verificationArtifact: executed.verificationArtifact,
       observations: outcome.observations,
       blockingGate: outcome.blockingGate,
       challengeAssurance: outcome.challengeAssurance,
@@ -196,5 +172,7 @@ export function verifyRuntimeFromEnvironment(
   const project = environment.CONTREE_PROJECT;
   if (!token) throw new VerifyInputError('CONTREE_TOKEN is required to execute a verification');
   if (!project) throw new VerifyInputError('CONTREE_PROJECT is required to execute a verification');
-  return { executor: new ContreeExecutor({ token, project }) };
+  const apiKey = environment.NEBIUS_API_KEY;
+  if (!apiKey) throw new VerifyInputError('NEBIUS_API_KEY is required to execute a verification');
+  return { mode: 'live', executor: new ContreeExecutor({ token, project }), llm: createTokenFactoryClient({ apiKey }) };
 }

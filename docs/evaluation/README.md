@@ -1,8 +1,6 @@
 # Sutura technical evaluation guide
 
-Reviewed source: `ce3502d86a32883eac8c7a2adcc9df2c07e12e85`.
-Inspection date: 2026-09-05. Scope: repository source, test definitions, and
-committed evidence; this is not a fresh deployment or live-provider validation.
+Reviewed source: `095bfc08dc0294d6a43dee235b7dc712429f2faa` plus the local implementation changes inspected on 2026-09-08. Scope: repository source, test definitions, and retained evidence. This is not a fresh deployment or live-provider validation; the final integrated candidate requires its own verification and manifest.
 
 ## The project in one minute
 
@@ -19,10 +17,16 @@ retains failure evidence and never merges the generated repair.
 - **Layered audit:** mechanical checks, a fresh rerun, and semantic review can
   refuse a previously green candidate. [Audit evidence](architecture.md#layered-audit).
 
-The latest committed live benchmark still fails repair and Tavily quality gates
-and retains incomplete hidden verification. Read [evidence status](#evidence-status)
-and [limitations](#limitations) before treating these mechanisms as release proof.
+No clean quality measurement exists for the current candidate. The September 6–8 preflight passed its provider/image contract, the six-case smoke passed, and Stage 3 stopped on a real false approval after 72 of 80 cases. Its five attempts spent USD 12.55 against a USD 10 cap. The false-approval defect and cumulative restart cap are fixed locally; those fixes do not produce a repair rate. The held-out 20 remain unopened. Read [the retained Stage 3 record](../demo/run-manifests/development-validation-v1-evidence.md), [evidence status](#evidence-status) and [limitations](#limitations) before treating these mechanisms as release proof.
 The [architecture cards](architecture.md) connect each claim to code and tests.
+
+## Current local verification implementation
+
+[Generated repairs](../../packages/core/src/heal.ts), [supplied patches](../../packages/core/src/verification/external.ts) and counterfactuals share production verification gates. A separate baseline-only challenge-generation call freezes a bounded set before candidate work. The controller qualifies baseline observations, checks each candidate with repeated probes, then applies policy, mechanical audit, clean rerun and adjudication before search admission. Required contracts bind a frozen source manifest. Default healing remains optional; external verification requires assurance.
+
+The [CLI](../../packages/cli/src/verify.ts) and [read-only Action](../../packages/action/src/verify-execution.ts) retain canonical evidence and artifact bytes. The Action authenticates the exact same-repository failed run and source SHA; fork sources are refused. [Evidence v2](../../packages/core/src/verification/types.ts) records the actual executor baseline image ID separately from an unavailable OCI digest, with observed model, operation and cost records. These are local implementation claims, not a published release or new live quality result.
+
+Remaining external work includes clean capped Stage 3 and held-out measurement, authorized publication, consented participants, the [independent human record walkthrough](record-walkthrough.md), and [December judging-access evidence](../runbooks/judging-access.md). Historical reports below retain the source and limitations of the runs they describe.
 
 <a id="criteria"></a>
 ## Hackathon criteria
@@ -44,7 +48,7 @@ these four criteria.
 | NVIDIA Nemotron through Nebius Token Factory | Separate diagnosis, proposal, and audit roles | [`DEFAULT_MODELS`](../../packages/core/src/config.ts#L10), [`createTokenFactoryClient`](../../packages/core/src/llm/token-factory.ts#L25): implemented runtime client; measured subjects remain in the reports below. Requested role and actual provider model are distinct. |
 | Nebius ConTree | Share prepared dependencies while isolating execution branches | [`prepareSandbox`](../../packages/core/src/heal.ts#L483): runtime implementation; image availability and dependency support constrain execution. |
 | Tavily | Ground dependency failures in release sources | [`ground`](../../packages/core/src/diagnose/tavily.ts#L500): runtime Search/Extract with validation; [versioned ablations](architecture.md#grounded-dependencies) retain failed arms. |
-| Nebius Data Lab | Prepare sanitized evaluation data for later experiments | [Dataset and request](../datalab/README.md?plain=1#L3): preparation only; upload and batch inference remain pending. |
+| Nebius Data Lab | Execute a finite, manifest-bound quality experiment with recoverable submissions and exact output joins | [Runner](../../scripts/datalab-quality-experiment.mjs) and [dataset and request](../datalab/README.md): locally implemented and fixture tested; actual upload and batch inference remain pending. |
 | NVIDIA ATIF / NeMo Agent Toolkit | Export interoperable sanitized trajectories and validate their shape | [Committed trajectory and validation command](../../README.md?plain=1#L350): offline validation; NeMo is not the live repair orchestrator. |
 
 ## Follow a Case Lab result

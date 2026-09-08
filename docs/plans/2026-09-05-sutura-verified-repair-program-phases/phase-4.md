@@ -1,5 +1,12 @@
 # Phase 4 — Shared verification and independent regression challenges
 
+## Local implementation review — 2026-09-08
+
+The production generated-repair, supplied-patch and counterfactual paths now share the runtime candidate verifier. Challenge generation has a separate model purpose and receives baseline source before a repair is proposed or applied. The controller freezes and qualifies the bounded set, runs repeated observations against each eligible candidate, and records set and observation hashes. Search admission includes challenges, mechanical and policy checks, clean audit and adjudication before a candidate can win. A green visible command alone cannot cancel a sibling. Required local contracts now bind an immutable source manifest; the named `heal-required-search.test.ts` regression passes through `healCase`: a visible-green floor repair fails preservation, a later ceil repair passes the same frozen set, and the accepted record contains canonical evidence v2 and its exact artifact bytes. The first rejected candidate never reaches adjudication.
+
+The older progress entries below describe the incremental implementation and their dated checks. They do not describe the final runtime wiring. This closes local implementation only: no paid quality result, external reviewer acceptance, or publication is implied.
+
+
 Parent: [Verified repair program](../2026-09-05-sutura-verified-repair-program.md). Depends on phases 1–3, including the phase 1 evidence contracts and phase 2 diagnosis and phase 3 multi-file policy. Sequential; not batch eligible. Stop after review and local verification. Live comparative proof belongs to phase 10.
 
 ## Outcome

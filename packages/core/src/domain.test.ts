@@ -123,6 +123,8 @@ describe('domain model', () => {
       counterfactual?: import('./counterfactual/types.js').CounterfactualEvidence;
       trace?: import('./trace/types.js').TraceEvent[];
       verification?: import('./verification/types.js').VerificationEvidence;
+      verificationArtifact?: import('./verification/types.js').VerificationArtifact;
+      verificationRuns?: import('./verification/runtime-evidence.js').RuntimeCandidateEvidence[];
       recovery?: import('./diagnose/hypotheses.js').DiagnosisRecoveryEvidence;
       selectedCandidate?: {
         id: string;

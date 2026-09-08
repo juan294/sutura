@@ -243,3 +243,99 @@ describe('perturbing execution truth', () => {
     expect(partial.coverage).toBeLessThan(1);
   });
 });
+
+describe('quality calibration and full attempt costs', () => {
+  it('measures confidence calibration against decision correctness', () => {
+    const answers = [
+      item('a', 'preserves-contract', 'preserves-contract', 0.8),
+      item('b', 'breaks-contract', 'preserves-contract', 0.8),
+    ];
+    const score = scoreQualityPredictions(answers);
+    expect(score.calibration.samples).toBe(2);
+    expect(score.calibration.expectedCalibrationError).toBeCloseTo(0.3);
+    expect(score.calibration.brierScore).toBeCloseTo(0.34);
+    const changed = scoreQualityPredictions(answers.map((answer) => ({
+      ...answer, prediction: { ...answer.prediction!, confidence: 0.5 },
+    })));
+    expect(changed.balancedAccuracy).toBe(score.balancedAccuracy);
+    expect(changed.calibration.expectedCalibrationError).toBe(0);
+    expect(changed.calibration.brierScore).toBe(0.25);
+  });
+
+  it('uses fixed half-open confidence bins, including confidence one in the final bin', () => {
+    const score = scoreQualityPredictions([
+      item('zero', 'preserves-contract', 'preserves-contract', 0),
+      item('boundary', 'preserves-contract', 'preserves-contract', 0.1),
+      item('one', 'breaks-contract', 'breaks-contract', 1),
+    ]);
+    expect(score.calibration.bins).toHaveLength(10);
+    expect(score.calibration.bins.map((bin) => bin.samples)).toEqual([1, 1, 0, 0, 0, 0, 0, 0, 0, 1]);
+    expect(score.calibration.bins[2]).toMatchObject({ accuracy: null, meanConfidence: null });
+  });
+
+  it('excludes abstentions, unknown truth and missing answers from calibration', () => {
+    const score = scoreQualityPredictions([
+      item('abstain', 'preserves-contract', 'insufficient-evidence'),
+      item('unknown', 'unknown', 'preserves-contract'),
+      item('missing', 'breaks-contract'),
+    ]);
+    expect(score.calibration).toMatchObject({ samples: 0, brierScore: null, expectedCalibrationError: null });
+    expect(score.calibration.bins.every((bin) => bin.samples === 0)).toBe(true);
+  });
+
+  it('charges every attempt including wrong, missing, unknown and abstained answers', () => {
+    const answers = [
+      item('correct', 'preserves-contract', 'preserves-contract'),
+      item('wrong', 'breaks-contract', 'preserves-contract'),
+      item('missing', 'breaks-contract'),
+      item('unknown', 'unknown', 'preserves-contract'),
+      item('abstain', 'preserves-contract', 'insufficient-evidence'),
+    ].map((answer) => ({ ...answer, costUsd: 0.2, tokenUsage: { inputTokens: 10, outputTokens: 5 } }));
+    expect(scoreQualityPredictions(answers).resources).toEqual({
+      attempts: 5, knownCostUsd: 1, unknownCost: 0, totalCostUsd: 1,
+      inputTokens: 50, outputTokens: 25, unknownUsage: 0,
+      correctDecisions: 1, costPerCorrectDecisionUsd: 1,
+    });
+  });
+
+  it('retains known partial cost and refuses an efficiency claim with unknown costs', () => {
+    const score = scoreQualityPredictions([
+      { ...item('known', 'preserves-contract', 'preserves-contract'), costUsd: 0.2 },
+      { ...item('null', 'breaks-contract'), costUsd: null },
+      item('absent', 'unknown'),
+    ]);
+    expect(score.resources).toMatchObject({
+      knownCostUsd: 0.2, unknownCost: 2, totalCostUsd: null, unknownUsage: 3,
+      costPerCorrectDecisionUsd: null,
+    });
+  });
+
+  it('distinguishes a measured zero from missing cost, and no correct answers from free success', () => {
+    expect(scoreQualityPredictions([
+      { ...item('correct', 'preserves-contract', 'preserves-contract'), costUsd: 0 },
+    ]).resources.costPerCorrectDecisionUsd).toBe(0);
+    expect(scoreQualityPredictions([
+      { ...item('wrong', 'breaks-contract', 'preserves-contract'), costUsd: 0.1 },
+    ]).resources.costPerCorrectDecisionUsd).toBeNull();
+    expect(scoreQualityPredictions([]).resources).toMatchObject({ attempts: 0, totalCostUsd: null });
+  });
+
+  it.each([-1, NaN, Infinity])('rejects invalid cost %s', (costUsd) => {
+    expect(() => scoreQualityPredictions([{ ...item('a', 'unknown'), costUsd }])).toThrow(QualityTaskError);
+  });
+
+  it.each([-1, 1.5, Infinity, Number.MAX_SAFE_INTEGER + 1])('rejects invalid token usage %s', (inputTokens) => {
+    expect(() => scoreQualityPredictions([{
+      ...item('a', 'unknown'), tokenUsage: { inputTokens, outputTokens: 0 },
+    }])).toThrow(QualityTaskError);
+  });
+
+  it('rejects duplicate record identities and invalid direct predictions', () => {
+    expect(() => scoreQualityPredictions([item('same', 'unknown'), item('same', 'unknown')])).toThrow(QualityTaskError);
+    expect(() => scoreQualityPredictions([item('a', 'unknown', 'preserves-contract', NaN)])).toThrow(QualityTaskError);
+  });
+});
+
+it('rejects citations exceeding the declared response schema bound',()=>{
+ expect(()=>parseQualityPrediction(JSON.stringify({label:'preserves-contract',citedEvidence:['x'.repeat(241)],confidence:0.9}))).toThrow(QualityTaskError);
+});

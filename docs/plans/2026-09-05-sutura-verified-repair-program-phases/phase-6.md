@@ -1,5 +1,12 @@
 # Phase 6 — Blinded evaluation, real NeMo execution and Arena preparation
 
+## Local implementation review — 2026-09-08
+
+Production runtime verification records are preserved in CaseFile with codec validation, and external CLI/Action verification forwards canonical evidence and its content-addressed artifact. Evidence v2 retains the actual immutable executor baseline image identity separately from an unavailable OCI digest. Repetition hashes distinguish identical verdicts reached from different observations.
+
+The independent human walkthrough remains open. A person other than the author must trace one valid and one deceptive record using `docs/evaluation/record-walkthrough.md`; local tests and this source audit do not replace that review.
+
+
 Parent: [Verified repair program](../2026-09-05-sutura-verified-repair-program.md). Depends on phase 5. **[batch-eligible] with phase 9 only.** All evaluation remains local in this phase; Data Lab upload/batch and live Arena are phase 10.
 
 ## Outcome and ownership

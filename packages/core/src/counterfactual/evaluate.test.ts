@@ -108,10 +108,15 @@ async function evaluate(harness: Harness) {
   const trace = new TraceRecorder('counterfactual-test', { now: () => 0 });
   trace.record({ type: 'run-start', stage: 'run', summary: 'test' });
   let ultraCalls = 0;
-  const executor = new InMemoryExecutor((cmd) => {
+  const appliedDiffs = new Map<string, string>();
+  const executor = new InMemoryExecutor((cmd, parent) => {
     const raced = racedDiff(cmd);
     if (raced !== undefined) {
-      return ok({ exitCode: harness.verificationExitCode?.(raced) ?? 0 });
+      appliedDiffs.set(executor.calls.at(-1)!.imageId, raced);
+      return ok({ exitCode: 0 });
+    }
+    if (cmd === `sh -lc '${VERIFICATION_COMMAND}'`) {
+      return ok({ exitCode: harness.verificationExitCode?.(appliedDiffs.get(parent) ?? '') ?? 0 });
     }
     if (cmd === VERIFICATION_COMMAND) return ok({ exitCode: harness.rerunExitCode ?? 0 });
     return ok({ exitCode: harness.requiredCommandExitCode ?? 0 });

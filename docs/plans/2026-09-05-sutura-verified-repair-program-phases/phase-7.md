@@ -1,5 +1,12 @@
 # Phase 7 — Adaptive Nemotron routing under a shared budget
 
+## Local implementation review — 2026-09-08
+
+The explicitly selected `development-adaptive-v1` profile now drives production route decisions. Diagnosis recovery and challenge generation carry distinct purposes. A reserved model quote is frozen and forwarded through dispatch and trace reporting, and controller routing metadata is excluded from billed request-byte estimates. Repair escalation is bounded within the run scope; existing default budgets and the fixed default routing profile are unchanged.
+
+These are local implementation and regression results. No new paid comparison establishes a cost reduction, repair-rate improvement, or quiet-provider reliability. Historical provider-contract checks retain their original candidate identities.
+
+
 Parent: [Verified repair program](../2026-09-05-sutura-verified-repair-program.md). Depends on phase 6. Sequential, not batch eligible.
 
 ## Outcome and source

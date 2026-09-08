@@ -556,3 +556,10 @@ export type { VerificationCostSummary } from './verification/cost-summary.js';
 export { parseDiagnosisRecoveryEvidence } from './verification/recovery.js';
 export type { DiagnosisRecoveryBinding } from './verification/recovery.js';
 export type { DiagnosisRecoveryEvidence, RecoveryHypothesis } from './diagnose/hypotheses.js';
+export { prepareRuntimeChallenges, runRuntimeChallenges, type RuntimeChallengeInput, type PreparedRuntimeChallenges } from './challenges/runtime.js';
+export { evaluateRuntimeCandidate, type RuntimeCandidateInput, type RuntimeCandidateResult } from './verification/runtime.js';
+export * from './verification/source.js';
+
+export { parseRuntimeCandidateEvidence, type RuntimeCandidateEvidence } from './verification/runtime-evidence.js';
+
+export { executeExternalVerification, type ExternalVerificationInput, type ExternalVerificationResult } from './verification/external.js';

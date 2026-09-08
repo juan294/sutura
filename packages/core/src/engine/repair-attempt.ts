@@ -433,8 +433,9 @@ function worstCaseRequestUsd(
   return Math.max(REPAIR_ATTEMPT_MINIMUM_INFERENCE_USD, Math.ceil(priced * 1_000_000) / 1_000_000);
 }
 
-function proposalOptions(ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 'budget'>, schema: JsonSchema): ChatOptions {
+function proposalOptions(ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 'budget' | 'feedback'>, schema: JsonSchema, targetCount = 1): ChatOptions {
   return {
+    purpose: 'repair',
     maxTokens: CONTROLLED_REPAIR_MAX_TOKENS,
     temperature: 1,
     topP: 0.95,
@@ -444,6 +445,9 @@ function proposalOptions(ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' |
       jsonSchema: { name: 'sutura_repair_proposal', strict: true, schema },
     },
     routing: {
+      targetCount,
+      priorRepairFeedback: ctx.feedback !== undefined && ctx.feedback.repeatedProposal !== true,
+      runScope: ctx.budget,
       failureClass: ctx.diagnosis.class,
       diagnosisConfidence: ctx.diagnosis.confidence,
       remainingInferenceBudgetUsd: Math.max(0, ctx.budget.limits.inferenceCostUsd - ctx.budget.snapshot().inferenceCostUsd),
@@ -454,8 +458,8 @@ function proposalOptions(ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' |
 export function controlledRepairAttemptReservationUsd(
   ctx: ControlledRepairAttemptContext,
 ): number {
-  const { messages, schema, requestBytes } = proposalContract(ctx);
-  const options = proposalOptions(ctx, schema);
+  const { messages, schema, requestBytes, slots } = proposalContract(ctx);
+  const options = proposalOptions(ctx, schema, slots.length);
   const quote = ctx.llm.modelQuote?.('super', messages, options);
   if (quote === undefined) throw new Error('Repair model routing quote is unavailable');
   return worstCaseRequestUsd(requestBytes, quote.price.input, quote.price.output);
@@ -527,7 +531,7 @@ export async function runControlledRepairAttempt(
     };
   }
   const { messages, schema, requestBytes, slots } = contract;
-  const options = proposalOptions(ctx, schema);
+  const options = proposalOptions(ctx, schema, slots.length);
   const response = await requestRepairModel({
     llm: ctx.llm, budget: ctx.budget, messages, options,
     worstCaseUsd: (price) => worstCaseRequestUsd(requestBytes, price.input, price.output),

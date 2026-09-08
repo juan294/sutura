@@ -914,3 +914,50 @@ describe('NebiusClient', () => {
     await expect(client.chat('super', MESSAGES)).rejects.toMatchObject({ status: 400, body });
   });
 });
+
+
+describe('development adaptive dispatch', () => {
+  function adaptiveClient() {
+    const fetch = vi.fn().mockResolvedValue(successResponse());
+    return { fetch, client: new NebiusClient({ ...CONFIG, routingProfileId: 'development-adaptive-v1' }, { fetch }) };
+  }
+  const messages = [{ role: 'user' as const, content: 'repair' }];
+  function options(): ChatOptions {
+    return { maxTokens: 2_000, purpose: 'repair', routing: {
+      failureClass: null, diagnosisConfidence: 0.95, remainingInferenceBudgetUsd: 1,
+      targetCount: 1, priorRepairFeedback: true, runScope: {},
+    } };
+  }
+  it('quotes without spending escalation and scopes the one dispatch cap to a run', async () => {
+    const { client, fetch } = adaptiveClient();
+    const request = options();
+    const first = client.modelQuote('super', messages, request);
+    expect(first.role).toBe('ultra');
+    expect(client.modelQuote('super', messages, request)).toEqual(first);
+    await client.chat('super', messages, { ...request, quotedRoute: first });
+    expect(client.modelQuote('super', messages, request).role).toBe('super');
+    expect(client.modelQuote('super', messages, options()).role).toBe('ultra');
+    await expect(client.chat('super', messages, { ...request, quotedRoute: first })).rejects.toThrow(/quote/u);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it('refuses unaffordable required adjudication before fetching', async () => {
+    const { client, fetch } = adaptiveClient();
+    const request = options();
+    request.purpose = 'adjudication';
+    request.routing!.remainingInferenceBudgetUsd = 0;
+    await expect(client.chat('ultra', messages, request)).rejects.toThrow(/abstained/u);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('does not clamp an oversized prompt to the context ceiling', async () => {
+    const { client, fetch } = adaptiveClient();
+    await expect(client.chat('super', [{ role: 'user', content: 'x'.repeat(130_000) }], options())).rejects.toThrow(/abstained/u);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('includes schema and tools in the context bound', async () => {
+    const { client, fetch } = adaptiveClient();
+    const request = options();
+    request.responseFormat = { type: 'json_schema', jsonSchema: { name: 'big', strict: true, schema: { description: 'x'.repeat(130_000) } } };
+    await expect(client.chat('super', messages, request)).rejects.toThrow(/abstained/u);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});

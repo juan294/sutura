@@ -18,7 +18,7 @@ import { auditFromEnvironment } from './heal.js';
 import { installSutura, type SetupResult } from './setup.js';
 import { runEvaluationCommand } from './eval.js';
 import { replayFromFile } from './replay.js';
-import { executeVerify, prepareVerify, verifyRuntimeFromEnvironment } from './verify.js';
+import { executeVerify, verifyRuntimeFromEnvironment } from './verify.js';
 
 export interface CliIo {
   write?: (value: string) => void;
@@ -133,13 +133,9 @@ export async function runCli(
     try {
       const result = dependencies.verify !== undefined
         ? await dependencies.verify(request)
-        // Without sandbox credentials nothing can execute, so the command
-        // reports what it established rather than pretending to a verdict.
-        : process.env.CONTREE_TOKEN && process.env.CONTREE_PROJECT
-          ? await executeVerify(request, verifyRuntimeFromEnvironment())
-          : await prepareVerify(request);
+        : await executeVerify(request, verifyRuntimeFromEnvironment());
       write(`${JSON.stringify(result)}\n`);
-      return 0;
+      return typeof result === 'object' && result !== null && 'status' in result && result.status === 'verified-supplied-patch' ? 0 : 1;
     } catch (error) {
       writeError(`${publicError(error)}\n`);
       return 1;

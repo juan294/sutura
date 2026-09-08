@@ -1,3 +1,4 @@
+import { parseRuntimeCandidateEvidence, type RuntimeCandidateEvidence } from './runtime-evidence.js';
 import type { DiagnosisRecoveryEvidence } from '../diagnose/hypotheses.js';
 import { parseDiagnosisRecoveryEvidence } from './recovery.js';
 import { createHash } from 'node:crypto';
@@ -15,6 +16,7 @@ export interface LegacyVerificationEvidence {
   sandboxRawAmounts: Array<number | null>;
   sandboxUnit: null;
   recovery?: DiagnosisRecoveryEvidence;
+  verificationRuns?: RuntimeCandidateEvidence[];
 }
 
 /** This view is not v1 evidence and never fills missing identity or oracle data. */
@@ -45,7 +47,9 @@ export function adaptLegacyVerification(bytes: string, sourceSchema: LegacyVerif
     ...(typeof policy?.baseSha === 'string' && /^[a-f0-9]{40}$/u.test(policy.baseSha) ? { policyBaseSha: policy.baseSha } : {}),
     ...(typeof policy?.policySha === 'string' && /^[a-f0-9]{64}$/u.test(policy.policySha) ? { policySha256: policy.policySha } : {}),
   }) : undefined;
+  const verificationRuns = record.verificationRuns === undefined ? undefined : Array.isArray(record.verificationRuns) && record.verificationRuns.length <= 12 ? record.verificationRuns.map(parseRuntimeCandidateEvidence) : (() => {throw new VerificationEvidenceError('legacy.verificationRuns','invalid bounded array');})();
   return {
+    ...(verificationRuns===undefined?{}:{verificationRuns}),
     schemaVersion: 'sutura-legacy-verification-adapter-v1', sourceSchema,
     originalBytes: bytes, originalIntegritySha256: createHash('sha256').update(bytes).digest('hex'),
     originalOutcome: String(record.outcome), challengeStatus: 'absent',

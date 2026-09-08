@@ -10,6 +10,21 @@ import {
 
 export const MODEL_SELECTION_SCHEMA_VERSION = 'sutura-model-selection-v1' as const;
 export const DEFAULT_ROUTING_PROFILE_ID = 'production-baseline-v1' as const;
+export const DEVELOPMENT_ROUTING_PROFILE_ID = 'development-adaptive-v1' as const;
+
+/** Conservative development input ceilings, with output capacity held separately. */
+export const DEVELOPMENT_ROUTING_PROFILE: RoutingProfile = Object.freeze({
+  nanoRepairEnabled: true,
+  contextBytes: Object.freeze({ nano: 8_000, super: 64_000, ultra: 128_000 }),
+  verifiedTiers: Object.freeze(['nano', 'super', 'ultra'] as const),
+});
+
+export class RoutingAbstentionError extends Error {
+  constructor(readonly reason: RoutingReason, readonly profileHash: string) {
+    super(`Adaptive routing abstained: ${reason}`);
+    this.name = 'RoutingAbstentionError';
+  }
+}
 
 export interface ModelSelectionProfile {
   schemaVersion: typeof MODEL_SELECTION_SCHEMA_VERSION;
@@ -93,15 +108,17 @@ export class ModelRouter {
 
   select(input: ModelRoutingInput): ModelRouteDecision {
     validInput(input);
-    const selected = input.profileId === DEFAULT_ROUTING_PROFILE_ID
+    const selected = input.profileId === DEVELOPMENT_ROUTING_PROFILE_ID
+      ? { ...this.baseline, profileId: DEVELOPMENT_ROUTING_PROFILE_ID }
+      : input.profileId === DEFAULT_ROUTING_PROFILE_ID
       ? this.baseline
       : this.profiles.get(input.profileId);
     const usable = selected?.complete === true && selected.pricesVerified === true;
     const profile = usable ? selected : this.baseline;
-    // An abstaining policy keeps the requested role rather than inventing one.
     const adaptive = input.adaptive === undefined
       ? undefined
       : routeModel(input.adaptive.signals, input.adaptive.profile, input.adaptive.budget);
+    if (adaptive?.tier === null) throw new RoutingAbstentionError(adaptive.reason, adaptive.profileHash);
     const role = adaptive?.tier ?? input.requestedRole;
     return {
       role,

@@ -143,7 +143,10 @@ export function routeModel(
 ): RoutingDecision {
   const profileHash = routingProfileHash(profile);
   const preferred = preferredTier(signals, profile);
-  const order = [preferred.tier, ...FALLBACK_ORDER[signals.purpose].filter((tier) => tier !== preferred.tier)];
+  const nanoEligible = profile.nanoRepairEnabled && signals.targetCount === 1
+    && (signals.confidence ?? 0) >= HIGH_CONFIDENCE && signals.priorRepairFeedback !== true;
+  const order = [preferred.tier, ...FALLBACK_ORDER[signals.purpose].filter((tier) =>
+    tier !== preferred.tier && (signals.purpose !== 'repair' || tier !== 'nano' || nanoEligible))];
   const rejected: Array<{ tier: ModelTier; reason: RoutingReason }> = [];
 
   for (const [index, tier] of order.entries()) {

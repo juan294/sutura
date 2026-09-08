@@ -204,3 +204,18 @@ describe('runCli', () => {
     }
   });
 });
+
+describe('executed verification exit status', () => {
+  const argv = ['verify', '--case-dir', '/tmp/source', '--source-sha', 'a'.repeat(40), '--policy-base-sha', 'b'.repeat(40), '--candidate-diff', '/tmp/change.diff', '--failing-command', 'diagnosed', '--format', 'json'];
+  for (const status of ['refused', 'insufficient', 'infra-stop']) {
+    it(`returns nonzero for ${status} and preserves the result`, async () => {
+      const output: string[] = [];
+      const exit = await runCli(argv, { write: text => output.push(text) }, { verify: async () => ({ status }) });
+      expect(exit).toBe(1);
+      expect(JSON.parse(output.join('')).status).toBe(status);
+    });
+  }
+  it('returns zero only for a verified supplied patch', async () => {
+    expect(await runCli(argv, { write: () => {} }, { verify: async () => ({ status: 'verified-supplied-patch' }) })).toBe(0);
+  });
+});

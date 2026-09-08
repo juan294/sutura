@@ -94,15 +94,27 @@ function ports(input: BudgetedPortsInput, reservation?: RepairCapacityReservatio
       const signal = signals.length ? AbortSignal.any(signals) : undefined;
       if (signal?.aborted) throw new Error('Recovery was cancelled');
       const tokens = options?.maxTokens ?? AUDIT_OUTPUT_TOKENS;
-      const bytes = Buffer.byteLength(JSON.stringify({
-        messages, ...options, maxTokens: tokens, signal: undefined,
+      // Bound only provider-visible content. Routing state can contain cyclic
+      // controller identities and must never be serialized or charged as text.
+      // The fixed allowance covers provider envelope keys/model identifiers.
+      const bytes = 1_024 + Buffer.byteLength(JSON.stringify({
+        messages,
+        max_tokens: tokens,
+        temperature: options?.temperature ?? 0,
+        ...(options?.topP === undefined ? {} : { top_p: options.topP }),
+        ...(options?.thinkingMode === undefined ? {} : { thinkingMode: options.thinkingMode }),
+        ...(options?.reasoningEffort === undefined ? {} : { reasoning_effort: options.reasoningEffort }),
+        ...(options?.responseFormat === undefined ? {} : { response_format: options.responseFormat }),
+        ...(options?.tools === undefined ? {} : { tools: options.tools }),
+        ...(options?.toolChoice === undefined ? {} : { tool_choice: options.toolChoice }),
       }));
       if (reservation && (tier !== 'ultra' || bytes > AUDIT_REQUEST_BYTES || tokens > AUDIT_OUTPUT_TOKENS)) throw new BudgetExceededError('inferenceCostUsd');
-      const quote = delegate.modelQuote?.(tier, messages, options);
+      const selected = options?.quotedRoute ?? delegate.modelQuote?.(tier, messages, options);
+      const quote = selected === undefined ? undefined : Object.freeze({ ...selected, price: Object.freeze({ ...selected.price }) });
       if (!quote) throw new Error('Model price quote is unavailable');
       const turn = input.budget.reserveModelTurn(modelReservationUsd(bytes, tokens, quote.price), reservation);
       const reply = await withinRecoveryDeadline(input.budget.remainingElapsedTimeSec(reservation), signal,
-        (boundedSignal) => delegate.chat(tier, messages, { ...options, maxTokens: tokens, signal: boundedSignal }));
+        (boundedSignal) => delegate.chat(tier, messages, { ...options, maxTokens: tokens, quotedRoute: quote, signal: boundedSignal }));
       if ((reply.usd ?? turn.reservedUsd) > turn.reservedUsd) throw new BudgetExceededError('inferenceCostUsd');
       input.budget.settleModelTurn(turn, reply.usd ?? turn.reservedUsd);
       return reply;
@@ -119,7 +131,7 @@ export function reserveRecoveryAudit(input: BudgetedPortsInput & { policy: Repos
   const quote = input.llm.modelQuote?.('ultra', [], { maxTokens: AUDIT_OUTPUT_TOKENS });
   if (!quote) throw new Error('Audit model price quote is unavailable');
   const perTurn = modelReservationUsd(AUDIT_REQUEST_BYTES, AUDIT_OUTPUT_TOKENS, quote.price);
-  const reservation = input.budget.reserveCapacity({ modelTurns: 2, sandboxOperations: 1 + input.policy.requiredCommands.length * 2, inferenceCostUsd: perTurn * 2, elapsedTimeSec: 60 });
+  const reservation = input.budget.reserveCapacity({ modelTurns: 2, sandboxOperations: 1 + input.policy.requiredCommands.length * 2 + (input.policy.verification?.mode === 'disabled' ? 0 : ((input.policy.verification?.contracts.length ?? 0) > 0 ? 6 : 0)), inferenceCostUsd: perTurn * 2, elapsedTimeSec: 60 });
   let active = true;
   return {
     ...ports({ ...input, operationIdPrefix: `${input.operationIdPrefix ?? `recovery-${randomUUID()}`}-audit` }, reservation),

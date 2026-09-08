@@ -3,8 +3,12 @@ description: Verify failed CI, filter flaky failures, reject unsafe shortcuts, a
 author: Sutura
 
 inputs:
+  mode:
+    description: heal generates a repair; verify executes only the supplied patch with required trusted challenges and read-only repository access.
+    required: false
+    default: heal
   github-token:
-    description: GitHub token used to read the failed run and publish the comment, check, artifact, and repair pull request.
+    description: GitHub token for failed-run and source reads. Heal mode also publishes the comment, check, and repair pull request; verify mode requires only repository read access.
     required: true
   run-id:
     description: Numeric ID of the failed GitHub Actions workflow run.
@@ -108,6 +112,8 @@ inputs:
     required: false
 
 outputs:
+  verification-status:
+    description: Terminal supplied-patch verification status in verify mode.
   outcome:
     description: Final Sutura outcome for the failed run.
 

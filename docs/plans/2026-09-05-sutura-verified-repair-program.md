@@ -1,6 +1,6 @@
 # Sutura verified repair program
 
-Date: 2026-09-05. Owner: Juan. Status: implementation in progress; phases 1 and 2 complete locally; phases 3 through 9 partially implemented, each with a per-phase progress record naming what was built and what was not; phase 6 additionally blocked on a uv version pin recorded in its phase file; phases 10–14 require separately authorized spending, publication, real participants or a calendar window that has not opened.
+Date: 2026-09-05. Owner: Juan. Status updated September 8: final local integration and verification in progress. This status supersedes the earlier partial-build table; no clean paid quality measurement, publication, participant study or December access observation is claimed.
 
 Planning source: local `develop` at `369c972777eea3c80b698db61165f07ba46e6b13`. Integration: `develop`; releases: `main`; implementation: isolated worktrees. This document records the user's approval of the **full recommended product scope**, not authorization for spending, outreach, publication or deployment. Stop after every implementation phase unless Juan explicitly authorizes continuation.
 
@@ -77,18 +77,18 @@ Windows are targets for planning, not evidence of completion or guaranteed effor
 | --- | --- | --- | --- | --- |
 | [1](2026-09-05-sutura-verified-repair-program-phases/phase-1.md) | Truthful baseline, pagination regression, contracts and probe adapter proof | This plan | Sep 5–8 | Complete locally |
 | [2](2026-09-05-sutura-verified-repair-program-phases/phase-2.md) | Bounded diagnosis recovery | 1 | Sep 8–12 | Complete locally |
-| [3](2026-09-05-sutura-verified-repair-program-phases/phase-3.md) | Atomic two-file and grounded migration repairs | 2 | Sep 12–17 | Acceptance fixtures complete; whole-transaction identity outstanding |
-| [4](2026-09-05-sutura-verified-repair-program-phases/phase-4.md) | Shared verifier and independent regression probes | 3 | Sep 17–23 | Items 1–9 done; admission gated on mechanical checks; replay partial |
-| [5](2026-09-05-sutura-verified-repair-program-phases/phase-5.md) | External-patch CLI/Action | 4 | Sep 23–26 | Command, Action route and Git-backed trust done; sandbox execution outstanding |
-| [6](2026-09-05-sutura-verified-repair-program-phases/phase-6.md) | Blinded evaluation, NeMo execution and Arena harness | 5 | Sep 26–30 | Blinding, quality task and inventory done; NeMo blocked on a uv pin, corpus 63 of 100 |
-| [7](2026-09-05-sutura-verified-repair-program-phases/phase-7.md) | Adaptive Nemotron routing | 6 | Sep 30–Oct 3 | Decision table done; not yet wired into the router |
-| [8](2026-09-05-sutura-verified-repair-program-phases/phase-8.md) | Verdict-first Case Lab and deterministic replay | 7 | Oct 3–7 | Verdict region done; regression comparison, replay spies and browser tests outstanding |
-| [9](2026-09-05-sutura-verified-repair-program-phases/phase-9.md) | Maintainer study and public-install preparation | 5 | Sep 26–30 | Ledger and review scoring done; participant-facing artifacts outstanding |
+| [3](2026-09-05-sutura-verified-repair-program-phases/phase-3.md) | Atomic two-file and grounded migration repairs | 2 | Sep 12–17 | Local implementation complete; final integrated checks pending |
+| [4](2026-09-05-sutura-verified-repair-program-phases/phase-4.md) | Shared verifier and independent regression probes | 3 | Sep 17–23 | Full runtime verification and frozen challenges wired; final integrated checks pending |
+| [5](2026-09-05-sutura-verified-repair-program-phases/phase-5.md) | External-patch CLI/Action | 4 | Sep 23–26 | CLI and read-only Action execute full verification; final integrated checks pending |
+| [6](2026-09-05-sutura-verified-repair-program-phases/phase-6.md) | Blinded evaluation, NeMo execution and Arena harness | 5 | Sep 26–30 | Local evaluation/controller built; independent human walkthrough and real experiment evidence pending |
+| [7](2026-09-05-sutura-verified-repair-program-phases/phase-7.md) | Adaptive Nemotron routing | 6 | Sep 30–Oct 3 | Selectable development adaptive profile wired; fixed default retained pending matched measurement |
+| [8](2026-09-05-sutura-verified-repair-program-phases/phase-8.md) | Verdict-first Case Lab and deterministic replay | 7 | Oct 3–7 | Local implementation complete; final integrated checks pending |
+| [9](2026-09-05-sutura-verified-repair-program-phases/phase-9.md) | Maintainer study and public-install preparation | 5 | Sep 26–30 | Local study preparation complete; recruitment and real sessions pending |
 | [10](2026-09-05-sutura-verified-repair-program-phases/phase-10.md) | Integrated benchmark, ablations and sponsor experiment evidence | 8, 9 | Oct 7–12 | Blocked: needs an approved paid run manifest |
 | [11](2026-09-05-sutura-verified-repair-program-phases/phase-11.md) | Validated public pilot release/demo | 10 | Oct 12–14 | Blocked: needs release and deployment authorization |
 | [12](2026-09-05-sutura-verified-repair-program-phases/phase-12.md) | Real maintainer trials, findings and verified fixes | 11 | Oct 14–20 | Blocked: needs real participants and consent |
 | [13](2026-09-05-sutura-verified-repair-program-phases/phase-13.md) | Final freeze/release, video, evidence index and submission | 12 | Freeze Oct 21; submit Oct 29 | Blocked: needs phase 12 evidence and a recorded video |
-| [14](2026-09-05-sutura-verified-repair-program-phases/phase-14.md) | Judge access and evidence retention | 13 | Through Dec 15 | Blocked: operational window is December 1–15 |
+| [14](2026-09-05-sutura-verified-repair-program-phases/phase-14.md) | Judge access and evidence retention | 13 | Through Dec 15 | Collector and runbook ready locally; published artifacts and December 1–15 observations pending |
 
 Only phases 6 and 9 form a batch: evaluation package/Placebo/experiment files versus adoption-specific scripts/docs. They consume phase 5 and share no edited file or output dependency. Do not change root package scripts, common evidence types, Action dist, shared README, workflow files or common release validators inside that batch; integrate required common wiring in phase 10. Phase 9 may reference stable phase 5 interfaces and uses isolated study fixtures. Phase 9 also prepares a concrete authorization request to reserve study sessions early; waiting until October 14 to start recruitment risks missing the freeze. Actual public-artifact trials still depend on phase 11. Every other phase is sequential because core, UI, contracts or measured identities overlap. Read-only research/review may run in parallel; test commands run sequentially.
 

@@ -4,7 +4,9 @@ import { SNAPSHOT_CWD, type Executor, type ImageId, type RunResult } from '../ex
 import { shellQuote } from '../engine/shell.js';
 import { keys, parseVerificationPolicy, record, typedValue, type TypedValue, type VerificationContract, type VerificationPolicy } from './contracts.js';
 
-export interface PolicyProvenance { policyBaseSha: string; policyHash: string }
+export type PolicyProvenance =
+  | { policyBaseSha: string; policyHash: string; localSnapshotSha256?: never }
+  | { policyBaseSha: null; policyHash: string; localSnapshotSha256: string };
 export interface ProbeInvocation {
   target: VerificationContract['target'];
   args: TypedValue[];
@@ -29,7 +31,10 @@ function freeze<T>(value: T): T {
 }
 
 export function freezeProbe(policy: VerificationPolicy, provenance: PolicyProvenance, proposal: unknown): FrozenProbe {
-  if (!/^[a-f0-9]{40}$/u.test(provenance.policyBaseSha) || !/^[a-f0-9]{64}$/u.test(provenance.policyHash)) throw new Error('invalid trusted policy provenance');
+  const validSource = provenance.policyBaseSha === null
+    ? /^[a-f0-9]{64}$/u.test(provenance.localSnapshotSha256)
+    : /^[a-f0-9]{40}$/u.test(provenance.policyBaseSha);
+  if (!validSource || !/^[a-f0-9]{64}$/u.test(provenance.policyHash)) throw new Error('invalid trusted policy provenance');
   const parsed = record(proposal, 'probe proposal');
   keys(parsed, ['contractId', 'args']);
   const trusted = parseVerificationPolicy(policy);

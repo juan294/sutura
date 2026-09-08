@@ -136,8 +136,8 @@ describe('adaptive tier selection', () => {
     expect(adaptive.price).toEqual(fixedNano.price);
   });
 
-  it('keeps the requested role when the policy abstains', () => {
-    const decision = new ModelRouter(DEFAULT_MODELS, DEFAULT_MODEL_PRICES).select({
+  it('refuses to dispatch when the adaptive policy abstains', () => {
+    expect(() => new ModelRouter(DEFAULT_MODELS, DEFAULT_MODEL_PRICES).select({
       ...base,
       requestedRole: 'ultra',
       adaptive: {
@@ -145,10 +145,7 @@ describe('adaptive tier selection', () => {
         profile: adaptiveProfile,
         budget: { availableUsd: 0, worstCaseUsd: adaptiveBudget.worstCaseUsd },
       },
-    });
-
-    expect(decision.role).toBe('ultra');
-    expect(decision.adaptiveReason).toBe('affordable-fallback');
+    })).toThrow(/abstained/u);
   });
 
   it('does not let adaptive selection change the profile identity', () => {

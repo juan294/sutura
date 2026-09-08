@@ -1,3 +1,4 @@
+import type { TierLlm } from '../llm/types.js';
 import { describe, expect, it, vi } from 'vitest';
 import { budgetedRecoveryPorts, reserveRecoveryAudit } from './hypotheses-budget.js';
 import { BudgetExceededError, RepairBudget } from '../engine/repair-budget.js';
@@ -100,4 +101,28 @@ it('uses stable per-port operation sequences and keeps audit operations disjoint
     'run-77-initial-audit-op-001', 'explicit-controller-id',
   ]);
   audit.finish();
+});
+
+it('does not serialize controller routing identities into billable input', async () => {
+  const input = setup();
+  input.chat.mockResolvedValue({ text: 'ok', usd: 0 });
+  const runScope: Record<string, unknown> = {};
+  runScope.self = runScope;
+  const ports = budgetedRecoveryPorts({ ...input, budget: new RepairBudget({ inferenceCostUsd: 0.01 }) });
+  await expect(ports.llm.chat('super', [], { maxTokens: 1, purpose: 'diagnosis-recovery', routing: { runScope, failureClass: null, diagnosisConfidence: null, remainingInferenceBudgetUsd: 0.01 } })).resolves.toMatchObject({ text: 'ok' });
+});
+
+it('forwards the exact reserved immutable quote to the provider dispatch', async () => {
+  const input = setup();
+  const quote = { role: 'super' as const, modelId: 'reserved-super', profileId: 'fixed', price: { input: 1, output: 1 } };
+  const modelQuote = vi.fn(() => quote);
+  const chat = vi.fn<TierLlm<'nano' | 'super' | 'ultra'>['chat']>(async (_tier, _messages, options) => {
+    expect(options?.quotedRoute).toEqual(quote);
+    expect(Object.isFrozen(options?.quotedRoute)).toBe(true);
+    expect(Object.isFrozen(options?.quotedRoute?.price)).toBe(true);
+    return { text: 'ok', usd: 0 };
+  });
+  const ports = budgetedRecoveryPorts({ ...input, llm: { chat, modelQuote }, budget: new RepairBudget() });
+  await ports.llm.chat('super', [], { maxTokens: 2048 });
+  expect(modelQuote).toHaveBeenCalledOnce();
 });

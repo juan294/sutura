@@ -1,7 +1,7 @@
 import { parseDiagnosisRecoveryEvidence } from './recovery.js';
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '../replay/canonical-json.js';
-import { VERIFICATION_COST_VERSION, VERIFICATION_EVIDENCE_VERSION, VERIFICATION_GATES, VERIFICATION_REASONS, VERIFICATION_STATUSES } from './types.js';
+import { VERIFICATION_COST_VERSION, VERIFICATION_EVIDENCE_VERSION, VERIFICATION_EXECUTION_EVIDENCE_VERSION, VERIFICATION_GATES, VERIFICATION_REASONS, VERIFICATION_STATUSES } from './types.js';
 import type { VerificationArtifact, VerificationEvidence, VerificationIdentity } from './types.js';
 
 const MAX_BYTES = 1_000_000;
@@ -166,12 +166,18 @@ function validateChallengeSubjects(value: unknown, hasSetHash: boolean): void {
 export function parseVerificationEvidence(value: unknown): VerificationEvidence {
   const hasRecovery = value !== null && typeof value === 'object' && Object.hasOwn(value, 'recovery');
   const item = object(value, 'evidence', ['schemaVersion', 'mode', 'outcome', 'assurance', 'identity', 'startedAt', 'finishedAt', 'commands', 'models', 'challenges', 'gates', 'costs', ...(hasRecovery ? ['recovery'] : [])]);
-  choice(item.schemaVersion, 'schemaVersion', [VERIFICATION_EVIDENCE_VERSION]);
+  choice(item.schemaVersion, 'schemaVersion', [VERIFICATION_EVIDENCE_VERSION, VERIFICATION_EXECUTION_EVIDENCE_VERSION]);
   choice(item.mode, 'mode', ['live', 'replay', 'recorded', 'local']);
   choice(item.outcome, 'outcome', ['repaired', 'verified-supplied-patch', 'refused', 'flaky-no-patch', 'insufficient', 'infra-stop']);
   choice(item.assurance, 'assurance', ['contract-verified', 'baseline-only']);
-  const identity = object(item.identity, 'identity', ['sourceSha', 'snapshotSha256', 'policyBaseSha', 'policySha256', 'diffSha256', 'corpusRevision', 'fixtureRevision', 'imageDigest', 'routingVersion', 'challengeVersion']);
-  for (const key of ['sourceSha', 'policyBaseSha']) pattern(identity[key], `identity.${key}`, SHA);
+  const executorIdentity = item.schemaVersion === VERIFICATION_EXECUTION_EVIDENCE_VERSION;
+  const identity = object(item.identity, 'identity', ['sourceSha', 'snapshotSha256', 'policyBaseSha', 'policySha256', 'diffSha256', 'corpusRevision', 'fixtureRevision', 'imageDigest', 'routingVersion', 'challengeVersion', ...(executorIdentity ? ['executorImageId', 'sourceKind'] : [])]);
+  if (executorIdentity && identity.executorImageId !== null) text(identity.executorImageId, 'identity.executorImageId');
+  if (executorIdentity) choice(identity.sourceKind, 'identity.sourceKind', ['git', 'local-snapshot']);
+  for (const key of ['sourceSha', 'policyBaseSha']) {
+    if (executorIdentity && identity.sourceKind === 'local-snapshot' && identity[key] === null) continue;
+    pattern(identity[key], `identity.${key}`, SHA);
+  }
   pattern(identity.policySha256, 'identity.policySha256', SHA256);
   for (const key of ['snapshotSha256', 'diffSha256']) if (identity[key] !== null) pattern(identity[key], `identity.${key}`, SHA256);
   for (const key of ['corpusRevision', 'fixtureRevision']) if (identity[key] !== null) text(identity[key], `identity.${key}`);
@@ -235,7 +241,7 @@ export function parseVerificationEvidence(value: unknown): VerificationEvidence 
   if (challenge.mode === 'disabled' && (challenge.qualifiedProbeCount !== 0 || statuses.get('challenges') !== 'not-run' || item.assurance !== 'baseline-only')) throw new VerificationEvidenceError('challenges', 'disabled mode requires absent probes and an explicit not-run observation');
   if (item.assurance === 'contract-verified' && (!accepted || !challenged)) throw new VerificationEvidenceError('assurance', 'requires an accepted outcome with qualified challenges');
   if (accepted) {
-    if (['snapshotSha256', 'diffSha256', 'imageDigest'].some((key) => identity[key] === null)) throw new VerificationEvidenceError('identity', 'accepted results require exact snapshot, candidate diff and image identities');
+    if (['snapshotSha256', 'diffSha256', executorIdentity ? 'executorImageId' : 'imageDigest'].some((key) => identity[key] === null)) throw new VerificationEvidenceError('identity', 'accepted results require exact snapshot, candidate diff and image identities');
     if (gates.some((entry) => { const gate = entry as Record<string, unknown>; return gate.gate !== 'challenges' && gate.status !== 'passed'; })) throw new VerificationEvidenceError('outcome', 'acceptance requires every retained gate passed');
     if (challenge.mode === 'required' && (!challenged || item.assurance !== 'contract-verified')) throw new VerificationEvidenceError('outcome', 'required challenges are incomplete');
     if (challenge.mode === 'optional' && !challenged) {

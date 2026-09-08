@@ -36,7 +36,7 @@ describe('Case Lab verification evidence extension', () => {
     const verification = evidence();
     const selectedCandidate = candidateIdentity(historical().race[0]!.candidate);
     verification.identity.diffSha256 = selectedCandidate.diffHash;
-    const file = { ...historical(), policy: { baseRef: 'trusted', baseSha: verification.identity.policyBaseSha, policySha: verification.identity.policySha256 }, selectedCandidate, verification };
+    const file = { ...historical(), policy: { baseRef: 'trusted', baseSha: verification.identity.policyBaseSha!, policySha: verification.identity.policySha256 }, selectedCandidate, verification };
     expect(validateCaseLabCaseFile(file, 'fixed')).toHaveProperty('verification', verification);
     expect(() => validateCaseLabCaseFile({ ...file, selectedCandidate: undefined }, 'fixed')).toThrow(/verification.*candidate/u);
     const changed = structuredClone(file); changed.race[0]!.candidate.diff += '\n';
@@ -61,9 +61,9 @@ describe('typed cost and source presentation', () => {
     verification.costs.sandbox = [{ operationId: 'probe', rawAmount: 5, rawUnit: null, unitSource: null, billed: null }];
     return {
       schemaVersion: 'sutura-case-lab-result-v1', requestId: 'cl-1788198872643-48b5c5d4', caseId: 'javascript-repair', mode: 'live',
-      release: { version: '0.2.0', actionSha: 'c'.repeat(40) }, identity: { controllerSha: 'c'.repeat(40), demoSha: verification.identity.sourceSha },
+      release: { version: '0.2.0', actionSha: 'c'.repeat(40) }, identity: { controllerSha: 'c'.repeat(40), demoSha: verification.identity.sourceSha! },
       outcome: 'fixed', expectedOutcome: 'fixed', matchesExpectation: true, links: {}, createdAt: verification.finishedAt,
-      caseFile: { ...historical(), selectedCandidate, verification, policy: { baseRef: 'trusted', baseSha: verification.identity.policyBaseSha, policySha: verification.identity.policySha256 } },
+      caseFile: { ...historical(), selectedCandidate, verification, policy: { baseRef: 'trusted', baseSha: verification.identity.policyBaseSha!, policySha: verification.identity.policySha256 } },
       cost: { inferenceUsd: 0, sandboxUsd: null, status: 'partial' },
     };
   }

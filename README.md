@@ -418,9 +418,10 @@ candidate is always a file path, read once and bounded, and a patch touching
 `.sutura.json`, controller or evaluator storage, hidden tests or a credential
 path is refused before anything runs.
 
-The same route is available to the Action through the `source-sha`,
+The Action selects the same route with `mode: verify` and the `source-sha`,
 `policy-base-sha`, `candidate-diff` and `failing-command` inputs. It takes no
-repository write access.
+repository write access. See the [read-only Action setup](docs/adoption/external-verification-action.md)
+for trusted-policy configuration, execution artifacts and failure behavior.
 
 ### Reduced-assurance audit-only mode
 

@@ -1,6 +1,8 @@
 import type { DiagnosisRecoveryEvidence } from '../diagnose/hypotheses.js';
 
 export const VERIFICATION_EVIDENCE_VERSION = 'sutura-verification-evidence-v1' as const;
+/** Adds an actual immutable executor image identity when OCI digest import is unavailable. */
+export const VERIFICATION_EXECUTION_EVIDENCE_VERSION = 'sutura-verification-evidence-v2' as const;
 export const VERIFICATION_COST_VERSION = 'sutura-verification-cost-v1' as const;
 export const VERIFICATION_GATES = ['policy', 'visible', 'audit', 'challenges', 'reproduction', 'repository-policy', 'mechanical', 'adjudication', 'resources', 'counterfactual'] as const;
 export const VERIFICATION_STATUSES = ['passed', 'failed', 'insufficient', 'not-run', 'infra-stop'] as const;
@@ -21,15 +23,20 @@ export interface VerificationGateObservation {
 }
 
 export interface VerificationIdentity {
-  sourceSha: string;
+  /** v2 only: local snapshots do not invent Git source or policy revisions. */
+  sourceKind?: 'git' | 'local-snapshot';
+  sourceSha: string | null;
   /** Unavailable only for nonaccepted terminal results; never fabricate execution identity. */
   snapshotSha256: string | null;
-  policyBaseSha: string;
+  policyBaseSha: string | null;
   policySha256: string;
   diffSha256: string | null;
   corpusRevision: string | null;
   fixtureRevision: string | null;
   imageDigest: string | null;
+  /** v2 only: opaque immutable baseline ID returned by the executor. This is
+   * not an OCI digest or an assertion that a mutable registry tag was pinned. */
+  executorImageId?: string | null;
   routingVersion: string;
   challengeVersion: string;
 }
@@ -98,7 +105,7 @@ export interface VerificationPresentation {
 }
 
 export interface VerificationEvidence {
-  schemaVersion: typeof VERIFICATION_EVIDENCE_VERSION;
+  schemaVersion: typeof VERIFICATION_EVIDENCE_VERSION | typeof VERIFICATION_EXECUTION_EVIDENCE_VERSION;
   mode: VerificationMode;
   outcome: VerificationOutcome;
   assurance: VerificationAssurance;

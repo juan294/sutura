@@ -1,10 +1,9 @@
 import { createHash } from 'node:crypto';
 
-import { audit, type AuditLlm } from '../audit/audit.js';
-import {
-  enforceRepositoryPolicy,
-  type RepositoryPolicyGateObservation,
-} from '../audit/repository-policy.js';
+import { type AuditLlm } from '../audit/audit.js';
+import { evaluateRuntimeCandidate } from '../verification/runtime.js';
+import { prepareRuntimeChallenges, type PreparedRuntimeChallenges } from '../challenges/runtime.js';
+import type { HealLlm } from '../heal.js';
 import type {
   AuditVerdict,
   CostLedger,
@@ -62,6 +61,7 @@ export interface CounterfactualStageLedger {
 export interface CounterfactualEvaluationInput {
   executor: Executor;
   llm: AuditLlm;
+  prepared?: PreparedRuntimeChallenges;
   baselineImageId: ImageId;
   diagnosis: Diagnosis;
   policy: RepositoryPolicy;
@@ -288,46 +288,19 @@ export async function evaluateCounterfactuals(
         throw new Error(`Counterfactual race returned no result for ${alternative.id}`);
       }
 
-      let verdict = await audit(
-        input.executor,
-        input.llm,
-        raceResult,
-        {
-          diagnosis: input.diagnosis,
-          beforeLog: input.beforeLog,
-          suiteCommand: input.verificationCommand,
-        },
-        (result) => {
-          input.ledger.record({
-            stage: 'audit',
-            attempt: (attempt += 1),
-            network: 'disabled',
-            result,
-            parentImageId: raceResult.imageId,
-            note: `Counterfactual ${alternative.id} fresh suite rerun`,
-          });
-        },
-      );
-      verdict = await enforceRepositoryPolicy(
-        {
-          executor: input.executor,
-          baselineImageId: input.baselineImageId,
-          policy: input.policy,
-          ...(input.runtime === undefined ? {} : { runtime: input.runtime }),
-          observe: ({ result, parentImageId, note }: RepositoryPolicyGateObservation) => {
-            input.ledger.record({
-              stage: 'audit',
-              attempt: (attempt += 1),
-              network: 'disabled',
-              result,
-              parentImageId,
-              note: `Counterfactual ${alternative.id} ${note}`,
-            });
-          },
-        },
-        raceResult,
-        verdict,
-      );
+      // Legacy direct callers without trusted contracts retain baseline-only verification.
+      // A challenge-bearing caller must pass the original pre-candidate context.
+      if (input.prepared === undefined && input.policy.verification?.contracts.length) {
+        record(refusedVerdict('INSUFFICIENT: original frozen challenge context unavailable'),raceResult,raceResult.nodeId);
+        continue;
+      }
+      const prepared = input.prepared ?? await prepareRuntimeChallenges({executor:input.executor,llm:input.llm as HealLlm,policy:input.policy,baselineImage:input.baselineImageId,policyBaseSha:'',policyHash:'',baselineSnapshotHash:'',failureExcerpt:input.beforeLog,baselineSources:[]});
+      const {verdict} = await evaluateRuntimeCandidate({
+        executor:input.executor,llm:input.llm,winner:raceResult,baselineImage:input.baselineImageId,
+        diagnosis:input.diagnosis,policy:input.policy,prepared,beforeLog:input.beforeLog,suiteCommand:input.verificationCommand,
+        ...(input.runtime===undefined?{}:{runtime:input.runtime}),
+        observe:(result,parentImageId,note)=>{input.ledger.record({stage:'audit',attempt:++attempt,network:'disabled',result,parentImageId,note:`Counterfactual ${alternative.id} ${note}`});},
+      });
       record(verdict, raceResult, raceResult.nodeId);
     } catch (error) {
       if (!(error instanceof BudgetExceededError)) throw error;

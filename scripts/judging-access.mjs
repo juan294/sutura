@@ -22,8 +22,8 @@ function refuse(reasonCode, message) {
   throw new JudgingAccessError(reasonCode, message);
 }
 
-/** Methods that would change something. A checker may use none of them. */
-const MUTATING_METHODS = Object.freeze(['POST', 'PUT', 'PATCH', 'DELETE']);
+/** Only read-only methods are part of this protocol. */
+const CHECK_METHODS = Object.freeze(['GET', 'HEAD']);
 
 /**
  * Checks one artifact a judge would open.
@@ -36,7 +36,7 @@ const MUTATING_METHODS = Object.freeze(['POST', 'PUT', 'PATCH', 'DELETE']);
 export function checkArtifact(observation, now) {
   const { name, status, method = 'GET' } = observation;
   if (!name?.trim()) refuse('unnamed-artifact', 'Each checked artifact needs a name');
-  if (MUTATING_METHODS.includes(method)) {
+  if (!CHECK_METHODS.includes(method)) {
     refuse('implicit-dispatch', `${name} would be checked with ${method}, which is not a check`);
   }
   if (status === 401 || status === 403) {

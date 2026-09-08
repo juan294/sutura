@@ -10,6 +10,7 @@ import {
   prepareVerify,
   readCandidateDiffFile,
   VerifyInputError,
+  verifyRuntimeFromEnvironment,
 } from './verify.js';
 
 const SOURCE_SHA = 'a'.repeat(40);
@@ -133,9 +134,7 @@ describe('candidate diff file reading', () => {
     await writeFile(secret, DIFF);
     await symlink(secret, link);
 
-    // The link resolves to a regular file, so reading succeeds; what matters is
-    // that the bytes come from the opened handle rather than a second lookup.
-    expect(await readCandidateDiffFile(link)).toBe(DIFF);
+    await expect(readCandidateDiffFile(link)).rejects.toThrow(/symbolic link/u);
   });
 });
 
@@ -208,4 +207,8 @@ describe('verify preparation', () => {
     await expect(prepareVerify({ ...base(), candidateDiff: garbage }))
       .rejects.toThrow(/complete unified diff/u);
   });
+});
+
+it('labels environment-backed execution as live',()=>{
+ expect(verifyRuntimeFromEnvironment({CONTREE_TOKEN:'test',CONTREE_PROJECT:'test',NEBIUS_API_KEY:'test'}).mode).toBe('live');
 });

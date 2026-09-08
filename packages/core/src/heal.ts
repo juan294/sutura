@@ -1,7 +1,16 @@
+import { VerificationExecutionRecorder } from './verification/execution-record.js';
+import { GeneratedVerificationRecorder } from './verification/generated-record.js';
+import type { VerificationMode } from './verification/types.js';
+import { snapshotSelectedSource, readBoundedRegularFile, MAX_SNAPSHOT_FILE_BYTES } from './verification/source.js';
+import { listSnapshotFiles } from './executor/contree.js';
+import { join } from 'node:path';
+import { parseRuntimeCandidateEvidence, type RuntimeCandidateEvidence } from './verification/runtime-evidence.js';
+import { challengeSubjectRecords } from './challenges/runner.js';
 import { canonicalJson } from './replay/canonical-json.js';
-import { audit } from './audit/audit.js';
+import { evaluateRuntimeCandidate, type RuntimeCandidateResult } from './verification/runtime.js';
+import { prepareRuntimeChallenges, type PreparedRuntimeChallenges } from './challenges/runtime.js';
 import { runMechanicalChecks } from './audit/mechanical.js';
-import { budgetedRecoveryPorts, withinRecoveryDeadline } from './diagnose/hypotheses-budget.js';
+import { budgetedRecoveryPorts, reserveRecoveryAudit, withinRecoveryDeadline } from './diagnose/hypotheses-budget.js';
 import { recoverDiagnosis, recoverySourceClasses, type DiagnosisRecoveryEvidence } from './diagnose/hypotheses.js';
 import { authorizeRepairCandidate, type RepairAuthorizationContext, type ControllerBaselineBinding } from './engine/repair-authorization.js';
 import { classify, classifyMechanically } from './diagnose/classify.js';
@@ -77,7 +86,6 @@ import type { CapacitySnapshot } from './llm/types.js';
 import type { ChatMessage, ChatOptions, TierLlm } from './llm/types.js';
 import type { ModelTier } from './llm/cost.js';
 import { createHash } from 'node:crypto';
-import { enforceRepositoryPolicy } from './audit/repository-policy.js';
 import { evaluateCounterfactuals } from './counterfactual/evaluate.js';
 import type {
   CounterfactualAlternative,
@@ -141,6 +149,11 @@ export interface RepairFailureContext {
   sourceIdentity?: Pick<Extract<ControllerBaselineBinding, { kind: 'git' }>, 'kind' | 'sourceSha' | 'policyBaseSha' | 'snapshotSha256'>
     | Pick<Extract<ControllerBaselineBinding, { kind: 'local-snapshot' }>, 'kind' | 'sourceSha' | 'policyBaseSha' | 'snapshotSha256'>;
   recovery?: DiagnosisRecoveryEvidence;
+  preparedChallenges?: PreparedRuntimeChallenges;
+  verificationRuns?: RuntimeCandidateEvidence[];
+  evidenceMode?: VerificationMode;
+  generatedVerification?: GeneratedVerificationRecorder;
+  executionRecorder?: VerificationExecutionRecorder;
   readSourceContext(
     log: string,
     diagnosis: Diagnosis,
@@ -262,7 +275,7 @@ export function tracedLlm(llm: HealLlm, trace: TraceRecorder): HealLlm {
       return quote;
     },
     async chat(tier: ModelTier, messages: readonly ChatMessage[], options?: ChatOptions) {
-      const model = delegate.modelQuote?.(tier, messages, options)?.modelId ??
+      const model = options?.quotedRoute?.modelId ?? delegate.modelQuote?.(tier, messages, options)?.modelId ??
         delegate.modelId?.(tier) ?? tier;
       const serializedPrompt = JSON.stringify(messages);
       const systemPrompt = messages.find(({ role }) => role === 'system');
@@ -491,8 +504,23 @@ export function buildSandboxRepositoryInitializationCommandForTest(
 }
 
 export type SandboxSetupResult =
-  | { ok: true; imageId: ImageId }
+  | { ok: true; imageId: ImageId; snapshotSha256?: string; sourceDir?: string; cleanup?: () => Promise<void> }
   | { ok: false; command: string; result: RunResult };
+
+export interface FrozenVerificationSource {
+  dir: string;
+  snapshotSha256: string;
+  cleanup(): Promise<void>;
+}
+
+export async function freezeSandboxSource(dir: string): Promise<FrozenVerificationSource> {
+  const files = (await listSnapshotFiles(dir, 'repository')).sort();
+  const frozen = await snapshotSelectedSource(dir, files, async () => {
+    const current = (await listSnapshotFiles(dir, 'repository')).sort();
+    if (canonicalJson(current) !== canonicalJson(files)) throw new HealCaseError('Source manifest changed during freezing');
+  });
+  return frozen;
+}
 
 export async function prepareSandbox(
   executor: AllowlistedExecutor,
@@ -501,6 +529,23 @@ export async function prepareSandbox(
   observedCommand: string,
   stages?: StageLedger,
   runtime: RuntimeAdapter = NODE_RUNTIME,
+  freezeSource: boolean | (() => Promise<FrozenVerificationSource>) = false,
+): Promise<SandboxSetupResult> {
+  if (!freezeSource) return prepareSandboxFromSource(executor, dir, baseImage, observedCommand, stages, runtime);
+  const frozen = await (typeof freezeSource === 'function' ? freezeSource() : freezeSandboxSource(dir));
+  try {
+    const setup = await prepareSandboxFromSource(executor, frozen.dir, baseImage, observedCommand, stages, runtime);
+    if (!setup.ok) { await frozen.cleanup(); return setup; }
+    return { ...setup, snapshotSha256: frozen.snapshotSha256, sourceDir: frozen.dir, cleanup: frozen.cleanup };
+  } catch (error) {
+    await frozen.cleanup();
+    throw error;
+  }
+}
+
+async function prepareSandboxFromSource(
+  executor: AllowlistedExecutor, dir: string, baseImage: ImageId, observedCommand: string,
+  stages: StageLedger | undefined, runtime: RuntimeAdapter,
 ): Promise<SandboxSetupResult> {
   let dependencyPreparation;
   try {
@@ -647,6 +692,7 @@ function makeCaseFile(
     | 'traceRecorder'
     | 'runtime'
     | 'recovery'
+    | 'verificationRuns'
   >,
   diagnosis: Diagnosis,
   triageVerdict: CaseFile['triage'],
@@ -686,6 +732,7 @@ function makeCaseFile(
     }),
     outcome,
     ...(ctx.recovery === undefined ? {} : { recovery: ctx.recovery }),
+    ...(ctx.verificationRuns === undefined ? {} : { verificationRuns: ctx.verificationRuns }),
     cost: ctx.cost,
     policy: policyEvidenceFor(ctx),
     stages: ctx.stageLedger?.entries() ?? [],
@@ -735,34 +782,6 @@ function policyVerdict(
   return repositoryVerdict;
 }
 
-function enforceWinnerPolicy(
-  ctx: RepairFailureContext,
-  winner: RaceResult,
-  ledger: StageLedger,
-  auditVerdict: NonNullable<CaseFile['audit']>,
-): Promise<NonNullable<CaseFile['audit']>> {
-  return enforceRepositoryPolicy(
-    {
-      executor: ctx.executor,
-      baselineImageId: ctx.failingImage,
-      policy: policyFor(ctx),
-      runtime: ctx.runtime ?? NODE_RUNTIME,
-      observe: ({ attempt, result, parentImageId, note }) => {
-        ledger.record({
-          stage: 'audit',
-          attempt,
-          network: 'disabled',
-          result,
-          parentImageId,
-          note,
-        });
-      },
-    },
-    winner,
-    auditVerdict,
-  );
-}
-
 async function counterfactualEvidence(
   ctx: RepairFailureContext,
   ledger: StageLedger,
@@ -785,6 +804,7 @@ async function counterfactualEvidence(
     verificationCommand,
     diffBytesLimit: policy.maxDiffBytes,
     alternatives,
+    ...(ctx.preparedChallenges === undefined ? {} : { prepared: ctx.preparedChallenges }),
     ...(acceptedCandidateId === undefined ? {} : { acceptedCandidateId }),
     cost: ctx.cost,
     ledger,
@@ -794,6 +814,14 @@ async function counterfactualEvidence(
 
 export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile> {
   const policy = policyFor(ctx);
+  const generated = policy.verification?.mode === 'required' ? new GeneratedVerificationRecorder({
+    executor: ctx.executor, llm: ctx.llm, baselineImageId: ctx.failingImage, policy,
+    policySha256: /^[a-f0-9]{64}$/u.test(ctx.policyEvidence?.policySha ?? '') ? ctx.policyEvidence!.policySha : createHash('sha256').update(canonicalJson(policy)).digest('hex'),
+    mode: ctx.evidenceMode ?? 'local',
+    ...(ctx.executionRecorder === undefined ? {} : { executionRecorder: ctx.executionRecorder }),
+    ...(ctx.sourceIdentity === undefined ? {} : { sourceIdentity: ctx.sourceIdentity }),
+  }) : undefined;
+  if (generated) ctx = { ...ctx, executor: generated.executor, llm: generated.llm, generatedVerification: generated };
   const configuredBudgets = repairBudgetLimits(ctx.repairBudgets);
   const budget = new RepairBudget({
     ...configuredBudgets,
@@ -808,13 +836,15 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
   const charged = budgetedRecoveryPorts({ budget, llm: fullContext.llm, executor: ctx.executor, operationIdPrefix: `repair-${ctx.runId}-initial` });
   const progress: { diagnosis?: Diagnosis; triage?: CaseFile['triage'] } = {};
   try {
-    return await repairFailureWithinBudget(fullContext, budget, charged, progress);
+    const file = await repairFailureWithinBudget(fullContext, budget, charged, progress);
+    return generated?.attach(file) ?? file;
   } catch (error) {
     if (!(error instanceof BudgetExceededError)) throw error;
     ensureTraceStarted(trace);
     ledger.record({ stage: 'search', attempt: 1, network: 'disabled', note: `Budget abstention: ${error.message}` });
-    return makeCaseFile(fullContext, progress.diagnosis ?? classifyMechanically(ctx.failedLog),
+    const file = makeCaseFile(fullContext, progress.diagnosis ?? classifyMechanically(ctx.failedLog),
       progress.triage ?? notRunTriageVerdict(), [], 'gave-up');
+    return generated?.attach(file) ?? file;
   }
 }
 
@@ -899,6 +929,28 @@ async function repairFailureWithinBudget(
     return makeCaseFile(fullContext, diagnosis, triageVerdict, [], 'gave-up');
   }
 
+  const recordVerification = (candidate: Candidate, prepared: PreparedRuntimeChallenges, result: RuntimeCandidateResult) => {
+    const evidence = parseRuntimeCandidateEvidence({schemaVersion:'sutura-runtime-candidate-v1',candidateId:candidate.id,
+      diffHash:createHash('sha256').update(candidate.diff).digest('hex'),setHash:prepared.set?.setHash??null,
+      verification:result.verification,subjects:result.challenges===null?[]:challengeSubjectRecords(result.challenges)});
+    (fullContext.verificationRuns ??= []).push(evidence);
+    fullContext.generatedVerification?.record(candidate, prepared, result);
+  };
+  const prepareChallenges = async (sources: RepairSourceContext['sources']) => {
+    const prepared = await prepareRuntimeChallenges({
+      ...charged, policy, baselineImage: ctx.failingImage,
+      policyBaseSha: ctx.sourceIdentity?.policyBaseSha ?? null,
+      policyHash: /^[a-f0-9]{64}$/u.test(ctx.policyEvidence?.policySha ?? '') ? ctx.policyEvidence!.policySha : createHash('sha256').update(canonicalJson(policy)).digest('hex'),
+      baselineSnapshotHash: ctx.sourceIdentity?.snapshotSha256 ?? '',
+      failureExcerpt: providerLog,
+      baselineSources: sources.map(({ path, startLine, content }) => ({ path, startLine, content })),
+      observe: (result, parentImageId) => { ledger.record({ stage: 'audit', attempt: 1, network: 'disabled', result, parentImageId, note: 'Frozen baseline challenge' }); },
+    });
+    fullContext.generatedVerification?.prepare(prepared);
+    fullContext.preparedChallenges = prepared;
+    chargedContext.preparedChallenges = prepared;
+    return prepared;
+  };
   const suppliedCandidate = ctx.candidateDiff === undefined
     ? undefined
     : {
@@ -995,6 +1047,9 @@ async function repairFailureWithinBudget(
       if (targets.length === 0 || recovery.audit === undefined) {
         return makeCaseFile(fullContext, diagnosis, triageVerdict, [], 'gave-up', undefined, []);
       }
+      const prepared = await prepareChallenges(sourceContext.sources);
+      const verified = new Map<string, RuntimeCandidateResult>();
+      let firstAuditAvailable = true;
       const attemptContexts = new Map<string, ControlledRepairAttemptContext>();
       const nodeTargets = new Map<string, number>();
       const attemptContext = (
@@ -1123,32 +1178,34 @@ async function repairFailureWithinBudget(
             providerCapacityAvailable(providerCapacity),
             ctx.executor.operationCapacity().available,
           )),
-        /**
-         * Diagnosed-test green only makes a branch provisional. The mechanical
-         * green-washing checks run here, before siblings are cancelled, so a
-         * patch that passes the visible suite by weakening it no longer ends the
-         * race and hides the alternatives that might have been correct. They are
-         * pure functions of the diff, so admitting this way costs no sandbox
-         * operation, provider turn or budget capacity.
-         *
-         * The provider-backed gates, fresh suite rerun, challenges and
-         * adjudication, still run once on the winner. Moving those into
-         * admission needs an audit reserve sized for several candidates rather
-         * than one, which the phase 4 record names as the remaining work.
-         */
-        admit: ({ expansion }) => {
+        admit: async ({ nodeId, expansion }) => {
           const candidate = expansion.candidate;
-          if (candidate === undefined) return Promise.resolve({ accepted: false });
-          const failed = runMechanicalChecks(candidate.diff).find(({ passed }) => !passed);
-          if (failed === undefined) return Promise.resolve({ accepted: true });
-          ledger.record({
-            stage: 'search', attempt: ++candidateAttempt, network: 'disabled',
-            note: `Provisional candidate refused by mechanical check ${failed.name}`,
-          });
-          return Promise.resolve({
-            accepted: false,
-            reason: `mechanical:${failed.name}`,
-          });
+          if (candidate === undefined) return { accepted: false };
+          const target = targets[nodeTargets.get(nodeId) ?? 0]!;
+          let ports;
+          try {
+            ports = firstAuditAvailable ? recovery.audit! : reserveRecoveryAudit({
+              budget, llm: fullContext.llm, executor: ctx.executor, policy,
+              operationIdPrefix: `repair-${ctx.runId}-${nodeId}`,
+            });
+            firstAuditAvailable = false;
+            const result = await evaluateRuntimeCandidate({
+              ...ports, prepared, policy, baselineImage: ctx.failingImage,
+              winner: {candidate, imageId: expansion.imageId, nodeId,
+                held: true, exitCode: expansion.testEvidence.exitCode},
+              diagnosis: target.diagnosis, beforeLog: providerLog, suiteCommand: verificationCommand,
+              ...(target.authorization === undefined ? {} : {authorization: target.authorization}),
+              runtime,
+              observe: (result, parentImageId, note) => { ledger.record({stage: 'audit', attempt: ++candidateAttempt, network: 'disabled', result, parentImageId, note}); },
+            });
+            verified.set(nodeId, result);
+            recordVerification(candidate, prepared, result);
+            ledger.record({stage: 'search', attempt: ++candidateAttempt, network: 'disabled', note: `Provisional candidate ${nodeId}: ${result.verification.status} at ${result.verification.blockingGate ?? 'complete'}`});
+            return {accepted: result.verdict.approved, reason: result.verdict.reasoning};
+          } catch(error) {
+            if (!(error instanceof BudgetExceededError)) throw error;
+            return {accepted:false, reason:'budget-exhausted'};
+          } finally { ports?.finish(); }
         },
         cancel: async (nodeId) => {
           const activeOperation = activeOperations.get(nodeId);
@@ -1306,7 +1363,7 @@ async function repairFailureWithinBudget(
       if (result.candidates.length === 0) {
         recovery.audit.finish();
         return makeCaseFile(
-          fullContext, diagnosis, triageVerdict, [], 'gave-up', undefined, searchEvidence, undefined,
+          fullContext, diagnosis, triageVerdict, [], [...verified.values()].some(item => item.verification.status === 'failed') ? 'refused' : 'gave-up', [...verified.values()].at(-1)?.verdict, searchEvidence, undefined,
           await counterfactualEvidence(chargedContext, ledger, diagnosis, providerLog, verificationCommand),
         );
       }
@@ -1316,22 +1373,7 @@ async function repairFailureWithinBudget(
         note: `Adaptive search passed at depth ${node.depth}`,
       }));
       const winner = raceResults[0]!;
-      const winnerTarget = targets[nodeTargets.get(winner.nodeId!)!]!;
-      const auditContext = { ...fullContext, ...recovery.audit };
-      let auditVerdict = await audit(recovery.audit.executor, recovery.audit.llm, winner, {
-        diagnosis: winnerTarget.diagnosis,
-        ...(winnerTarget.authorization === undefined ? {} : { authorization: winnerTarget.authorization }),
-        beforeLog: providerLog,
-        suiteCommand: verificationCommand,
-      }, (result) => ledger.record({
-        stage: 'audit',
-        attempt: 1,
-        network: 'disabled',
-        result,
-        parentImageId: winner.imageId,
-        note: 'Fresh suite rerun',
-      }));
-      auditVerdict = await enforceWinnerPolicy(auditContext, winner, ledger, auditVerdict);
+      const auditVerdict = verified.get(winner.nodeId!)!.verdict;
       recovery.audit.finish();
       const outcome = auditVerdict.approved ? 'fixed' as const : 'refused' as const;
       return makeCaseFile(
@@ -1352,6 +1394,11 @@ async function repairFailureWithinBudget(
     }
   }
 
+  const suppliedAudit = reserveRecoveryAudit({budget, llm: fullContext.llm, executor: ctx.executor, policy});
+  try {
+  const sources = policy.verification?.contracts.length
+    ? (await ctx.readSourceContext(ctx.failedLog, diagnosis, runtime)).sources : [];
+  const prepared = await prepareChallenges(sources);
   const candidates = [suppliedCandidate];
 
   if (suppliedCandidate) {
@@ -1461,19 +1508,13 @@ async function repairFailureWithinBudget(
     );
   }
 
-  let auditVerdict = await audit(charged.executor, charged.llm, winner, {
-    diagnosis,
-    beforeLog: providerLog,
-    suiteCommand: verificationCommand,
-  }, (result) => ledger.record({
-    stage: 'audit',
-    attempt: 1,
-    network: 'disabled',
-    result,
-    parentImageId: winner.imageId,
-    note: 'Fresh suite rerun',
-  }));
-  auditVerdict = await enforceWinnerPolicy(chargedContext, winner, ledger, auditVerdict);
+  const suppliedVerification = await evaluateRuntimeCandidate({
+    ...suppliedAudit, winner, prepared, policy, baselineImage: ctx.failingImage,
+    diagnosis, beforeLog: providerLog, suiteCommand: verificationCommand, runtime,
+    observe: (result, parentImageId, note) => { ledger.record({stage:'audit',attempt:1,network:'disabled',result,parentImageId,note}); },
+  });
+  recordVerification(winner.candidate, prepared, suppliedVerification);
+  const auditVerdict = suppliedVerification.verdict;
   return makeCaseFile(
     fullContext,
     diagnosis,
@@ -1487,6 +1528,7 @@ async function repairFailureWithinBudget(
       chargedContext, ledger, diagnosis, providerLog, verificationCommand, winner.candidate.id,
     ),
   );
+  } finally { suppliedAudit.finish(); }
 }
 
 function failureLog(command: string, result: RunResult): string {
@@ -1497,6 +1539,10 @@ function failureLog(command: string, result: RunResult): string {
 }
 
 export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
+  if (ctx.policy?.verification?.mode === 'required' && ctx.executionRecorder === undefined) {
+    const executionRecorder = new VerificationExecutionRecorder({ executor: ctx.executor, llm: ctx.llm, mode: ctx.evidenceMode ?? 'local' });
+    ctx = { ...ctx, executionRecorder, executor: executionRecorder.executor, llm: executionRecorder.llm };
+  }
   if (!ctx.runId.trim() || !ctx.repo.trim() || !ctx.caseDir.trim()) {
     throw new HealCaseError('runId, repo, and caseDir must be non-empty');
   }
@@ -1542,10 +1588,12 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     command,
     ledger,
     runtime,
+    (ctx.policy?.verification?.contracts.length ?? 0) > 0,
   );
   if (!setup.ok) {
     return preparationFailureCaseFile(fullContext, setup.command, setup.result);
   }
+  try {
   const reproduction = await executor.run(
     setup.imageId,
     sandboxTargetCommand(command, runtime),
@@ -1565,7 +1613,9 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     return noReproductionCaseFile(fullContext, mechanical);
   }
 
-  return repairFailure({
+  return await repairFailure({
+    ...(ctx.executionRecorder === undefined ? {} : { executionRecorder: ctx.executionRecorder }),
+    evidenceMode: ctx.evidenceMode ?? 'local',
     runId: ctx.runId,
     repo: ctx.repo,
     failedLog,
@@ -1575,8 +1625,18 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     cost: ctx.cost,
     triageN: ctx.triageN,
     raceK: ctx.raceK,
-    readSourceContext: ctx.readSourceContext,
-    ...(ctx.sourceIdentity === undefined ? {} : { sourceIdentity: ctx.sourceIdentity }),
+    readSourceContext: async (...args) => {
+      const context = await ctx.readSourceContext(...args);
+      if (setup.sourceDir === undefined) return context;
+      return { ...context, sources: await Promise.all(context.sources.map(async source => {
+        const content = (await readBoundedRegularFile(join(setup.sourceDir!, source.path), MAX_SNAPSHOT_FILE_BYTES)).toString('utf8');
+        const lines = source.content.split('\n').length;
+        return { ...source, content: content.split('\n').slice(source.startLine - 1, source.startLine - 1 + lines).join('\n') };
+      })) };
+    },
+    ...(setup.snapshotSha256 === undefined ? (ctx.sourceIdentity === undefined ? {} : { sourceIdentity: ctx.sourceIdentity }) : {
+      sourceIdentity: { ...(ctx.sourceIdentity ?? { kind: 'local-snapshot' as const, sourceSha: null, policyBaseSha: null }), snapshotSha256: setup.snapshotSha256 },
+    }),
     ...(ctx.tavily ? { tavily: ctx.tavily } : {}),
     ...(ctx.lockfileDiff === undefined ? {} : { lockfileDiff: ctx.lockfileDiff }),
     ...(ctx.dependencyHints === undefined ? {} : { dependencyHints: ctx.dependencyHints }),
@@ -1590,4 +1650,5 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     traceRecorder: trace,
     runtime,
   });
+  } finally { await setup.cleanup?.(); }
 }

@@ -153,3 +153,13 @@ describe('routing decision table', () => {
       .toBe(routingProfileHash(profile));
   });
 });
+
+it.each([
+  { nanoRepairEnabled: false, targetCount: 1, confidence: 1 },
+  { nanoRepairEnabled: true, targetCount: 2, confidence: 1 },
+  { nanoRepairEnabled: true, targetCount: 1, confidence: 0.2 },
+])('never uses an ineligible nano repair as an affordable fallback: %j', (input) => {
+  const result = route({ targetCount: input.targetCount, confidence: input.confidence },
+    { nanoRepairEnabled: input.nanoRepairEnabled }, { availableUsd: 0.05 });
+  expect(result.tier).toBeNull();
+});

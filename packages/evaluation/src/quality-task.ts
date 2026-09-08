@@ -108,8 +108,8 @@ export function parseQualityPrediction(text: string): QualityPrediction {
     throw new QualityTaskError('unknown-label', 'Prediction label is not one of the declared labels');
   }
   if (!Array.isArray(item.citedEvidence) || item.citedEvidence.length > QUALITY_MAX_CITATIONS ||
-    item.citedEvidence.some((entry) => typeof entry !== 'string')) {
-    throw new QualityTaskError('invalid-citations', 'Citations must be at most four strings');
+    item.citedEvidence.some((entry) => typeof entry !== 'string' || entry.length > 240)) {
+    throw new QualityTaskError('invalid-citations', 'Citations must be at most four strings of at most 240 characters');
   }
   if (typeof item.confidence !== 'number' || !Number.isFinite(item.confidence) ||
     item.confidence < 0 || item.confidence > 1) {
@@ -130,6 +130,11 @@ export interface QualityScoredItem {
   truth: QualityTruth;
   /** Absent when the batch returned nothing for this record. */
   prediction?: QualityPrediction;
+  /** All charged attempts for this record, including retries and failed outputs.
+   * Absent or null means unknown, never a free request. */
+  costUsd?: number | null;
+  /** Complete usage across all attempts for this record; omit if incomplete. */
+  tokenUsage?: { inputTokens: number; outputTokens: number };
 }
 
 export interface QualityScore {
@@ -149,6 +154,103 @@ export interface QualityScore {
   /** Mean confidence on correct and incorrect decided answers. */
   meanConfidenceCorrect: number | null;
   meanConfidenceIncorrect: number | null;
+  /** Calibration of confidence in the selected answer being correct, over
+   * known-truth, non-abstaining predictions only. This is not a multiclass
+   * probability score: the model supplies confidence only for its own answer. */
+  calibration: {
+    samples: number;
+    brierScore: number | null;
+    expectedCalibrationError: number | null;
+    /** Fixed [lower, upper) bins; the final bin also contains confidence 1. */
+    bins: Array<{
+      lower: number;
+      upper: number;
+      samples: number;
+      accuracy: number | null;
+      meanConfidence: number | null;
+    }>;
+  };
+  resources: {
+    /** All records, including unknown truth, missing outputs and abstentions. */
+    attempts: number;
+    knownCostUsd: number;
+    unknownCost: number;
+    /** Null when any cost is unknown or there were no attempts. */
+    totalCostUsd: number | null;
+    /** Known usage subtotals, interpreted together with unknownUsage. */
+    inputTokens: number;
+    outputTokens: number;
+    unknownUsage: number;
+    correctDecisions: number;
+    costPerCorrectDecisionUsd: number | null;
+  };
+}
+
+function validateScoredItems(items: readonly QualityScoredItem[]): void {
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (typeof item.recordId !== 'string' || !item.recordId.trim() || seen.has(item.recordId)) {
+      throw new QualityTaskError('invalid-record-id', 'Scored record IDs must be nonempty and unique');
+    }
+    seen.add(item.recordId);
+    if (!['preserves-contract', 'breaks-contract', 'unknown'].includes(item.truth)) {
+      throw new QualityTaskError('unknown-truth', `${item.recordId} has an invalid truth label`);
+    }
+    if (item.prediction !== undefined) parseQualityPrediction(JSON.stringify(item.prediction));
+    if (item.costUsd !== undefined && item.costUsd !== null &&
+      (typeof item.costUsd !== 'number' || !Number.isFinite(item.costUsd) || item.costUsd < 0)) {
+      throw new QualityTaskError('invalid-cost', `${item.recordId} cost must be nonnegative and finite or unknown`);
+    }
+    if (item.tokenUsage !== undefined && (item.tokenUsage === null ||
+      ![item.tokenUsage.inputTokens, item.tokenUsage.outputTokens]
+        .every((value) => Number.isSafeInteger(value) && value >= 0))) {
+      throw new QualityTaskError('invalid-usage', `${item.recordId} token usage must contain nonnegative safe integers`);
+    }
+  }
+}
+
+function calibrationScore(decided: readonly QualityScoredItem[]): QualityScore['calibration'] {
+  const bins = Array.from({ length: 10 }, (_, index) => {
+    const members = decided.filter(({ prediction }) => Math.min(9, Math.floor(prediction!.confidence * 10)) === index);
+    return {
+      lower: index / 10,
+      upper: (index + 1) / 10,
+      samples: members.length,
+      accuracy: ratio(members.filter(({ truth, prediction }) => truth === prediction!.label).length, members.length),
+      meanConfidence: mean(members.map(({ prediction }) => prediction!.confidence)),
+    };
+  });
+  return {
+    samples: decided.length,
+    brierScore: mean(decided.map(({ truth, prediction }) => (
+      prediction!.confidence - Number(truth === prediction!.label)
+    ) ** 2)),
+    expectedCalibrationError: ratio(bins.reduce((total, bin) => total +
+      bin.samples * Math.abs((bin.accuracy ?? 0) - (bin.meanConfidence ?? 0)), 0), decided.length),
+    bins,
+  };
+}
+
+function resourceScore(items: readonly QualityScoredItem[], correctDecisions: number): QualityScore['resources'] {
+  const knownCostUsd = items.reduce((sum, item) => sum + (item.costUsd ?? 0), 0);
+  const unknownCost = items.filter(({ costUsd }) => costUsd === undefined || costUsd === null).length;
+  const inputTokens = items.reduce((sum, item) => sum + (item.tokenUsage?.inputTokens ?? 0), 0);
+  const outputTokens = items.reduce((sum, item) => sum + (item.tokenUsage?.outputTokens ?? 0), 0);
+  if (!Number.isFinite(knownCostUsd) || !Number.isSafeInteger(inputTokens) || !Number.isSafeInteger(outputTokens)) {
+    throw new QualityTaskError('resource-overflow', 'Aggregated evaluation resources exceed numeric limits');
+  }
+  const totalCostUsd = unknownCost === 0 && items.length > 0 ? knownCostUsd : null;
+  return {
+    attempts: items.length,
+    knownCostUsd,
+    unknownCost,
+    totalCostUsd,
+    inputTokens,
+    outputTokens,
+    unknownUsage: items.filter(({ tokenUsage }) => tokenUsage === undefined).length,
+    correctDecisions,
+    costPerCorrectDecisionUsd: totalCostUsd === null ? null : ratio(totalCostUsd, correctDecisions),
+  };
 }
 
 function ratio(numerator: number, denominator: number): number | null {
@@ -171,6 +273,7 @@ function mean(values: readonly number[]): number | null {
  * is not the same as answering wrongly.
  */
 export function scoreQualityPredictions(items: readonly QualityScoredItem[]): QualityScore {
+  validateScoredItems(items);
   const known = items.filter(({ truth }) => truth !== 'unknown');
   const answered = known.filter(({ prediction }) => prediction !== undefined);
   const decided = answered.filter(({ prediction }) => prediction!.label !== 'insufficient-evidence');
@@ -205,5 +308,7 @@ export function scoreQualityPredictions(items: readonly QualityScoredItem[]): Qu
     coverage: ratio(answered.length, known.length),
     meanConfidenceCorrect: mean(correct.map(({ prediction }) => prediction!.confidence)),
     meanConfidenceIncorrect: mean(incorrect.map(({ prediction }) => prediction!.confidence)),
+    calibration: calibrationScore(decided),
+    resources: resourceScore(items, correct.length),
   };
 }

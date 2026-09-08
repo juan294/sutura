@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -10,6 +10,7 @@ import {
   assertCleanCheckoutAt,
   MAX_POLICY_OBJECT_BYTES,
   readTrustedPolicyAtCommit,
+  snapshotCleanSourceAt,
   VerifySourceError,
 } from './verify-source.js';
 
@@ -141,5 +142,70 @@ describe('trusted policy at a commit', () => {
 
   it('bounds the declaration it will read', () => {
     expect(MAX_POLICY_OBJECT_BYTES).toBe(65_536);
+  });
+});
+
+
+describe('untrusted Git object boundaries', () => {
+  async function fixture(setup: (dir: string) => Promise<void>): Promise<{ dir: string; sha: string }> {
+    const dir = await mkdtemp(join(tmpdir(), 'sutura-source-boundary-'));
+    await git(dir, ['init', '-q', '-b', 'main']);
+    await setup(dir);
+    await git(dir, ['add', '-A']);
+    await git(dir, ['commit', '-qm', 'boundary']);
+    return { dir, sha: (await git(dir, ['rev-parse', 'HEAD'])).trim() };
+  }
+
+  it('refuses a policy object larger than the Git output buffer instead of defaulting', async () => {
+    const { dir, sha } = await fixture(async (dir) => {
+      await writeFile(join(dir, '.sutura.json'), ' '.repeat(MAX_POLICY_OBJECT_BYTES * 5));
+    });
+    try {
+      await expect(readTrustedPolicyAtCommit(dir, sha)).rejects.toMatchObject({ reasonCode: 'policy-too-large' });
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('refuses a policy tree instead of treating it as a declaration', async () => {
+    const { dir, sha } = await fixture(async (dir) => {
+      await mkdir(join(dir, '.sutura.json'));
+      await writeFile(join(dir, '.sutura.json', 'policy'), '{}');
+    });
+    try {
+      await expect(readTrustedPolicyAtCommit(dir, sha)).rejects.toMatchObject({ reasonCode: 'policy-not-a-file' });
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('refuses a symlink policy even when its link text is valid policy JSON', async () => {
+    const { dir, sha } = await fixture(async (dir) => {
+      await symlink('{"version":1}', join(dir, '.sutura.json'));
+    });
+    try {
+      await expect(readTrustedPolicyAtCommit(dir, sha)).rejects.toMatchObject({ reasonCode: 'policy-not-a-file' });
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('refuses a missing declared blob instead of defaulting', async () => {
+    const { dir, sha } = await fixture(async (dir) => {
+      await writeFile(join(dir, '.sutura.json'), '{"version":1}');
+    });
+    try {
+      const blob = (await git(dir, ['rev-parse', `${sha}:.sutura.json`])).trim();
+      await rm(join(dir, '.git', 'objects', blob.slice(0, 2), blob.slice(2)));
+      await expect(readTrustedPolicyAtCommit(dir, sha)).rejects.toMatchObject({ reasonCode: 'policy-read-failed' });
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('refuses a tracked symlink without copying external bytes', async () => {
+    const external = await mkdtemp(join(tmpdir(), 'sutura-external-source-'));
+    await writeFile(join(external, 'secret'), 'private bytes');
+    const { dir, sha } = await fixture(async (dir) => {
+      await symlink(join(external, 'secret'), join(dir, 'source.js'));
+    });
+    try {
+      await expect(snapshotCleanSourceAt(dir, sha)).rejects.toMatchObject({ reasonCode: 'source-not-a-file' });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+      await rm(external, { recursive: true, force: true });
+    }
   });
 });

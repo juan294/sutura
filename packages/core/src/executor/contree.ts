@@ -1040,7 +1040,7 @@ async function listNonGitFiles(
   return files;
 }
 
-async function listSnapshotFiles(
+export async function listSnapshotFiles(
   dir: string,
   profile: SnapshotProfile,
 ): Promise<string[]> {

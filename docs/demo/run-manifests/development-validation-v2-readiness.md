@@ -1,5 +1,7 @@
 # Stage 3 v2 readiness
 
+**Superseded as a current candidate request on September 8.** Further runtime verification, source binding and evidence changes are being integrated. This historical manifest remains unchanged and unauthorised; do not dispatch it to measure the new implementation. The replacement request will bind the final checked candidate.
+
 Prepared 2026-09-08. **Authorization is USD 0. No jobs have been dispatched under this manifest.** The proposed cumulative cap is USD 10.00 for inference plus sandbox charges across every attempt. Approval of v1 does not authorize v2.
 
 The [manifest](development-validation-v2.json) requests 80 development and validation cases, one repetition, concurrency one, on candidate `1fe31761e6f0a01a15189b4d7b85b7a10d6b8238`. Its subject list is identical, including order, to v1. No held-out paid evaluation was dispatched. The standard offline test suite includes local fixture tests. Stage 4 remains a separate decision after this run is read.

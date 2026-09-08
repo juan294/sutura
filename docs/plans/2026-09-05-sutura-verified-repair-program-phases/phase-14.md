@@ -1,5 +1,12 @@
 # Phase 14 — Keep judge access and evidence available
 
+## Local implementation review — 2026-09-08
+
+The judging-access collector now enforces local transport deadlines and response bounds, archives successful observations, and preserves a complete unavailable report when both live and fallback paths fail. A response that arrives after its deadline cannot create an archive. The runbook separates the collector's transport deadline from the access check's evidence deadline.
+
+The collector, pure checker and fixture regressions are local implementation. Published final URLs, immutable release artifacts, real access records and checks during December 1–15 remain open. No current local check satisfies the future judging window.
+
+
 Parent: [Verified repair program](../2026-09-05-sutura-verified-repair-program.md). Depends on final submission in phase 13. Sequential operational phase through December 15, 2026. Do not mark this phase complete merely because submission is done.
 
 ## Outcome and source

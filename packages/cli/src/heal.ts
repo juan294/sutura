@@ -17,6 +17,7 @@ import {
   SourceWindowError,
   detectRuntimeAtPath,
   validateCounterfactualAlternatives,
+  type VerificationMode,
   type CaseFile,
   type AuditFile,
   type CounterfactualAlternative,
@@ -47,6 +48,7 @@ const PACKAGE_NAME = /^@?[a-z0-9][\w./-]*$/iu;
 const PACKAGE_VERSION = /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/u;
 
 export interface HealRuntime {
+  evidenceMode?: VerificationMode;
   executor: Executor;
   llm: HealLlm;
   cost: CostLedger;
@@ -399,6 +401,7 @@ export async function healWithRuntime(
     : await readCounterfactualAlternatives(request.alternativesFile);
   const caseName = basename(caseDir).replace(/[^A-Za-z0-9_.-]+/gu, '-') || 'case';
   return healCase({
+    evidenceMode: runtime.evidenceMode ?? 'local',
     runId: `local-${caseName}`,
     repo: `local/${caseName}`,
     caseDir,
@@ -475,6 +478,7 @@ export function runtimeFromEnvironment(
     routingProfileId: config.routingProfileId,
   });
   return {
+    evidenceMode: 'live',
     executor: new ContreeExecutor({
       token: config.contreeToken,
       project: config.contreeProject,

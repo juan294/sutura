@@ -95,6 +95,7 @@ function probeCommand(source: RepairSourceExcerpt, command: string): string {
 
 function hypothesisOptions(): ChatOptions {
   return {
+    purpose: 'diagnosis-recovery',
     maxTokens: 2048,
     temperature: 0,
     responseFormat: {

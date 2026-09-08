@@ -27,6 +27,7 @@ import type { ChatMessage, TierLlm } from './llm/types.js';
 import { DEFAULT_MODEL_PRICES } from './llm/cost.js';
 import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
 import { parseRepositoryPolicy } from './policy/schema.js';
+import { createDefaultRepositoryPolicy } from './policy/load.js';
 import { repairProposalReply } from './testing/repair-proposal.test-helper.js';
 import { TraceRecorder } from './trace/recorder.js';
 
@@ -250,6 +251,16 @@ describe('healCase', () => {
       attempt: MAX_STAGE_EVIDENCE_ENTRIES + 1,
       network: 'disabled',
     })).toThrow('Stage evidence exceeds the bounded entry count');
+  });
+
+  it('traces the reserved route without recomputing routing after admission', async () => {
+    const trace = new TraceRecorder('frozen-route');
+    const modelQuote = vi.fn(() => { throw new Error('must not quote again'); });
+    const quotedRoute = { role:'super' as const, modelId:'reserved-model', profileId:'fixed', price:{input:1,output:1} };
+    const llm = tracedLlm({chat: async () => ({text:'ok'}),modelQuote}, trace);
+    await llm.chat('super', [], {quotedRoute});
+    expect(modelQuote).not.toHaveBeenCalled();
+    expect(trace.events().find(event => event.type==='model-request')).toMatchObject({model:'reserved-model'});
   });
 
   it('fails closed when model routing has no quote', () => {
@@ -674,6 +685,81 @@ describe('healCase', () => {
     expect(new Set(applyParents).size).toBe(1);
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super', 'super', 'ultra']);
     expect(JSON.stringify(caseFile.trace)).not.toContain('Math.round');
+  });
+
+  it('keeps searching after visible green is refused by full adjudication', async () => {
+    let applyCount = 0;
+    let ordinaryTestCount = 0;
+    let awaitingCandidateTest = false;
+    const executor = new InMemoryExecutor((command) => {
+      if (
+        command.includes('corepack pnpm install --frozen-lockfile') ||
+        command.includes('git init --quiet')
+      ) return result(0);
+      if (command.includes('git apply - && git diff')) {
+        applyCount += 1;
+        awaitingCandidateTest = true;
+        return { ...result(0), stdout: applyCount === 1 ? WRONG_REPLACEMENT_DIFF : HONEST_DIFF };
+      }
+      if (awaitingCandidateTest) {
+        awaitingCandidateTest = false;
+        return result(0);
+      }
+      ordinaryTestCount += 1;
+      return ordinaryTestCount <= 5 ? result(1) : result(0);
+    });
+    let superCall = 0;
+    let auditCall = 0;
+    const chat = vi.fn(async (
+      tier: 'nano' | 'super' | 'ultra',
+    ) => {
+      if (tier === 'nano') return { text: JSON.stringify(diagnosis('test-assertion')) };
+      if (tier === 'super') {
+        superCall += 1;
+        const candidate = superCall === 1
+          ? { id: 'rounded', rationale: 'Round the division result.', diff: WRONG_REPLACEMENT_DIFF }
+          : { id: 'ceiling', rationale: 'Use ceiling division.', diff: HONEST_DIFF };
+        return repairProposalReply(candidate, candidateReplacement(candidate));
+      }
+      auditCall += 1;
+      return { text: JSON.stringify({ approved: auditCall > 1, reasoning: auditCall > 1 ? 'The ceiling repair holds.' : 'Rounded division breaks the contract.' }) };
+    });
+    const base = context('repair-off-by-one', [], 'test-assertion', {
+      executor,
+      search: { initialBranches: 2, beamWidth: 1, maximumDepth: 1, maximumTotalBranches: 2 },
+    });
+    base.ctx.executor = executor;
+    base.ctx.llm = {
+      chat,
+      modelQuote: (tier) => ({
+        role: tier, modelId: DEFAULT_MODELS[tier], price: DEFAULT_MODEL_PRICES[tier],
+        profileId: DEFAULT_ROUTING_PROFILE_ID,
+      }),
+    };
+
+    const caseFile = await healCase(base.ctx);
+
+    expect(caseFile.outcome).toBe('fixed');
+    expect(caseFile.search).toEqual([
+      expect.objectContaining({ nodeId: 'search-001', depth: 1, terminalReason:'verification-refused' }),
+      expect.objectContaining({ nodeId: 'search-002', depth: 1, terminalReason: 'passed' }),
+    ]);
+    expect(caseFile.race[0]?.candidate).toMatchObject({
+      id: expect.stringMatching(/^repair-[a-f0-9]{12}$/u), diff: HONEST_DIFF,
+    });
+    expect(caseFile.selectedCandidate).toEqual({
+      id: caseFile.race[0]?.candidate.id,
+      diffHash: createHash('sha256').update(HONEST_DIFF).digest('hex'),
+    });
+    const applyParents = executor.calls.flatMap((call) =>
+      call.kind === 'run' && call.cmd.includes('git apply - && git diff')
+        ? [call.parent]
+        : [],
+    );
+    expect(applyParents).toHaveLength(2);
+    expect(new Set(applyParents).size).toBe(1);
+    expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super', 'super', 'ultra', 'ultra']);
+    expect(caseFile.verificationRuns?.map(run=>run.verification.status)).toEqual(['failed','passed']);
   });
 
   it('requests one alternative when a child repeats its parent proposal', async () => {
@@ -1499,7 +1585,7 @@ describe('sandbox command resolution', () => {
     'echo /usr/bin/pnpm',
   ])('does not resolve package-manager lookalike %s', (observed) => {
     expect(sandboxExecutableCommand(observed)).toBe(observed);
-  });
+  }, 30_000);
 
   it('preserves npm package scripts and system commands', () => {
     expect(sandboxExecutableCommand('npm test')).toBe('npm test');
@@ -1581,3 +1667,42 @@ describe('counterfactual evidence on a real run', () => {
     expect(caseFile.counterfactual?.acceptedCandidateId).toBeUndefined();
   });
 });
+
+it('heals a required local contract using one frozen source manifest through the entrypoint', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sutura-required-heal-'));
+  const before = 'export function pageCount(items, size) { return Math.floor(items / size) + 1; }\n';
+  try {
+    await writeFile(join(directory, 'page-count.js'), before);
+    await writeFile(join(directory, 'package.json'), JSON.stringify({ name: 'local-case', version: '1.0.0', type: 'module' }));
+    await mkdir(join(directory, '.sutura-controller'));
+    await writeFile(join(directory, '.sutura-controller', 'answer.json'), '{"secret":1}');
+    let observedBaseline = false;
+    const executor = new InMemoryExecutor(command => {
+      if (command.includes('JSON.stringify')) return { ...result(0), stdout: '{"version":1,"value":3}' };
+      if (command.includes('SUTURA_TRIAGE_ATTEMPT')) return result(1);
+      if (command.includes('pnpm test') && !observedBaseline) { observedBaseline = true; return { ...result(1), stdout: 'AssertionError: expected 3 received 2' }; }
+      return result(0);
+    });
+    const snapshots: string[] = [];
+    const snapshot = executor.snapshot.bind(executor);
+    vi.spyOn(executor, 'snapshot').mockImplementation(async (dir, base, options) => {
+      snapshots.push(dir);
+      expect(await readFile(join(dir, 'page-count.js'), 'utf8')).toBe(before);
+      await expect(readFile(join(dir, '.sutura-controller', 'answer.json'))).rejects.toThrow();
+      await writeFile(join(directory, 'page-count.js'), 'changed after freezing');
+      return snapshot(dir, base, options);
+    });
+    const base = context('repair-off-by-one', [], 'test-assertion').ctx;
+    const chat = vi.fn(async (tier: string) => ({ usd: 0, text: JSON.stringify(tier === 'nano' ? diagnosis('test-assertion') : tier === 'ultra' ? { approved: true, reasoning: 'Declared contract preserved' } : { challenges: [{ id: 'boundary', kind: 'preservation', contractRefs: [{ path: 'page-count.js', sha256: createHash('sha256').update(before).digest('hex'), startLine: 1, endLine: 1 }], rationale: 'Preserve non-divisible input', probeId: 'pages', inputs: [21, 10], contractId: 'pages', relationId: 'equals' }] }) }));
+    const policy = { ...createDefaultRepositoryPolicy(), verification: { mode: 'required' as const, contracts: [{ id: 'pages', kind: 'ceiling-division' as const, target: { adapter: 'javascript' as const, path: 'page-count.js', export: 'pageCount' }, maxItems: 100, maxDivisor: 100 }] } };
+    const outcome = await healCase({ ...base, caseDir: directory, failureCommand: 'pnpm test', executor, llm: { ...base.llm, chat }, policy, candidateDiff: HONEST_DIFF });
+    expect(outcome.outcome, JSON.stringify(outcome)).toBe('fixed');
+    expect(outcome.verificationRuns?.[0]?.verification.challengeAssurance).toBe(true);
+    expect(outcome.verification?.commands).toHaveLength(executor.calls.filter(call => call.kind === 'run').length);
+    expect(outcome.verification?.mode).toBe('local');
+    expect(snapshots).toHaveLength(2);
+    expect(snapshots[0]).toBe(snapshots[1]);
+    expect(snapshots[0]).not.toBe(directory);
+    await expect(readFile(join(snapshots[0]!, 'page-count.js'))).rejects.toThrow();
+  } finally { await rm(directory, { recursive: true, force: true }); }
+}, 30_000);

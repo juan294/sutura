@@ -117,6 +117,7 @@ export async function replayBundle(
     try {
       const caseFile = await orchestrate({
         runId: validated.runId,
+        evidenceMode: 'replay',
         github,
         repository,
         executor,

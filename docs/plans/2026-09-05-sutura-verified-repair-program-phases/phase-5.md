@@ -1,5 +1,12 @@
 # Phase 5 — Execution-backed verification of external patches
 
+## Local implementation review — 2026-09-08
+
+The CLI and Action verification entrypoints now execute the shared production external-verification wrapper with trusted policy, immutable source snapshot, bounded executor/model budgets, frozen challenges and full admission gates. Both forward the canonical verification artifact and evidence; environment-backed execution is labelled live, while injected local test execution remains local. The Action authenticates the exact failed run and source SHA through read-only API access and refuses fork source mismatches. It writes evidence and a summary without creating a pull request or check. The setup example is in `docs/adoption/external-verification-action.md`.
+
+Canonical evidence v2 records the actual executor baseline image identity when ConTree cannot import an OCI digest reference; an unavailable OCI digest remains null. Runtime observations and costs come from the execution recorder. This is local implementation and fixture verification, not evidence of an installed external user, published Action, or paid successful repair. Fork verification is currently refused; the documented example uses a same-repository failed run.
+
+
 Parent: [Verified repair program](../2026-09-05-sutura-verified-repair-program.md). Depends on phase 4 and its shared controller-owned probe verification contract. Sequential; not batch eligible. Stop after review and local verification. Real patches from two agent sources and live proof are phase 10 work.
 
 ## Outcome

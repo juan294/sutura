@@ -1,5 +1,12 @@
 # Phase 10 — Integrated execution evidence and measured sponsor experiments
 
+## Local implementation review — 2026-09-08
+
+The cumulative spend cap is implemented per manifest, including restart reconciliation; a restart does not reset authorization. Historical Stage 3 overspend remains a real failure: its five attempts cost USD 12.55 against USD 10, and no completed clean quality measurement exists. The repaired cap does not retroactively authorize that overspend or turn those attempts into a repair-rate result.
+
+The finite Data Lab runner now validates a frozen manifest, persists upload and batch submission intents for recovery, joins outputs by exact custom IDs, and keeps unknown or mismatched model costs unknown. Quality-task output validation includes the bounded citation limit. These paths are locally tested; no Data Lab upload or batch inference was performed. Stage 3 still requires a new exact-candidate manifest and paid authorization, followed by the separately capped held-out 20. The held-out set remains unopened.
+
+
 Parent: [Verified repair program](../2026-09-05-sutura-verified-repair-program.md). Depends on phases 8 and 9, including integrated phase 6. Sequential, not batch eligible.
 
 ## Outcome and change surface
