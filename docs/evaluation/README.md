@@ -28,6 +28,8 @@ The [CLI](../../packages/cli/src/verify.ts) and [read-only Action](../../package
 
 Remaining external work includes clean capped Stage 3 and held-out measurement, authorized publication, consented participants, the [independent human record walkthrough](record-walkthrough.md), and [December judging-access evidence](../runbooks/judging-access.md). Historical reports below retain the source and limitations of the runs they describe.
 
+See [evaluation recovery](run-recovery.md) for durable job recovery, cumulative spend reservations, offline failure tests, and terminal notification setup.
+
 <a id="criteria"></a>
 ## Hackathon criteria
 

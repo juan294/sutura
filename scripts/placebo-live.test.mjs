@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdtemp, writeFile, mkdir, rm, readdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 import {
   appendPlaceboLedger,
+  recordRemoteArtifact,
+  runRemoteCase,
+  recoverPendingPlaceboCase,
   assertPublicArtifactSafe,
   createPlaceboCaseArtifact,
   createPlaceboLedger,
@@ -513,4 +518,85 @@ test('paid CLI commands require a run manifest before gating or dispatch', async
       '--case', 'repair-off-by-one', '--authorize', '--cap-usd', '1', '--initial-reserve-usd', '0.2',
     ]), /--run-manifest requires a value/u);
   }
+});
+
+test('artifact/ledger crash recovery records a completed job once', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'placebo-recovery-'));
+  t.after(() => rm(directory, { recursive:true, force:true }));
+  const value = artifact('repair-off-by-one');
+  const bytes = Buffer.from(JSON.stringify(value));
+  const input = { artifact:value, bytes, run:{url:`https://github.com/juan294/sutura/actions/runs/${value.githubRunId}`}, stateDirectory:directory };
+  await assert.rejects(recordRemoteArtifact(input, {afterArtifactWrite:async()=>{throw Error('simulated process death');}}), /process death/);
+  assert.deepEqual(JSON.parse(await readFile(join(directory,'placebo-v0.2.1-live-artifacts/repair-off-by-one.json'))), value);
+  const first = await recordRemoteArtifact(input);
+  const resumed = await recordRemoteArtifact(input);
+  assert.equal(first.entries.length,1); assert.deepEqual(resumed,first);
+  const changed = artifact('repair-off-by-one',{githubRunId:'999'});
+  await assert.rejects(recordRemoteArtifact({...input,artifact:changed,bytes:Buffer.from(JSON.stringify(changed))}), /conflict/);
+});
+test('reattach pending job and retry interrupted download without dispatch', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'placebo-download-'));
+  t.after(() => rm(directory, {recursive:true,force:true}));
+  const value=artifact('repair-off-by-one',{artifactName:'sutura-placebo-pending-controller-repair-off-by-one'});
+  let downloads=0;
+  const dependencies={
+    stateDirectory:directory,
+    sleep:async()=>{},
+    pollRun:async (controller,caseId,sha,options)=>{
+      assert.equal(controller,'pending-controller');assert.equal(options.runId,'123');
+      return {databaseId:value.githubRunId,url:`https://github.com/juan294/sutura/actions/runs/${value.githubRunId}`};
+    },
+    command:async (_name,args)=>{
+      assert.deepEqual(args.slice(0,2),['run','download']);
+      const target=args[args.indexOf('--dir')+1];
+      assert.deepEqual(await readdir(target),[]);
+      if(++downloads===1){await writeFile(join(target,'partial.json'),'{');throw Object.assign(Error('read failure'),{stderr:'net/http: TLS handshake timeout'});}
+      await writeFile(join(target,'case.json'),JSON.stringify(value));
+    },
+  };
+  const result=await runRemoteCase({controllerSha:CONTROLLER_SHA,subjectSha:SUBJECT_SHA,caseId:'repair-off-by-one',controllerId:'pending-controller',runId:'123',resumed:true,skipGate:true},dependencies);
+  assert.equal(downloads,2);assert.equal(result.ledger.entries.length,1);
+});
+
+test('ambiguous dispatch response attaches to its job without a second dispatch', async (t) => {
+  const directory=await mkdtemp(join(tmpdir(),'placebo-ambiguous-'));
+  t.after(()=>rm(directory,{recursive:true,force:true}));
+  const value=artifact('repair-off-by-one',{artifactName:'sutura-placebo-pending-controller-repair-off-by-one'});
+  let dispatches=0;
+  await runRemoteCase({controllerSha:CONTROLLER_SHA,subjectSha:SUBJECT_SHA,caseId:'repair-off-by-one',controllerId:'pending-controller',skipGate:true},{
+    stateDirectory:directory,
+    requireActivePushFreeze:async()=>{},
+    pollRun:async()=>({databaseId:value.githubRunId,url:`https://github.com/juan294/sutura/actions/runs/${value.githubRunId}`}),
+    command:async (_name,args)=>{
+      if(args[0]==='workflow'){dispatches++;throw Object.assign(Error('lost response'),{stderr:'unexpected EOF'});}
+      assert.deepEqual(args.slice(0,2),['run','download']);
+      await writeFile(join(args[args.indexOf('--dir')+1],'case.json'),JSON.stringify(value));
+    },
+  });
+  assert.equal(dispatches,1);
+});
+
+test('a recovered approved trap remains a durable stop even with a nonfixed outcome', async () => {
+  const selected=corpus.cases.find(c=>c.metadata.kind==='trap');
+  const value=artifact(selected.id,{subjectSha:CONTROLLER_SHA,results:[result(selected,true,{outcome:'refused',audit:{approved:true,checks:[],reasoning:'deceptive'}})]});
+  const ledger=append(createPlaceboLedger([]),value,0);
+  assert.equal(ledger.entries[0].falseApproval,true);
+  const resumed=await runPlaceboStreak({controllerSha:CONTROLLER_SHA,subjectSha:CONTROLLER_SHA,authorize:true,capUsd:1,initialReserveUsd:0.1,caseIds:['repair-off-by-one']},{readLedger:async()=>ledger,runCase:()=>assert.fail('must not dispatch after false approval')});
+  assert.equal(resumed.stoppedFor,'false-approval');
+});
+
+test('startup recovery forwards the saved pending identity without preflight or redispatch', async () => {
+  const saved={caseId:'repair-off-by-one',controllerId:'pl-saved-job',runId:'123',resumed:true,checkpointRun:async()=>{}};
+  const result=await recoverPendingPlaceboCase({controllerSha:CONTROLLER_SHA,subjectSha:SUBJECT_SHA},{
+    readPending:async()=>saved,
+    withSpend:async(options,operation)=>{assert.equal(options.recoverPending,true);assert.equal(options.caseId,saved.caseId);return operation(saved);},
+    runCase:async input=>{assert.equal(input.controllerId,saved.controllerId);assert.equal(input.runId,saved.runId);assert.equal(input.resumed,true);assert.equal(input.skipGate,true);return 'recovered';},
+  });
+  assert.equal(result,'recovered');
+});
+test('fresh single-case false approval reports a terminal stop', async () => {
+  const selected=corpus.cases.find(c=>c.metadata.kind==='trap');
+  const value=artifact(selected.id,{results:[result(selected,true,{outcome:'refused',audit:{approved:true,checks:[],reasoning:'deceptive'}})]});
+  const completed=await runSinglePlaceboCase({controllerSha:CONTROLLER_SHA,subjectSha:SUBJECT_SHA,caseId:selected.id,capUsd:1,initialReserveUsd:0.1},{gate:async()=>{},readLedger:async()=>createPlaceboLedger([]),runCase:async()=>({artifact:value})});
+  assert.equal(completed.stoppedFor,'false-approval');
 });

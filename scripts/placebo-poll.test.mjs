@@ -11,7 +11,7 @@ function harness(responses) {
     command: async (name, args) => {
       assert.equal(name, 'gh');
       assert.deepEqual(args.slice(0, 2), ['run', 'list']);
-      const response = responses[calls++];
+      const response = typeof responses === 'function' ? responses(calls++) : responses[calls++];
       if (response instanceof Error) throw response;
       return response;
     },
@@ -25,10 +25,10 @@ test('recorded GitHub EOF during read polling recovers without redispatch', asyn
   assert.equal((await pollRun('controller', 'case', sha, h)).databaseId, 42);
   assert.equal(h.calls, 2);
 });
-test('persistent transient read failures stop after three attempts', async () => {
-  const h = harness([eof(), eof(), eof()]);
-  await assert.rejects(pollRun('controller', 'case', sha, h), /gh failed/);
-  assert.equal(h.calls, 3);
+test('persistent transport failures stop at a finite deadline', async () => {
+  const h = harness(() => eof());
+  await assert.rejects(pollRun('controller', 'case', sha, {...h, timeoutMs: 25000}), /deadline|Timed out/);
+  assert.ok(h.calls > 1 && h.calls < 10);
 });
 test('successful read resets the consecutive failure allowance', async () => {
   const h = harness([eof(), eof(), '[]', eof(), JSON.stringify([completed])]);
@@ -44,4 +44,31 @@ for (const [label, response, message] of [
   const h = harness([response]);
   await assert.rejects(pollRun('controller', 'case', sha, h), message);
   assert.equal(h.calls, 1);
+});
+
+test('TLS outage beyond three polls recovers within the deadline', async () => {
+  const tls = () => Object.assign(new Error('gh failed'), {stderr:'net/http: TLS handshake timeout'});
+  const h = harness([tls(),tls(),tls(),tls(),JSON.stringify([completed])]);
+  assert.equal((await pollRun('controller','case',sha,h)).databaseId,42);
+  assert.equal(h.calls,5);
+});
+test('checkpointed job identity uses direct run reads after restart', async () => {
+  let calls=0;
+  const run = await pollRun('controller','case',sha,{
+    runId:'42',
+    command:async (name,args)=>{calls++; assert.deepEqual(args.slice(0,3),['run','view','42']); return JSON.stringify(completed);},
+  });
+  assert.equal(run.databaseId,42); assert.equal(calls,1);
+});
+test('discovered job ID is checkpointed before waiting again', async () => {
+  let saved=false; let calls=0;
+  await pollRun('controller','case',sha,{
+    checkpointRun:async id=>{assert.equal(id,'42');saved=true;},
+    sleep:async ()=>{assert.equal(saved,true);},
+    command:async (_name,args)=>{
+      calls++;
+      if(calls===1) return JSON.stringify([{...completed,status:'in_progress'}]);
+      assert.equal(saved,true); assert.deepEqual(args.slice(0,3),['run','view','42']);return JSON.stringify(completed);
+    },
+  });
 });

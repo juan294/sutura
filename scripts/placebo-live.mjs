@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import {
-  mkdir, mkdtemp, open, readFile, readdir, rename, rm, stat, writeFile,
+  mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -14,7 +14,9 @@ import {
 } from './evidence-contract.mjs';
 import { RELEASE_VERSION } from './install-test-lib.mjs';
 import { requireActivePushFreeze } from './push-freeze.mjs';
-import { initializeManifestSpend, withManifestSpend } from './manifest-spend.mjs';
+import { initializeManifestSpend, withManifestSpend, readManifestPending } from './manifest-spend.mjs';
+import { acquireProcessLock } from './live-process-lock.mjs';
+import { runWithTerminalAlert, createCommandDelivery, readAlert, deliverAlert, acknowledgeAlert } from './evaluation-alerts.mjs';
 
 const execFileAsync = promisify(execFile);
 const ROOT = resolve(import.meta.dirname, '..');
@@ -326,6 +328,7 @@ export function validatePlaceboLedger(value) {
   const runIds = new Set();
   const entries = value.entries.map((entry, index) => {
     if (entry === null || typeof entry !== 'object' || Array.isArray(entry) ||
+        (entry.falseApproval !== undefined && typeof entry.falseApproval !== 'boolean') ||
         typeof entry.caseId !== 'string' || caseIds.has(entry.caseId) ||
         runIds.has(entry.runId) || !SHA256_PATTERN.test(entry.artifactSha256 ?? '') ||
         !SHA256_PATTERN.test(entry.resultHash ?? '') || !Array.isArray(entry.outcomes) ||
@@ -353,6 +356,7 @@ export function validatePlaceboLedger(value) {
     }
     return {
       caseId: entry.caseId,
+      ...(entry.falseApproval === undefined ? {} : { falseApproval: entry.falseApproval }),
       runId: normalizedRunId,
       runUrl: url.toString(),
       artifactName: artifactName(entry.artifactName),
@@ -386,6 +390,7 @@ export function appendPlaceboLedger(ledgerInput, artifactInput, metadata, option
   }
   const entry = {
     caseId: artifact.caseId,
+    falseApproval: hasFalseApproval(artifact),
     runId: artifact.githubRunId,
     runUrl: metadata.runUrl,
     artifactName: artifact.artifactName,
@@ -448,9 +453,10 @@ export async function runPlaceboStreak(options, dependencies) {
   let spentUsd = ledger.entries.reduce((sum, entry) => sum + entry.totalUsd, 0);
   let observedMaximumUsd = ledger.entries.reduce((maximum, entry) => Math.max(maximum, entry.totalUsd), 0);
   let stoppedFor = ledger.entries.some((entry) => entry.outcomes.includes('infra-stop'))
-    ? 'infra-stop' : 'complete';
+    ? 'infra-stop' : ledger.entries.some(entry => entry.falseApproval === true || corpusCase(loadCorpusSync(needsExpandedSelection(entry.caseId)), entry.caseId).metadata.kind === 'trap' && entry.outcomes.includes('fixed'))
+      ? 'false-approval' : 'complete';
   for (const caseId of caseIds) {
-    if (stoppedFor === 'infra-stop') break;
+    if (stoppedFor !== 'complete') break;
     if (ledger.entries.some((entry) => entry.caseId === caseId)) continue;
     const decision = placeboSpendDecision({ spentUsd, observedMaximumUsd, initialReserveUsd, capUsd });
     if (!decision.mayDispatch) { stoppedFor = 'cap-reserve'; break; }
@@ -493,7 +499,7 @@ export async function runSinglePlaceboCase(options, dependencies) {
   // Ledger entries may name a versioned case, so each is resolved through the
   // selection that actually holds it.
   if (ledger.entries.some((entry) =>
-    corpusCase(loadCorpusSync(needsExpandedSelection(entry.caseId)), entry.caseId)
+    entry.falseApproval === true || corpusCase(loadCorpusSync(needsExpandedSelection(entry.caseId)), entry.caseId)
       .metadata.kind === 'trap' && entry.outcomes.includes('fixed'))) {
     throw new Error('Placebo single run refuses to continue a false-approval ledger');
   }
@@ -506,7 +512,9 @@ export async function runSinglePlaceboCase(options, dependencies) {
     spentUsd, observedMaximumUsd, initialReserveUsd, capUsd,
   });
   if (!decision.mayDispatch) throw new Error('Placebo single run stopped for cap-reserve');
-  return dependencies.runCase(options.caseId);
+  const completed = await dependencies.runCase(options.caseId);
+  if (completed?.artifact && hasFalseApproval(completed.artifact)) return { ...completed, stoppedFor: 'false-approval' };
+  return completed;
 }
 
 export async function finalizePlaceboEvidence(ledgerInput, artifactInputs, options = {}) {
@@ -584,19 +592,13 @@ async function atomicWrite(path, content) {
 
 async function withLock(operation) {
   await mkdir(dirname(LOCK_PATH), { recursive: true, mode: 0o700 });
-  let lock;
-  try { lock = await open(LOCK_PATH, 'wx', 0o600); }
-  catch (error) {
-    if (error?.code === 'EEXIST') throw new Error(`Placebo live lock is held: ${basename(LOCK_PATH)}`);
-    throw error;
-  }
-  try { return await operation(); }
-  finally { try { await lock.close(); } finally { await rm(LOCK_PATH, { force: true }); } }
+  const release = await acquireProcessLock(LOCK_PATH);
+  try { return await operation(); } finally { await release(); }
 }
 
-async function readLedgerDefault() {
-  if (!await exists(LEDGER_PATH)) return createPlaceboLedger([]);
-  const bytes = await readFile(LEDGER_PATH);
+async function readLedgerDefault(path = LEDGER_PATH) {
+  if (!await exists(path)) return createPlaceboLedger([]);
+  const bytes = await readFile(path);
   if (bytes.byteLength > MAX_ARTIFACT_BYTES) throw new Error('Placebo ledger is too large');
   return validatePlaceboLedger(JSON.parse(bytes.toString('utf8')));
 }
@@ -619,41 +621,66 @@ export async function gatePlaceboLive(controllerSha, subjectSha) {
   };
 }
 
+function transientTransportError(error) {
+  const detail = `${error?.code ?? ''} ${error?.cause?.code ?? ''} ${error?.message ?? ''} ${error?.stderr ?? ''}`;
+  return /unexpected EOF|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ECONNREFUSED|EPIPE|connection reset by peer|socket hang up|TLS handshake timeout|i\/o timeout|HTTP 50[234]\b/iu.test(detail) ||
+    (error?.killed === true && error?.signal === 'SIGTERM');
+}
+
+/** Retry observations only; dispatch remains a single, durably reserved operation. */
+export async function retryRead(operation, dependencies = {}) {
+  const now = dependencies.now ?? Date.now;
+  const sleep = dependencies.sleep ?? ((ms) => new Promise((done) => setTimeout(done, ms)));
+  const deadline = dependencies.deadline ?? now() + 5 * 60_000;
+  let delay = 1_000;
+  for (;;) {
+    try { return await operation(Math.max(1, Math.min(120_000, deadline - now()))); }
+    catch (error) {
+      if (!transientTransportError(error)) throw error;
+      if (now() >= deadline) throw new Error('Read recovery deadline exceeded; existing job remains reserved', { cause: error });
+      await sleep(Math.min(delay, deadline - now()));
+      delay = Math.min(delay * 2, 30_000);
+    }
+  }
+}
+
 export async function pollRun(controllerId, caseId, controllerSha, dependencies = {}) {
   const runCommand = dependencies.command ?? command;
   const now = dependencies.now ?? Date.now;
-  const sleep = dependencies.sleep ?? ((ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms)));
-  const deadline = now() + 35 * 60_000;
-  let consecutiveReadFailures = 0;
+  const sleep = dependencies.sleep ?? ((ms) => new Promise((done) => setTimeout(done, ms)));
+  const deadline = now() + (dependencies.timeoutMs ?? 35 * 60_000);
   const expectedTitle = `Placebo live ${controllerId} ${caseId}`;
-  while (now() <= deadline) {
-    let output;
-    try {
-      output = await runCommand('gh', [
-        'run', 'list', '--workflow', 'placebo-live-case.yml', '--limit', '100',
-        '--json', 'databaseId,displayTitle,status,conclusion,url,headSha',
-      ]);
-    } catch (error) {
-      // Retry only this read. Never repeat a workflow dispatch after an ambiguous response.
-      const detail = `${error?.message ?? ''} ${error?.stderr ?? ''}`;
-      const transient = /unexpected EOF|ECONNRESET|ETIMEDOUT|connection reset by peer|HTTP 50[234]\b/iu.test(detail);
-      if (!transient || ++consecutiveReadFailures >= 3) throw error;
-      await sleep(10_000);
-      continue;
-    }
-    consecutiveReadFailures = 0;
-    const runs = JSON.parse(output);
-    const matches = runs.filter((run) => run?.displayTitle === expectedTitle);
+  let savedRunId = dependencies.runId;
+  if (savedRunId !== undefined && !/^[1-9]\d{0,19}$/u.test(String(savedRunId))) throw new Error('Invalid saved workflow run ID');
+  do {
+    const output = await retryRead((timeout) => runCommand('gh', savedRunId
+      ? ['run', 'view', String(savedRunId), '--json', 'databaseId,displayTitle,status,conclusion,url,headSha']
+      : ['run', 'list', '--workflow', 'placebo-live-case.yml', '--limit', '100',
+        '--json', 'databaseId,displayTitle,status,conclusion,url,headSha'], { timeout }),
+    { now, sleep, deadline });
+    const parsed = JSON.parse(output);
+    const matches = savedRunId ? [parsed] : parsed.filter((run) => run?.displayTitle === expectedTitle);
     if (matches.length > 1) throw new Error(`Multiple Placebo runs match ${controllerId}`);
     const current = matches[0];
-    if (current?.status === 'completed') {
+    if (current) {
       if (current.headSha !== controllerSha) throw new Error('Placebo run controller SHA differs from dispatch');
-      if (current.conclusion !== 'success') throw new Error(`Placebo run ${current.databaseId} failed`);
-      return current;
+      if (current.displayTitle !== expectedTitle || (savedRunId && String(current.databaseId) !== String(savedRunId))) {
+        throw new Error('Placebo run identity differs from saved dispatch');
+      }
+      if (!savedRunId) {
+        savedRunId = String(current.databaseId);
+        if (!/^[1-9]\d{0,19}$/u.test(savedRunId)) throw new Error('Invalid discovered workflow run ID');
+        await dependencies.checkpointRun?.(savedRunId);
+      }
+      if (current.status === 'completed') {
+        if (current.conclusion !== 'success') throw new Error(`Placebo run ${current.databaseId} failed`);
+        return current;
+      }
     }
-    await sleep(10_000);
-  }
-  throw new Error(`Timed out waiting for Placebo case ${caseId}`);
+    if (now() >= deadline) break;
+    await sleep(Math.min(10_000, deadline - now()));
+  } while (now() <= deadline);
+  throw new Error(`Timed out waiting for Placebo case ${caseId}; existing job remains reserved`);
 }
 
 async function findArtifactJson(directory) {
@@ -682,40 +709,69 @@ export async function dispatchPlaceboWorkflow(input, dependencies = {}) {
   ]);
 }
 
-async function runRemoteCase({ controllerSha, subjectSha, caseId, skipGate = false, counterfactual = false,
-  controllerId = `pl-${Date.now()}-${randomUUID().slice(0, 8)}` }) {
+export async function recordRemoteArtifact({ artifact, bytes, run, stateDirectory = dirname(LEDGER_PATH) }, dependencies = {}) {
+  const ledgerPath = join(stateDirectory, basename(LEDGER_PATH));
+  const artifactPath = join(stateDirectory, basename(ARTIFACT_ROOT), `${artifact.caseId}.json`);
+  const ledger = await readLedgerDefault(ledgerPath);
+  const existing = ledger.entries.find(entry => entry.caseId === artifact.caseId || entry.runId === artifact.githubRunId);
+  if (existing && (existing.caseId !== artifact.caseId || existing.runId !== artifact.githubRunId ||
+      existing.artifactSha256 !== createHash('sha256').update(bytes).digest('hex') || existing.resultHash !== artifact.resultHash)) {
+    throw new Error('Recovered artifact conflicts with saved case ledger');
+  }
+  const next = existing ? (hasFalseApproval(artifact) && existing.falseApproval !== true
+    ? createPlaceboLedger(ledger.entries.map(entry => entry === existing ? { ...entry, falseApproval: true } : entry)) : ledger)
+    : appendPlaceboLedger(ledger, artifact, {
+    artifactBytes: bytes, runUrl: run.url, recordedAt: new Date().toISOString(),
+  }, { corpus: loadCorpusSync(needsExpandedSelection(artifact.caseId)) });
+  // Save the exact validated bytes before the ledger. Restart may repeat this safely.
+  await atomicWrite(artifactPath, bytes);
+  await dependencies.afterArtifactWrite?.();
+  await atomicWrite(ledgerPath, `${canonicalJson(next)}\n`);
+  return next;
+}
+
+export async function runRemoteCase({ controllerSha, subjectSha, caseId, skipGate = false, counterfactual = false,
+  controllerId = `pl-${Date.now()}-${randomUUID().slice(0, 8)}`, resumed = false, runId: savedRunId, checkpointRun }, dependencies = {}) {
   if (!skipGate) await gatePlaceboLive(controllerSha, subjectSha);
-  // A case outside the frozen slice is served from the expanded manifest; the
-  // frozen one is never widened to accommodate it.
+  const runCommand = dependencies.command ?? command;
   const corpus = loadCorpusSync(needsExpandedSelection(caseId));
   corpusCase(corpus, caseId);
-  await dispatchPlaceboWorkflow({ controllerSha, subjectSha, caseId, controllerId, counterfactual });
-  const run = await pollRun(controllerId, caseId, controllerSha);
+  if (!resumed) {
+    try {
+      const response = await dispatchPlaceboWorkflow({ controllerSha, subjectSha, caseId, controllerId, counterfactual }, {
+        command: runCommand, requireActivePushFreeze: dependencies.requireActivePushFreeze,
+      });
+      const match = response?.match(/https:\/\/github\.com\/juan294\/sutura\/actions\/runs\/([1-9]\d*)/u);
+      if (match) { savedRunId = match[1]; await checkpointRun?.(savedRunId); }
+    } catch (error) {
+      if (!transientTransportError(error)) throw error;
+      // The request may have succeeded. Observe its unique title, never send it twice.
+    }
+  }
+  const run = await (dependencies.pollRun ?? pollRun)(controllerId, caseId, controllerSha, {
+    command: runCommand, runId: savedRunId, checkpointRun,
+  });
   const expectedArtifactName = `sutura-placebo-${controllerId}-${caseId}`;
   const directory = await mkdtemp(join(tmpdir(), 'sutura-placebo-live-'));
   try {
-    await command('gh', [
-      'run', 'download', String(run.databaseId), '--name', expectedArtifactName, '--dir', directory,
-    ], { timeout: 120_000 });
+    await retryRead(async (timeout) => {
+      // A failed download may leave partial files; retry into an empty directory.
+      await rm(directory, { recursive: true, force: true });
+      await mkdir(directory, { mode: 0o700 });
+      await runCommand('gh', [
+        'run', 'download', String(run.databaseId), '--name', expectedArtifactName, '--dir', directory,
+      ], { timeout });
+    }, { sleep: dependencies.sleep, now: dependencies.now });
     const path = await findArtifactJson(directory);
     const bytes = await readFile(path);
     const artifact = validatePlaceboCaseArtifact(JSON.parse(bytes.toString('utf8')), { corpus });
-    assertPublicArtifactSafe(artifact, [
-      process.env.NEBIUS_API_KEY,
-      process.env.TAVILY_API_KEY,
-      process.env.CONTREE_TOKEN,
-    ]);
+    assertPublicArtifactSafe(artifact, [process.env.NEBIUS_API_KEY, process.env.TAVILY_API_KEY, process.env.CONTREE_TOKEN]);
     if (artifact.controllerSha !== controllerSha || artifact.subjectSha !== subjectSha ||
         artifact.githubRunId !== String(run.databaseId) || artifact.caseId !== caseId ||
         artifact.artifactName !== expectedArtifactName) {
       throw new Error('Placebo downloaded artifact identity differs from dispatch');
     }
-    const ledger = appendPlaceboLedger(await readLedgerDefault(), artifact, {
-      artifactBytes: bytes, runUrl: run.url, recordedAt: new Date().toISOString(),
-    }, { corpus });
-    await atomicWrite(LEDGER_PATH, `${canonicalJson(ledger)}\n`);
-    await mkdir(ARTIFACT_ROOT, { recursive: true, mode: 0o700 });
-    await atomicWrite(join(ARTIFACT_ROOT, `${caseId}.json`), `${canonicalJson(artifact)}\n`);
+    const ledger = await recordRemoteArtifact({ artifact, bytes, run, stateDirectory: dependencies.stateDirectory });
     return { artifact, ledger };
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -763,8 +819,18 @@ async function artifactCommand(args) {
   return artifact;
 }
 
+export async function recoverPendingPlaceboCase(options, dependencies = {}) {
+  const pending = await (dependencies.readPending ?? readManifestPending)(options);
+  if (!pending) return null;
+  return (dependencies.withSpend ?? withManifestSpend)({ ...options, caseId: pending.caseId, recoverPending: true },
+    (saved) => (dependencies.runCase ?? runRemoteCase)({
+      ...saved, controllerSha: options.controllerSha, subjectSha: options.subjectSha, skipGate: true,
+    }));
+}
+
 export async function main(args = process.argv.slice(2)) {
   const commandName = args[0];
+  if (['run', 'streak'].includes(commandName) && !args.includes('--authorize')) throw new Error('Placebo live run requires literal --authorize');
   if (commandName === 'artifact') return artifactCommand(args);
   let spendOptions;
   if (['init-spend', 'run', 'streak'].includes(commandName)) {
@@ -787,18 +853,27 @@ export async function main(args = process.argv.slice(2)) {
     const capUsd = Number(valueAfter(args, '--cap-usd'));
     const initialReserveUsd = Number(valueAfter(args, '--initial-reserve-usd'));
     const counterfactual = args.includes('--counterfactual');
-    return withLock(() => runSinglePlaceboCase({
-      controllerSha, subjectSha, caseId, capUsd, initialReserveUsd,
-    }, {
-      gate: gatePlaceboLive,
-      readLedger: readLedgerDefault,
-      runCase: () => withManifestSpend({ ...spendOptions, controllerSha, subjectSha, caseId },
-        ({ controllerId }) => runRemoteCase({ controllerSha, subjectSha, caseId, controllerId, skipGate: true, counterfactual })),
-    }));
+    return withLock(async () => {
+      const recovered = await recoverPendingPlaceboCase({ ...spendOptions, controllerSha, subjectSha });
+      if (recovered && hasFalseApproval(recovered.artifact)) return { ...recovered, stoppedFor: 'false-approval' };
+      if (recovered?.artifact.caseId === caseId) return recovered;
+      await gatePlaceboLive(controllerSha, subjectSha);
+      return runSinglePlaceboCase({ controllerSha, subjectSha, caseId, capUsd, initialReserveUsd }, {
+        gate: async () => {},
+        readLedger: readLedgerDefault,
+        runCase: () => withManifestSpend({ ...spendOptions, controllerSha, subjectSha, caseId },
+          (pending) => runRemoteCase({ ...pending, controllerSha, subjectSha, caseId, skipGate: true, counterfactual })),
+      });
+    });
   }
   if (commandName === 'streak') {
     return withLock(async () => {
-      await gatePlaceboLive(controllerSha, subjectSha);
+      const recovered = await recoverPendingPlaceboCase({ ...spendOptions, controllerSha, subjectSha });
+      if (recovered && hasFalseApproval(recovered.artifact)) return { ...recovered, stoppedFor: 'false-approval' };
+      const ledger = await readLedgerDefault();
+      if (spendOptions.manifest.subjects.some(id => !ledger.entries.some(entry => entry.caseId === id))) {
+        await gatePlaceboLive(controllerSha, subjectSha);
+      }
       return runPlaceboStreak({
         controllerSha, subjectSha, authorize: args.includes('--authorize'),
         capUsd: Number(valueAfter(args, '--cap-usd')),
@@ -807,7 +882,7 @@ export async function main(args = process.argv.slice(2)) {
       }, {
         readLedger: readLedgerDefault,
         runCase: (caseId) => withManifestSpend({ ...spendOptions, controllerSha, subjectSha, caseId },
-          ({ controllerId }) => runRemoteCase({ controllerSha, subjectSha, caseId, controllerId, skipGate: true })),
+          (pending) => runRemoteCase({ ...pending, controllerSha, subjectSha, caseId, skipGate: true })),
       });
     });
   }
@@ -826,4 +901,42 @@ export async function main(args = process.argv.slice(2)) {
   throw new Error('Usage: placebo-live.mjs init-spend|gate|run|streak|finalize with exact controller and subject SHAs');
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+export async function cli(args = process.argv.slice(2)) {
+  const name = args[0];
+  if (!['run', 'streak', 'alert-test', 'alert-status', 'alert-retry', 'alert-ack'].includes(name)) return main(args);
+  const commonDirectory = await command('git', ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+  const stateDir = join(commonDirectory, 'sutura-evaluation-alerts');
+  const notifierConfig = join(commonDirectory, 'sutura-evaluation-notifier.json');
+  const savedNotifier = await exists(notifierConfig) ? JSON.parse(await readFile(notifierConfig, 'utf8')) : null;
+  const notifyCommand = process.env.SUTURA_EVALUATION_NOTIFY_COMMAND ?? savedNotifier?.command;
+  const deliver = notifyCommand ? createCommandDelivery(notifyCommand) : undefined;
+  if (['alert-status', 'alert-retry', 'alert-ack'].includes(name)) {
+    const options = { stateDir, eventId: valueAfter(args, '--event-id'), deliver };
+    const record = await (name === 'alert-status' ? readAlert : name === 'alert-retry' ? deliverAlert : acknowledgeAlert)(options);
+    console.log(JSON.stringify(record)); return record;
+  }
+  if (name === 'alert-test') {
+    try {
+      await runWithTerminalAlert({ stateDir, manifestId: 'local-notification-test', totalCases: 1, deliver,
+        readProgress: async () => ({ completedCases: 0, pendingCaseId: null, recordedUsd: 0 }),
+        run: async () => { throw new Error('Deliberate local notification test failure'); },
+      });
+    } finally { console.error(`Notification test outbox: ${stateDir}`); }
+    return;
+  }
+  const manifest = JSON.parse(await readFile(valueAfter(args, '--run-manifest'), 'utf8'));
+  const { result, alert } = await runWithTerminalAlert({ stateDir, manifestId: manifest.manifestId,
+    totalCases: manifest.subjects.length, deliver,
+    readProgress: async () => {
+      const account = JSON.parse(await readFile(join(commonDirectory, 'sutura-manifest-spend', `${manifest.manifestId}.json`), 'utf8'));
+      return { completedCases: account.entries.length, pendingCaseId: account.pending?.caseId ?? null,
+        recordedUsd: account.entries.reduce((sum,entry) => sum + entry.microUsd, 0) / 1_000_000 };
+    },
+    run: () => main(args),
+  });
+  console.log(JSON.stringify({ stoppedFor: result?.stoppedFor ?? 'complete', alertId: alert.event.eventId, delivery: alert.delivery.status }));
+  if (result?.stoppedFor && result.stoppedFor !== 'complete') process.exitCode = 2;
+  return result;
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await cli();
