@@ -57,3 +57,15 @@ test('missing completion cost stays unsettled', async (t) => {
   await assert.rejects(withManifestSpend(options, async () => ({ artifact: { githubRunId: '123' } })), /amount/);
   await assert.rejects(withManifestSpend(options, () => assert.fail()), /unsettled/);
 });
+for (const totalUsd of [0, 0.2]) test(`infrastructure-stop telemetry (${totalUsd}) cannot settle unknown provider charges`, async (t) => {
+  const options = await fixture(t);
+  await assert.rejects(withManifestSpend(options, async () => ({ artifact: {
+    githubRunId: '123', totalUsd,
+    results: [{ caseFile: { outcome: 'infra-stop', cost: { entries: [] } } }],
+  } })), /Infrastructure-stop cost requires reconciliation/);
+  const account = JSON.parse(await readFile(join(options.directory, `${manifest.manifestId}.json`), 'utf8'));
+  assert.deepEqual(account.entries, []);
+  assert.equal(account.pending.caseId, options.caseId);
+  assert.equal(account.pending.reserveMicroUsd, 400000);
+  await assert.rejects(withManifestSpend(options, () => assert.fail('must not redispatch')), /unsettled/);
+});

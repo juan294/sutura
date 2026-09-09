@@ -41,11 +41,31 @@ function emptyLedger(): CostLedger {
 function publicError(error: unknown): string {
   const reason = error instanceof Error ? error.message : String(error);
   return reason
+    .replace(/https?:\/\/[^\s"'<>\\]+/giu, (value) => {
+      try {
+        const url = new URL(value);
+        url.username = '';
+        url.password = '';
+        url.search = '';
+        url.hash = '';
+        return url.toString();
+      } catch {
+        return '[redacted URL]';
+      }
+    })
     .replace(/\bBearer\s+\S+/giu, 'Bearer [redacted]')
     .replace(
       /\b(?:[A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)|api[_-]?key|token|secret|password)\s*[=:]\s*[^\s,;]+/giu,
       '[redacted credential]',
     );
+}
+
+function diagnosticExcerpt(reason: string): string {
+  const limit = 2_000;
+  if (reason.length <= limit) return reason;
+  const marker = '\n[truncated]\n';
+  const headLength = 750;
+  return reason.slice(0, headLength) + marker + reason.slice(-(limit - headLength - marker.length));
 }
 
 async function infraStop(
@@ -65,7 +85,7 @@ async function infraStop(
       confidence: 1,
       signals: ['cli-runtime-failure'],
       failingCmd: 'pnpm test',
-      errorExcerpt: reason.slice(0, 2_000),
+      errorExcerpt: diagnosticExcerpt(reason),
     },
     triage: notRunTriageVerdict(),
     race: [],
@@ -78,7 +98,7 @@ async function infraStop(
       nodeId: 'node-001',
       metrics: {},
       network: 'disabled',
-      note: 'CLI stopped before provider execution',
+      note: 'CLI stopped after an unhandled runtime failure; provider completion and cost are unavailable',
     }],
   };
 }

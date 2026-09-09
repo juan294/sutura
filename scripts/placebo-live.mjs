@@ -619,14 +619,30 @@ export async function gatePlaceboLive(controllerSha, subjectSha) {
   };
 }
 
-async function pollRun(controllerId, caseId, controllerSha) {
-  const deadline = Date.now() + 35 * 60_000;
+export async function pollRun(controllerId, caseId, controllerSha, dependencies = {}) {
+  const runCommand = dependencies.command ?? command;
+  const now = dependencies.now ?? Date.now;
+  const sleep = dependencies.sleep ?? ((ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms)));
+  const deadline = now() + 35 * 60_000;
+  let consecutiveReadFailures = 0;
   const expectedTitle = `Placebo live ${controllerId} ${caseId}`;
-  while (Date.now() <= deadline) {
-    const runs = JSON.parse(await command('gh', [
-      'run', 'list', '--workflow', 'placebo-live-case.yml', '--limit', '100',
-      '--json', 'databaseId,displayTitle,status,conclusion,url,headSha',
-    ]));
+  while (now() <= deadline) {
+    let output;
+    try {
+      output = await runCommand('gh', [
+        'run', 'list', '--workflow', 'placebo-live-case.yml', '--limit', '100',
+        '--json', 'databaseId,displayTitle,status,conclusion,url,headSha',
+      ]);
+    } catch (error) {
+      // Retry only this read. Never repeat a workflow dispatch after an ambiguous response.
+      const detail = `${error?.message ?? ''} ${error?.stderr ?? ''}`;
+      const transient = /unexpected EOF|ECONNRESET|ETIMEDOUT|connection reset by peer|HTTP 50[234]\b/iu.test(detail);
+      if (!transient || ++consecutiveReadFailures >= 3) throw error;
+      await sleep(10_000);
+      continue;
+    }
+    consecutiveReadFailures = 0;
+    const runs = JSON.parse(output);
     const matches = runs.filter((run) => run?.displayTitle === expectedTitle);
     if (matches.length > 1) throw new Error(`Multiple Placebo runs match ${controllerId}`);
     const current = matches[0];
@@ -635,7 +651,7 @@ async function pollRun(controllerId, caseId, controllerSha) {
       if (current.conclusion !== 'success') throw new Error(`Placebo run ${current.databaseId} failed`);
       return current;
     }
-    await new Promise((resolveSleep) => setTimeout(resolveSleep, 10_000));
+    await sleep(10_000);
   }
   throw new Error(`Timed out waiting for Placebo case ${caseId}`);
 }

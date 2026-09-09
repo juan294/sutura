@@ -181,6 +181,27 @@ describe('runCli', () => {
     expect(stdout.join('')).not.toContain('abc123');
   });
 
+  it('retains the terminal provider error and removes signed URLs before bounding diagnostics', async () => {
+    const stdout: string[] = [];
+    // Captured run 34312341360: repeated Docker redirects exhausted the old
+    // first-2,000-character excerpt before the importer terminal cause.
+    const redirect = 'https://production.cloudfront.docker.com/layer?Expires=123&Signature=private-signature&Key-Pair-Id=private-key';
+    const reason = `ConTree operation ended with FAILED: Import instance failed with exit code 1\n${`INFO Following redirect to ${redirect}\n`.repeat(40)}ERROR HTTP 502 Bad Gateway`;
+    await runCli(
+      ['heal', '--case-dir', '/tmp/case', '--format', 'json'],
+      { write: (value) => stdout.push(value) },
+      { heal: vi.fn().mockRejectedValue(new Error(reason)) },
+    );
+    const result = JSON.parse(stdout.join(''));
+    expect(result.diagnosis.errorExcerpt).toMatch(/^ConTree operation ended with FAILED/u);
+    expect(result.diagnosis.errorExcerpt).toContain('ERROR HTTP 502 Bad Gateway');
+    expect(result.diagnosis.errorExcerpt.length).toBeLessThanOrEqual(2_000);
+    expect(result.diagnosis.errorExcerpt).toContain('[truncated]');
+    expect(stdout.join('')).not.toContain('private-signature');
+    expect(stdout.join('')).not.toContain('private-key');
+    expect(result.stages[0].note).not.toContain('before provider execution');
+  });
+
   it('reports an auto-detected Python runtime when local healing fails', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'sutura-cli-python-failure-'));
     const stdout: string[] = [];

@@ -69,6 +69,11 @@ export async function withManifestSpend(options, operation) {
       reserveMicroUsd: reserve, startedAt: new Date().toISOString() };
     await save(path, state);
     const completed = await operation(state.pending);
+    // Runtime exceptions can lose telemetry, including after a paid operation.
+    // Keep the reservation pending until provider billing is reconciled.
+    if (completed?.artifact?.results?.some(({ caseFile }) => caseFile?.outcome === 'infra-stop')) {
+      throw new Error('Infrastructure-stop cost requires reconciliation; manifest reservation remains pending');
+    }
     const microUsd = amount(completed?.artifact?.totalUsd);
     const runId = completed?.artifact?.githubRunId;
     if (!/^[1-9]\d{0,19}$/u.test(runId ?? '') || state.entries.some((entry) => entry.runId === runId)) {
