@@ -651,22 +651,44 @@ export async function pollRun(controllerId, caseId, controllerSha, dependencies 
   const deadline = now() + (dependencies.timeoutMs ?? 35 * 60_000);
   const expectedTitle = `Placebo live ${controllerId} ${caseId}`;
   let savedRunId = dependencies.runId;
+  let identityConfirmed = false;
+  let titleDeadline;
   if (savedRunId !== undefined && !/^[1-9]\d{0,19}$/u.test(String(savedRunId))) throw new Error('Invalid saved workflow run ID');
   do {
     const output = await retryRead((timeout) => runCommand('gh', savedRunId
       ? ['run', 'view', String(savedRunId), '--json', 'databaseId,displayTitle,status,conclusion,url,headSha']
       : ['run', 'list', '--workflow', 'placebo-live-case.yml', '--limit', '100',
         '--json', 'databaseId,displayTitle,status,conclusion,url,headSha'], { timeout }),
-    { now, sleep, deadline });
+    { now, sleep, deadline: Math.min(deadline, titleDeadline ?? deadline) });
     const parsed = JSON.parse(output);
     const matches = savedRunId ? [parsed] : parsed.filter((run) => run?.displayTitle === expectedTitle);
     if (matches.length > 1) throw new Error(`Multiple Placebo runs match ${controllerId}`);
     const current = matches[0];
     if (current) {
       if (current.headSha !== controllerSha) throw new Error('Placebo run controller SHA differs from dispatch');
-      if (current.displayTitle !== expectedTitle || (savedRunId && String(current.databaseId) !== String(savedRunId))) {
-        throw new Error('Placebo run identity differs from saved dispatch');
+      if (savedRunId && String(current.databaseId) !== String(savedRunId)) {
+        throw new Error(`Placebo run identity differs from saved dispatch: expected ${savedRunId}, observed ${JSON.stringify(current.databaseId)}`);
       }
+      if (current.displayTitle !== expectedTitle) {
+        const pendingStatuses = ['queued', 'in_progress', 'requested', 'waiting', 'pending'];
+        const observation = {
+          runId: String(current.databaseId),
+          status: [...pendingStatuses, 'completed'].includes(current.status) ? current.status : 'unknown',
+          titleState: typeof current.displayTitle !== 'string' ? 'missing' : current.displayTitle.length === 0 ? 'empty' : 'different',
+          observedTitleSha256: createHash('sha256').update(JSON.stringify(current.displayTitle) ?? 'undefined').digest('hex'),
+        };
+        // Allow for a dispatch ID arriving before its run-name is ready. Observe only;
+        // acceptance still requires the exact title, ID, SHA and artifact.
+        titleDeadline ??= Math.min(deadline, now() + 60_000);
+        if (identityConfirmed || !pendingStatuses.includes(current.status) || now() >= titleDeadline) {
+          throw new Error(`Placebo run title differs from saved dispatch: ${JSON.stringify(observation)}`);
+        }
+        (dependencies.onIdentityPending ?? ((value) => console.error(`Placebo run title pending: ${JSON.stringify(value)}`)))(observation);
+        await sleep(Math.min(10_000, titleDeadline - now()));
+        continue;
+      }
+      identityConfirmed = true;
+      titleDeadline = undefined;
       if (!savedRunId) {
         savedRunId = String(current.databaseId);
         if (!/^[1-9]\d{0,19}$/u.test(savedRunId)) throw new Error('Invalid discovered workflow run ID');

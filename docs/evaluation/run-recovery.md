@@ -19,6 +19,15 @@ further polling. Recovery never sends another dispatch to resolve uncertainty.
 No matching job, multiple matching jobs, wrong identity, failed workflow or
 exhausted read deadline stops with the reservation intact.
 
+A saved job ID can be observed before its title matches the dispatch. While the
+ID and source SHA match and the job is still pending or running, the controller
+allows at most one minute for its title to settle. It never accepts a result
+without the exact title. A completed mismatch, or a title change after identity
+was confirmed, stops immediately. Diagnostics retain the job ID, whether the
+title was missing, empty or different, and its SHA-256 hash instead of raw text.
+This handles a possible metadata delay; the original September 9 mismatched
+response was not retained, so that incident's exact cause remains unproven.
+
 Transient GitHub observations recover with exponential waits from one to thirty
 seconds, within the existing 35-minute polling deadline. Artifact downloads have
 a separate five-minute read-recovery deadline and start from an empty temporary
