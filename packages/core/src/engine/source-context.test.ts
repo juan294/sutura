@@ -96,6 +96,17 @@ describe('sourceDependencyGroups', () => {
     ]);
   });
 
+  it('scans adversarially padded Python imports in bounded time', () => {
+    const content = `from cache import ${' '.repeat(100_000)}cache_key\n`;
+    const startedAt = performance.now();
+    const groups = sourceDependencyGroups([{
+      path: 'tests/test_cache.py', startLine: 1, truncated: false, content,
+    }], 'python');
+
+    expect(groups.map(({ specifier }) => specifier)).toEqual(['cache']);
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
+  });
+
   it('skips Python absolute imports whose module is already in the closure', () => {
     expect(sourceDependencyGroups([{
       path: 'tests/test_app.py', startLine: 1, truncated: false,

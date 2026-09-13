@@ -228,6 +228,18 @@ describe('Data Lab public-safe dataset', () => {
 });
 
 describe('Data Lab official API client', () => {
+  it('normalizes an adversarial base URL in bounded time', async () => {
+    const baseUrl = `https://example.test/${'/'.repeat(50_000)}x`;
+    const fetch = vi.fn<DataLabClientOptions['fetch']>(async () => new Response(JSON.stringify({
+      id: 'dataset-1', name: 'sutura-eval', status: 'READY', current_version: 'v1',
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    const startedAt = performance.now();
+    const client = new DataLabClient({ apiKey: 'key', fetch, baseUrl });
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
+    await client.createDataset({ name: 'sutura-eval', folder: '/sutura', schema: [], rows: [] });
+    expect(String(fetch.mock.calls[0]?.[0])).toBe(`${baseUrl}/v1/datasets`);
+  });
+
   it('accepts current summary versions, pending datasets, and queued nullable destinations', async () => {
     const responses = [
       {
