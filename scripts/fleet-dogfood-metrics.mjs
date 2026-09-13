@@ -133,7 +133,14 @@ export async function collectFleetMetrics(configInput, client, now = new Date())
         workflowConclusion: run.conclusion ?? null,
       };
       if (run.conclusion === 'skipped') {
-        events.push({ ...base, attempted: false, outcome: 'no-repair-needed', costStatus: 'not-incurred' });
+        const noRepairNeeded = typeof run.display_title === 'string' &&
+          run.display_title.startsWith('No repair needed:');
+        events.push({
+          ...base,
+          attempted: false,
+          outcome: noRepairNeeded ? 'no-repair-needed' : 'not-triggered',
+          costStatus: 'not-incurred',
+        });
         continue;
       }
       const artifacts = await client.listArtifacts(repository, run.id);
@@ -181,6 +188,7 @@ export async function collectFleetMetrics(configInput, client, now = new Date())
     installedRepositories: installations.filter(({ installed }) => installed).length,
     monitorRuns: events.length,
     noRepairNeeded: events.filter(({ outcome }) => outcome === 'no-repair-needed').length,
+    notTriggered: events.filter(({ outcome }) => outcome === 'not-triggered').length,
     repairAttempts: attempts.length,
     outcomes,
     repairPrsOpened: attempts.filter(({ outcome, workflowConclusion }) => outcome === 'fixed' && workflowConclusion === 'success').length,
@@ -199,7 +207,7 @@ export function publicFleetSummary(summary) {
 function markdown(summary) {
   const completed = summary.outcomes.fixed + summary.outcomes['flaky-no-patch'] + summary.outcomes.refused + summary.outcomes['gave-up'];
   const repairRate = completed === 0 ? 'n/a' : `${((summary.outcomes.fixed / completed) * 100).toFixed(1)}%`;
-  return `# Sutura fleet dogfood metrics\n\nCollected ${summary.collectedAt}. Window starts ${summary.startedAt}.\n\n| Metric | Value |\n| --- | ---: |\n| Repositories configured | ${summary.installedRepositories}/${summary.fleetRepositories} |\n| CI completions observed | ${summary.monitorRuns} |\n| Green CI, no repair needed | ${summary.noRepairNeeded} |\n| Repair attempts | ${summary.repairAttempts} |\n| Verified repairs and PRs | ${summary.repairPrsOpened} |\n| Flakes classified without patching | ${summary.outcomes['flaky-no-patch']} |\n| Unsafe repairs refused | ${summary.outcomes.refused} |\n| Gave up safely | ${summary.outcomes['gave-up']} |\n| Infrastructure stops | ${summary.outcomes['infra-stop']} |\n| Unknown or missing evidence | ${summary.outcomes.unknown} |\n| Repair rate among terminal repair searches | ${repairRate} |\n| Measured inference cost | $${summary.inferenceCostUsd.toFixed(6)} |\n| Measured sandbox cost | $${summary.sandboxCostUsd.toFixed(6)} |\n| Measured total cost | $${summary.totalCostUsd.toFixed(6)} |\n| Median attempt duration | ${summary.medianAttemptDurationSec === null ? 'n/a' : `${summary.medianAttemptDurationSec.toFixed(1)} s`} |\n`;
+  return `# Sutura fleet dogfood metrics\n\nCollected ${summary.collectedAt}. Window starts ${summary.startedAt}.\n\n| Metric | Value |\n| --- | ---: |\n| Repositories configured | ${summary.installedRepositories}/${summary.fleetRepositories} |\n| CI completions observed | ${summary.monitorRuns} |\n| Green CI, no repair needed | ${summary.noRepairNeeded} |\n| Other CI conclusions, no repair attempted | ${summary.notTriggered} |\n| Repair attempts | ${summary.repairAttempts} |\n| Verified repairs and PRs | ${summary.repairPrsOpened} |\n| Flakes classified without patching | ${summary.outcomes['flaky-no-patch']} |\n| Unsafe repairs refused | ${summary.outcomes.refused} |\n| Gave up safely | ${summary.outcomes['gave-up']} |\n| Infrastructure stops | ${summary.outcomes['infra-stop']} |\n| Unknown or missing evidence | ${summary.outcomes.unknown} |\n| Repair rate among terminal repair searches | ${repairRate} |\n| Measured inference cost | $${summary.inferenceCostUsd.toFixed(6)} |\n| Measured sandbox cost | $${summary.sandboxCostUsd.toFixed(6)} |\n| Measured total cost | $${summary.totalCostUsd.toFixed(6)} |\n| Median attempt duration | ${summary.medianAttemptDurationSec === null ? 'n/a' : `${summary.medianAttemptDurationSec.toFixed(1)} s`} |\n`;
 }
 
 export async function writeFleetMetrics(result, outputDirectory) {

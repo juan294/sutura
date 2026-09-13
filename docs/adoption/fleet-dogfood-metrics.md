@@ -3,7 +3,8 @@
 Sutura can rebuild a cumulative dogfood ledger from GitHub Actions evidence.
 The collector reads each repository's `sutura.yml` workflow runs and downloads
 the bounded HTML case file for every repair attempt. It records green CI runs
-where no repair was needed separately from actual repair attempts.
+where no repair was needed separately from actual repair attempts and from
+cancelled or otherwise non-repairable CI conclusions.
 
 Copy `fleet-dogfood-config.example.json` to the gitignored
 `.sutura/fleet-dogfood-config.json`. Set the owner, repository names, exact

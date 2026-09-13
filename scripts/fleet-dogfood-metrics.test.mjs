@@ -50,7 +50,8 @@ test('collector keeps every monitor run and distinguishes skipped CI from repair
         throw error;
       }
       return [
-        { id: 10, conclusion: 'skipped', run_started_at: '2026-09-13T08:00:00Z', updated_at: '2026-09-13T08:00:05Z', html_url: 'https://example.test/10' },
+        { id: 9, conclusion: 'skipped', display_title: 'Repair not triggered: CI #8 (cancelled) on develop', run_started_at: '2026-09-13T07:00:00Z', updated_at: '2026-09-13T07:00:05Z', html_url: 'https://example.test/9' },
+        { id: 10, conclusion: 'skipped', display_title: 'No repair needed: CI #9 (success) on develop', run_started_at: '2026-09-13T08:00:00Z', updated_at: '2026-09-13T08:00:05Z', html_url: 'https://example.test/10' },
         { id: 11, conclusion: 'success', run_started_at: '2026-09-13T09:00:00Z', updated_at: '2026-09-13T09:02:00Z', html_url: 'https://example.test/11' },
         { id: 12, conclusion: 'failure', run_started_at: '2026-09-13T10:00:00Z', updated_at: '2026-09-13T10:01:00Z', html_url: 'https://example.test/12' },
       ];
@@ -78,8 +79,9 @@ test('collector keeps every monitor run and distinguishes skipped CI from repair
 
   assert.equal(result.summary.fleetRepositories, 2);
   assert.equal(result.summary.installedRepositories, 1);
-  assert.equal(result.summary.monitorRuns, 3);
+  assert.equal(result.summary.monitorRuns, 4);
   assert.equal(result.summary.noRepairNeeded, 1);
+  assert.equal(result.summary.notTriggered, 1);
   assert.equal(result.summary.repairAttempts, 2);
   assert.equal(result.summary.outcomes.fixed, 1);
   assert.equal(result.summary.outcomes['infra-stop'], 1);
@@ -87,7 +89,7 @@ test('collector keeps every monitor run and distinguishes skipped CI from repair
   assert.equal(result.summary.repairPrsOpened, 1);
   assert.equal(result.summary.totalCostUsd, 0.5);
   assert.equal(result.summary.medianAttemptDurationSec, 90);
-  assert.equal(result.events.length, 3);
+  assert.equal(result.events.length, 4);
 });
 
 test('public summary removes repository identities and daily snapshots are idempotent', async () => {
@@ -97,7 +99,7 @@ test('public summary removes repository identities and daily snapshots are idemp
       summary: {
         schemaVersion: 'sutura-fleet-summary-v1', collectedAt: '2026-09-13T12:00:00.000Z',
         startedAt: '2026-09-13T00:00:00.000Z', actionCommit: 'a'.repeat(40), fleetRepositories: 1,
-        installedRepositories: 1, monitorRuns: 1, noRepairNeeded: 0, repairAttempts: 1,
+        installedRepositories: 1, monitorRuns: 1, noRepairNeeded: 0, notTriggered: 0, repairAttempts: 1,
         outcomes: { fixed: 1, 'flaky-no-patch': 0, refused: 0, 'gave-up': 0, 'infra-stop': 0, unknown: 0 },
         repairPrsOpened: 1, inferenceCostUsd: 0.1, sandboxCostUsd: 0.2, totalCostUsd: 0.3,
         medianAttemptDurationSec: 60,
