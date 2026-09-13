@@ -7,6 +7,7 @@ import test from 'node:test';
 import {
   collectFleetMetrics,
   parseCaseFileHtml,
+  parseTerminalFailureJson,
   publicFleetSummary,
   writeFleetMetrics,
 } from './fleet-dogfood-metrics.mjs';
@@ -27,6 +28,19 @@ test('case-file parser extracts the terminal outcome, costs, operations, and ela
   assert.throws(() => parseCaseFileHtml('<body>missing evidence</body>'), /outcome/u);
 });
 
+test('terminal failure parser preserves an infrastructure stop without inventing cost', () => {
+  assert.deepEqual(parseTerminalFailureJson(JSON.stringify({
+    schemaVersion: 'sutura-terminal-failure-v1',
+    outcome: 'infra-stop',
+    errorMessage: 'Repository snapshot exceeded its bounded source size',
+  })), {
+    outcome: 'infra-stop',
+    costStatus: 'unavailable',
+    evidenceError: 'Repository snapshot exceeded its bounded source size',
+  });
+  assert.throws(() => parseTerminalFailureJson('{}'), /schema or outcome/u);
+});
+
 test('collector keeps every monitor run and distinguishes skipped CI from repair attempts', async () => {
   const client = {
     async listWorkflowRuns(repository) {
@@ -42,9 +56,17 @@ test('collector keeps every monitor run and distinguishes skipped CI from repair
       ];
     },
     async listArtifacts(_repository, runId) {
-      return runId === 11 ? [{ id: 100, name: 'sutura-case-file-99.html', expired: false }] : [];
+      if (runId === 11) return [{ id: 100, name: 'sutura-case-file-99.html', expired: false }];
+      if (runId === 12) return [{ id: 101, name: 'sutura-terminal-failure-12.json', expired: false }];
+      return [];
     },
-    async downloadArtifact() { return FIXED_HTML; },
+    async downloadArtifact(_repository, _runId, artifact) {
+      return artifact.name.endsWith('.html') ? FIXED_HTML : JSON.stringify({
+        schemaVersion: 'sutura-terminal-failure-v1',
+        outcome: 'infra-stop',
+        errorMessage: 'bounded infrastructure stop',
+      });
+    },
   };
   const result = await collectFleetMetrics({
     schemaVersion: 'sutura-fleet-config-v1',
@@ -60,7 +82,8 @@ test('collector keeps every monitor run and distinguishes skipped CI from repair
   assert.equal(result.summary.noRepairNeeded, 1);
   assert.equal(result.summary.repairAttempts, 2);
   assert.equal(result.summary.outcomes.fixed, 1);
-  assert.equal(result.summary.outcomes.unknown, 1);
+  assert.equal(result.summary.outcomes['infra-stop'], 1);
+  assert.equal(result.summary.outcomes.unknown, 0);
   assert.equal(result.summary.repairPrsOpened, 1);
   assert.equal(result.summary.totalCostUsd, 0.5);
   assert.equal(result.summary.medianAttemptDurationSec, 90);

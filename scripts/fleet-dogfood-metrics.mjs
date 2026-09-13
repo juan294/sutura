@@ -63,6 +63,28 @@ export function parseCaseFileHtml(html) {
   };
 }
 
+export function parseTerminalFailureJson(content) {
+  if (typeof content !== 'string' || Buffer.byteLength(content) > 64 * 1024) {
+    throw new Error('Terminal failure must be bounded JSON text');
+  }
+  let value;
+  try {
+    value = JSON.parse(content);
+  } catch {
+    throw new Error('Terminal failure must be valid JSON');
+  }
+  if (value?.schemaVersion !== 'sutura-terminal-failure-v1' || value.outcome !== 'infra-stop') {
+    throw new Error('Terminal failure schema or outcome is invalid');
+  }
+  return {
+    outcome: 'infra-stop',
+    costStatus: 'unavailable',
+    evidenceError: typeof value.errorMessage === 'string'
+      ? value.errorMessage.slice(0, 300)
+      : 'Sutura stopped before complete case-file evidence was available',
+  };
+}
+
 function median(values) {
   if (values.length === 0) return null;
   const sorted = [...values].sort((left, right) => left - right);
@@ -115,14 +137,17 @@ export async function collectFleetMetrics(configInput, client, now = new Date())
         continue;
       }
       const artifacts = await client.listArtifacts(repository, run.id);
-      const artifact = artifacts.find(({ name, expired }) =>
+      const caseArtifact = artifacts.find(({ name, expired }) =>
         !expired && /^sutura-case-file-[1-9]\d*\.html$/u.test(name));
-      if (!artifact) {
-        events.push({ ...base, attempted: true, outcome: 'unknown', costStatus: 'unavailable' });
-        continue;
-      }
+      const terminalArtifact = artifacts.find(({ name, expired }) =>
+        !expired && /^sutura-terminal-failure-[1-9]\d*\.json$/u.test(name));
       try {
-        const evidence = parseCaseFileHtml(await client.downloadArtifact(repository, run.id, artifact));
+        const artifact = caseArtifact ?? terminalArtifact;
+        if (!artifact) throw new Error('Sutura run has no readable terminal evidence artifact');
+        const content = await client.downloadArtifact(repository, run.id, artifact);
+        const evidence = caseArtifact
+          ? parseCaseFileHtml(content)
+          : parseTerminalFailureJson(content);
         events.push({ ...base, attempted: true, costStatus: 'measured', ...evidence });
       } catch (error) {
         events.push({
@@ -233,9 +258,8 @@ class GhFleetClient {
     try {
       await execFile(this.gh, ['run', 'download', String(runId), '--repo', `${this.owner}/${repository}`, '--name', artifact.name, '--dir', directory], { maxBuffer: 8 * 1024 * 1024 });
       const files = await readdir(directory, { recursive: true });
-      const html = files.filter((name) => name.endsWith('.html'));
-      if (html.length !== 1) throw new Error('Case-file artifact must contain exactly one HTML file');
-      return readFile(join(directory, html[0]), 'utf8');
+      if (files.length !== 1) throw new Error('Sutura evidence artifact must contain exactly one file');
+      return readFile(join(directory, files[0]), 'utf8');
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
