@@ -477,6 +477,13 @@ describe('markdown subset', () => {
     expect(renderInlineMarkdown('<script>alert(1)</script>', '/')).toBe('&lt;script&gt;alert(1)&lt;/script&gt;');
   });
 
+  it('escapes adversarial unmatched link markup in bounded time', () => {
+    const source = `[${'[\\'.repeat(50_000)}`;
+    const startedAt = performance.now();
+    expect(renderInlineMarkdown(source, '/')).toBe(escapeHtml(source));
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
+  });
+
   it('refuses every link outside the two GitHub hosts and site-relative paths, naming the URL', () => {
     for (const url of [
       'https://example.com/',

@@ -674,19 +674,68 @@ export function markdownHref(url: string, siteRoot: string): string {
   throw new RangeError(`markdown link is not allowed: ${JSON.stringify(url)} (expected ${MARKDOWN_HOSTS.join(', ')}, or a site-relative path starting with /)`);
 }
 
-const INLINE = /`([^`\n]+)`|\[([^\]\n]+)\]\(([^)\s]+)\)|\*\*([^*\n]+)\*\*/gu;
-
 /** Inline Markdown: code spans, links, and bold. Everything is escaped; code and link text carry no nested markup. */
 export function renderInlineMarkdown(text: string, siteRoot: string): string {
+  const hasCode = text.includes('`');
+  const hasLink = text.includes('[');
+  const hasBold = text.includes('**');
+  if (!hasCode && !hasLink && !hasBold) return escapeHtml(text);
+
+  const nextPositions = (character: string): Int32Array => {
+    const positions = new Int32Array(text.length + 1);
+    let next = -1;
+    positions[text.length] = next;
+    for (let index = text.length - 1; index >= 0; index -= 1) {
+      if (text[index] === character) next = index;
+      positions[index] = next;
+    }
+    return positions;
+  };
+  const nextBacktick = hasCode ? nextPositions('`') : undefined;
+  const nextBracket = hasLink ? nextPositions(']') : undefined;
+  const nextParenthesis = hasLink ? nextPositions(')') : undefined;
+  const nextStar = hasBold ? nextPositions('*') : undefined;
+  const nextNewline = nextPositions('\n');
+  const whitespace = hasLink ? new Uint32Array(text.length + 1) : undefined;
+  if (whitespace !== undefined) {
+    for (let index = 0; index < text.length; index += 1) {
+      whitespace[index + 1] = whitespace[index]! + (/\s/u.test(text[index]!) ? 1 : 0);
+    }
+  }
   let html = '';
   let last = 0;
-  for (const match of text.matchAll(INLINE)) {
-    html += escapeHtml(text.slice(last, match.index));
-    const [, code, label, url, bold] = match;
-    if (code !== undefined) html += `<code>${escapeHtml(code)}</code>`;
-    else if (label !== undefined && url !== undefined) html += `<a href="${markdownHref(url, siteRoot)}"${url.startsWith('/') ? '' : ' rel="noopener"'}>${escapeHtml(label)}</a>`;
-    else if (bold !== undefined) html += `<strong>${escapeHtml(bold)}</strong>`;
-    last = match.index + match[0].length;
+  for (let index = 0; index < text.length; index += 1) {
+    let end = -1;
+    let rendered: string | undefined;
+    if (text[index] === '`') {
+      end = nextBacktick![index + 1]!;
+      const newline = nextNewline[index + 1]!;
+      if (end > index + 1 && (newline === -1 || end < newline)) {
+        rendered = `<code>${escapeHtml(text.slice(index + 1, end))}</code>`;
+      }
+    } else if (text[index] === '[') {
+      const labelEnd = nextBracket![index + 1]!;
+      const newline = nextNewline[index + 1]!;
+      if (labelEnd > index + 1 && (newline === -1 || labelEnd < newline) && text[labelEnd + 1] === '(') {
+        end = nextParenthesis![labelEnd + 2]!;
+        if (end > labelEnd + 2 && whitespace![end]! === whitespace![labelEnd + 2]!) {
+          const url = text.slice(labelEnd + 2, end);
+          const label = text.slice(index + 1, labelEnd);
+          rendered = `<a href="${markdownHref(url, siteRoot)}"${url.startsWith('/') ? '' : ' rel="noopener"'}>${escapeHtml(label)}</a>`;
+        }
+      }
+    } else if (text.startsWith('**', index)) {
+      const firstStar = nextStar![index + 2]!;
+      const newline = nextNewline[index + 2]!;
+      if (firstStar > index + 2 && text[firstStar + 1] === '*' && (newline === -1 || firstStar < newline)) {
+        end = firstStar + 1;
+        rendered = `<strong>${escapeHtml(text.slice(index + 2, firstStar))}</strong>`;
+      }
+    }
+    if (rendered === undefined) continue;
+    html += escapeHtml(text.slice(last, index)) + rendered;
+    last = end + 1;
+    index = end;
   }
   return html + escapeHtml(text.slice(last));
 }

@@ -82,7 +82,7 @@ These are historical internal estimates from the August roadmap, not current mea
 - [ ] Candidate eight-case external matrix.
 - [ ] Public eight-case external matrix.
 - [x] Dogfood executable-equivalence proof between `a99e23199a80ae6ee51fe1680afb74188416160c` and the v0.2.0 release commit.
-- [ ] Current public demo that a signed-out non-collaborator can use.
+- [x] Current public demo that a signed-out non-collaborator can use.
 - [ ] Demo pinned to the exact submitted release.
 - [ ] Real sanitized Data Lab import and batch experiment.
 - [ ] Public Sutura Arena comparison.

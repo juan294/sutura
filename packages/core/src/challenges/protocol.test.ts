@@ -34,6 +34,12 @@ describe('bounded observation protocol', () => {
     expect(() => decodeObservation({ ...result('{"version":1,"value":3}'), exitCode: 1 })).toThrow(/exit/iu);
     expect(() => decodeObservation({ ...result('{"version":1,"value":3}'), truncated: true })).toThrow(/truncated/iu);
   });
+  it('decodes the maximum escaped-string envelope in bounded time', () => {
+    const stdout = JSON.stringify({ version: 1, value: '"'.repeat(2_048) });
+    const startedAt = performance.now();
+    expect(decodeObservation(result(stdout))).toBe('"'.repeat(2_048));
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
+  });
   it('keeps declarations and proposed inputs frozen against later mutation', () => {
     const args = [[1, 2]];
     const frozen = probe({ id: 'test', kind: 'cardinality', target: { adapter: 'javascript', path: 'target.mjs', export: 'identity' }, maxItems: 10 }, args);

@@ -87,6 +87,40 @@ export function evaluateObservation(probe: FrozenProbe, observation: unknown): {
 }
 
 export const MAX_OBSERVATION_BYTES = 16_384;
+
+function assertUniqueObjectKeys(json: string): void {
+  const objects: (Set<string> | null)[] = [];
+  for (let index = 0; index < json.length; index += 1) {
+    const character = json[index];
+    if (character === '{') {
+      objects.push(new Set());
+      continue;
+    }
+    if (character === '[') {
+      objects.push(null);
+      continue;
+    }
+    if (character === '}' || character === ']') {
+      objects.pop();
+      continue;
+    }
+    if (character !== '"') continue;
+
+    const start = index;
+    for (index += 1; index < json.length; index += 1) {
+      if (json[index] === '\\') index += 1;
+      else if (json[index] === '"') break;
+    }
+    let next = index + 1;
+    while (json[next] === ' ' || json[next] === '\n' || json[next] === '\r' || json[next] === '\t') next += 1;
+    if (json[next] !== ':') continue;
+    const name = JSON.parse(json.slice(start, index + 1)) as string;
+    const current = objects.at(-1);
+    if (current?.has(name)) throw new Error('duplicate observation key');
+    current?.add(name);
+  }
+}
+
 export function decodeObservation(result: Pick<RunResult, 'stdout' | 'stderr' | 'exitCode' | 'truncated'>): TypedValue {
   if (result.exitCode !== 0) throw new Error('observation command has a nonzero exit code');
   if (result.truncated) throw new Error('observation output was truncated');
@@ -98,20 +132,7 @@ export function decodeObservation(result: Pick<RunResult, 'stdout' | 'stderr' | 
   if (envelope.version !== 1) throw new Error('unsupported observation version');
   const value = typedValue(envelope.value);
   // JSON.parse hides duplicate object keys; scan the already-valid JSON tokens too.
-  const tokens = result.stdout.match(/"(?:\\.|[^"\\])*"|[{}\[\]:,]|[^\s{}\[\]:,]+/gu) ?? [];
-  const objects: (Set<string> | null)[] = [];
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    if (token === '{') objects.push(new Set());
-    else if (token === '[') objects.push(null);
-    else if (token === '}' || token === ']') objects.pop();
-    else if (token?.startsWith('"') && tokens[index + 1] === ':') {
-      const name = JSON.parse(token) as string;
-      const current = objects.at(-1);
-      if (current?.has(name)) throw new Error('duplicate observation key');
-      current?.add(name);
-    }
-  }
+  assertUniqueObjectKeys(result.stdout);
   return value;
 }
 

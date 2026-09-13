@@ -12,7 +12,8 @@ const PYTHON_RELATIVE_IMPORT = /^\s*from\s+(?<dots>\.+)(?<module>[A-Za-z_][A-Za-
  * importing file's own directory, or a `src/` layout; every candidate is one
  * bounded read and an ambiguous module contributes nothing.
  */
-const PYTHON_ABSOLUTE_IMPORT = /^\s*(?:from\s+(?<fromModule>[A-Za-z_][A-Za-z0-9_.]*)\s+import\s+[^\n]+|import\s+(?<modules>[A-Za-z_][A-Za-z0-9_.]*(?:\s+as\s+[A-Za-z_][A-Za-z0-9_]*)?(?:\s*,\s*[A-Za-z_][A-Za-z0-9_.]*(?:\s+as\s+[A-Za-z_][A-Za-z0-9_]*)?)*))\s*$/gmu;
+const PYTHON_MODULE_NAME = /^[A-Za-z_][A-Za-z0-9_.]*$/u;
+const PYTHON_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 /** Standard-library and test-runner modules a repository never defines; probing them wastes the budget. */
 const PYTHON_EXTERNAL_MODULES = new Set([
   'abc', 'argparse', 'asyncio', 'base64', 'collections', 'concurrent', 'contextlib', 'copy', 'csv',
@@ -89,12 +90,33 @@ function pythonAbsoluteCandidates(sourcePath: string, moduleName: string): strin
   }))].filter((path) => safeNormalizedPath(path) !== undefined);
 }
 
+function pythonAbsoluteImportModules(line: string): string[] {
+  const trimmed = line.trim();
+  if (trimmed.startsWith('from') && /\s/u.test(trimmed[4] ?? '')) {
+    const declaration = trimmed.slice(4).trimStart();
+    const moduleEnd = declaration.search(/\s/u);
+    if (moduleEnd < 1) return [];
+    const moduleName = declaration.slice(0, moduleEnd);
+    const remainder = declaration.slice(moduleEnd).trimStart();
+    if (!PYTHON_MODULE_NAME.test(moduleName) || !remainder.startsWith('import') ||
+        !/\s/u.test(remainder[6] ?? '') || remainder.slice(6).trim().length === 0) return [];
+    return [moduleName];
+  }
+  if (!trimmed.startsWith('import') || !/\s/u.test(trimmed[6] ?? '')) return [];
+  const modules: string[] = [];
+  for (const declaration of trimmed.slice(6).split(',')) {
+    const parts = declaration.trim().split(/\s+/u);
+    const moduleName = parts[0] ?? '';
+    if (!PYTHON_MODULE_NAME.test(moduleName) ||
+        (parts.length !== 1 && (parts.length !== 3 || parts[1] !== 'as' || !PYTHON_IDENTIFIER.test(parts[2] ?? '')))) return [];
+    modules.push(moduleName);
+  }
+  return modules;
+}
+
 function* pythonAbsoluteImports(source: RepairSourceExcerpt): Generator<{ specifier: string; candidates: string[] }> {
-  for (const match of source.content.matchAll(PYTHON_ABSOLUTE_IMPORT)) {
-    const modules = match.groups?.fromModule !== undefined
-      ? [match.groups.fromModule]
-      : (match.groups?.modules ?? '').split(',').map((entry) => entry.trim().split(/\s/u)[0] ?? '');
-    for (const moduleName of modules) {
+  for (const line of source.content.split('\n')) {
+    for (const moduleName of pythonAbsoluteImportModules(line)) {
       if (!moduleName || PYTHON_EXTERNAL_MODULES.has(moduleName.split('.')[0] ?? '')) continue;
       yield { specifier: moduleName, candidates: pythonAbsoluteCandidates(source.path, moduleName) };
     }

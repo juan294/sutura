@@ -718,6 +718,12 @@ function firstDatasetRef(value: unknown, name: string, nullableVersion = false):
   return datasetRef(items[0], `${name}[0]`, nullableVersion);
 }
 
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') end -= 1;
+  return value.slice(0, end);
+}
+
 function validateOperation(value: unknown): DataLabOperation {
   const input = record(value, 'Data Lab operation response');
   if (input.type !== 'batch_inference') throw new Error('Data Lab operation type must be batch_inference');
@@ -747,7 +753,7 @@ export class DataLabClient {
   constructor(options: DataLabClientOptions) {
     this.#apiKey = nonEmpty(options.apiKey, 'Data Lab API key');
     this.#fetch = options.fetch;
-    this.#baseUrl = (options.baseUrl ?? 'https://api.tokenfactory.nebius.com').replace(/\/+$/u, '');
+    this.#baseUrl = stripTrailingSlashes(options.baseUrl ?? 'https://api.tokenfactory.nebius.com');
   }
 
   async #request(path: string, init: RequestInit = {}): Promise<unknown> {
