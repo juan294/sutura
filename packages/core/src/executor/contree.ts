@@ -711,7 +711,7 @@ function isInstalledDependencyPath(path: string): boolean {
 function isDependencyInputPath(
   path: string,
   workspacePatterns: readonly string[],
-  localDependencyDirectories: readonly string[] = [],
+  localDependencyPaths: readonly string[] = [],
 ): boolean {
   if (isSensitiveRepositoryPath(path, { includeDependencies: true })) return false;
   const segments = path.split('/');
@@ -719,8 +719,8 @@ function isDependencyInputPath(
   if (segments.some((segment) => ['node_modules', '.git', 'dist', 'build', '.next'].includes(segment))) {
     return false;
   }
-  if (localDependencyDirectories.some((directory) =>
-    path === directory || path.startsWith(`${directory}/`))) {
+  if (localDependencyPaths.some((local) =>
+    path === local || path.startsWith(`${local}/`))) {
     return true;
   }
   if (path === 'package.json') return true;
@@ -827,7 +827,7 @@ async function dependencyWorkspacePatterns(dir: string): Promise<string[]> {
   return unique;
 }
 
-async function localDependencyDirectories(dir: string): Promise<string[]> {
+async function localDependencyPaths(dir: string): Promise<string[]> {
   let packageJson: Record<string, unknown>;
   try {
     const metadata = await stat(join(dir, 'package.json'));
@@ -895,7 +895,42 @@ async function localDependencyDirectories(dir: string): Promise<string[]> {
       throw new ContreeError(`ConTree local dependency lifecycle scripts are unsupported: ${directory}`);
     }
   }
-  return [...directories].sort();
+  return [...directories, ...await pnpmPatchFiles(root, packageJson)].sort();
+}
+
+// pnpm applies `pnpm.patchedDependencies` patch files during install, so a
+// frozen install fails with ENOENT unless the snapshot carries them.
+async function pnpmPatchFiles(root: string, packageJson: Record<string, unknown>): Promise<string[]> {
+  const pnpm = packageJson.pnpm;
+  if (typeof pnpm !== 'object' || pnpm === null || Array.isArray(pnpm)) return [];
+  const patched = (pnpm as Record<string, unknown>).patchedDependencies;
+  if (typeof patched !== 'object' || patched === null || Array.isArray(patched)) return [];
+  const files = new Set<string>();
+  for (const path of Object.values(patched)) {
+    if (typeof path !== 'string' ||
+        !/^[A-Za-z0-9@._+-]+(?:\/[A-Za-z0-9@._+-]+)*\.patch$/u.test(path) ||
+        path.split('/').some((segment) => segment === '.' || segment === '..')) {
+      throw new ContreeError(`ConTree dependency snapshot refuses unsafe pnpm patch path: ${String(path)}`);
+    }
+    const absolute = join(root, path);
+    let metadata;
+    try {
+      metadata = await lstat(absolute);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new ContreeError(`ConTree pnpm patch file does not exist: ${path}`);
+      }
+      throw error;
+    }
+    if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size > MAX_DEPENDENCY_CONTROL_BYTES) {
+      throw new ContreeError(`ConTree pnpm patch file must be a regular file under 1 MiB: ${path}`);
+    }
+    if (!(await realpath(absolute)).startsWith(`${root}${sep}`)) {
+      throw new ContreeError(`ConTree pnpm patch file escapes the repository: ${path}`);
+    }
+    files.add(path);
+  }
+  return [...files];
 }
 
 function validateSnapshotPath(path: string): void {
@@ -914,7 +949,7 @@ function includeSnapshotPath(
   path: string,
   profile: SnapshotProfile,
   workspacePatterns: readonly string[],
-  localDirectories: readonly string[] = [],
+  localPaths: readonly string[] = [],
 ): boolean {
   validateSnapshotPath(path);
   if (profile === 'repository') {
@@ -925,7 +960,7 @@ function includeSnapshotPath(
     }
     return !isSensitiveRepositoryPath(path);
   }
-  return isDependencyInputPath(path, workspacePatterns, localDirectories);
+  return isDependencyInputPath(path, workspacePatterns, localPaths);
 }
 
 async function listNonGitFiles(
@@ -936,8 +971,8 @@ async function listNonGitFiles(
   const workspacePatterns = profile === 'dependency-inputs'
     ? await dependencyWorkspacePatterns(root)
     : [];
-  const localDirectories = profile === 'dependency-inputs'
-    ? await localDependencyDirectories(root)
+  const localPaths = profile === 'dependency-inputs'
+    ? await localDependencyPaths(root)
     : [];
   const files: string[] = [];
   const directories = [''];
@@ -1013,11 +1048,11 @@ async function listNonGitFiles(
             `ConTree snapshot exceeds ${MAX_SNAPSHOT_FILES} files`,
           );
         }
-        if (includeSnapshotPath(path, profile, workspacePatterns, localDirectories)) files.push(path);
+        if (includeSnapshotPath(path, profile, workspacePatterns, localPaths)) files.push(path);
       } else if (metadata.isDirectory()) {
         directories.push(path);
       } else if (metadata.isFile()) {
-        if (!includeSnapshotPath(path, profile, workspacePatterns, localDirectories)) continue;
+        if (!includeSnapshotPath(path, profile, workspacePatterns, localPaths)) continue;
         if (files.length >= MAX_SNAPSHOT_FILES) {
           throw new ContreeError(
             `ConTree snapshot exceeds ${MAX_SNAPSHOT_FILES} files`,
@@ -1048,8 +1083,8 @@ export async function listSnapshotFiles(
   const workspacePatterns = profile === 'dependency-inputs'
     ? await dependencyWorkspacePatterns(dir)
     : [];
-  const localDirectories = profile === 'dependency-inputs'
-    ? await localDependencyDirectories(dir)
+  const localPaths = profile === 'dependency-inputs'
+    ? await localDependencyPaths(dir)
     : [];
   try {
     const listed = await runProcess('git', [
@@ -1080,7 +1115,7 @@ export async function listSnapshotFiles(
       );
     }
     const files = listedFiles.filter((path) =>
-      includeSnapshotPath(path, profile, workspacePatterns, localDirectories));
+      includeSnapshotPath(path, profile, workspacePatterns, localPaths));
     await validateSnapshotFiles(dir, files, profile);
     return files;
   } catch (error) {

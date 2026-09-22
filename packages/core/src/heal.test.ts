@@ -1320,6 +1320,27 @@ describe('healCase', () => {
     expect(chat).not.toHaveBeenCalled();
   });
 
+  it('redacts a credential echoed by a failing preparation before publishing the excerpt', async () => {
+    const { ctx, chat } = context('python-repair-missing-await', [1], 'test-assertion', {
+      runtimeId: 'python',
+      failureCommand: 'pytest -q',
+    });
+    const token = `npm_${'Zx9Q'.repeat(9)}`;
+    ctx.executor = new InMemoryExecutor(() => result(
+      1,
+      `npm error code E401\n//registry.npmjs.org/:_authToken=${token}\nnpm error Unable to authenticate`,
+    ));
+
+    const caseFile = await healCase(ctx);
+
+    expect(caseFile.outcome).toBe('infra-stop');
+    expect(JSON.stringify(caseFile)).not.toContain(token);
+    expect(caseFile.diagnosis.errorExcerpt).toContain('npm error code E401');
+    expect(caseFile.diagnosis.errorExcerpt).toContain('npm error Unable to authenticate');
+    expect(caseFile.diagnosis.errorExcerpt).toContain('[redacted credential]');
+    expect(chat).not.toHaveBeenCalled();
+  });
+
   it('does not let an explicit Python selector replace the verified image digest', async () => {
     const { ctx, executor } = context('python-repair-missing-await', [], 'test-assertion', {
       runtimeId: 'python',

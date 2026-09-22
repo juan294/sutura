@@ -98,6 +98,7 @@ import {
 } from './policy/evaluate.js';
 import { createDefaultRepositoryPolicy } from './policy/load.js';
 import type { RepositoryPolicy } from './policy/schema.js';
+import { redactExternalText } from './security/external-text.js';
 import { boundedTail, boundedTailWithHeader } from './text/bounded-tail.js';
 import { TraceRecorder } from './trace/recorder.js';
 import type { TraceEventInput } from './trace/types.js';
@@ -512,8 +513,13 @@ export function preparationFailureCaseFile(
   command: string,
   result: RunResult,
 ): CaseFile {
+  // Redact a wider window before the final cut, so a credential split by the
+  // character bound is never published as an unrecognisable fragment.
   const excerpt = boundedTail(
-    [result.stdout, result.stderr].filter(Boolean).join('\n'),
+    redactExternalText(boundedTail(
+      [result.stdout, result.stderr].filter(Boolean).join('\n'),
+      { maxLines: 20, maxCharacters: 8_000, maxBytes: 8_000 },
+    )).text,
     { maxLines: 20, maxCharacters: 2_000, maxBytes: 2_000 },
   ).trim();
   return makeCaseFile(

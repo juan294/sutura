@@ -73,3 +73,33 @@
   `ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE` from corepack's pnpm
   12.4.2 in temp fixture installs. CI on `develop` is green, and no
   `placebo` file changed. Every other `ci:local` step was run separately.
+
+### Phase 3
+
+- **A fourth infra-stop path.**
+  Plan said: every run is one of three `prepareSandboxFromSource` failures
+  (operations 2, 4 or 6).
+  Found: coach's four expensive runs (operations 7) completed preparation, then
+  reproduced the chosen command green. `noReproductionCaseFile` also concludes
+  `infra-stop`. The command was an aggregate gate's `echo` line.
+  Chose: attribute them to that path in the research doc and file it
+  as #151 (a design decision about which failed step to pick).
+
+- **Root-cause fix landed: pnpm patch files.**
+  The plan allows landing a whitelist addition of the same shape as
+  `file:vendor/...`. coach's `pnpm.patchedDependencies` patch file is exactly
+  that shape, so `pnpmPatchFiles` admits the named `.patch` files with the same
+  refusals (unsafe path, missing file, symlink, escape, over 1 MiB).
+  `localDependencyDirectories` is renamed to `localDependencyPaths` because it
+  now returns files too. The roots Git-baseline cause (needs `git add --force`
+  in every sandbox baseline) is not a whitelist addition, so it is filed as
+  #152.
+
+- **Redaction is wider than the plan's snippet.**
+  Plan said: `redactExternalText(boundedTail(…, 2 KB))`.
+  Chose: redact an 8 KB tail, then cut to 2 KB. Also added npm credential
+  patterns to `redactExternalText`: `_authToken=` / `_auth=` assignments and
+  36-character `npm_` tokens.
+  Why: redacting after the final cut can leave a credential split by the
+  character bound as an unrecognised fragment. The plan's own motivating case
+  (npm echoing a registry token) matched none of the existing patterns.
