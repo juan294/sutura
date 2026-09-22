@@ -1,0 +1,186 @@
+2026-09-13T18:05:40.0384607Z packages/cli build: Usage:
+2026-09-13T18:05:40.0386061Z packages/cli build:   cirujano estimate --jobs <github-jobs.json> [--format json|text]
+2026-09-13T18:05:40.0387957Z packages/cli build:   cirujano runner inspect --config <runner.json> [--format json|text]
+2026-09-13T18:05:40.0390229Z packages/cli build:   cirujano runner watch --config <runner.json> [--permit <permit.json>] [--dry-run]
+2026-09-13T18:05:40.0392026Z packages/cli build:   cirujano runner stop --config <runner.json> --permit <permit.json>
+2026-09-13T18:05:40.0393649Z packages/cli build:   cirujano runner cleanup --config <runner.json> --permit <permit.json>
+2026-09-13T18:05:40.0394875Z packages/cli build:   cirujano runner report --state <state.json> --format json
+2026-09-13T18:05:40.0396254Z packages/cli build:   cirujano telemetry collect --owner <login> --store <directory> [--lookback-hours 48]
+2026-09-13T18:05:40.0399297Z packages/cli build:   cirujano telemetry report --store <directory> --since <YYYY-MM-DD> [--format json|markdown]
+2026-09-13T18:05:40.0400562Z packages/cli build:   cirujano --help
+2026-09-13T18:05:40.0401273Z packages/cli build:   cirujano --version
+2026-09-13T18:05:40.0402381Z packages/cli build: estimate reads the JSON body of GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs
+2026-09-13T18:05:40.0403710Z packages/cli build: and reports the billable minutes GitHub charges for that run.
+2026-09-13T18:05:40.0771542Z packages/cli build: 0.0.1
+2026-09-13T18:05:40.0925695Z packages/cli build: Done
+2026-09-13T18:05:40.1211849Z ##[group]Run node scripts/verify-bundle.mjs
+2026-09-13T18:05:40.1212494Z [36;1mnode scripts/verify-bundle.mjs[0m
+2026-09-13T18:05:40.1254890Z shell: /usr/bin/bash -e {0}
+2026-09-13T18:05:40.1255155Z env:
+2026-09-13T18:05:40.1255418Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-09-13T18:05:40.1255741Z ##[endgroup]
+2026-09-13T18:05:40.1723158Z [PASS] packages/action/dist/index.cjs matches the current source.
+2026-09-13T18:05:40.1783377Z ##[group]Run pnpm run test
+2026-09-13T18:05:40.1783668Z [36;1mpnpm run test[0m
+2026-09-13T18:05:40.1817451Z shell: /usr/bin/bash -e {0}
+2026-09-13T18:05:40.1817706Z env:
+2026-09-13T18:05:40.1817959Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-09-13T18:05:40.1818464Z ##[endgroup]
+2026-09-13T18:05:40.6419826Z $ pnpm -r test
+2026-09-13T18:05:41.1005705Z Scope: 4 of 5 workspace projects
+2026-09-13T18:05:41.1033636Z packages/core test$ vitest run
+2026-09-13T18:05:41.1043082Z packages/runner test$ vitest run
+2026-09-13T18:05:41.4359631Z packages/runner test: [1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/home/runner/work/cirujano/cirujano/packages/runner[39m
+2026-09-13T18:05:41.4401313Z packages/core test: [1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/home/runner/work/cirujano/cirujano/packages/core[39m
+2026-09-13T18:05:41.7929974Z packages/core test:  [32m✓[39m src/index.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 5[2mms[22m[39m
+2026-09-13T18:05:41.7986500Z packages/core test:  [32m✓[39m src/billing.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+2026-09-13T18:05:41.8171166Z packages/core test: [2m Test Files [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+2026-09-13T18:05:41.8183475Z packages/core test: [2m      Tests [22m [1m[32m9 passed[39m[22m[90m (9)[39m
+2026-09-13T18:05:41.8184811Z packages/core test: [2m   Start at [22m 18:05:41
+2026-09-13T18:05:41.8186690Z packages/core test: [2m   Duration [22m 368ms[2m (transform 105ms, setup 0ms, import 156ms, tests 16ms, environment 0ms)[22m
+2026-09-13T18:05:41.8405494Z packages/core test: Done
+2026-09-13T18:05:41.9422130Z packages/runner test:  [32m✓[39m src/lifecycle.test.ts [2m([22m[2m53 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+2026-09-13T18:05:41.9611369Z packages/runner test:  [32m✓[39m src/adapters/nebius.test.ts [2m([22m[2m41 tests[22m[2m)[22m[32m 30[2mms[22m[39m
+2026-09-13T18:05:42.1990222Z packages/runner test:  [32m✓[39m src/adapters/github.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+2026-09-13T18:05:42.5221043Z packages/runner test:  [32m✓[39m src/pilot.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 123[2mms[22m[39m
+2026-09-13T18:05:42.6907268Z packages/runner test:  [32m✓[39m src/report.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+2026-09-13T18:05:42.8651100Z packages/runner test:  [32m✓[39m src/adapters/cloud-init.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+2026-09-13T18:05:43.2887350Z packages/runner test:  [32m✓[39m src/journal.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 271[2mms[22m[39m
+2026-09-13T18:05:43.4348289Z packages/runner test:  [32m✓[39m src/config.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+2026-09-13T18:05:43.5593775Z packages/runner test: existing generation cannot be extended
+2026-09-13T18:05:43.5632267Z packages/runner test: new generation requires confirmed normal provider stop
+2026-09-13T18:05:43.6245372Z packages/runner test:  [32m✓[39m src/adapters/guest.test.ts [2m([22m[2m19 tests[22m[2m)[22m[33m 1433[2mms[22m[39m
+2026-09-13T18:05:43.6248209Z packages/runner test:      [33m[2m✓[22m[39m holds the generation lock across the sudo listener boundary until drain stops it [33m 1202[2mms[22m[39m
+2026-09-13T18:05:43.6309781Z packages/runner test:  [32m✓[39m src/cost.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+2026-09-13T18:05:43.7698653Z packages/runner test:  [32m✓[39m src/controller.test.ts [2m([22m[2m29 tests[22m[2m)[22m[33m 1862[2mms[22m[39m
+2026-09-13T18:05:43.8222737Z packages/runner test:  [32m✓[39m src/adapters/ssh.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+2026-09-13T18:05:44.0546930Z packages/runner test:  [32m✓[39m src/adapters/process.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 241[2mms[22m[39m
+2026-09-13T18:05:44.0581669Z packages/runner test: [2m Test Files [22m [1m[32m13 passed[39m[22m[90m (13)[39m
+2026-09-13T18:05:44.0583319Z packages/runner test: [2m      Tests [22m [1m[32m254 passed[39m[22m[90m (254)[39m
+2026-09-13T18:05:44.0584725Z packages/runner test: [2m   Start at [22m 18:05:41
+2026-09-13T18:05:44.0586999Z packages/runner test: [2m   Duration [22m 2.61s[2m (transform 649ms, setup 0ms, import 981ms, tests 4.06s, environment 2ms)[22m
+2026-09-13T18:05:44.0800392Z packages/runner test: Done
+2026-09-13T18:05:44.0805872Z packages/action test$ vitest run
+2026-09-13T18:05:44.0808516Z packages/cli test$ vitest run
+2026-09-13T18:05:44.3855955Z packages/action test: [1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/home/runner/work/cirujano/cirujano/packages/action[39m
+2026-09-13T18:05:44.3919744Z packages/cli test: [1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/home/runner/work/cirujano/cirujano/packages/cli[39m
+2026-09-13T18:05:44.6428526Z packages/action test:  [32m✓[39m src/inputs.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+2026-09-13T18:05:44.6510419Z packages/action test: [2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+2026-09-13T18:05:44.6524389Z packages/action test: [2m      Tests [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+2026-09-13T18:05:44.6525823Z packages/action test: [2m   Start at [22m 18:05:44
+2026-09-13T18:05:44.6527433Z packages/action test: [2m   Duration [22m 254ms[2m (transform 27ms, setup 0ms, import 48ms, tests 8ms, environment 0ms)[22m
+2026-09-13T18:05:44.6980378Z packages/action test: Done
+2026-09-13T18:05:44.8079375Z packages/cli test:  [32m✓[39m src/telemetry.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+2026-09-13T18:05:44.8149397Z packages/cli test:  [32m✓[39m src/telemetry-service.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 35[2mms[22m[39m
+2026-09-13T18:05:45.1094144Z packages/cli test:  [32m✓[39m src/cli.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+2026-09-13T18:05:45.3192459Z packages/cli test:  [32m✓[39m src/args.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+2026-09-13T18:05:45.3320260Z packages/cli test:  [31m❯[39m src/telemetry-scheduler.test.ts [2m([22m[2m7 tests[22m[2m | [22m[31m5 failed[39m[2m)[22m[32m 289[2mms[22m[39m
+2026-09-13T18:05:45.3322907Z packages/cli test:      [32m✓[39m keeps credentials out of the launchd template and runs at login and daily[32m 6[2mms[22m[39m
+2026-09-13T18:05:45.3325086Z packages/cli test:      [32m✓[39m serializes collection and writes the report atomically[32m 1[2mms[22m[39m
+2026-09-13T18:05:45.3326991Z packages/cli test: [31m     [31m×[31m allows only one executable collection at a time[39m[32m 128[2mms[22m[39m
+2026-09-13T18:05:45.3329525Z packages/cli test: [31m     [31m×[31m installs one stable private bundle and verifies fresh evidence[39m[32m 54[2mms[22m[39m
+2026-09-13T18:05:45.3339121Z packages/cli test: [31m     [31m×[31m rejects failed launch during installation[39m[32m 36[2mms[22m[39m
+2026-09-13T18:05:45.3341147Z packages/cli test: [31m     [31m×[31m rejects stale evidence during installation[39m[32m 32[2mms[22m[39m
+2026-09-13T18:05:45.3342854Z packages/cli test: [31m     [31m×[31m rejects launch timeout during installation[39m[32m 29[2mms[22m[39m
+2026-09-13T18:05:58.2285536Z packages/cli test:  [32m✓[39m src/runner-service.test.ts [2m([22m[2m20 tests[22m[2m)[22m[33m 13220[2mms[22m[39m
+2026-09-13T18:05:58.2287948Z packages/cli test:      [33m[2m✓[22m[39m blocks an authorized start when the conservative network envelope is unbounded [33m 394[2mms[22m[39m
+2026-09-13T18:05:58.2290751Z packages/cli test:      [33m[2m✓[22m[39m journals direct stop and cleanup before provider writes and verifies terminal readback [33m 628[2mms[22m[39m
+2026-09-13T18:05:58.2293355Z packages/cli test:      [33m[2m✓[22m[39m recovers an externally killed built direct action at direct-prepared without unsafe replay [33m 730[2mms[22m[39m
+2026-09-13T18:05:58.2296326Z packages/cli test:      [33m[2m✓[22m[39m recovers an externally killed built direct action at direct-emitting without unsafe replay [33m 970[2mms[22m[39m
+2026-09-13T18:05:58.2299086Z packages/cli test:      [33m[2m✓[22m[39m recovers an externally killed built direct action at direct-provider-io without unsafe replay [33m 473[2mms[22m[39m
+2026-09-13T18:05:58.2301646Z packages/cli test:      [33m[2m✓[22m[39m recovers an externally killed built direct action at direct-terminal without unsafe replay [33m 484[2mms[22m[39m
+2026-09-13T18:05:58.2304041Z packages/cli test:      [33m[2m✓[22m[39m persists structured blocked evidence when an ambiguous emission has a related provider operation [33m 415[2mms[22m[39m
+2026-09-13T18:05:58.2306686Z packages/cli test:      [33m[2m✓[22m[39m drains and emits structured resolved recovery when the built watcher receives SIGINT [33m 712[2mms[22m[39m
+2026-09-13T18:05:58.2308030Z packages/cli test:      [33m[2m✓[22m[39m drives the built CLI through the complete stateful R11 lifecycle and exact report [33m 6878[2mms[22m[39m
+2026-09-13T18:05:58.2346987Z packages/cli test: [31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 5 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+2026-09-13T18:05:58.2352874Z packages/cli test: [41m[1m FAIL [22m[49m src/telemetry-scheduler.test.ts[2m > [22mtelemetry scheduler[2m > [22mallows only one executable collection at a time
+2026-09-13T18:05:58.2357293Z packages/cli test: [31m[1mError[22m: Command failed: /home/runner/work/cirujano/cirujano/scripts/collect-actions-telemetry.sh
+2026-09-13T18:05:58.2359802Z packages/cli test: /home/runner/work/cirujano/cirujano/scripts/collect-actions-telemetry.sh: line 20: /usr/bin/lockf: No such file or directory
+2026-09-13T18:05:58.2361211Z packages/cli test: [39m
+2026-09-13T18:05:58.2362195Z packages/cli test: [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯[22m[39m
+2026-09-13T18:05:58.2364369Z packages/cli test: [41m[1m FAIL [22m[49m src/telemetry-scheduler.test.ts[2m > [22mtelemetry scheduler[2m > [22minstalls one stable private bundle and verifies fresh evidence
+2026-09-13T18:05:58.2366789Z packages/cli test: [31m[1mError[22m: Command failed: /home/runner/work/cirujano/cirujano/scripts/install-telemetry-agent.sh
+2026-09-13T18:05:58.2368687Z packages/cli test: /home/runner/work/cirujano/cirujano/scripts/install-telemetry-agent.sh: line 53: plutil: command not found
+2026-09-13T18:05:58.2370202Z packages/cli test: [39m
+2026-09-13T18:05:58.2371115Z packages/cli test: [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯[22m[39m
+2026-09-13T18:05:58.2373013Z packages/cli test: [41m[1m FAIL [22m[49m src/telemetry-scheduler.test.ts[2m > [22mtelemetry scheduler[2m > [22mrejects failed launch during installation
+2026-09-13T18:05:58.2375551Z packages/cli test: [41m[1m FAIL [22m[49m src/telemetry-scheduler.test.ts[2m > [22mtelemetry scheduler[2m > [22mrejects launch timeout during installation
+2026-09-13T18:05:58.2378220Z packages/cli test: [31m[1mAssertionError[22m: expected [Function] to throw error matching /did not exit successfully/u but got 'Command failed: /home/runner/work/cir…'[39m
+2026-09-13T18:05:58.2380121Z packages/cli test: [32m- Expected:[39m
+2026-09-13T18:05:58.2380820Z packages/cli test: /did not exit successfully/u
+2026-09-13T18:05:58.2381596Z packages/cli test: [31m+ Received:[39m
+2026-09-13T18:05:58.2382797Z packages/cli test: "Command failed: /home/runner/work/cirujano/cirujano/scripts/install-telemetry-agent.sh
+2026-09-13T18:05:58.2384622Z packages/cli test: /home/runner/work/cirujano/cirujano/scripts/install-telemetry-agent.sh: line 53: plutil: command not found
+2026-09-13T18:05:58.2385737Z packages/cli test: "
+2026-09-13T18:05:58.2386798Z packages/cli test: [36m [2m❯[22m src/telemetry-scheduler.test.ts:[2m90:8[22m[39m
+2026-09-13T18:05:58.2410235Z packages/cli test:     [90m 88|[39m     await expect(execFile(resolve(root, 'scripts/install-telemetry-age…
+2026-09-13T18:05:58.2413848Z packages/cli test:     [90m 89|[39m       env[33m:[39m { [33m...[39mfixture[33m.[39menv[33m,[39m [33m...[39mchanges }[33m,[39m timeout[33m:[39m [34m10_000[39m[33m,[39m
+2026-09-13T18:05:58.2415830Z packages/cli test:     [90m 90|[39m     }))[33m.[39mrejects[33m.[39m[34mtoThrow[39m(message)[33m;[39m
+2026-09-13T18:05:58.2417307Z packages/cli test:     [90m   |[39m        [31m^[39m
+2026-09-13T18:05:58.2418458Z packages/cli test:     [90m 91|[39m     [35mtry[39m {
+2026-09-13T18:05:58.2420288Z packages/cli test:     [90m 92|[39m       const pid = Number((await readFile(resolve(fixture.home, 'pid'),…
+2026-09-13T18:05:58.2421846Z packages/cli test: [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯[22m[39m
+2026-09-13T18:05:58.2424004Z packages/cli test: [41m[1m FAIL [22m[49m src/telemetry-scheduler.test.ts[2m > [22mtelemetry scheduler[2m > [22mrejects stale evidence during installation
+2026-09-13T18:05:58.2426879Z packages/cli test: [31m[1mAssertionError[22m: expected [Function] to throw error matching /fresh daily snapshot/u but got 'Command failed: /home/runner/work/cir…'[39m
+2026-09-13T18:05:58.2428635Z packages/cli test: [32m- Expected:[39m
+2026-09-13T18:05:58.2429622Z packages/cli test: /fresh daily snapshot/u
+2026-09-13T18:05:58.2430439Z packages/cli test: [31m+ Received:[39m
+2026-09-13T18:05:58.2431634Z packages/cli test: "Command failed: /home/runner/work/cirujano/cirujano/scripts/install-telemetry-agent.sh
+2026-09-13T18:05:58.2433438Z packages/cli test: /home/runner/work/cirujano/cirujano/scripts/install-telemetry-agent.sh: line 53: plutil: command not found
+2026-09-13T18:05:58.2434858Z packages/cli test: "
+2026-09-13T18:05:58.2435959Z packages/cli test: [36m [2m❯[22m src/telemetry-scheduler.test.ts:[2m90:8[22m[39m
+2026-09-13T18:05:58.2437811Z packages/cli test:     [90m 88|[39m     await expect(execFile(resolve(root, 'scripts/install-telemetry-age…
+2026-09-13T18:05:58.2440382Z packages/cli test:     [90m 89|[39m       env[33m:[39m { [33m...[39mfixture[33m.[39menv[33m,[39m [33m...[39mchanges }[33m,[39m timeout[33m:[39m [34m10_000[39m[33m,[39m
+2026-09-13T18:05:58.2442394Z packages/cli test:     [90m 90|[39m     }))[33m.[39mrejects[33m.[39m[34mtoThrow[39m(message)[33m;[39m
+2026-09-13T18:05:58.2443596Z packages/cli test:     [90m   |[39m        [31m^[39m
+2026-09-13T18:05:58.2444557Z packages/cli test:     [90m 91|[39m     [35mtry[39m {
+2026-09-13T18:05:58.2445960Z packages/cli test:     [90m 92|[39m       const pid = Number((await readFile(resolve(fixture.home, 'pid'),…
+2026-09-13T18:05:58.2447353Z packages/cli test: [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯[22m[39m
+2026-09-13T18:05:58.2449183Z packages/cli test: [2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m5 passed[39m[22m[90m (6)[39m
+2026-09-13T18:05:58.2451044Z packages/cli test: [2m      Tests [22m [1m[31m5 failed[39m[22m[2m | [22m[1m[32m73 passed[39m[22m[90m (78)[39m
+2026-09-13T18:05:58.2452304Z packages/cli test: [2m   Start at [22m 18:05:44
+2026-09-13T18:05:58.2453876Z packages/cli test: [2m   Duration [22m 13.83s[2m (transform 660ms, setup 0ms, import 911ms, tests 13.61s, environment 1ms)[22m
+2026-09-13T18:05:58.2468228Z packages/cli test: ::error file=/home/runner/work/cirujano/cirujano/packages/cli/src/telemetry-scheduler.test.ts,title=src/telemetry-scheduler.test.ts > telemetry scheduler > rejects failed launch during installation,line=90,column=8::AssertionError: expected [Function] to throw error matching /did not exit successfully/u but got 'Command failed: /home/runner/work/cir…'%0A%0A- Expected:%0A/did not exit successfully/u%0A%0A+ Received:%0A"Command failed: /home/runner/work/cirujano/cirujano/scripts/install-telemetry-agent.sh%0A/home/runner/work/cirujano/cirujano/scripts/install-telemetry-agent.sh: line 53: plutil: command not found%0A"%0A%0A ❯ src/telemetry-scheduler.test.ts:90:8%0A%0A
+2026-09-13T18:05:58.2480133Z packages/cli test: ::error file=/home/runner/work/cirujano/cirujano/packages/cli/src/telemetry-scheduler.test.ts,title=src/telemetry-scheduler.test.ts > telemetry scheduler > rejects stale evidence during installation,line=90,column=8::AssertionError: expected [Function] to throw error matching /fresh daily snapshot/u but got 'Command failed: /home/runner/work/cir…'%0A%0A- Expected:%0A/fresh daily snapshot/u%0A%0A+ Received:%0A"Command failed: /home/runner/work/cirujano/cirujano/scripts/install-telemetry-agent.sh%0A/home/runner/work/cirujano/cirujano/scripts/install-telemetry-agent.sh: line 53: plutil: command not found%0A"%0A%0A ❯ src/telemetry-scheduler.test.ts:90:8%0A%0A
+2026-09-13T18:05:58.2491504Z packages/cli test: ::error file=/home/runner/work/cirujano/cirujano/packages/cli/src/telemetry-scheduler.test.ts,title=src/telemetry-scheduler.test.ts > telemetry scheduler > rejects launch timeout during installation,line=90,column=8::AssertionError: expected [Function] to throw error matching /did not exit successfully/u but got 'Command failed: /home/runner/work/cir…'%0A%0A- Expected:%0A/did not exit successfully/u%0A%0A+ Received:%0A"Command failed: /home/runner/work/cirujano/cirujano/scripts/install-telemetry-agent.sh%0A/home/runner/work/cirujano/cirujano/scripts/install-telemetry-agent.sh: line 53: plutil: command not found%0A"%0A%0A ❯ src/telemetry-scheduler.test.ts:90:8%0A%0A
+2026-09-13T18:05:58.2683458Z packages/cli test: Failed
+2026-09-13T18:05:58.2864899Z /home/runner/work/cirujano/cirujano/packages/cli:
+2026-09-13T18:05:58.2866043Z [ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] cirujano@0.0.1 test: `vitest run`
+2026-09-13T18:05:58.2866831Z Exit status 1
+2026-09-13T18:05:58.3257239Z [ELIFECYCLE] Test failed. See above for more details.
+2026-09-13T18:05:58.3479536Z ##[error]Process completed with exit code 1.
+2026-09-13T18:05:58.3581210Z Post job cleanup.
+2026-09-13T18:05:58.5091929Z Pruning is unnecessary.
+2026-09-13T18:05:58.5229941Z Post job cleanup.
+2026-09-13T18:05:58.6096062Z [command]/usr/bin/git version
+2026-09-13T18:05:58.6133082Z git version 2.55.0
+2026-09-13T18:05:58.6176537Z Temporarily overriding HOME='/home/runner/work/_temp/2c5d94cf-858f-4a37-aac1-9f968a685603' before making global git config changes
+2026-09-13T18:05:58.6178662Z Adding repository directory to the temporary git global config as a safe directory
+2026-09-13T18:05:58.6182500Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/cirujano/cirujano
+2026-09-13T18:05:58.6213885Z Removing SSH command configuration
+2026-09-13T18:05:58.6220679Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-09-13T18:05:58.6254752Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-09-13T18:05:58.6473148Z Removing HTTP extra header
+2026-09-13T18:05:58.6480090Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-09-13T18:05:58.6516879Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-09-13T18:05:58.6782301Z Removing includeIf entries pointing to credentials config files
+2026-09-13T18:05:58.6788008Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-09-13T18:05:58.6817289Z includeif.gitdir:/home/runner/work/cirujano/cirujano/.git.path
+2026-09-13T18:05:58.6818534Z includeif.gitdir:/home/runner/work/cirujano/cirujano/.git/worktrees/*.path
+2026-09-13T18:05:58.6819965Z includeif.gitdir:/github/workspace/.git.path
+2026-09-13T18:05:58.6820945Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-09-13T18:05:58.6825530Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/cirujano/cirujano/.git.path
+2026-09-13T18:05:58.6849252Z /home/runner/work/_temp/git-credentials-251e1e82-f01e-4c83-85e7-5f8522665b35.config
+2026-09-13T18:05:58.6860054Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/cirujano/cirujano/.git.path \/home\/runner\/work\/_temp\/git\-credentials\-251e1e82\-f01e\-4c83\-85e7\-5f8522665b35\.config
+2026-09-13T18:05:58.6893421Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/cirujano/cirujano/.git/worktrees/*.path
+2026-09-13T18:05:58.6917507Z /home/runner/work/_temp/git-credentials-251e1e82-f01e-4c83-85e7-5f8522665b35.config
+2026-09-13T18:05:58.6926161Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/cirujano/cirujano/.git/worktrees/*.path \/home\/runner\/work\/_temp\/git\-credentials\-251e1e82\-f01e\-4c83\-85e7\-5f8522665b35\.config
+2026-09-13T18:05:58.6966093Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-09-13T18:05:58.6987496Z /github/runner_temp/git-credentials-251e1e82-f01e-4c83-85e7-5f8522665b35.config
+2026-09-13T18:05:58.6995837Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-251e1e82\-f01e\-4c83\-85e7\-5f8522665b35\.config
+2026-09-13T18:05:58.7026925Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-09-13T18:05:58.7050221Z /github/runner_temp/git-credentials-251e1e82-f01e-4c83-85e7-5f8522665b35.config
+2026-09-13T18:05:58.7061327Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-251e1e82\-f01e\-4c83\-85e7\-5f8522665b35\.config
+2026-09-13T18:05:58.7091710Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-09-13T18:05:58.7303678Z Removing credentials config '/home/runner/work/_temp/git-credentials-251e1e82-f01e-4c83-85e7-5f8522665b35.config'
+2026-09-13T18:05:58.7443522Z Cleaning up orphan processes

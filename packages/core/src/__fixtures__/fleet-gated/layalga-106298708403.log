@@ -1,0 +1,205 @@
+2026-09-21T10:31:40.3809284Z A new version of Supabase CLI is available: v2.117.0 (currently installed v2.116.0)
+2026-09-21T10:31:40.3810687Z We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
+2026-09-21T10:31:40.4034166Z ##[group]Run pnpm run test:e2e
+2026-09-21T10:31:40.4034946Z [36;1mpnpm run test:e2e[0m
+2026-09-21T10:31:40.4071592Z shell: /usr/bin/bash -e {0}
+2026-09-21T10:31:40.4071853Z env:
+2026-09-21T10:31:40.4072301Z   DATABASE_URL: ***127.0.0.1:54622/postgres
+2026-09-21T10:31:40.4072648Z   LINK_TOKEN_SECRET: [redacted]
+2026-09-21T10:31:40.4073043Z   CALENDAR_FEED_SECRET: [redacted]
+2026-09-21T10:31:40.4073463Z   DEMO_SESSION_SECRET: [redacted]
+2026-09-21T10:31:40.4073823Z   TICK_SECRET: [redacted]
+2026-09-21T10:31:40.4074171Z   AGENT_ROUTE_SECRET: [redacted]
+2026-09-21T10:31:40.4074796Z   APP_URL: http://127.0.0.1:3008
+2026-09-21T10:31:40.4075060Z   DEMO_MODE: true
+2026-09-21T10:31:40.4075274Z   AGENT_RUNTIME: local
+2026-09-21T10:31:40.4075496Z   MODEL: scripted
+2026-09-21T10:31:40.4075701Z   SCHEDULER: none
+2026-09-21T10:31:40.4075996Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-09-21T10:31:40.4076355Z   SUPABASE_INTERNAL_IMAGE_REGISTRY: ghcr.io
+2026-09-21T10:31:40.4076693Z   NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54621
+2026-09-21T10:31:40.4077178Z   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: [redacted]
+2026-09-21T10:31:40.4077634Z ##[endgroup]
+2026-09-21T10:31:40.9113699Z $ playwright test
+2026-09-21T10:32:01.2495166Z 
+2026-09-21T10:32:01.2496101Z Running 28 tests using 1 worker
+2026-09-21T10:33:52.5606229Z ·············××F
+2026-09-21T10:33:52.5657313Z ##[error]  1) [chromium] › tests/e2e/guided-demo.spec.ts:102:3 › guided scenarios use fresh real bookings, approval and reminder jobs (en) 
+2026-09-21T10:33:52.5681277Z ##[error]  1) [chromium] › tests/e2e/guided-demo.spec.ts:102:3 › guided scenarios use fresh real bookings, approval and reminder jobs (en) 
+2026-09-21T10:33:52.5696639Z ##[error]  1) [chromium] › tests/e2e/guided-demo.spec.ts:102:3 › guided scenarios use fresh real bookings, approval and reminder jobs (en) 
+2026-09-21T10:34:10.2021908Z [WebServer] [browser] Encountered a script tag while rendering React component. Scripts inside React components are never executed when rendering on the client. Consider using template tag instead (https://developer.mozilla.org/en-US/docs/Web/HTML/Element/template). 
+2026-09-21T10:35:36.6265641Z ···········××F
+2026-09-21T10:35:36.6280701Z ##[error]  2) [mobile-webkit] › tests/e2e/guided-demo.spec.ts:102:3 › guided scenarios use fresh real bookings, approval and reminder jobs (es) @mobile 
+2026-09-21T10:35:36.6311849Z ##[error]  2) [mobile-webkit] › tests/e2e/guided-demo.spec.ts:102:3 › guided scenarios use fresh real bookings, approval and reminder jobs (es) @mobile 
+2026-09-21T10:35:36.6333390Z ##[error]  2) [mobile-webkit] › tests/e2e/guided-demo.spec.ts:102:3 › guided scenarios use fresh real bookings, approval and reminder jobs (es) @mobile 
+2026-09-21T10:35:56.0436530Z ··
+2026-09-21T10:35:56.0444635Z 
+2026-09-21T10:35:56.0466910Z   1) [chromium] › tests/e2e/guided-demo.spec.ts:102:3 › guided scenarios use fresh real bookings, approval and reminder jobs (en) 
+2026-09-21T10:35:56.0482585Z 
+2026-09-21T10:35:56.0494532Z     Error: expect(received).toBe(expected) // Object.is equality
+2026-09-21T10:35:56.0501628Z 
+2026-09-21T10:35:56.0501859Z     Expected: "advanced"
+2026-09-21T10:35:56.0503068Z     Received: "no_eligible"
+2026-09-21T10:35:56.0503385Z 
+2026-09-21T10:35:56.0503597Z       139 |     );
+2026-09-21T10:35:56.0504844Z       140 |     await page.getByTestId("demo-clock-chase").click();
+2026-09-21T10:35:56.0505920Z     > 141 |     expect((await (await routineChase).json()).outcome).toBe("advanced");
+2026-09-21T10:35:56.0506812Z           |                                                         ^
+2026-09-21T10:35:56.0507438Z       142 |     await expect(
+2026-09-21T10:35:56.0507907Z       143 |       page
+2026-09-21T10:35:56.0511725Z       144 |         .getByTestId("host-outcomes")
+2026-09-21T10:35:56.0513100Z         at /home/runner/work/layalga/layalga/tests/e2e/guided-demo.spec.ts:141:57
+2026-09-21T10:35:56.0514048Z 
+2026-09-21T10:35:56.0515583Z     Error Context: test-results/guided-demo-guided-scenari-7c0df-roval-and-reminder-jobs-en--chromium/error-context.md
+2026-09-21T10:35:56.0516922Z 
+2026-09-21T10:35:56.0518024Z     Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+2026-09-21T10:35:56.0518764Z 
+2026-09-21T10:35:56.0519807Z     Error: expect(received).toBe(expected) // Object.is equality
+2026-09-21T10:35:56.0520674Z 
+2026-09-21T10:35:56.0521225Z     Expected: "advanced"
+2026-09-21T10:35:56.0522023Z     Received: "no_eligible"
+2026-09-21T10:35:56.0522573Z 
+2026-09-21T10:35:56.0522908Z       139 |     );
+2026-09-21T10:35:56.0523646Z       140 |     await page.getByTestId("demo-clock-chase").click();
+2026-09-21T10:35:56.0525231Z     > 141 |     expect((await (await routineChase).json()).outcome).toBe("advanced");
+2026-09-21T10:35:56.0526425Z           |                                                         ^
+2026-09-21T10:35:56.0527394Z       142 |     await expect(
+2026-09-21T10:35:56.0528099Z       143 |       page
+2026-09-21T10:35:56.0528820Z       144 |         .getByTestId("host-outcomes")
+2026-09-21T10:35:56.0529741Z         at /home/runner/work/layalga/layalga/tests/e2e/guided-demo.spec.ts:141:57
+2026-09-21T10:35:56.0530538Z 
+2026-09-21T10:35:56.0531654Z     Error Context: test-results/guided-demo-guided-scenari-7c0df-roval-and-reminder-jobs-en--chromium-retry1/error-context.md
+2026-09-21T10:35:56.0533054Z 
+2026-09-21T10:35:56.0534191Z     attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+2026-09-21T10:35:56.0535948Z     test-results/guided-demo-guided-scenari-7c0df-roval-and-reminder-jobs-en--chromium-retry1/trace.zip
+2026-09-21T10:35:56.0564771Z     Usage:
+2026-09-21T10:35:56.0584680Z 
+2026-09-21T10:35:56.0603600Z         pnpm exec playwright show-trace test-results/guided-demo-guided-scenari-7c0df-roval-and-reminder-jobs-en--chromium-retry1/trace.zip
+2026-09-21T10:35:56.0625153Z 
+2026-09-21T10:35:56.0658153Z     ────────────────────────────────────────────────────────────────────────────────────────────────
+2026-09-21T10:35:56.0666636Z 
+2026-09-21T10:35:56.0695508Z     Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+2026-09-21T10:35:56.0696088Z 
+2026-09-21T10:35:56.0706070Z     Error: expect(received).toBe(expected) // Object.is equality
+2026-09-21T10:35:56.0706522Z 
+2026-09-21T10:35:56.0706842Z     Expected: "advanced"
+2026-09-21T10:35:56.0707318Z     Received: "no_eligible"
+2026-09-21T10:35:56.0707599Z 
+2026-09-21T10:35:56.0707708Z       139 |     );
+2026-09-21T10:35:56.0708067Z       140 |     await page.getByTestId("demo-clock-chase").click();
+2026-09-21T10:35:56.0708688Z     > 141 |     expect((await (await routineChase).json()).outcome).toBe("advanced");
+2026-09-21T10:35:56.0709557Z           |                                                         ^
+2026-09-21T10:35:56.0710125Z       142 |     await expect(
+2026-09-21T10:35:56.0710635Z       143 |       page
+2026-09-21T10:35:56.0711131Z       144 |         .getByTestId("host-outcomes")
+2026-09-21T10:35:56.0711623Z         at /home/runner/work/layalga/layalga/tests/e2e/guided-demo.spec.ts:141:57
+2026-09-21T10:35:56.0711953Z 
+2026-09-21T10:35:56.0712739Z     Error Context: test-results/guided-demo-guided-scenari-7c0df-roval-and-reminder-jobs-en--chromium-retry2/error-context.md
+2026-09-21T10:35:56.0713304Z 
+2026-09-21T10:35:56.0714141Z   2) [mobile-webkit] › tests/e2e/guided-demo.spec.ts:102:3 › guided scenarios use fresh real bookings, approval and reminder jobs (es) @mobile 
+2026-09-21T10:35:56.0715259Z 
+2026-09-21T10:35:56.0715489Z     Error: expect(received).toBe(expected) // Object.is equality
+2026-09-21T10:35:56.0715762Z 
+2026-09-21T10:35:56.0715858Z     Expected: "advanced"
+2026-09-21T10:35:56.0716101Z     Received: "no_eligible"
+2026-09-21T10:35:56.0716256Z 
+2026-09-21T10:35:56.0716344Z       139 |     );
+2026-09-21T10:35:56.0716667Z       140 |     await page.getByTestId("demo-clock-chase").click();
+2026-09-21T10:35:56.0717189Z     > 141 |     expect((await (await routineChase).json()).outcome).toBe("advanced");
+2026-09-21T10:35:56.0717654Z           |                                                         ^
+2026-09-21T10:35:56.0717958Z       142 |     await expect(
+2026-09-21T10:35:56.0718196Z       143 |       page
+2026-09-21T10:35:56.0718599Z       144 |         .getByTestId("host-outcomes")
+2026-09-21T10:35:56.0719204Z         at /home/runner/work/layalga/layalga/tests/e2e/guided-demo.spec.ts:141:57
+2026-09-21T10:35:56.0719529Z 
+2026-09-21T10:35:56.0720054Z     Error Context: test-results/guided-demo-guided-scenari-5325b-and-reminder-jobs-es-mobile-mobile-webkit/error-context.md
+2026-09-21T10:35:56.0720596Z 
+2026-09-21T10:35:56.0720993Z     Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+2026-09-21T10:35:56.0721299Z 
+2026-09-21T10:35:56.0721510Z     Error: expect(received).toBe(expected) // Object.is equality
+2026-09-21T10:35:56.0721775Z 
+2026-09-21T10:35:56.0721873Z     Expected: "advanced"
+2026-09-21T10:35:56.0722110Z     Received: "no_eligible"
+2026-09-21T10:35:56.0722266Z 
+2026-09-21T10:35:56.0722345Z       139 |     );
+2026-09-21T10:35:56.0722682Z       140 |     await page.getByTestId("demo-clock-chase").click();
+2026-09-21T10:35:56.0723198Z     > 141 |     expect((await (await routineChase).json()).outcome).toBe("advanced");
+2026-09-21T10:35:56.0723670Z           |                                                         ^
+2026-09-21T10:35:56.0723982Z       142 |     await expect(
+2026-09-21T10:35:56.0724225Z       143 |       page
+2026-09-21T10:35:56.0724776Z       144 |         .getByTestId("host-outcomes")
+2026-09-21T10:35:56.0725255Z         at /home/runner/work/layalga/layalga/tests/e2e/guided-demo.spec.ts:141:57
+2026-09-21T10:35:56.0725566Z 
+2026-09-21T10:35:56.0726117Z     Error Context: test-results/guided-demo-guided-scenari-5325b-and-reminder-jobs-es-mobile-mobile-webkit-retry1/error-context.md
+2026-09-21T10:35:56.0726694Z 
+2026-09-21T10:35:56.0727115Z     attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+2026-09-21T10:35:56.0727910Z     test-results/guided-demo-guided-scenari-5325b-and-reminder-jobs-es-mobile-mobile-webkit-retry1/trace.zip
+2026-09-21T10:35:56.0728480Z     Usage:
+2026-09-21T10:35:56.0728593Z 
+2026-09-21T10:35:56.0729195Z         pnpm exec playwright show-trace test-results/guided-demo-guided-scenari-5325b-and-reminder-jobs-es-mobile-mobile-webkit-retry1/trace.zip
+2026-09-21T10:35:56.0729984Z 
+2026-09-21T10:35:56.0730339Z     ────────────────────────────────────────────────────────────────────────────────────────────────
+2026-09-21T10:35:56.0730634Z 
+2026-09-21T10:35:56.0730991Z     Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+2026-09-21T10:35:56.0731281Z 
+2026-09-21T10:35:56.0731491Z     Error: expect(received).toBe(expected) // Object.is equality
+2026-09-21T10:35:56.0731755Z 
+2026-09-21T10:35:56.0731847Z     Expected: "advanced"
+2026-09-21T10:35:56.0732091Z     Received: "no_eligible"
+2026-09-21T10:35:56.0732239Z 
+2026-09-21T10:35:56.0732325Z       139 |     );
+2026-09-21T10:35:56.0732645Z       140 |     await page.getByTestId("demo-clock-chase").click();
+2026-09-21T10:35:56.0733393Z     > 141 |     expect((await (await routineChase).json()).outcome).toBe("advanced");
+2026-09-21T10:35:56.0734695Z           |                                                         ^
+2026-09-21T10:35:56.0735268Z       142 |     await expect(
+2026-09-21T10:35:56.0735673Z       143 |       page
+2026-09-21T10:35:56.0736183Z       144 |         .getByTestId("host-outcomes")
+2026-09-21T10:35:56.0737046Z         at /home/runner/work/layalga/layalga/tests/e2e/guided-demo.spec.ts:141:57
+2026-09-21T10:35:56.0737632Z 
+2026-09-21T10:35:56.0738655Z     Error Context: test-results/guided-demo-guided-scenari-5325b-and-reminder-jobs-es-mobile-mobile-webkit-retry2/error-context.md
+2026-09-21T10:35:56.0739754Z 
+2026-09-21T10:35:56.0739919Z   2 failed
+2026-09-21T10:35:56.0741189Z     [chromium] › tests/e2e/guided-demo.spec.ts:102:3 › guided scenarios use fresh real bookings, approval and reminder jobs (en) 
+2026-09-21T10:35:56.0743032Z     [mobile-webkit] › tests/e2e/guided-demo.spec.ts:102:3 › guided scenarios use fresh real bookings, approval and reminder jobs (es) @mobile 
+2026-09-21T10:35:56.0743663Z   26 passed (4.2m)
+2026-09-21T10:35:56.0750786Z ##[notice]  2 failed
+2026-09-21T10:35:56.0916490Z [ELIFECYCLE] Command failed with exit code 1.
+2026-09-21T10:35:56.1226013Z ##[error]Process completed with exit code 1.
+2026-09-21T10:35:56.1397315Z Post job cleanup.
+2026-09-21T10:35:56.1400992Z ##[start-action display=Setup Bun;id=__b8313fbb-b720-48ea-a95e-f7bbf5a401b7.__oven-sh_setup-bun]
+2026-09-21T10:35:56.1403332Z ##[end-action id=__b8313fbb-b720-48ea-a95e-f7bbf5a401b7.__oven-sh_setup-bun;outcome=skipped;conclusion=skipped;duration_ms=0]
+2026-09-21T10:35:56.1448930Z Post job cleanup.
+2026-09-21T10:35:56.4237381Z Pruning is unnecessary.
+2026-09-21T10:35:56.4394053Z Post job cleanup.
+2026-09-21T10:35:56.5309980Z [command]/usr/bin/git version
+2026-09-21T10:35:56.5352816Z git version 2.55.0
+2026-09-21T10:35:56.5388517Z Temporarily overriding HOME='/home/runner/work/_temp/f3c1a45c-f5dd-4fe4-92cd-6e4bcd8453a3' before making global git config changes
+2026-09-21T10:35:56.5389473Z Adding repository directory to the temporary git global config as a safe directory
+2026-09-21T10:35:56.5394463Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/layalga/layalga
+2026-09-21T10:35:56.5423270Z Removing SSH command configuration
+2026-09-21T10:35:56.5429442Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-09-21T10:35:56.5462738Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-09-21T10:35:56.5711708Z Removing HTTP extra header
+2026-09-21T10:35:56.5718868Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-09-21T10:35:56.5756388Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-09-21T10:35:56.5986331Z Removing includeIf entries pointing to credentials config files
+2026-09-21T10:35:56.5992402Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-09-21T10:35:56.6015580Z includeif.gitdir:/home/runner/work/layalga/layalga/.git.path
+2026-09-21T10:35:56.6016684Z includeif.gitdir:/home/runner/work/layalga/layalga/.git/worktrees/*.path
+2026-09-21T10:35:56.6017618Z includeif.gitdir:/github/workspace/.git.path
+2026-09-21T10:35:56.6018479Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-09-21T10:35:56.6026501Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/layalga/layalga/.git.path
+2026-09-21T10:35:56.6048054Z /home/runner/work/_temp/git-credentials-3bbfd577-bddd-401d-b666-e5076773d9a3.config
+2026-09-21T10:35:56.6058697Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/layalga/layalga/.git.path \/home\/runner\/work\/_temp\/git\-credentials\-3bbfd577\-bddd\-401d\-b666\-e5076773d9a3\.config
+2026-09-21T10:35:56.6095923Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/layalga/layalga/.git/worktrees/*.path
+2026-09-21T10:35:56.6118904Z /home/runner/work/_temp/git-credentials-3bbfd577-bddd-401d-b666-e5076773d9a3.config
+2026-09-21T10:35:56.6128070Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/layalga/layalga/.git/worktrees/*.path \/home\/runner\/work\/_temp\/git\-credentials\-3bbfd577\-bddd\-401d\-b666\-e5076773d9a3\.config
+2026-09-21T10:35:56.6158445Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-09-21T10:35:56.6179535Z /github/runner_temp/git-credentials-3bbfd577-bddd-401d-b666-e5076773d9a3.config
+2026-09-21T10:35:56.6187184Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-3bbfd577\-bddd\-401d\-b666\-e5076773d9a3\.config
+2026-09-21T10:35:56.6217489Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-09-21T10:35:56.6238466Z /github/runner_temp/git-credentials-3bbfd577-bddd-401d-b666-e5076773d9a3.config
+2026-09-21T10:35:56.6247680Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-3bbfd577\-bddd\-401d\-b666\-e5076773d9a3\.config
+2026-09-21T10:35:56.6280620Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-09-21T10:35:56.6495086Z Removing credentials config '/home/runner/work/_temp/git-credentials-3bbfd577-bddd-401d-b666-e5076773d9a3.config'
+2026-09-21T10:35:56.6645747Z Cleaning up orphan processes

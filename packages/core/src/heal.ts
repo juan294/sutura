@@ -13,7 +13,7 @@ import { runMechanicalChecks } from './audit/mechanical.js';
 import { budgetedRecoveryPorts, reserveRecoveryAudit, withinRecoveryDeadline } from './diagnose/hypotheses-budget.js';
 import { recoverDiagnosis, recoverySourceClasses, type DiagnosisRecoveryEvidence } from './diagnose/hypotheses.js';
 import { authorizeRepairCandidate, type RepairAuthorizationContext, type ControllerBaselineBinding } from './engine/repair-authorization.js';
-import { classify, classifyMechanically } from './diagnose/classify.js';
+import { classify, classifyMechanically, isCommandHeader } from './diagnose/classify.js';
 import {
   ground,
   promoteUpstreamDependencyDiagnosis,
@@ -98,7 +98,7 @@ import {
 } from './policy/evaluate.js';
 import { createDefaultRepositoryPolicy } from './policy/load.js';
 import type { RepositoryPolicy } from './policy/schema.js';
-import { boundedTail } from './text/bounded-tail.js';
+import { boundedTail, boundedTailWithHeader } from './text/bounded-tail.js';
 import { TraceRecorder } from './trace/recorder.js';
 import type { TraceEventInput } from './trace/types.js';
 import { detectRuntimeAtPath } from './runtime/detect.js';
@@ -1614,9 +1614,10 @@ async function repairFailureWithinBudget(
 }
 
 function failureLog(command: string, result: RunResult): string {
-  return boundedTail(
+  return boundedTailWithHeader(
     [`Run ${command}`, result.stdout, result.stderr].filter(Boolean).join('\n'),
     { maxLines: 200, maxCharacters: 20_000, maxBytes: 20_000 },
+    isCommandHeader,
   );
 }
 

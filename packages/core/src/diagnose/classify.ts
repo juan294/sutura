@@ -4,14 +4,13 @@ import { extractJson } from '../llm/json.js';
 import type { TierLlm } from '../llm/types.js';
 import { redactExternalMessages } from '../security/external-text.js';
 import { FAILURE_TAXONOMY } from '../taxonomy.js';
-import { boundedTail } from '../text/bounded-tail.js';
+import { boundedTail, boundedTailWithHeader } from '../text/bounded-tail.js';
 
 const FAILURE_CLASSES = Object.freeze(
   Object.keys(FAILURE_TAXONOMY) as FailureClass[],
 );
-const MAX_LOG_LINES = 200;
-const MAX_LOG_CHARACTERS = 20_000;
-const MAX_LOG_BYTES = 20_000;
+const LOG_BOUNDS = { maxLines: 200, maxCharacters: 20_000, maxBytes: 20_000 };
+const EXCERPT_BOUNDS = { ...LOG_BOUNDS, maxLines: 20 };
 
 export type DiagnosisLlm = TierLlm<'nano'>;
 
@@ -24,14 +23,6 @@ export class ClassificationError extends Error {
   }
 }
 
-function finalLines(log: string, count: number): string {
-  return boundedTail(log, {
-    maxLines: count,
-    maxCharacters: MAX_LOG_CHARACTERS,
-    maxBytes: MAX_LOG_BYTES,
-  });
-}
-
 function githubLogPayload(line: string): string {
   const finalField = line.slice(line.lastIndexOf('\t') + 1).trim();
   return finalField
@@ -40,13 +31,23 @@ function githubLogPayload(line: string): string {
     .trim();
 }
 
+const COMMAND_HEADER = /^(?:Run|\$)\s+(\S.*)$/;
+
+export function isCommandHeader(line: string): boolean {
+  return COMMAND_HEADER.test(githubLogPayload(line));
+}
+
+function boundedCommandLog(log: string): string {
+  return boundedTailWithHeader(log, LOG_BOUNDS, isCommandHeader);
+}
+
 function failingCommand(log: string): string {
   const lines = log.split(/\r?\n/);
   let command = '';
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = githubLogPayload(lines[index] ?? '');
-    const runMatch = /^(?:Run|\$)\s+(\S.*)$/.exec(line);
+    const runMatch = COMMAND_HEADER.exec(line);
     if (runMatch?.[1]) {
       command = runMatch[1].trim();
       continue;
@@ -91,7 +92,7 @@ function bestTaxonomyMatch(log: string): {
 }
 
 export function classifyMechanically(logExcerpt: string): MechanicalDiagnosis {
-  const boundedLog = finalLines(logExcerpt, MAX_LOG_LINES);
+  const boundedLog = boundedCommandLog(logExcerpt);
   const { failureClass, matched } = bestTaxonomyMatch(boundedLog);
 
   return {
@@ -102,7 +103,7 @@ export function classifyMechanically(logExcerpt: string): MechanicalDiagnosis {
       ...matched.map((signature) => `signature:${signature}`),
     ],
     failingCmd: failingCommand(boundedLog),
-    errorExcerpt: finalLines(boundedLog, 20).trim(),
+    errorExcerpt: boundedTail(boundedLog, EXCERPT_BOUNDS).trim(),
   };
 }
 
@@ -173,7 +174,7 @@ export async function classify(
   llm: DiagnosisLlm,
   logExcerpt: string,
 ): Promise<Diagnosis> {
-  const boundedLog = finalLines(logExcerpt, MAX_LOG_LINES);
+  const boundedLog = boundedCommandLog(logExcerpt);
   const mechanical = classifyMechanically(boundedLog);
   if (mechanical.failingCmd === 'unknown') {
     throw new ClassificationError(

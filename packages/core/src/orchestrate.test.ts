@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_MODELS } from './config.js';
+import { classifyMechanically, isCommandHeader } from './diagnose/classify.js';
 import type {
   AuditVerdict,
   Candidate,
@@ -396,6 +397,15 @@ describe('orchestrate', () => {
       .split(/\r?\n/u)
       .slice(1)
       .join('\n');
+    // Fleet repair-path recovery, phase 2: the live B4 log still carries the
+    // step's own `$ pnpm -r test` echo, which the 20 KB byte cap used to drop.
+    // It is now carried past truncation, so the fail-closed premise is kept by
+    // removing every command header rather than only the first line.
+    expect(classifyMechanically(preFixLog).failingCmd).toBe('pnpm -r test');
+    const headerlessLog = preFixLog
+      .split('\n')
+      .filter((line) => !isCommandHeader(line))
+      .join('\n');
     const run: FailingWorkflowRun = {
       runId: captured.bundle.runId,
       repo: captured.bundle.repo,
@@ -403,7 +413,7 @@ describe('orchestrate', () => {
       baseSha: captured.bundle.actionSha,
       headRef: 'develop',
       baseRef: 'develop',
-      failedSteps: [{ jobName: 'checks', stepName: 'Test CLI', log: preFixLog }],
+      failedSteps: [{ jobName: 'checks', stepName: 'Test CLI', log: headerlessLog }],
     };
     const { ctx, chat, executor, github } = context([], true, run);
 

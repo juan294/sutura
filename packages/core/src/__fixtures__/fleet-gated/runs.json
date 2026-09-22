@@ -1,0 +1,312 @@
+[
+  {
+    "repository": "juan294/gh-glance",
+    "expectedFailingCmd": "npm run test:pty",
+    "monitorRunId": "34755778191",
+    "ciRunId": "34754888840",
+    "jobs": [
+      {
+        "id": 103717486951,
+        "name": "PTY",
+        "log": "gh-glance-103717486951.log",
+        "step": {
+          "name": "Run npm run test:pty",
+          "startedAt": "2026-09-13T11:36:52Z",
+          "completedAt": "2026-09-13T11:57:24Z"
+        }
+      }
+    ]
+  },
+  {
+    "repository": "juan294/cirujano",
+    "expectedFailingCmd": "pnpm -r test",
+    "monitorRunId": "34773582017",
+    "ciRunId": "34773526825",
+    "jobs": [
+      {
+        "id": 103767342524,
+        "name": "checks",
+        "log": "cirujano-103767342524.log",
+        "step": {
+          "name": "Run pnpm run test",
+          "startedAt": "2026-09-13T18:05:40Z",
+          "completedAt": "2026-09-13T18:05:58Z"
+        }
+      }
+    ]
+  },
+  {
+    "repository": "juan294/gh-glance",
+    "expectedFailingCmd": "npm run test:pty",
+    "monitorRunId": "35185178906",
+    "ciRunId": "35183555531",
+    "jobs": [
+      {
+        "id": 105091730086,
+        "name": "PTY",
+        "log": "gh-glance-105091730086.log",
+        "step": {
+          "name": "Run npm run test:pty",
+          "startedAt": "2026-09-17T05:49:03Z",
+          "completedAt": "2026-09-17T06:12:55Z"
+        }
+      }
+    ]
+  },
+  {
+    "repository": "juan294/gh-glance",
+    "expectedFailingCmd": "npm run test:pty",
+    "monitorRunId": "35187056590",
+    "ciRunId": "35183555531",
+    "jobs": [
+      {
+        "id": 105091730086,
+        "name": "PTY",
+        "log": "gh-glance-105091730086.log",
+        "step": {
+          "name": "Run npm run test:pty",
+          "startedAt": "2026-09-17T05:49:03Z",
+          "completedAt": "2026-09-17T06:12:55Z"
+        }
+      }
+    ]
+  },
+  {
+    "repository": "juan294/gh-glance",
+    "expectedFailingCmd": "npm run test:pty",
+    "monitorRunId": "35188874186",
+    "ciRunId": "35183555531",
+    "jobs": [
+      {
+        "id": 105091730086,
+        "name": "PTY",
+        "log": "gh-glance-105091730086.log",
+        "step": {
+          "name": "Run npm run test:pty",
+          "startedAt": "2026-09-17T05:49:03Z",
+          "completedAt": "2026-09-17T06:12:55Z"
+        }
+      }
+    ]
+  },
+  {
+    "repository": "juan294/gh-glance",
+    "expectedFailingCmd": "npm run test:pty",
+    "monitorRunId": "35191190398",
+    "ciRunId": "35189258413",
+    "jobs": [
+      {
+        "id": 105098033484,
+        "name": "PTY",
+        "log": "gh-glance-105098033484.log",
+        "step": {
+          "name": "Run npm run test:pty",
+          "startedAt": "2026-09-17T06:18:58Z",
+          "completedAt": "2026-09-17T06:44:35Z"
+        }
+      }
+    ]
+  },
+  {
+    "repository": "juan294/layalga",
+    "expectedFailingCmd": "pnpm run test:integration",
+    "monitorRunId": "35589412020",
+    "ciRunId": "35588837228",
+    "jobs": [
+      {
+        "id": 106298357917,
+        "name": "acceptance",
+        "log": "layalga-106298357917.log",
+        "step": {
+          "name": "Run browser tests",
+          "startedAt": "2026-09-21T10:30:26Z",
+          "completedAt": "2026-09-21T10:33:47Z"
+        }
+      },
+      {
+        "id": 106298358074,
+        "name": "integration",
+        "log": "layalga-106298358074.log",
+        "step": {
+          "name": "Run integration tests",
+          "startedAt": "2026-09-21T10:29:29Z",
+          "completedAt": "2026-09-21T10:29:56Z"
+        }
+      }
+    ]
+  },
+  {
+    "repository": "juan294/layalga",
+    "expectedFailingCmd": "pnpm run test:integration",
+    "monitorRunId": "35589561156",
+    "ciRunId": "35588928194",
+    "jobs": [
+      {
+        "id": 106298647300,
+        "name": "acceptance",
+        "log": "layalga-106298647300.log",
+        "step": {
+          "name": "Run browser tests",
+          "startedAt": "2026-09-21T10:31:23Z",
+          "completedAt": "2026-09-21T10:35:25Z"
+        }
+      },
+      {
+        "id": 106298647358,
+        "name": "integration",
+        "log": "layalga-106298647358.log",
+        "step": {
+          "name": "Run integration tests",
+          "startedAt": "2026-09-21T10:30:30Z",
+          "completedAt": "2026-09-21T10:31:08Z"
+        }
+      }
+    ]
+  },
+  {
+    "repository": "juan294/layalga",
+    "expectedFailingCmd": "pnpm run test:integration",
+    "monitorRunId": "35589603877",
+    "ciRunId": "35588947594",
+    "jobs": [
+      {
+        "id": 106298708403,
+        "name": "acceptance",
+        "log": "layalga-106298708403.log",
+        "step": {
+          "name": "Run browser tests",
+          "startedAt": "2026-09-21T10:31:40Z",
+          "completedAt": "2026-09-21T10:35:56Z"
+        }
+      },
+      {
+        "id": 106298708472,
+        "name": "integration",
+        "log": "layalga-106298708472.log",
+        "step": {
+          "name": "Run integration tests",
+          "startedAt": "2026-09-21T10:30:45Z",
+          "completedAt": "2026-09-21T10:31:22Z"
+        }
+      }
+    ]
+  },
+  {
+    "repository": "juan294/layalga",
+    "expectedFailingCmd": "pnpm run test:integration",
+    "monitorRunId": "35590192744",
+    "ciRunId": "35589583173",
+    "jobs": [
+      {
+        "id": 106300682270,
+        "name": "acceptance",
+        "log": "layalga-106300682270.log",
+        "step": {
+          "name": "Run browser tests",
+          "startedAt": "2026-09-21T10:38:27Z",
+          "completedAt": "2026-09-21T10:42:42Z"
+        }
+      },
+      {
+        "id": 106300682459,
+        "name": "integration",
+        "log": "layalga-106300682459.log",
+        "step": {
+          "name": "Run integration tests",
+          "startedAt": "2026-09-21T10:38:20Z",
+          "completedAt": "2026-09-21T10:38:54Z"
+        }
+      }
+    ]
+  },
+  {
+    "repository": "juan294/gh-glance",
+    "expectedFailingCmd": "npm run test:pty",
+    "monitorRunId": "35644376432",
+    "ciRunId": "35641748524",
+    "jobs": [
+      {
+        "id": 106472467151,
+        "name": "PTY",
+        "log": "gh-glance-106472467151.log",
+        "step": {
+          "name": "Run npm run test:pty",
+          "startedAt": "2026-09-21T18:57:41Z",
+          "completedAt": "2026-09-21T19:22:08Z"
+        }
+      }
+    ]
+  },
+  {
+    "repository": "juan294/gh-glance",
+    "expectedFailingCmd": "npm run test:pty",
+    "monitorRunId": "35644498725",
+    "ciRunId": "35641817306",
+    "jobs": [
+      {
+        "id": 106472693238,
+        "name": "PTY",
+        "log": "gh-glance-106472693238.log",
+        "step": {
+          "name": "Run npm run test:pty",
+          "startedAt": "2026-09-21T18:58:18Z",
+          "completedAt": "2026-09-21T19:23:20Z"
+        }
+      }
+    ]
+  },
+  {
+    "repository": "juan294/gh-glance",
+    "expectedFailingCmd": "npm run test:pty",
+    "monitorRunId": "35644619036",
+    "ciRunId": "35641938221",
+    "jobs": [
+      {
+        "id": 106473097216,
+        "name": "PTY",
+        "log": "gh-glance-106473097216.log",
+        "step": {
+          "name": "Run npm run test:pty",
+          "startedAt": "2026-09-21T18:59:32Z",
+          "completedAt": "2026-09-21T19:24:25Z"
+        }
+      }
+    ]
+  },
+  {
+    "repository": "juan294/gh-glance",
+    "expectedFailingCmd": "npm run test:pty",
+    "monitorRunId": "35191226434",
+    "ciRunId": "35189315723",
+    "jobs": [
+      {
+        "id": 105098151277,
+        "name": "PTY",
+        "log": "gh-glance-105098151277.log",
+        "step": {
+          "name": "Run npm run test:pty",
+          "startedAt": "2026-09-17T06:19:32Z",
+          "completedAt": "2026-09-17T06:45:03Z"
+        }
+      }
+    ]
+  },
+  {
+    "repository": "juan294/gh-glance",
+    "expectedFailingCmd": "npm run test:pty",
+    "monitorRunId": "35195710687",
+    "ciRunId": "35193615183",
+    "jobs": [
+      {
+        "id": 105111575364,
+        "name": "PTY",
+        "log": "gh-glance-105111575364.log",
+        "step": {
+          "name": "Run npm run test:pty",
+          "startedAt": "2026-09-17T07:15:34Z",
+          "completedAt": "2026-09-17T07:40:21Z"
+        }
+      }
+    ]
+  }
+]

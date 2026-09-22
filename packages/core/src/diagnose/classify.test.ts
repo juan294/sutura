@@ -246,6 +246,16 @@ describe('failure classification', () => {
     expect(outbound).toContain('[redacted credential]');
   });
 
+  it('recovers the failing command from a verbose step log', async () => {
+    const log = await readFile(
+      fileURLToPath(new URL('../__fixtures__/fleet-gated/gh-glance-106473097216.log', import.meta.url)),
+      'utf8',
+    );
+
+    expect(log.split('\n').length).toBeGreaterThan(800);
+    expect(classifyMechanically(log).failingCmd).toBe('npm run test:pty');
+  });
+
   it('bounds one huge log line by characters and UTF-8 bytes', async () => {
     const llm = scriptedLlm({
       class: 'infra',

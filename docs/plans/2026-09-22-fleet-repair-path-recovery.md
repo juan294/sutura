@@ -2,7 +2,7 @@
 
 Date: 2026-09-22
 
-Status: Planned; no phase started
+Status: Phase 2 done 2026-09-22 (see `2026-09-22-fleet-repair-path-recovery-notes.md`); phases 1, 3, 4 open
 
 Owner: Juan
 
@@ -135,7 +135,7 @@ what the next wall is.
 | # | Phase | File | Needs authorization | Batch |
 | --- | --- | --- | --- | --- |
 | 1 | Prove the runtime fix with a real red CI in termplex | [phase-1](2026-09-22-fleet-repair-path-recovery-phases/phase-1.md) | **Yes** — one paid live run, ~USD 1, in a consumer repo | `[batch-eligible]` with 4 |
-| 2 | Carry the failing command past truncation (causes A and B) | [phase-2](2026-09-22-fleet-repair-path-recovery-phases/phase-2.md) | no | sequential |
+| 2 ✅ | Carry the failing command past truncation (causes A and B) | [phase-2](2026-09-22-fleet-repair-path-recovery-phases/phase-2.md) | no | sequential |
 | 3 | Root-cause the `infra-stop` wall from existing artifacts; redact the excerpt | [phase-3](2026-09-22-fleet-repair-path-recovery-phases/phase-3.md) | no | sequential, after 2 |
 | 4 | Fleet loose ends: kalpha push, paisaxe `main` | [phase-4](2026-09-22-fleet-repair-path-recovery-phases/phase-4.md) | **Yes** — a PR against paisaxe `main` | `[batch-eligible]` with 1 |
 
