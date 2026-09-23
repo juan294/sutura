@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A run with several failed steps diagnoses the one that finished first instead of whichever log came last. An aggregate gate job that only asserts other jobs' results always finishes after them, and its `echo` line was being reproduced green, which stopped four fleet runs at infra-stop. If the chosen command still reproduces green, the next failed step with a different command gets one more reproduction attempt (#151).
+
 ## [0.3.2] - 2026-09-23
 
 ### Fixed

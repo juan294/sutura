@@ -36,8 +36,10 @@ import {
   SUTURA_SANDBOX_ENV,
   attemptMarker,
   collectFailedLogs,
+  diagnosisLog,
   extractSourceReferences,
   orchestrate,
+  rankFailedSteps,
   readRepairSourceContext,
   resolveAuditedCandidate,
   type AttemptTarget,
@@ -976,6 +978,128 @@ describe('orchestrate', () => {
     expect(repository.fixes).toEqual([]);
     expect(github.pullRequests).toEqual([]);
     expect(chat).not.toHaveBeenCalled();
+  });
+
+  // #151: the aggregate gate finishes last; the earliest failed step is diagnosed.
+  const multiFailureRun: FailingWorkflowRun = {
+    ...RUN,
+    failedSteps: [
+      {
+        jobName: 'check', stepName: 'Gate: all checks passed', completedAt: '2026-09-13T12:07:03Z',
+        log: 'Run echo "checks=failure"\nchecks=failure\nError: Process completed with exit code 1.',
+      },
+      {
+        jobName: 'test', stepName: 'Run tests', completedAt: '2026-09-13T12:02:17Z',
+        log: 'Run pnpm test\nsrc/value.ts(1,14): error TS2322: Type number is not assignable to type string',
+      },
+      {
+        jobName: 'lint', stepName: 'Run lint', completedAt: '2026-09-13T12:04:40Z',
+        log: 'Run pnpm lint\nsrc/value.ts:1:1 error no-unused-vars',
+      },
+    ],
+  };
+  const reproductionCommands = (executor: InMemoryExecutor) => runCalls(executor)
+    .map(({ cmd }) => cmd)
+    .filter((cmd) => /pnpm (test|lint)|echo "checks/u.test(cmd));
+
+  it('reproduces the earliest failed step, not the aggregate gate that finished last', async () => {
+    const { ctx, executor } = context([0], true, multiFailureRun);
+
+    const caseFile = await orchestrate(ctx);
+
+    const commands = reproductionCommands(executor);
+    expect(commands[0]).toContain('pnpm test');
+    expect(commands.some((command) => command.includes('echo "checks'))).toBe(false);
+    expect(caseFile.diagnosis.failingCmd).not.toMatch(/^echo /u);
+  });
+
+  it('tries the next failed step once when the first reproduces green', async () => {
+    const { ctx, executor } = context([0, 0], true, multiFailureRun);
+
+    const caseFile = await orchestrate(ctx);
+
+    const commands = reproductionCommands(executor);
+    expect(commands).toHaveLength(2);
+    expect(commands[0]).toContain('pnpm test');
+    expect(commands[1]).toContain('pnpm lint');
+    expect(caseFile.diagnosis.failingCmd).toBe('pnpm lint');
+    expect(caseFile.diagnosis.signals).toContain('reproduction:passed');
+    expect(caseFile.stages.filter(({ stage }) => stage === 'reproduction').map(({ attempt }) => attempt))
+      .toEqual([1, 2]);
+  });
+
+  it('continues into repair with the fallback step when it reproduces the failure', async () => {
+    const { ctx, executor } = context([0, 1], true, multiFailureRun);
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(reproductionCommands(executor).slice(0, 2).map((command) => command.includes('pnpm lint')))
+      .toEqual([false, true]);
+    expect(caseFile.diagnosis.signals).not.toContain('reproduction:passed');
+  });
+
+  it('ranks failed steps by completion time, keeping job order for ties and missing times', () => {
+    const step = (jobName: string, completedAt?: string) => ({
+      jobName, stepName: `${jobName} step`, log: `Run ${jobName}`,
+      ...(completedAt === undefined ? {} : { completedAt }),
+    });
+    const ranked = rankFailedSteps([
+      step('gate', '2026-09-13T12:07:03Z'),
+      step('shard-b', '2026-09-13T12:06:57Z'),
+      step('untimed'),
+      step('shard-a', '2026-09-13T12:06:57Z'),
+      step('verify', '2026-09-13T12:02:17Z'),
+    ]);
+
+    expect(ranked.map(({ jobName }) => jobName)).toEqual(['verify', 'shard-b', 'shard-a', 'gate', 'untimed']);
+    expect(diagnosisLog(ranked, 0).trimEnd().split('\n').at(-1)).toBe('Run verify');
+    expect(diagnosisLog(ranked, 3).trimEnd().split('\n').at(-1)).toBe('Run gate');
+    expect(classifyMechanically(diagnosisLog(ranked, 0)).failingCmd).toBe('verify');
+  });
+
+  it('skips an earlier failed step that has no command of its own instead of borrowing one', async () => {
+    const { ctx, executor } = context([1], true, {
+      ...multiFailureRun,
+      failedSteps: [
+        ...multiFailureRun.failedSteps,
+        {
+          jobName: 'setup', stepName: 'Checkout private dependency', completedAt: '2026-09-13T12:00:05Z',
+          log: 'fatal: could not read Username for https://github.com: terminal prompts disabled',
+        },
+      ],
+    });
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(reproductionCommands(executor)[0]).toContain('pnpm test');
+    expect(caseFile.diagnosis.failingCmd).not.toMatch(/^echo /u);
+  });
+
+  it('still fails closed when no failed step shows a command', async () => {
+    const { ctx } = context([1], true, {
+      ...RUN,
+      failedSteps: [
+        { jobName: 'setup', stepName: 'Checkout', completedAt: '2026-09-13T12:00:05Z', log: 'fatal: could not read Username' },
+        { jobName: 'cache', stepName: 'Restore cache', completedAt: '2026-09-13T12:00:09Z', log: 'Error: cache service unavailable' },
+      ],
+    });
+
+    await expect(orchestrate(ctx)).rejects.toMatchObject({ code: 'failing-command-not-observed' });
+  });
+
+  it('does not retry when every other failed step shares the command', async () => {
+    const { ctx, executor } = context([0], true, {
+      ...RUN,
+      failedSteps: [
+        { ...RUN.failedSteps[0]!, completedAt: '2026-09-13T12:02:17Z' },
+        { ...RUN.failedSteps[0]!, jobName: 'test-shard-2', completedAt: '2026-09-13T12:03:00Z' },
+      ],
+    });
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(reproductionCommands(executor)).toHaveLength(1);
+    expect(caseFile.diagnosis.signals).toContain('reproduction:passed');
   });
 
   it('passes only the strict CI allowlist to every sandbox run', async () => {

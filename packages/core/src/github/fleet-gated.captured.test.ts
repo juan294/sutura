@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { classifyMechanically } from '../diagnose/classify.js';
-import { collectFailedLogs } from '../orchestrate.js';
+import { diagnosisLog, rankFailedSteps } from '../orchestrate.js';
 import { githubApi } from '../replay/replay-fixtures.test-helper.js';
 import { GitHubAdapter } from './adapter.js';
 import type { GitHubApi } from './types.js';
@@ -49,6 +49,11 @@ function gatedApi(run: GatedRun): GitHubApi {
   };
 }
 
+// The log orchestrate diagnoses: failed steps ranked earliest-first (#151).
+async function gatedDiagnosisLog(run: GatedRun) {
+  return diagnosisLog(rankFailedSteps(await gatedFailedSteps(run)), 0);
+}
+
 async function gatedFailedSteps(run: GatedRun) {
   const [owner = '', repo = ''] = run.repository.split('/');
   const adapter = new GitHubAdapter(gatedApi(run), { owner, repo, runId: run.ciRunId });
@@ -69,7 +74,7 @@ describe('fleet runs gated on an unobserved failing command', () => {
   it.each(RUNS.map((run) => [run.repository, run.monitorRunId, run] as const))(
     'recovers the failing command for %s monitor run %s',
     async (_repository, _monitorRunId, run) => {
-      const diagnosis = classifyMechanically(collectFailedLogs(await gatedFailedSteps(run)));
+      const diagnosis = classifyMechanically(await gatedDiagnosisLog(run));
 
       expect(diagnosis.failingCmd).toBe(run.expectedFailingCmd);
     },
@@ -92,7 +97,7 @@ describe('fleet runs gated on an unobserved failing command', () => {
   });
 
   it('never reads the display name as the command (layalga 35590192744)', async () => {
-    const diagnosis = classifyMechanically(collectFailedLogs(await gatedFailedSteps(gatedRun('35590192744'))));
+    const diagnosis = classifyMechanically(await gatedDiagnosisLog(gatedRun('35590192744')));
 
     expect(diagnosis.failingCmd).not.toBe('browser tests');
     expect(diagnosis.failingCmd).not.toBe('integration tests');

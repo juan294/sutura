@@ -184,6 +184,7 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
           jobName: job.name,
           stepName: step.name,
           log: failedStepLog(timestampedLines, step),
+          ...(step.completedAt ? { completedAt: step.completedAt } : {}),
         });
       }
     }
