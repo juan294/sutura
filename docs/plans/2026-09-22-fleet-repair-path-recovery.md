@@ -50,7 +50,7 @@ what the next wall is.
   Evidence: gh-glance's log contains `##[group]Run npm run test:pty` once
   (step name == command); layalga's failing step is *named* "Run browser tests"
   and that marker appears **0 times** — its real header is
-  `##[group]Run pnpm …`. Same for archy ("Test release-evidence contracts").
+  `##[group]Run pnpm …`. Same for archy (a private repository; its custom step name also never matches).
 - **Step names are not a safe command source.** Layalga's display name
   "Run browser tests" matches `failingCommand`'s `^(?:Run|\$)\s+(\S.*)$`
   (`classify.ts:49`) and would yield the non-command `browser tests`. The

@@ -835,10 +835,10 @@ describe('ContreeExecutor', () => {
           got: 'file:vendor/got-v12',
           'node-fetch': 'file:vendor/node-fetch-v3',
         },
-        pnpm: { patchedDependencies: { 'extract-zip@2.0.1': 'patches/extract-zip@2.0.1.patch' } },
+        pnpm: { patchedDependencies: { 'left-pad@1.3.0': 'patches/left-pad@1.3.0.patch' } },
       }));
       await mkdir(join(dir, 'patches'), { recursive: true });
-      await writeFile(join(dir, 'patches', 'extract-zip@2.0.1.patch'), 'diff --git a/index.js b/index.js\n');
+      await writeFile(join(dir, 'patches', 'left-pad@1.3.0.patch'), 'diff --git a/index.js b/index.js\n');
       await writeFile(join(dir, 'patches', 'unreferenced.patch'), 'diff --git a/x b/x\n');
       await writeFile(join(dir, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n");
       await mkdir(join(dir, 'packages', 'core'), { recursive: true });
@@ -901,7 +901,7 @@ describe('ContreeExecutor', () => {
         expect(entries).toContain(`vendor/${dependency}/package.json`);
         expect(entries).toContain(`vendor/${dependency}/index.js`);
       }
-      expect(entries).toContain('patches/extract-zip@2.0.1.patch');
+      expect(entries).toContain('patches/left-pad@1.3.0.patch');
       expect(entries).not.toContain('patches/unreferenced.patch');
       expect(entries).not.toContain('fixtures/untrusted/package.json');
       expect(entries).not.toContain('node_modules/vitest/index.js');
