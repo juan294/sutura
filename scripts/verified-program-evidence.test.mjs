@@ -262,6 +262,17 @@ test('the v0.3.1 release manifest validates and prices at most USD 10', () => {
   assert.ok(manifestMaximumUsd(m) <= 10);
 });
 
+test('the v0.3.2 release manifest validates and prices at most USD 10', () => {
+  const m = JSON.parse(readFileSync('docs/demo/run-manifests/release-v0.3.2-benchmark.json', 'utf8'));
+  const valid = validateRunManifest(m);
+
+  assert.equal(m.identity.candidateCommit, '96d3d2eaacb66a6b56175508e44ef6dd54c01899');
+  assert.equal(m.subjects.length, 51);
+  assert.equal(m.caps.subjects, 51);
+  assert.equal(valid.manifestHash, m.manifestHash);
+  assert.ok(manifestMaximumUsd(m) <= 10);
+});
+
 test('a run that spent past its own cap is refused', () => {
   assert.equal(reasonOf(() => validateRunEvidence(evidence({
     results: [
