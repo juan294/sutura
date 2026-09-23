@@ -134,7 +134,15 @@ describe('deterministic results', () => {
     // replay diverges, the fixture's test asserts the new mismatch message". Per plan, the recorded
     // bundle stays untouched (it is historical evidence of the pre-fix bug); only this assertion changes.
     const bytes = readFileSync(LIVE_BUNDLE_FIXTURE);
-    const bundle = JSON.parse(bytes.toString('utf8')) as Record<string, unknown> & { actionSha: string; outcome: string };
+    const bundle = JSON.parse(bytes.toString('utf8')) as Record<string, unknown> & {
+      actionSha: string; outcome: string; executor: Array<{ sequence: number; args: unknown[] }>;
+    };
+    // The sandbox Git baseline later gained `add --force` (#152), which would stop this replay
+    // at sequence 5. Apply that one known change to the in-memory copy so the replay still
+    // reaches the search divergence this test exists for. The fixture file is not edited.
+    const baseline = bundle.executor.find(({ sequence }) => sequence === 5);
+    expect(baseline?.args[1]).toEqual(expect.stringContaining('add --pathspec-from-file='));
+    baseline!.args[1] = String(baseline!.args[1]).replace('add --pathspec-from-file=', 'add --force --pathspec-from-file=');
     expect(bundle.actionSha).toBe(RELEASE_V030.actionSha);
     expect(bundle.actionSha).not.toBe(LIVE_DEMO_SHA);
     const fixture = {

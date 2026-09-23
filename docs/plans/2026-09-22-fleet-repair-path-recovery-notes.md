@@ -134,3 +134,18 @@
   checkouts have such paths. Evidence is posted on #152.
 - **Cleanup.** PR #103 was closed unmerged and its branch deleted. Sutura
   opened no fix PR.
+
+### Follow-up: #152 (outside the plan, authorized 2026-09-23)
+
+- **Chose:** the sandbox Git baseline runs `git add --force` from the manifest.
+  The manifest is already the exact allowlist of uploaded files. In a Git
+  checkout the snapshot listing (`git ls-files -co --exclude-standard`) never
+  includes ignored untracked files, so the flag only admits files the
+  repository already tracks. In a non-Git source directory every uploaded file
+  was already in the snapshot anyway.
+  The regression test in `heal.test.ts` reproduces termplex's cc-rpi layout.
+- **Replay evidence stays unedited.** Three captured bundles and the Case Lab
+  live fixture record the old command. Their tests apply this one known change
+  to the in-memory copy (`withGitBaselineForce`, and the equivalent in
+  `case-lab/src/replay.test.ts`). Each replay still reaches the divergence it
+  was written to detect: sequence 7 and sequence 16.

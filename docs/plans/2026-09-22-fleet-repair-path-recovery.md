@@ -2,7 +2,7 @@
 
 Date: 2026-09-22
 
-Status: All four phases done (2026-09-22/23; see `2026-09-22-fleet-repair-path-recovery-notes.md`). Next wall: #152
+Status: All four phases done (2026-09-22/23; see `2026-09-22-fleet-repair-path-recovery-notes.md`). Follow-up #152 (the Git-baseline wall) fixed 2026-09-23
 
 Owner: Juan
 
@@ -134,10 +134,10 @@ what the next wall is.
 
 | # | Phase | File | Needs authorization | Batch |
 | --- | --- | --- | --- | --- |
-| 1 ✅ | Prove the runtime fix with a real red CI in termplex | [phase-1](2026-09-22-fleet-repair-path-recovery-phases/phase-1.md) | **Yes** — one paid live run, ~USD 1, in a consumer repo | `[batch-eligible]` with 4 |
-| 2 ✅ | Carry the failing command past truncation (causes A and B) | [phase-2](2026-09-22-fleet-repair-path-recovery-phases/phase-2.md) | no | sequential |
-| 3 ✅ | Root-cause the `infra-stop` wall from existing artifacts; redact the excerpt | [phase-3](2026-09-22-fleet-repair-path-recovery-phases/phase-3.md) | no | sequential, after 2 |
-| 4 ✅ | Fleet loose ends: kalpha push, paisaxe `main` | [phase-4](2026-09-22-fleet-repair-path-recovery-phases/phase-4.md) | **Yes** — a PR against paisaxe `main` | `[batch-eligible]` with 1 |
+| 1 (done) | Prove the runtime fix with a real red CI in termplex | [phase-1](2026-09-22-fleet-repair-path-recovery-phases/phase-1.md) | **Yes** — one paid live run, ~USD 1, in a consumer repo | `[batch-eligible]` with 4 |
+| 2 (done) | Carry the failing command past truncation (causes A and B) | [phase-2](2026-09-22-fleet-repair-path-recovery-phases/phase-2.md) | no | sequential |
+| 3 (done) | Root-cause the `infra-stop` wall from existing artifacts; redact the excerpt | [phase-3](2026-09-22-fleet-repair-path-recovery-phases/phase-3.md) | no | sequential, after 2 |
+| 4 (done) | Fleet loose ends: kalpha push, paisaxe `main` | [phase-4](2026-09-22-fleet-repair-path-recovery-phases/phase-4.md) | **Yes** — a PR against paisaxe `main` | `[batch-eligible]` with 1 |
 
 Phases 1 and 4 touch no file in this repository and no file in common with each
 other, so `/batch` may run them in parallel. Phases 2 and 3 both change

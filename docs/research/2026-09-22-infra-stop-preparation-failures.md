@@ -21,7 +21,7 @@ Four distinct causes. Three of them are Sutura's.
 | pnpm `patchedDependencies` patch file missing from the dependency snapshot | coach 3 | 4 | **Sutura** | Fixed in this phase |
 | Wrong failed step chosen: an aggregate "all checks passed" gate reproduces green | coach 4 | 7 | **Sutura** | Open, [#151](https://github.com/juan294/sutura/issues/151) |
 | `npm ci` rejects a lockfile that is missing new `vitest` packages | roots 4 | 4 | Repository | Not ours |
-| Sandbox Git baseline refuses a tracked path the repo's own `.gitignore` excludes | roots 1 | 6 | **Sutura** | Open, [#152](https://github.com/juan294/sutura/issues/152) |
+| Sandbox Git baseline refuses a tracked path the repo's own `.gitignore` excludes | roots 1 | 6 | **Sutura** | Fixed 2026-09-23, [#152](https://github.com/juan294/sutura/issues/152) |
 
 The plan expected every run to be one of three `prepareSandboxFromSource`
 failures (operations 2, 4 or 6). That was wrong for coach's expensive group.
@@ -124,7 +124,7 @@ upstream (force-added). The sandbox builds its baseline with a fresh
 so git's ignore check refuses those paths and the step exits 1
 (`packages/core/src/heal.ts:713-714`). The manifest is already Sutura's
 explicit allowlist, so `git add --force` would be the direct fix. It changes
-the baseline command every sandbox runs, so it is filed as [#152](https://github.com/juan294/sutura/issues/152) rather than landed here.
+the baseline command every sandbox runs, so it was filed as [#152](https://github.com/juan294/sutura/issues/152). It was fixed on 2026-09-23, after the termplex live run hit the same wall: the baseline now runs `git add --force`.
 
 ## Line-reference corrections to the plan
 

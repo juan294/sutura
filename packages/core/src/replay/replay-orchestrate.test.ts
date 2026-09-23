@@ -71,6 +71,18 @@ async function captureReplayMismatch(bundle: ReplayBundle): Promise<ReplayMismat
   throw new Error('Current replay unexpectedly accepted a historical runtime contract');
 }
 
+// The sandbox Git baseline later gained `add --force` (#152), which would stop
+// these replays at sequence 5. Apply that one known change to the in-memory
+// copy so each replay still reaches the drift its test exists for. The recorded
+// bundle files are historical evidence and are not edited.
+function withGitBaselineForce(bundle: ReplayBundle): ReplayBundle {
+  const baseline = bundle.executor.find(({ sequence }) => sequence === 5);
+  expect(baseline?.args[1]).toEqual(expect.stringContaining('add --pathspec-from-file='));
+  baseline!.args[1] = String(baseline!.args[1])
+    .replace('add --pathspec-from-file=', 'add --force --pathspec-from-file=');
+  return bundle;
+}
+
 describe('replayBundle', () => {
   it('rejects a partial bundle before constructing replay dependencies', async () => {
     await expect(replayBundle(baseBundle())).rejects.toThrow(
@@ -140,7 +152,7 @@ describe('replayBundle', () => {
   });
 
   it('preserves live run 33321172589 while current replay fails closed on contract drift', async () => {
-    const bundle = await capturedDogfoodReplayBundle();
+    const bundle = withGitBaselineForce(await capturedDogfoodReplayBundle());
     const report = recordedReport(bundle);
     const originalBundle = JSON.stringify(bundle);
 
@@ -164,7 +176,7 @@ describe('replayBundle', () => {
   });
 
   it('preserves live run 33323856253 while current replay fails closed on contract drift', async () => {
-    const bundle = await capturedDogfoodReplayBundle('33323765566');
+    const bundle = withGitBaselineForce(await capturedDogfoodReplayBundle('33323765566'));
     const report = recordedReport(bundle);
     const originalBundle = JSON.stringify(bundle);
 

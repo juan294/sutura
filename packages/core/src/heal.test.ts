@@ -1416,6 +1416,44 @@ describe('sandbox command resolution', () => {
     }
   }, 60_000);
 
+  // termplex monitor run 35819133597 (#152): the cc-rpi layout tracks files
+  // under paths its own .gitignore excludes, and a fresh `git add` refused them.
+  it('adds tracked-but-gitignored manifest members to the Git baseline', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-git-baseline-ignored-'));
+    const manifest = join(directory, 'overlay.manifest');
+    const template = join(directory, 'empty-template');
+    try {
+      await mkdir(join(directory, '.claude', 'rules'), { recursive: true });
+      await mkdir(join(directory, 'docs', 'agents'), { recursive: true });
+      await mkdir(join(directory, 'src'), { recursive: true });
+      await writeFile(join(directory, '.gitignore'), '.claude/\ndocs/agents\n');
+      await writeFile(join(directory, '.claude', 'rules', 'testing.md'), '# Testing\n');
+      await writeFile(join(directory, 'docs', 'agents', 'qa-report.md'), '# QA\n');
+      await writeFile(join(directory, 'src', 'index.ts'), 'export const ready = true;\n');
+      await writeFile(join(directory, 'src', 'unlisted.ts'), 'export const unlisted = true;\n');
+      await writeFile(manifest, Buffer.from(
+        '.gitignore\0.claude/rules/testing.md\0docs/agents/qa-report.md\0src/index.ts\0',
+      ));
+      await mkdir(template);
+
+      const initialized = spawnSync('sh', ['-c', buildSandboxRepositoryInitializationCommandForTest({
+        manifestPath: manifest,
+        templatePath: template,
+      })], { cwd: directory, encoding: 'utf8' });
+
+      expect(initialized.status, initialized.stderr).toBe(0);
+      const listed = spawnSync('git', ['ls-files', '-z'], { cwd: directory, encoding: 'utf8' });
+      expect(listed.stdout.split('\0').filter(Boolean).sort()).toEqual([
+        '.claude/rules/testing.md',
+        '.gitignore',
+        'docs/agents/qa-report.md',
+        'src/index.ts',
+      ]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it('uses verified lifecycle-blocking installer modes', () => {
     const command = sandboxPreparationCommand();
 
