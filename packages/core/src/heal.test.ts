@@ -1320,6 +1320,27 @@ describe('healCase', () => {
     expect(chat).not.toHaveBeenCalled();
   });
 
+  it('redacts a credential echoed by a failing preparation before publishing the excerpt', async () => {
+    const { ctx, chat } = context('python-repair-missing-await', [1], 'test-assertion', {
+      runtimeId: 'python',
+      failureCommand: 'pytest -q',
+    });
+    const token = `npm_${'Zx9Q'.repeat(9)}`;
+    ctx.executor = new InMemoryExecutor(() => result(
+      1,
+      `npm error code E401\n//registry.npmjs.org/:_authToken=${token}\nnpm error Unable to authenticate`,
+    ));
+
+    const caseFile = await healCase(ctx);
+
+    expect(caseFile.outcome).toBe('infra-stop');
+    expect(JSON.stringify(caseFile)).not.toContain(token);
+    expect(caseFile.diagnosis.errorExcerpt).toContain('npm error code E401');
+    expect(caseFile.diagnosis.errorExcerpt).toContain('npm error Unable to authenticate');
+    expect(caseFile.diagnosis.errorExcerpt).toContain('[redacted credential]');
+    expect(chat).not.toHaveBeenCalled();
+  });
+
   it('does not let an explicit Python selector replace the verified image digest', async () => {
     const { ctx, executor } = context('python-repair-missing-await', [], 'test-assertion', {
       runtimeId: 'python',
@@ -1390,6 +1411,44 @@ describe('sandbox command resolution', () => {
         'src/index.ts',
       ]);
       await expect(readFile(marker, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  // termplex monitor run 35819133597 (#152): the cc-rpi layout tracks files
+  // under paths its own .gitignore excludes, and a fresh `git add` refused them.
+  it('adds tracked-but-gitignored manifest members to the Git baseline', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-git-baseline-ignored-'));
+    const manifest = join(directory, 'overlay.manifest');
+    const template = join(directory, 'empty-template');
+    try {
+      await mkdir(join(directory, '.claude', 'rules'), { recursive: true });
+      await mkdir(join(directory, 'docs', 'agents'), { recursive: true });
+      await mkdir(join(directory, 'src'), { recursive: true });
+      await writeFile(join(directory, '.gitignore'), '.claude/\ndocs/agents\n');
+      await writeFile(join(directory, '.claude', 'rules', 'testing.md'), '# Testing\n');
+      await writeFile(join(directory, 'docs', 'agents', 'qa-report.md'), '# QA\n');
+      await writeFile(join(directory, 'src', 'index.ts'), 'export const ready = true;\n');
+      await writeFile(join(directory, 'src', 'unlisted.ts'), 'export const unlisted = true;\n');
+      await writeFile(manifest, Buffer.from(
+        '.gitignore\0.claude/rules/testing.md\0docs/agents/qa-report.md\0src/index.ts\0',
+      ));
+      await mkdir(template);
+
+      const initialized = spawnSync('sh', ['-c', buildSandboxRepositoryInitializationCommandForTest({
+        manifestPath: manifest,
+        templatePath: template,
+      })], { cwd: directory, encoding: 'utf8' });
+
+      expect(initialized.status, initialized.stderr).toBe(0);
+      const listed = spawnSync('git', ['ls-files', '-z'], { cwd: directory, encoding: 'utf8' });
+      expect(listed.stdout.split('\0').filter(Boolean).sort()).toEqual([
+        '.claude/rules/testing.md',
+        '.gitignore',
+        'docs/agents/qa-report.md',
+        'src/index.ts',
+      ]);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

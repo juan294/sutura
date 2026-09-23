@@ -10,6 +10,7 @@ import type { GitHubAdapterOptions, GitHubApi } from './types.js';
 
 const FAILED_CONCLUSIONS = new Set(['failure', 'timed_out']);
 const FAILED_STEP_LINES = 200;
+const GROUP_RUN_MARKER = /^\S+Z ##\[group\]Run\s/;
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const BRANCH_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,239}$/;
@@ -59,7 +60,11 @@ function failedStepLog(
   const inclusiveEnd = /\.\d+Z$/u.test(step.completedAt) ? end : end + 999;
   let matching = lines.filter(({ time }) => time >= start && time <= inclusiveEnd);
   const groupMarker = `##[group]${step.name}`;
-  const groupIndex = matching.findLastIndex(({ line }) => line.includes(groupMarker));
+  let groupIndex = matching.findLastIndex(({ line }) => line.includes(groupMarker));
+  // A step with a custom display name never matches its own name marker. The
+  // time window already confines `matching` to this step, so its last command
+  // group is the header of the command that failed.
+  if (groupIndex < 0) groupIndex = matching.findLastIndex(({ line }) => GROUP_RUN_MARKER.test(line));
   if (groupIndex >= 0) matching = matching.slice(groupIndex);
   if (matching.length === 0) {
     throw new GitHubAdapterError(`Job logs contain no lines for failed step ${step.name}`);

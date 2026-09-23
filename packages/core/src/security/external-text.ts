@@ -70,6 +70,13 @@ export function redactExternalText(value: string): ExternalTextRedaction {
     /\b(?:github_pat_|gh[pousr]_|sk_(?:live|test)_|sk-)[A-Za-z0-9_-]{8,}(?:\s+[A-Za-z0-9_-]{8,})*/gu,
     '[redacted token]',
   );
+  // npm registry credentials as npm echoes them from a failing install:
+  // `//registry.npmjs.org/:_authToken=...` lines and bare granular tokens.
+  replace(
+    /\b(_auth(?:Token)?\s*=\s*)(?!\[redacted credential\])[^\s]+/gu,
+    `$1${REDACTED_CREDENTIAL}`,
+  );
+  replace(/\bnpm_[A-Za-z0-9]{36}\b/gu, '[redacted token]');
 
   return { text, count };
 }

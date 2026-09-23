@@ -10,6 +10,7 @@
 // observed value and the expected value. Repository paths resolve against the
 // repository root, so the script behaves the same from any working directory.
 
+import { Buffer } from 'node:buffer';
 import { execFile } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -75,7 +76,7 @@ function compareSemverDesc(a, b) {
 
 // Transport errors seen intermittently in the pre-push hook (2026-09-15); a
 // network blip must not block a push, so these get retried before refusing.
-const TRANSPORT_ERROR_PATTERN = /SSL_ERROR_SYSCALL|Could not resolve host|Connection reset|unable to access/u;
+const TRANSPORT_ERROR_PATTERN = /SSL_ERROR_SYSCALL|Could not resolve host|Connection reset|unable to access|shallow\.lock|index\.lock|Another git process seems to be running/u;
 const TRANSPORT_RETRY_BACKOFF_MS = [2_000, 4_000];
 
 async function withTransportRetry(dependencies, action) {
@@ -154,7 +155,9 @@ function withPin(text, pattern, sha) {
 }
 
 function writePins(text, sha) {
-  return withPin(withPin(withPin(text, ACTION_USES_PATTERN, sha), ENV_ACTION_PATTERN, sha), ENV_CONTROLLER_PATTERN, sha);
+  // The controller pin is set separately (`case-lab verify-pin --set-controller`) to the
+  // commit that carries this bump, because that commit does not exist yet here.
+  return withPin(withPin(text, ACTION_USES_PATTERN, sha), ENV_ACTION_PATTERN, sha);
 }
 
 const RESULT_FILE_PATTERN = /^export const RECORDED_RESULT_FILE = '([^']+)';$/mu;
@@ -182,7 +185,28 @@ function withEvidenceUrl(text, url) {
   return text.replace(EVIDENCE_URL_PATTERN, `const EVIDENCE_URL = '${url}';`);
 }
 
-export async function check(dependencies = defaultDependencies()) {
+/** release.json as committed at the controller commit, read through the API so a shallow CI checkout needs no local object. */
+async function controllerReleaseJson(dependencies, sha) {
+  const valid = (parsed) => (typeof parsed?.version === 'string' && typeof parsed?.actionSha === 'string' ? parsed : null);
+  try {
+    const encoded = await withTransportRetry(dependencies, () => dependencies.gh([
+      'api', `repos/juan294/sutura/contents/${FILES.release}?ref=${sha}`, '--jq', '.content',
+    ]));
+    return valid(JSON.parse(Buffer.from(encoded.replace(/\s+/gu, ''), 'base64').toString('utf8')));
+  } catch {
+    // gh may be unauthenticated (CI runs this step without a token); fetch the
+    // exact commit and read the file from git instead. A shallow clone can
+    // fetch a reachable commit by sha from GitHub.
+    try {
+      await withTransportRetry(dependencies, () => dependencies.git(['fetch', '--quiet', '--depth=1', 'origin', sha]));
+      return valid(JSON.parse(await dependencies.git(['show', `${sha}:${FILES.release}`])));
+    } catch {
+      return null;
+    }
+  }
+}
+
+export async function check(dependencies = defaultDependencies(), options = {}) {
   const release = await newestReleaseTag(dependencies);
   const [releaseText, workflowText, evidenceText, replayText] = await Promise.all([
     dependencies.readFile(FILES.release, 'utf8'),
@@ -200,7 +224,15 @@ export async function check(dependencies = defaultDependencies()) {
   const pins = readPins(workflowText);
   expect(FILES.workflow, 'uses: juan294/sutura/packages/action@', pins.usesSha, release.commit);
   expect(FILES.workflow, 'SUTURA_ACTION_SHA', pins.envActionSha, release.commit);
-  expect(FILES.workflow, 'SUTURA_CONTROLLER_SHA', pins.controllerSha, release.commit);
+  // The controller checkout publishes results, so it must be a commit whose own
+  // release.json names the newest release. The tag commit itself cannot be that
+  // commit: its release.json is written before the tag exists and names the
+  // previous release, which is why the first live publish after every tag failed.
+  if (options.controller !== 'skip') {
+    const controllerRelease = await controllerReleaseJson(dependencies, pins.controllerSha);
+    expect(FILES.workflow, `SUTURA_CONTROLLER_SHA ${pins.controllerSha} release.json version`, controllerRelease?.version ?? 'unreadable', release.version);
+    expect(FILES.workflow, `SUTURA_CONTROLLER_SHA ${pins.controllerSha} release.json actionSha`, controllerRelease?.actionSha ?? 'unreadable', release.commit);
+  }
   const binding = readEvidenceBinding(evidenceText);
   const [resultText, ledgerText] = await Promise.all([
     dependencies.readFile(binding.result, 'utf8'),

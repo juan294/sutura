@@ -65,6 +65,23 @@ describe('redactExternalText', () => {
     expect(result.text).not.toContain('source-secret');
   });
 
+  it('redacts npm registry credentials echoed by a failing install', () => {
+    const token = `npm_${'a1B2'.repeat(9)}`;
+    const result = redactExternalText([
+      'npm error code E401',
+      `//registry.npmjs.org/:_authToken=${token}`,
+      `_auth = ${'dXNlcjpwYXNz'}`,
+      `npm error token ${token} is invalid`,
+      'npm_config_cache=/home/runner/.npm',
+    ].join('\n'));
+
+    expect(result.text).not.toContain(token);
+    expect(result.text).not.toContain('dXNlcjpwYXNz');
+    expect(result.text).toContain('npm error code E401');
+    expect(result.text).toContain('//registry.npmjs.org/:_authToken=[redacted credential]');
+    expect(result.text).toContain('npm_config_cache=/home/runner/.npm');
+  });
+
   it('does not redact ordinary code and security vocabulary', () => {
     const input = [
       'const token = cursor.next();',

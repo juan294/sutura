@@ -121,3 +121,102 @@
   the bundle schema and both test helpers. (2) Astra and Jev are awaited sequentially;
   running them concurrently would save one round trip per audit but collides with the
   strictly ordered shared replay cursor. Both are follow-ups for v0.3.2.
+
+### Phase 4: benchmark controller crash and a never-dispatched reservation
+
+- **Found:** after 16 cases the streak controller died because its `gh run list
+--limit 100` poll exceeded the 120 s subprocess timeout (killed with SIGTERM) and the
+  script treats that as fatal. The manifest-spend account held a USD 1.00 pending
+  reservation for `trap-deleted-test` (controller id `pl-1789641869467-00ba8524`,
+  started 10:44:29Z). The resumed controller polled silently for a run with that
+  title until its own 35-minute deadline.
+- **Evidence:** `gh run list --workflow placebo-live-case.yml --limit 200` shows zero
+  runs created after 10:40:00Z and zero runs whose title carries that controller id;
+  the last case run is `trap-conditional-assertion-deletion` at 10:39:17Z. No run,
+  no provider billing.
+- **Chose (Juan approved 2026-09-17):** preserve copies of the account and the case
+  ledger, set the pending entry to null with a `reconciliations` record naming the
+  case, controller id, resolution `never-dispatched`, the evidence counts and
+  `measuredUsd: 0`, then restart the streak from the 16-entry ledger with the freeze
+  still on.
+- **Why:** the manifest README allows reconciling a pending entry only against the
+  exact run and measured cost; the measured cost of a dispatch that never reached
+  GitHub is zero, and that is proven rather than assumed.
+
+### Phase 4: infrastructure stop on `trap-snapshot-acceptance`, continued by decision
+
+- **Found:** at case 24 of 51 the case run (35221136830) ended with outcome
+  `infra-stop`: Nemotron Nano returned an invalid diagnosis response and the CLI
+  stopped before any sandbox work. The artifact records USD 0 inference and sandbox
+  with an empty ledger; the accounting kept the USD 1.00 reservation pending because
+  an infra-stop's cost is unknown by rule, and the manifest stop policy ends the
+  streak on any infra stop.
+- **Chose (Juan approved 2026-09-17):** settle the reservation at the artifact's
+  recorded cost (USD 0) with a `reconciliations` record naming the run, the cause
+  and the recorded figures; continue the remaining cases with
+  `SUTURA_ALLOW_INFRA_STOP_LEDGER=1`. The infra-stop entry stays in the ledger and
+  in the release evidence, disclosed as a Nano provider failure unrelated to the
+  Astra or Jev voices, which were never reached.
+- **Why:** the tooling's own comment distinguishes a single transient provider error
+  from a degraded environment and makes continuing an explicit operator decision;
+  the decision and its evidence are recorded here rather than left implicit.
+
+### Phase 4: second infrastructure stop on `repair-null-guard`, settled at an estimate
+
+- **Found:** at case 47 of 51 the case run (35230408690) ended with outcome
+  `infra-stop`: ConTree sandbox preparation failed with a socket timeout before any
+  model call. The artifact states provider cost is unavailable, so the reservation
+  could not be settled at a measured figure. The `streak` command always stops on an
+  infra-stop ledger regardless of the operator flag, so the remaining cases were run
+  one at a time through the single-case path, which honours it.
+- **Chose (Juan approved 2026-09-17):** settle the reservation at an explicit
+  upper-bound estimate, the highest per-case cost recorded in this run (USD 0.189624,
+  `upstream-formatter-release`), marked `measured: false` in the account, and finish
+  the last four cases. The release evidence discloses two infra-stops, one Nano and
+  one ConTree, both before any audit voice ran.
+- **Why:** an unmeasured cost must not be cleared as zero; an explicit, labelled
+  upper bound keeps the account conservative and the run honest.
+
+### Phase 4: the benchmark workflow never passes the optional keys
+
+- **Plan said:** expect at least one `gpt-6-astra` and one `jev-1.13.0` cost entry per
+  adjudicated case in the release benchmark.
+- **Found:** `.github/workflows/placebo-live-case.yml` at the tag passes only
+  `NEBIUS_API_KEY` and `TAVILY_API_KEY` to the subject, so every case file in the
+  v0.3.1 benchmark records both optional rows as `skipped: Not configured`. The
+  v0.3.1 Astra phase had the same gap; its expectation was never true either.
+- **Chose (Juan, 2026-09-17):** publish the benchmark as the release evidence with the
+  gap disclosed in `docs/demo/sutura-v0.3.1-release-benchmark-evidence.md`, bump the
+  Case Lab to v0.3.1, and rely on the public demo workflow, which does pass both
+  keys, for the live smoke run that exercises the calibrated audit. Fixing the
+  benchmark workflow needs a later release tag.
+- **Why:** the tag cannot change; the release is already published; the Case Lab must
+  track the newest release by design.
+
+### Phase 4: measured v0.3.1 gates versus v0.3.0
+
+- Zero false approvals; traps 17/19 (one Nano infra-stop, one gave-up); repairs
+  10/18 against 15/18; hidden preservation 3/15 against 4/15; flaky 10/10; USD 3.77.
+  The Case Lab recorded results now show `python-repair` as gave-up and
+  `upstream-incident` as fixed; the replay test expectations were rebound to the
+  new files. The fix-rate drop is recorded as unexplained, not attributed.
+
+### Phase 4: the live publish path could never pass on a fresh tag; controller pin redefined
+
+- **Found:** the first live smoke run at v0.3.1 repaired the case (`Sutura outcome:
+fixed`, with the Astra and Jev voices configured) but the demo's
+  `publish-result` step refused: "replay bundle actionSha e724f3b… must equal the
+  release actionSha c94eee2…". The demo checks out the Sutura controller at
+  `SUTURA_CONTROLLER_SHA`, and the release gate required that pin to equal the tag
+  commit, whose own `packages/case-lab/release.json` is written before the tag exists
+  and therefore names the previous release. Every first live publish after a tag
+  failed by construction; the v0.3.0 record's Incident 2 fixed a different half of
+  the same problem.
+- **Chose:** `release:case-lab check` now requires the controller pin to name a commit
+  whose committed `release.json` (read through the GitHub contents API, so a shallow
+  CI checkout works) names the newest tag; `bump` no longer rewrites the controller
+  pin, which is set in a follow-up commit once the bump commit exists; the demo
+  workflow copy pins the controller to the bump commit `88446895…`. Tests cover the
+  new rule and the bump semantics.
+- **Why:** the controller must know the release it publishes; only a commit after
+  the bump can. The Action pin and the subject identity are unchanged.

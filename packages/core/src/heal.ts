@@ -13,7 +13,7 @@ import { runMechanicalChecks } from './audit/mechanical.js';
 import { budgetedRecoveryPorts, reserveRecoveryAudit, withinRecoveryDeadline } from './diagnose/hypotheses-budget.js';
 import { recoverDiagnosis, recoverySourceClasses, type DiagnosisRecoveryEvidence } from './diagnose/hypotheses.js';
 import { authorizeRepairCandidate, type RepairAuthorizationContext, type ControllerBaselineBinding } from './engine/repair-authorization.js';
-import { classify, classifyMechanically } from './diagnose/classify.js';
+import { classify, classifyMechanically, isCommandHeader } from './diagnose/classify.js';
 import {
   ground,
   promoteUpstreamDependencyDiagnosis,
@@ -98,7 +98,8 @@ import {
 } from './policy/evaluate.js';
 import { createDefaultRepositoryPolicy } from './policy/load.js';
 import type { RepositoryPolicy } from './policy/schema.js';
-import { boundedTail } from './text/bounded-tail.js';
+import { redactExternalText } from './security/external-text.js';
+import { boundedTail, boundedTailWithHeader } from './text/bounded-tail.js';
 import { TraceRecorder } from './trace/recorder.js';
 import type { TraceEventInput } from './trace/types.js';
 import { detectRuntimeAtPath } from './runtime/detect.js';
@@ -512,8 +513,13 @@ export function preparationFailureCaseFile(
   command: string,
   result: RunResult,
 ): CaseFile {
+  // Redact a wider window before the final cut, so a credential split by the
+  // character bound is never published as an unrecognisable fragment.
   const excerpt = boundedTail(
-    [result.stdout, result.stderr].filter(Boolean).join('\n'),
+    redactExternalText(boundedTail(
+      [result.stdout, result.stderr].filter(Boolean).join('\n'),
+      { maxLines: 20, maxCharacters: 8_000, maxBytes: 8_000 },
+    )).text,
     { maxLines: 20, maxCharacters: 2_000, maxBytes: 2_000 },
   ).trim();
   return makeCaseFile(
@@ -564,7 +570,9 @@ function sandboxRepositoryInitializationCommand(
     'git config core.hooksPath /dev/null',
     'git config user.email sutura@users.noreply.github.com',
     'git config user.name Sutura',
-    `git --literal-pathspecs add --pathspec-from-file=${shellQuote(paths.manifestPath)} --pathspec-file-nul`,
+    // The manifest is already the exact allowlist; --force keeps files a
+    // repository tracks under its own .gitignore rules (#152).
+    `git --literal-pathspecs add --force --pathspec-from-file=${shellQuote(paths.manifestPath)} --pathspec-file-nul`,
     'git -c core.hooksPath=/dev/null commit --quiet --no-verify -m "chore: initialize Sutura sandbox baseline"',
     ...(runtime.id === 'node' ? ['if [ -f pnpm-lock.yaml ]; then corepack pnpm rebuild; elif [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm rebuild; elif [ -f yarn.lock ]; then sutura_yarn_version="$(corepack yarn --version)"; case "$sutura_yarn_version" in 0.*|1.*) npm rebuild ;; 2.*|3.*|4.*) corepack yarn rebuild ;; *) echo "unsupported Yarn version: $sutura_yarn_version" >&2; exit 69 ;; esac; else true; fi'] : []),
   ];
@@ -1614,9 +1622,10 @@ async function repairFailureWithinBudget(
 }
 
 function failureLog(command: string, result: RunResult): string {
-  return boundedTail(
+  return boundedTailWithHeader(
     [`Run ${command}`, result.stdout, result.stderr].filter(Boolean).join('\n'),
     { maxLines: 200, maxCharacters: 20_000, maxBytes: 20_000 },
+    isCommandHeader,
   );
 }
 

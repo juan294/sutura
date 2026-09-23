@@ -1,0 +1,480 @@
+2026-09-21T10:30:30.0181818Z ##[group]Run pnpm run test:integration
+2026-09-21T10:30:30.0184444Z [36;1mpnpm run test:integration[0m
+2026-09-21T10:30:30.0238398Z shell: /usr/bin/bash -e {0}
+2026-09-21T10:30:30.0238856Z env:
+2026-09-21T10:30:30.0239318Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-09-21T10:30:30.0239959Z   SUPABASE_INTERNAL_IMAGE_REGISTRY: ghcr.io
+2026-09-21T10:30:30.0240896Z   DATABASE_URL: ***127.0.0.1:54622/postgres
+2026-09-21T10:30:30.0241412Z ##[endgroup]
+2026-09-21T10:30:30.5013359Z $ vitest run --maxWorkers=1 --no-file-parallelism scripts/seed-demo.test.ts scripts/seed-memory.test.ts src/agent/agent.test.ts src/agent/client.integration.test.ts src/agent/interrupt-resume.test.ts src/agent/memory-capture-safety.test.ts src/agent/memory-flush-safety.test.ts src/agent/memory-search-audit.test.ts src/agent/queue.test.ts src/agent/record-capture-memory.test.ts src/agent/reschedule.test.ts src/agent/run-task-safety.test.ts src/agent/runtime/handler.test.ts src/agent/storage/postgres-storage.test.ts src/agent/telemetry.test.ts src/agent/tenant-scope.test.ts src/agent/tools/capture-invitation.test.ts src/app/api/runs/run-data.test.ts 'src/app/[locale]/(host)/memory-data.test.ts' src/core/booking/holds.concurrency.test.ts src/core/booking/invitations.integration.test.ts src/core/calendar/calendar-feed.integration.test.ts src/core/data-retention.integration.test.ts src/core/memory/forget.test.ts src/core/notifications/email-outbox.integration.test.ts src/core/reconfirmation/jobs.test.ts src/core/rooms/operations.integration.test.ts src/core/rooms/schema.integration.test.ts src/lib/auth/guest-account.integration.test.ts src/lib/auth/host-identity.integration.test.ts src/core/booking/cancellation.integration.test.ts src/core/policy/settings.integration.test.ts src/core/notifications/guest-delivery.integration.test.ts src/core/booking/guest-preferences.integration.test.ts src/core/demo/advance-clock.integration.test.ts src/core/booking/guest-clock.integration.test.ts src/components/host/host-outcomes.integration.test.ts
+2026-09-21T10:30:30.8174545Z 
+2026-09-21T10:30:30.8194179Z [1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/home/runner/work/layalga/layalga[39m
+2026-09-21T10:30:30.8194807Z 
+2026-09-21T10:30:32.5901234Z  [31m❯[39m src/core/reconfirmation/jobs.test.ts [2m([22m[2m18 tests[22m[2m | [22m[31m13 failed[39m[2m)[22m[33m 401[2mms[22m[39m
+2026-09-21T10:30:32.5903015Z      [32m✓[39m does not create late reminder jobs after withdrawal[32m 44[2mms[22m[39m
+2026-09-21T10:30:32.5904032Z [31m     [31m×[31m suppresses fallback delivery when a guest cancels while the model is running[39m[32m 28[2mms[22m[39m
+2026-09-21T10:30:32.5905211Z [31m     [31m×[31m skips dispatch when cancellation wins while the external schedule is being created[39m[32m 15[2mms[22m[39m
+2026-09-21T10:30:32.5906915Z [31m     [31m×[31m claims once, chases at T-3, and escalates to both hosts after 24 hours[39m[32m 27[2mms[22m[39m
+2026-09-21T10:30:32.5907882Z [31m     [31m×[31m does not escalate after the guest reconfirms[39m[32m 38[2mms[22m[39m
+2026-09-21T10:30:32.5908714Z [31m     [31m×[31m leaves demo jobs to the home-scoped demo clock runner[39m[32m 27[2mms[22m[39m
+2026-09-21T10:30:32.5909627Z [31m     [31m×[31m recovers a partial escalation without duplicate notifications[39m[32m 20[2mms[22m[39m
+2026-09-21T10:30:32.5910568Z [31m     [31m×[31m delivers to a host the model skipped without needing a retry[39m[32m 20[2mms[22m[39m
+2026-09-21T10:30:32.5911573Z [31m     [31m×[31m backs off persistent faults, quarantines them, and supports explicit replay[39m[32m 14[2mms[22m[39m
+2026-09-21T10:30:32.5912622Z [31m     [31m×[31m dispatches the due batch to durable runs without waiting for model work[39m[32m 14[2mms[22m[39m
+2026-09-21T10:30:32.5913533Z [31m     [31m×[31m delivers a new chase for a later reconfirmation cycle[39m[32m 14[2mms[22m[39m
+2026-09-21T10:30:32.5915412Z [31m     [31m×[31m falls back to a deterministic chase notification when the model writes nothing[39m[32m 18[2mms[22m[39m
+2026-09-21T10:30:32.5917066Z [31m     [31m×[31m falls back to deterministic escalation delivery for hosts the model skipped[39m[32m 22[2mms[22m[39m
+2026-09-21T10:30:32.5917883Z [31m     [31m×[31m reclaims only an expired job lease[39m[32m 18[2mms[22m[39m
+2026-09-21T10:30:32.5918463Z      [32m✓[39m does not steal a live job lease[32m 16[2mms[22m[39m
+2026-09-21T10:30:32.5919061Z      [32m✓[39m fails abandoned agent runs after their deadline[32m 19[2mms[22m[39m
+2026-09-21T10:30:32.5919763Z      [32m✓[39m expires stale temporary holds during the periodic runner[32m 19[2mms[22m[39m
+2026-09-21T10:30:32.5920467Z      [32m✓[39m persists create and cancel operations idempotently[32m 17[2mms[22m[39m
+2026-09-21T10:30:34.2086425Z  [32m✓[39m src/agent/tenant-scope.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 674[2mms[22m[39m
+2026-09-21T10:30:35.2303919Z [90mstderr[2m | src/core/notifications/guest-delivery.integration.test.ts[2m > [22m[2mconsented guest delivery[2m > [22m[2mdoes not send pre-arrival requests once arrival day begins in household time
+2026-09-21T10:30:35.2306615Z [22m[39m[GUEST_EMAIL_FAILED] { id: [32m'f9454d29-4f56-4d37-b9d4-44eb6e3b05b4'[39m }
+2026-09-21T10:30:35.2307065Z 
+2026-09-21T10:30:35.2827037Z [90mstderr[2m | src/core/notifications/guest-delivery.integration.test.ts[2m > [22m[2mconsented guest delivery[2m > [22m[2mrecords unknown acceptance when authorized worker attempt 1 loses its lease
+2026-09-21T10:30:35.2828836Z [22m[39m[GUEST_EMAIL_FAILED] { id: [32m'2354e1c8-9e4f-49bb-898e-cb432ebb2224'[39m }
+2026-09-21T10:30:35.2829180Z 
+2026-09-21T10:30:35.3411286Z [90mstderr[2m | src/core/notifications/guest-delivery.integration.test.ts[2m > [22m[2mconsented guest delivery[2m > [22m[2mrecords unknown acceptance when authorized worker attempt 3 loses its lease
+2026-09-21T10:30:35.3413406Z [22m[39m[GUEST_EMAIL_FAILED] { id: [32m'e5b9a257-3fcd-4d5f-bcc5-259ba6cb3265'[39m }
+2026-09-21T10:30:35.3413800Z 
+2026-09-21T10:30:35.4236763Z [90mstderr[2m | src/core/notifications/guest-delivery.integration.test.ts[2m > [22m[2mconsented guest delivery[2m > [22m[2mrefreshes a reclaimed lease and fences a superseded send acknowledgement
+2026-09-21T10:30:35.4239093Z [22m[39m[GUEST_EMAIL_FAILED] { id: [32m'bfe1f26a-d08e-431a-9fb1-89155d38a869'[39m }
+2026-09-21T10:30:35.4239704Z 
+2026-09-21T10:30:35.5419658Z [90mstderr[2m | src/core/notifications/guest-delivery.integration.test.ts[2m > [22m[2mconsented guest delivery[2m > [22m[2mretries with bounded backoff, sanitized failures and a terminal third attempt
+2026-09-21T10:30:35.5421680Z [22m[39m[GUEST_EMAIL_FAILED] { id: [32m'0f3075bf-c945-426e-a335-29ef10584449'[39m }
+2026-09-21T10:30:35.5422143Z 
+2026-09-21T10:30:35.5689066Z [90mstderr[2m | src/core/notifications/guest-delivery.integration.test.ts[2m > [22m[2mconsented guest delivery[2m > [22m[2mretries with bounded backoff, sanitized failures and a terminal third attempt
+2026-09-21T10:30:35.5690288Z [22m[39m[GUEST_EMAIL_FAILED] { id: [32m'0f3075bf-c945-426e-a335-29ef10584449'[39m }
+2026-09-21T10:30:35.5690631Z 
+2026-09-21T10:30:35.5893114Z [90mstderr[2m | src/core/notifications/guest-delivery.integration.test.ts[2m > [22m[2mconsented guest delivery[2m > [22m[2mretries with bounded backoff, sanitized failures and a terminal third attempt
+2026-09-21T10:30:35.5894341Z [22m[39m[GUEST_EMAIL_FAILED] { id: [32m'0f3075bf-c945-426e-a335-29ef10584449'[39m }
+2026-09-21T10:30:35.5894701Z 
+2026-09-21T10:30:35.6316711Z [90mstderr[2m | src/core/notifications/guest-delivery.integration.test.ts[2m > [22m[2mconsented guest delivery[2m > [22m[2msuppresses queued reminders after cancelled
+2026-09-21T10:30:35.6318801Z [22m[39m[GUEST_EMAIL_FAILED] { id: [32m'20c2f3d1-021e-47d5-8b9f-5e3e48bdd86a'[39m }
+2026-09-21T10:30:35.6319410Z 
+2026-09-21T10:30:35.6782968Z [90mstderr[2m | src/core/notifications/guest-delivery.integration.test.ts[2m > [22m[2mconsented guest delivery[2m > [22m[2msuppresses queued reminders after rescheduled
+2026-09-21T10:30:35.6785175Z [22m[39m[GUEST_EMAIL_FAILED] { id: [32m'cb84d103-ec57-4f5c-9496-3ec9094a5052'[39m }
+2026-09-21T10:30:35.6785752Z 
+2026-09-21T10:30:35.7282203Z [90mstderr[2m | src/core/notifications/guest-delivery.integration.test.ts[2m > [22m[2mconsented guest delivery[2m > [22m[2msuppresses queued reminders after optout
+2026-09-21T10:30:35.7283541Z [22m[39m[GUEST_EMAIL_FAILED] { id: [32m'504ff1e6-7d19-4501-9258-58c4cd76069a'[39m }
+2026-09-21T10:30:35.7283961Z 
+2026-09-21T10:30:35.8631773Z  [32m✓[39m src/core/notifications/guest-delivery.integration.test.ts [2m([22m[2m18 tests[22m[2m)[22m[33m 893[2mms[22m[39m
+2026-09-21T10:30:37.2708694Z  [32m✓[39m src/core/booking/holds.concurrency.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 786[2mms[22m[39m
+2026-09-21T10:30:37.2710386Z      [33m[2m✓[22m[39m serializes twenty races for the final room [33m 398[2mms[22m[39m
+2026-09-21T10:30:38.5106513Z  [32m✓[39m src/agent/queue.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 274[2mms[22m[39m
+2026-09-21T10:30:38.7933308Z  [32m✓[39m src/core/rooms/schema.integration.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 123[2mms[22m[39m
+2026-09-21T10:30:39.6583609Z  [32m✓[39m src/core/booking/invitations.integration.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 216[2mms[22m[39m
+2026-09-21T10:30:41.0212188Z  [32m✓[39m src/core/booking/cancellation.integration.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 380[2mms[22m[39m
+2026-09-21T10:30:41.8181011Z  [32m✓[39m src/core/rooms/operations.integration.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 157[2mms[22m[39m
+2026-09-21T10:30:42.5779900Z  [32m✓[39m src/core/memory/forget.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 45[2mms[22m[39m
+2026-09-21T10:30:45.2170940Z  [32m✓[39m src/agent/interrupt-resume.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 1600[2mms[22m[39m
+2026-09-21T10:30:45.2172739Z      [33m[2m✓[22m[39m resumes an approved tool exactly once in a new process [33m 1593[2mms[22m[39m
+2026-09-21T10:30:46.0914507Z [90mstderr[2m | src/core/notifications/email-outbox.integration.test.ts[2m > [22m[2memail outbox[2m > [22m[2mretries a failed row after five minutes but not before
+2026-09-21T10:30:46.0917124Z [22m[39m[EMAIL_PING_FAILED] { id: [32m'3335fab0-aabb-4fae-b279-e07721b58357'[39m, errorName: [32m'Error'[39m }
+2026-09-21T10:30:46.0917930Z 
+2026-09-21T10:30:46.1967755Z  [32m✓[39m src/core/notifications/email-outbox.integration.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 243[2mms[22m[39m
+2026-09-21T10:30:47.1015476Z  [32m✓[39m src/core/policy/settings.integration.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 252[2mms[22m[39m
+2026-09-21T10:30:48.0902127Z  [32m✓[39m src/agent/record-capture-memory.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 78[2mms[22m[39m
+2026-09-21T10:30:49.3308390Z  [32m✓[39m src/agent/reschedule.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 315[2mms[22m[39m
+2026-09-21T10:30:49.3309322Z      [33m[2m✓[22m[39m re-asks for changed approval and denies a children conflict [33m 309[2mms[22m[39m
+2026-09-21T10:30:50.0084531Z [90mstdout[2m | scripts/seed-memory.test.ts[2m > [22m[2mseedMemory[2m > [22m[2mwrites three name-free events for the seeded Vega party and waits for extraction
+2026-09-21T10:30:50.0086370Z [22m[39mWrote 3 event(s) for the seeded Vega party.
+2026-09-21T10:30:50.0087147Z 
+2026-09-21T10:30:50.0088631Z [90mstdout[2m | scripts/seed-memory.test.ts[2m > [22m[2mseedMemory[2m > [22m[2mwrites three name-free events for the seeded Vega party and waits for extraction
+2026-09-21T10:30:50.0089840Z [22m[39mExtraction produced 1 record(s) after 0s.
+2026-09-21T10:30:50.0090167Z 
+2026-09-21T10:30:50.0389081Z [90mstdout[2m | scripts/seed-memory.test.ts[2m > [22m[2mseedMemory[2m > [22m[2mforget-then-seed clears every prior record and event, leaving only the three seeded facts
+2026-09-21T10:30:50.0390443Z [22m[39mForgot 2 record(s) and 2 event(s) for the seeded Vega party.
+2026-09-21T10:30:50.0429250Z 
+2026-09-21T10:30:50.0430325Z [90mstdout[2m | scripts/seed-memory.test.ts[2m > [22m[2mseedMemory[2m > [22m[2mforget-then-seed clears every prior record and event, leaving only the three seeded facts
+2026-09-21T10:30:50.0431222Z [22m[39mWrote 3 event(s) for the seeded Vega party.
+2026-09-21T10:30:50.0431595Z 
+2026-09-21T10:30:50.0433170Z [90mstdout[2m | scripts/seed-memory.test.ts[2m > [22m[2mseedMemory[2m > [22m[2mforget-then-seed clears every prior record and event, leaving only the three seeded facts
+2026-09-21T10:30:50.0434110Z [22m[39mExtraction produced 3 record(s) after 0s.
+2026-09-21T10:30:50.0434506Z 
+2026-09-21T10:30:50.0588332Z [90mstdout[2m | scripts/seed-memory.test.ts[2m > [22m[2mseedMemory[2m > [22m[2merases the seeded Vega party's memory with --forget
+2026-09-21T10:30:50.0589780Z [22m[39mForgot 0 record(s) and 0 event(s) for the seeded Vega party.
+2026-09-21T10:30:50.0590249Z 
+2026-09-21T10:30:50.0676074Z  [32m✓[39m scripts/seed-memory.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 62[2mms[22m[39m
+2026-09-21T10:30:50.7616267Z  [32m✓[39m src/core/data-retention.integration.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 74[2mms[22m[39m
+2026-09-21T10:30:51.7618761Z  [31m❯[39m src/core/demo/advance-clock.integration.test.ts [2m([22m[2m11 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[33m 337[2mms[22m[39m
+2026-09-21T10:30:51.7620785Z [31m     [31m×[31m runs the actual chase/escalation cycle for arrival 2026-09-19[39m[32m 96[2mms[22m[39m
+2026-09-21T10:30:51.7622765Z      [32m✓[39m runs the actual chase/escalation cycle for arrival 2027-11-20[32m 73[2mms[22m[39m
+2026-09-21T10:30:51.7624668Z [31m     [31m×[31m advances to the persisted delivery retry after escalation already changed the visit[39m[32m 47[2mms[22m[39m
+2026-09-21T10:30:51.7626746Z      [32m✓[39m respects retry availability and never moves backward for already-due work[32m 23[2mms[22m[39m
+2026-09-21T10:30:51.7627678Z      [32m✓[39m does not advance for cancelled jobs[32m 16[2mms[22m[39m
+2026-09-21T10:30:51.7628257Z      [32m✓[39m does not advance for exhausted jobs[32m 13[2mms[22m[39m
+2026-09-21T10:30:51.7628797Z      [32m✓[39m does not advance for running jobs[32m 12[2mms[22m[39m
+2026-09-21T10:30:51.7629459Z      [32m✓[39m does not advance for past_arrival jobs[32m 12[2mms[22m[39m
+2026-09-21T10:30:51.7630181Z      [32m✓[39m does not advance for withdrawn jobs[32m 11[2mms[22m[39m
+2026-09-21T10:30:51.7630760Z      [32m✓[39m does not advance for obsolete_cycle jobs[32m 11[2mms[22m[39m
+2026-09-21T10:30:51.7631537Z      [32m✓[39m keeps custom forward clock payloads while rejecting real homes and invalid dates[32m 17[2mms[22m[39m
+2026-09-21T10:30:52.7885591Z  [32m✓[39m src/agent/tools/capture-invitation.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 122[2mms[22m[39m
+2026-09-21T10:30:53.5699289Z  [32m✓[39m src/app/api/runs/run-data.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 74[2mms[22m[39m
+2026-09-21T10:30:54.5858950Z  [32m✓[39m scripts/seed-demo.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 400[2mms[22m[39m
+2026-09-21T10:30:55.7185716Z  [32m✓[39m src/core/booking/guest-preferences.integration.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 115[2mms[22m[39m
+2026-09-21T10:30:56.9635723Z  [32m✓[39m src/agent/run-task-safety.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 294[2mms[22m[39m
+2026-09-21T10:30:57.6490197Z  [32m✓[39m src/core/calendar/calendar-feed.integration.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 67[2mms[22m[39m
+2026-09-21T10:30:58.3409701Z  [32m✓[39m src/app/[locale]/(host)/memory-data.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 45[2mms[22m[39m
+2026-09-21T10:30:59.0063043Z  [32m✓[39m src/lib/auth/guest-account.integration.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 67[2mms[22m[39m
+2026-09-21T10:30:59.7369354Z  [32m✓[39m src/lib/auth/host-identity.integration.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 65[2mms[22m[39m
+2026-09-21T10:31:00.8441707Z  [32m✓[39m src/core/booking/guest-clock.integration.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 135[2mms[22m[39m
+2026-09-21T10:31:01.9834772Z  [32m✓[39m src/agent/runtime/handler.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 197[2mms[22m[39m
+2026-09-21T10:31:03.1010107Z  [32m✓[39m src/agent/telemetry.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 91[2mms[22m[39m
+2026-09-21T10:31:04.0352339Z  [32m✓[39m src/agent/memory-search-audit.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 42[2mms[22m[39m
+2026-09-21T10:31:04.8199477Z  [32m✓[39m src/components/host/host-outcomes.integration.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 115[2mms[22m[39m
+2026-09-21T10:31:05.8178368Z  [32m✓[39m src/agent/memory-capture-safety.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 85[2mms[22m[39m
+2026-09-21T10:31:06.7398256Z  [32m✓[39m src/agent/agent.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+2026-09-21T10:31:07.6951937Z  [32m✓[39m src/agent/memory-flush-safety.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 57[2mms[22m[39m
+2026-09-21T10:31:08.6997182Z  [32m✓[39m src/agent/client.integration.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 68[2mms[22m[39m
+2026-09-21T10:31:08.8865277Z  [32m✓[39m src/agent/storage/postgres-storage.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 35[2mms[22m[39m
+2026-09-21T10:31:08.8901749Z 
+2026-09-21T10:31:08.8902329Z [31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 15 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+2026-09-21T10:31:08.8902738Z 
+2026-09-21T10:31:08.8907819Z [41m[1m FAIL [22m[49m src/core/demo/advance-clock.integration.test.ts[2m > [22msemantic demo clock[2m > [22mruns the actual chase/escalation cycle for arrival 2026-09-19
+2026-09-21T10:31:08.8914219Z [31m[1mAssertionError[22m: expected '2026-09-16T07:00:00.000Z' to be '2026-09-17T07:00:00.000Z' // Object.is equality[39m
+2026-09-21T10:31:08.8915312Z 
+2026-09-21T10:31:08.8916112Z Expected: [32m"2026-09-1[7m7[27mT07:00:00.000Z"[39m
+2026-09-21T10:31:08.8916997Z Received: [31m"2026-09-1[7m6[27mT07:00:00.000Z"[39m
+2026-09-21T10:31:08.8917399Z 
+2026-09-21T10:31:08.8918144Z [36m [2m❯[22m src/core/demo/advance-clock.integration.test.ts:[2m60:32[22m[39m
+2026-09-21T10:31:08.8976193Z     [90m 58|[39m           action[33m:[39m [32m"escalation"[39m[33m,[39m
+2026-09-21T10:31:08.8976976Z     [90m 59|[39m         })[33m;[39m
+2026-09-21T10:31:08.8977857Z     [90m 60|[39m         [34mexpect[39m(escalation[33m.[39mnow)[33m.[39m[34mtoBe[39m(
+2026-09-21T10:31:08.8978550Z     [90m   |[39m                                [31m^[39m
+2026-09-21T10:31:08.8980221Z     [90m 61|[39m           [35mnew[39m [33mDate[39m([35mnew[39m [33mDate[39m(due)[33m.[39m[34mgetTime[39m() [33m+[39m [34m86_400_000[39m)[33m.[39m[34mtoISOString[39m()[33m,[39m
+2026-09-21T10:31:08.8981365Z     [90m 62|[39m         )[33m;[39m
+2026-09-21T10:31:08.8981702Z 
+2026-09-21T10:31:08.8981992Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/15]⎯[22m[39m
+2026-09-21T10:31:08.8982222Z 
+2026-09-21T10:31:08.8983539Z [41m[1m FAIL [22m[49m src/core/demo/advance-clock.integration.test.ts[2m > [22msemantic demo clock[2m > [22madvances to the persisted delivery retry after escalation already changed the visit
+2026-09-21T10:31:08.8985002Z [31m[1mAssertionError[22m: promise resolved "[]" instead of rejecting[39m
+2026-09-21T10:31:08.8985342Z 
+2026-09-21T10:31:08.8985500Z [32m- Expected:[39m
+2026-09-21T10:31:08.8985766Z Error {
+2026-09-21T10:31:08.8986303Z   "message": "rejected promise",
+2026-09-21T10:31:08.8986613Z }
+2026-09-21T10:31:08.8986732Z 
+2026-09-21T10:31:08.8986886Z [31m+ Received:[39m
+2026-09-21T10:31:08.8987138Z []
+2026-09-21T10:31:08.8987256Z 
+2026-09-21T10:31:08.8988027Z [36m [2m❯[22m src/core/demo/advance-clock.integration.test.ts:[2m111:8[22m[39m
+2026-09-21T10:31:08.8989040Z     [90m109|[39m           f[33m.[39mhomeId[33m,[39m
+2026-09-21T10:31:08.8989479Z     [90m110|[39m         )[33m,[39m
+2026-09-21T10:31:08.8990174Z     [90m111|[39m       )[33m.[39mrejects[33m.[39m[34mtoBeInstanceOf[39m([33mAggregateError[39m)[33m;[39m
+2026-09-21T10:31:08.8990778Z     [90m   |[39m        [31m^[39m
+2026-09-21T10:31:08.8991327Z     [90m112|[39m       [35mconst[39m [visit] [33m=[39m [35mawait[39m db[33m<[39m
+2026-09-21T10:31:08.8991894Z     [90m113|[39m         { status[33m:[39m string }[]
+2026-09-21T10:31:08.8992140Z 
+2026-09-21T10:31:08.8992578Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/15]⎯[22m[39m
+2026-09-21T10:31:08.8992820Z 
+2026-09-21T10:31:08.8993773Z [41m[1m FAIL [22m[49m src/core/reconfirmation/jobs.test.ts[2m > [22mreconfirmation jobs[2m > [22msuppresses fallback delivery when a guest cancels while the model is running
+2026-09-21T10:31:08.8995257Z [31m[1mAssertionError[22m: expected [] to deeply equal [ ObjectContaining{…} ][39m
+2026-09-21T10:31:08.8996260Z 
+2026-09-21T10:31:08.8996575Z [32m- Expected[39m
+2026-09-21T10:31:08.8997061Z [31m+ Received[39m
+2026-09-21T10:31:08.8997306Z 
+2026-09-21T10:31:08.8997511Z [32m- [[39m
+2026-09-21T10:31:08.8998080Z [32m-   ObjectContaining {[39m
+2026-09-21T10:31:08.8998758Z [32m-     "status": "skipped",[39m
+2026-09-21T10:31:08.8999323Z [32m-   },[39m
+2026-09-21T10:31:08.8999757Z [32m- ][39m
+2026-09-21T10:31:08.9000176Z [31m+ [][39m
+2026-09-21T10:31:08.9000403Z 
+2026-09-21T10:31:08.9001071Z [36m [2m❯[22m src/core/reconfirmation/jobs.test.ts:[2m105:21[22m[39m
+2026-09-21T10:31:08.9044549Z     [90m103|[39m       homeId[33m,[39m
+2026-09-21T10:31:08.9044965Z     [90m104|[39m     )[33m;[39m
+2026-09-21T10:31:08.9045523Z     [90m105|[39m     expect(outcome).toEqual([expect.objectContaining({ status: "skippe…
+2026-09-21T10:31:08.9046454Z     [90m   |[39m                     [31m^[39m
+2026-09-21T10:31:08.9047662Z     [90m106|[39m     [34mexpect[39m([35mawait[39m [34mnotificationCount[39m())[33m.[39m[34mtoBe[39m([34m0[39m)[33m;[39m
+2026-09-21T10:31:08.9048635Z     [90m107|[39m     [34mexpect[39m([35mawait[39m [34mfallbackAuditCount[39m())[33m.[39m[34mtoBe[39m([34m0[39m)[33m;[39m
+2026-09-21T10:31:08.9049326Z 
+2026-09-21T10:31:08.9049736Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/15]⎯[22m[39m
+2026-09-21T10:31:08.9050026Z 
+2026-09-21T10:31:08.9050908Z [41m[1m FAIL [22m[49m src/core/reconfirmation/jobs.test.ts[2m > [22mreconfirmation jobs[2m > [22mskips dispatch when cancellation wins while the external schedule is being created
+2026-09-21T10:31:08.9051983Z [31m[1mAssertionError[22m: expected [] to deeply equal [ ObjectContaining{…} ][39m
+2026-09-21T10:31:08.9052317Z 
+2026-09-21T10:31:08.9052461Z [32m- Expected[39m
+2026-09-21T10:31:08.9052735Z [31m+ Received[39m
+2026-09-21T10:31:08.9052862Z 
+2026-09-21T10:31:08.9052975Z [32m- [[39m
+2026-09-21T10:31:08.9053275Z [32m-   ObjectContaining {[39m
+2026-09-21T10:31:08.9053620Z [32m-     "status": "skipped",[39m
+2026-09-21T10:31:08.9053923Z [32m-   },[39m
+2026-09-21T10:31:08.9054166Z [32m- ][39m
+2026-09-21T10:31:08.9054381Z [31m+ [][39m
+2026-09-21T10:31:08.9054504Z 
+2026-09-21T10:31:08.9054850Z [36m [2m❯[22m src/core/reconfirmation/jobs.test.ts:[2m142:20[22m[39m
+2026-09-21T10:31:08.9055292Z     [90m140|[39m     )[33m;[39m
+2026-09-21T10:31:08.9056033Z     [90m141|[39m     [34mexpect[39m(enqueued)[33m.[39m[34mtoEqual[39m([])[33m;[39m
+2026-09-21T10:31:08.9057263Z     [90m142|[39m     expect(result).toEqual([expect.objectContaining({ status: "skipped…
+2026-09-21T10:31:08.9058164Z     [90m   |[39m                    [31m^[39m
+2026-09-21T10:31:08.9058759Z     [90m143|[39m   })[33m;[39m
+2026-09-21T10:31:08.9059247Z     [90m144|[39m
+2026-09-21T10:31:08.9059459Z 
+2026-09-21T10:31:08.9059895Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/15]⎯[22m[39m
+2026-09-21T10:31:08.9060238Z 
+2026-09-21T10:31:08.9061870Z [41m[1m FAIL [22m[49m src/core/reconfirmation/jobs.test.ts[2m > [22mreconfirmation jobs[2m > [22mclaims once, chases at T-3, and escalates to both hosts after 24 hours
+2026-09-21T10:31:08.9063634Z [31m[1mAssertionError[22m: expected [] to have a length of 1 but got +0[39m
+2026-09-21T10:31:08.9064184Z 
+2026-09-21T10:31:08.9064429Z [32m- Expected[39m
+2026-09-21T10:31:08.9064887Z [31m+ Received[39m
+2026-09-21T10:31:08.9065120Z 
+2026-09-21T10:31:08.9065317Z [32m- 1[39m
+2026-09-21T10:31:08.9065695Z [31m+ 0[39m
+2026-09-21T10:31:08.9068385Z 
+2026-09-21T10:31:08.9069042Z [36m [2m❯[22m src/core/reconfirmation/jobs.test.ts:[2m153:27[22m[39m
+2026-09-21T10:31:08.9070546Z     [90m151|[39m       [34mrunDueJobs[39m(sql[33m,[39m clock[33m,[39m invoker[33m,[39m homeId)[33m,[39m
+2026-09-21T10:31:08.9071462Z     [90m152|[39m     ])[33m;[39m
+2026-09-21T10:31:08.9072643Z     [90m153|[39m     [34mexpect[39m(claims[33m.[39m[34mflat[39m())[33m.[39m[34mtoHaveLength[39m([34m1[39m)[33m;[39m
+2026-09-21T10:31:08.9093508Z     [90m   |[39m                           [31m^[39m
+2026-09-21T10:31:08.9094878Z     [90m154|[39m     [34mexpect[39m([35mawait[39m [34mvisitStatus[39m())[33m.[39m[34mtoBe[39m([32m"reconfirm_pending"[39m)[33m;[39m
+2026-09-21T10:31:08.9097063Z     [90m155|[39m     [34mexpect[39m([35mawait[39m [34mnotificationCount[39m([32m"party"[39m))[33m.[39m[34mtoBe[39m([34m1[39m)[33m;[39m
+2026-09-21T10:31:08.9097905Z 
+2026-09-21T10:31:08.9098341Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/15]⎯[22m[39m
+2026-09-21T10:31:08.9098696Z 
+2026-09-21T10:31:08.9099900Z [41m[1m FAIL [22m[49m src/core/reconfirmation/jobs.test.ts[2m > [22mreconfirmation jobs[2m > [22mdoes not escalate after the guest reconfirms
+2026-09-21T10:31:08.9101586Z [31m[1mAssertionError[22m: expected 'confirmed' to be 'reconfirmed' // Object.is equality[39m
+2026-09-21T10:31:08.9102236Z 
+2026-09-21T10:31:08.9102608Z Expected: [32m"[7mre[27mconfirmed"[39m
+2026-09-21T10:31:08.9103237Z Received: [31m"confirmed"[39m
+2026-09-21T10:31:08.9103524Z 
+2026-09-21T10:31:08.9104120Z [36m [2m❯[22m src/core/reconfirmation/jobs.test.ts:[2m186:33[22m[39m
+2026-09-21T10:31:08.9104792Z     [90m184|[39m
+2026-09-21T10:31:08.9106360Z     [90m185|[39m     [34mexpect[39m([35mawait[39m [34mrunDueJobs[39m(sql[33m,[39m clock[33m,[39m invoker[33m,[39m homeId))[33m.[39m[34mtoEqual[39m([])[33m;[39m
+2026-09-21T10:31:08.9108219Z     [90m186|[39m     [34mexpect[39m([35mawait[39m [34mvisitStatus[39m())[33m.[39m[34mtoBe[39m([32m"reconfirmed"[39m)[33m;[39m
+2026-09-21T10:31:08.9109351Z     [90m   |[39m                                 [31m^[39m
+2026-09-21T10:31:08.9110709Z     [90m187|[39m     [34mexpect[39m([35mawait[39m [34mnotificationCount[39m([32m"host"[39m))[33m.[39m[34mtoBe[39m([34m0[39m)[33m;[39m
+2026-09-21T10:31:08.9111773Z     [90m188|[39m   })[33m;[39m
+2026-09-21T10:31:08.9112070Z 
+2026-09-21T10:31:08.9112557Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/15]⎯[22m[39m
+2026-09-21T10:31:08.9112929Z 
+2026-09-21T10:31:08.9114484Z [41m[1m FAIL [22m[49m src/core/reconfirmation/jobs.test.ts[2m > [22mreconfirmation jobs[2m > [22mleaves demo jobs to the home-scoped demo clock runner
+2026-09-21T10:31:08.9116281Z [31m[1mAssertionError[22m: expected [] to have a length of 1 but got +0[39m
+2026-09-21T10:31:08.9116652Z 
+2026-09-21T10:31:08.9116843Z [32m- Expected[39m
+2026-09-21T10:31:08.9117282Z [31m+ Received[39m
+2026-09-21T10:31:08.9117519Z 
+2026-09-21T10:31:08.9117716Z [32m- 1[39m
+2026-09-21T10:31:08.9118087Z [31m+ 0[39m
+2026-09-21T10:31:08.9118283Z 
+2026-09-21T10:31:08.9118887Z [36m [2m❯[22m src/core/reconfirmation/jobs.test.ts:[2m203:59[22m[39m
+2026-09-21T10:31:08.9119663Z     [90m201|[39m     `[39m[33m;[39m
+2026-09-21T10:31:08.9120792Z     [90m202|[39m     [34mexpect[39m(demoJob[33m?.[39mstatus)[33m.[39m[34mtoBe[39m([32m"scheduled"[39m)[33m;[39m
+2026-09-21T10:31:08.9121968Z     [90m203|[39m     expect(await runDueJobs(sql, clock, invoker, homeId)).toHaveLength…
+2026-09-21T10:31:08.9122779Z     [90m   |[39m                                                           [31m^[39m
+2026-09-21T10:31:08.9123197Z     [90m204|[39m   })[33m;[39m
+2026-09-21T10:31:08.9123488Z     [90m205|[39m
+2026-09-21T10:31:08.9123623Z 
+2026-09-21T10:31:08.9123858Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/15]⎯[22m[39m
+2026-09-21T10:31:08.9124067Z 
+2026-09-21T10:31:08.9124840Z [41m[1m FAIL [22m[49m src/core/reconfirmation/jobs.test.ts[2m > [22mreconfirmation jobs[2m > [22mrecovers a partial escalation without duplicate notifications
+2026-09-21T10:31:08.9125767Z [31m[1mAssertionError[22m: promise resolved "[]" instead of rejecting[39m
+2026-09-21T10:31:08.9126611Z 
+2026-09-21T10:31:08.9126779Z [32m- Expected:[39m
+2026-09-21T10:31:08.9127011Z Error {
+2026-09-21T10:31:08.9127245Z   "message": "rejected promise",
+2026-09-21T10:31:08.9127504Z }
+2026-09-21T10:31:08.9127611Z 
+2026-09-21T10:31:08.9127741Z [31m+ Received:[39m
+2026-09-21T10:31:08.9128068Z []
+2026-09-21T10:31:08.9128231Z 
+2026-09-21T10:31:08.9129668Z [36m [2m❯[22m src/core/reconfirmation/jobs.test.ts:[2m242:6[22m[39m
+2026-09-21T10:31:08.9130239Z     [90m240|[39m     [35mawait[39m [34mexpect[39m(
+2026-09-21T10:31:08.9130933Z     [90m241|[39m       [34mrunDueJobs[39m(sql[33m,[39m clock[33m,[39m retryingInvoker[33m,[39m homeId)[33m,[39m
+2026-09-21T10:31:08.9131850Z     [90m242|[39m     )[33m.[39mrejects[33m.[39m[34mtoThrow[39m([32m"One or more reconfirmation jobs failed"[39m)[33m;[39m
+2026-09-21T10:31:08.9132442Z     [90m   |[39m      [31m^[39m
+2026-09-21T10:31:08.9133184Z     [90m243|[39m     [34mexpect[39m([35mawait[39m [34mnotificationCount[39m([32m"host"[39m))[33m.[39m[34mtoBe[39m([34m1[39m)[33m;[39m
+2026-09-21T10:31:08.9133782Z     [90m244|[39m
+2026-09-21T10:31:08.9133915Z 
+2026-09-21T10:31:08.9134157Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/15]⎯[22m[39m
+2026-09-21T10:31:08.9134370Z 
+2026-09-21T10:31:08.9135114Z [41m[1m FAIL [22m[49m src/core/reconfirmation/jobs.test.ts[2m > [22mreconfirmation jobs[2m > [22mdelivers to a host the model skipped without needing a retry
+2026-09-21T10:31:08.9136521Z [31m[1mAssertionError[22m: expected undefined to match object { action: 'escalate', status: 'done' }[39m
+2026-09-21T10:31:08.9136932Z 
+2026-09-21T10:31:08.9137075Z [32m- Expected:[39m
+2026-09-21T10:31:08.9137302Z {
+2026-09-21T10:31:08.9137501Z   "action": "escalate",
+2026-09-21T10:31:08.9137739Z   "status": "done",
+2026-09-21T10:31:08.9137943Z }
+2026-09-21T10:31:08.9138047Z 
+2026-09-21T10:31:08.9138179Z [31m+ Received:[39m
+2026-09-21T10:31:08.9138394Z undefined
+2026-09-21T10:31:08.9138518Z 
+2026-09-21T10:31:08.9138855Z [36m [2m❯[22m src/core/reconfirmation/jobs.test.ts:[2m284:23[22m[39m
+2026-09-21T10:31:08.9139486Z     [90m282|[39m     const [runResult] = await runDueJobs(sql, clock, incompleteInvoker…
+2026-09-21T10:31:08.9139927Z     [90m283|[39m
+2026-09-21T10:31:08.9140398Z     [90m284|[39m     expect(runResult).toMatchObject({ action: "escalate", status: "don…
+2026-09-21T10:31:08.9140909Z     [90m   |[39m                       [31m^[39m
+2026-09-21T10:31:08.9141453Z     [90m285|[39m     expect(await hostNotificationRecipientIds()).toEqual([...hostIds].…
+2026-09-21T10:31:08.9142249Z     [90m286|[39m     [35mconst[39m [job] [33m=[39m [35mawait[39m sql[33m<[39m{ status[33m:[39m string }[][33m>[39m[32m`
+2026-09-21T10:31:08.9142663Z 
+2026-09-21T10:31:08.9142894Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/15]⎯[22m[39m
+2026-09-21T10:31:08.9143098Z 
+2026-09-21T10:31:08.9143918Z [41m[1m FAIL [22m[49m src/core/reconfirmation/jobs.test.ts[2m > [22mreconfirmation jobs[2m > [22mbacks off persistent faults, quarantines them, and supports explicit replay
+2026-09-21T10:31:08.9144886Z [31m[1mAssertionError[22m: promise resolved "[]" instead of rejecting[39m
+2026-09-21T10:31:08.9145196Z 
+2026-09-21T10:31:08.9145329Z [32m- Expected:[39m
+2026-09-21T10:31:08.9145545Z Error {
+2026-09-21T10:31:08.9145768Z   "message": "rejected promise",
+2026-09-21T10:31:08.9146383Z }
+2026-09-21T10:31:08.9146573Z 
+2026-09-21T10:31:08.9147035Z [31m+ Received:[39m
+2026-09-21T10:31:08.9147437Z []
+2026-09-21T10:31:08.9147617Z 
+2026-09-21T10:31:08.9148207Z [36m [2m❯[22m src/core/reconfirmation/jobs.test.ts:[2m303:6[22m[39m
+2026-09-21T10:31:08.9149027Z     [90m301|[39m     [35mawait[39m [34mexpect[39m(
+2026-09-21T10:31:08.9150170Z     [90m302|[39m       [34mrunDueJobs[39m(sql[33m,[39m clock[33m,[39m failingInvoker[33m,[39m homeId)[33m,[39m
+2026-09-21T10:31:08.9151731Z     [90m303|[39m     )[33m.[39mrejects[33m.[39m[34mtoThrow[39m([32m"One or more reconfirmation jobs failed"[39m)[33m;[39m
+2026-09-21T10:31:08.9152943Z     [90m   |[39m      [31m^[39m
+2026-09-21T10:31:08.9153754Z     [90m304|[39m     [35mlet[39m [job] [33m=[39m [35mawait[39m sql[33m<[39m
+2026-09-21T10:31:08.9154469Z     [90m305|[39m       {
+2026-09-21T10:31:08.9154748Z 
+2026-09-21T10:31:08.9155219Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/15]⎯[22m[39m
+2026-09-21T10:31:08.9155600Z 
+2026-09-21T10:31:08.9157347Z [41m[1m FAIL [22m[49m src/core/reconfirmation/jobs.test.ts[2m > [22mreconfirmation jobs[2m > [22mdispatches the due batch to durable runs without waiting for model work
+2026-09-21T10:31:08.9159127Z [31m[1mAssertionError[22m: expected [] to deeply equal [ ObjectContaining{…} ][39m
+2026-09-21T10:31:08.9159721Z 
+2026-09-21T10:31:08.9159946Z [32m- Expected[39m
+2026-09-21T10:31:08.9160410Z [31m+ Received[39m
+2026-09-21T10:31:08.9160643Z 
+2026-09-21T10:31:08.9160827Z [32m- [[39m
+2026-09-21T10:31:08.9162606Z [32m-   ObjectContaining {[39m
+2026-09-21T10:31:08.9163402Z [32m-     "jobId": "40000000-0000-4000-8000-000000000601",[39m
+2026-09-21T10:31:08.9164110Z [32m-     "status": "queued",[39m
+2026-09-21T10:31:08.9164594Z [32m-   },[39m
+2026-09-21T10:31:08.9164975Z [32m- ][39m
+2026-09-21T10:31:08.9165405Z [31m+ [][39m
+2026-09-21T10:31:08.9165607Z 
+2026-09-21T10:31:08.9166419Z [36m [2m❯[22m src/core/reconfirmation/jobs.test.ts:[2m394:24[22m[39m
+2026-09-21T10:31:08.9167220Z     [90m392|[39m     )[33m;[39m
+2026-09-21T10:31:08.9167694Z     [90m393|[39m
+2026-09-21T10:31:08.9168428Z     [90m394|[39m     [34mexpect[39m(dispatched)[33m.[39m[34mtoEqual[39m([
+2026-09-21T10:31:08.9169231Z     [90m   |[39m                        [31m^[39m
+2026-09-21T10:31:08.9170646Z     [90m395|[39m       expect[33m.[39m[34mobjectContaining[39m({ jobId[33m:[39m chaseJobId[33m,[39m status[33m:[39m [32m"queued"[39m })[33m,[39m
+2026-09-21T10:31:08.9172116Z     [90m396|[39m     ])[33m;[39m
+2026-09-21T10:31:08.9172428Z 
+2026-09-21T10:31:08.9172868Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/15]⎯[22m[39m
+2026-09-21T10:31:08.9173222Z 
+2026-09-21T10:31:08.9174577Z [41m[1m FAIL [22m[49m src/core/reconfirmation/jobs.test.ts[2m > [22mreconfirmation jobs[2m > [22mdelivers a new chase for a later reconfirmation cycle
+2026-09-21T10:31:08.9176334Z [31m[1mAssertionError[22m: expected +0 to be 1 // Object.is equality[39m
+2026-09-21T10:31:08.9176859Z 
+2026-09-21T10:31:08.9177092Z [32m- Expected[39m
+2026-09-21T10:31:08.9177552Z [31m+ Received[39m
+2026-09-21T10:31:08.9177777Z 
+2026-09-21T10:31:08.9177961Z [32m- 1[39m
+2026-09-21T10:31:08.9178347Z [31m+ 0[39m
+2026-09-21T10:31:08.9178539Z 
+2026-09-21T10:31:08.9179141Z [36m [2m❯[22m src/core/reconfirmation/jobs.test.ts:[2m435:46[22m[39m
+2026-09-21T10:31:08.9180303Z     [90m433|[39m     [35mconst[39m invoker [33m=[39m [34mscriptedInvoker[39m(clock)[33m;[39m
+2026-09-21T10:31:08.9181725Z     [90m434|[39m     [35mawait[39m [34mrunDueJobs[39m(sql[33m,[39m clock[33m,[39m invoker[33m,[39m homeId)[33m;[39m
+2026-09-21T10:31:08.9183443Z     [90m435|[39m     [34mexpect[39m([35mawait[39m [34mnotificationCount[39m([32m"party"[39m))[33m.[39m[34mtoBe[39m([34m1[39m)[33m;[39m
+2026-09-21T10:31:08.9184702Z     [90m   |[39m                                              [31m^[39m
+2026-09-21T10:31:08.9185342Z     [90m436|[39m
+2026-09-21T10:31:08.9186082Z     [90m437|[39m     [35mawait[39m sql[32m`
+2026-09-21T10:31:08.9186772Z 
+2026-09-21T10:31:08.9187139Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/15]⎯[22m[39m
+2026-09-21T10:31:08.9187370Z 
+2026-09-21T10:31:08.9188218Z [41m[1m FAIL [22m[49m src/core/reconfirmation/jobs.test.ts[2m > [22mreconfirmation jobs[2m > [22mfalls back to a deterministic chase notification when the model writes nothing
+2026-09-21T10:31:08.9189329Z [31m[1mAssertionError[22m: expected undefined to match object { action: 'chase', status: 'done' }[39m
+2026-09-21T10:31:08.9189729Z 
+2026-09-21T10:31:08.9189862Z [32m- Expected:[39m
+2026-09-21T10:31:08.9190233Z {
+2026-09-21T10:31:08.9190427Z   "action": "chase",
+2026-09-21T10:31:08.9190653Z   "status": "done",
+2026-09-21T10:31:08.9190856Z }
+2026-09-21T10:31:08.9190958Z 
+2026-09-21T10:31:08.9191096Z [31m+ Received:[39m
+2026-09-21T10:31:08.9191312Z undefined
+2026-09-21T10:31:08.9191427Z 
+2026-09-21T10:31:08.9191763Z [36m [2m❯[22m src/core/reconfirmation/jobs.test.ts:[2m471:23[22m[39m
+2026-09-21T10:31:08.9192400Z     [90m469|[39m     const [runResult] = await runDueJobs(sql, clock, silentInvoker, ho…
+2026-09-21T10:31:08.9192841Z     [90m470|[39m
+2026-09-21T10:31:08.9193313Z     [90m471|[39m     expect(runResult).toMatchObject({ action: "chase", status: "done" …
+2026-09-21T10:31:08.9193809Z     [90m   |[39m                       [31m^[39m
+2026-09-21T10:31:08.9194356Z     [90m472|[39m     [35mconst[39m [notification] [33m=[39m [35mawait[39m sql[33m<[39m
+2026-09-21T10:31:08.9195169Z     [90m473|[39m       { recipient_id[33m:[39m string[33m;[39m body_en[33m:[39m string[33m;[39m body_es[33m:[39m string }[]
+2026-09-21T10:31:08.9195602Z 
+2026-09-21T10:31:08.9196124Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/15]⎯[22m[39m
+2026-09-21T10:31:08.9196352Z 
+2026-09-21T10:31:08.9197274Z [41m[1m FAIL [22m[49m src/core/reconfirmation/jobs.test.ts[2m > [22mreconfirmation jobs[2m > [22mfalls back to deterministic escalation delivery for hosts the model skipped
+2026-09-21T10:31:08.9198565Z [31m[1mAssertionError[22m: expected undefined to match object { action: 'escalate', status: 'done' }[39m
+2026-09-21T10:31:08.9198973Z 
+2026-09-21T10:31:08.9199112Z [32m- Expected:[39m
+2026-09-21T10:31:08.9199330Z {
+2026-09-21T10:31:08.9199525Z   "action": "escalate",
+2026-09-21T10:31:08.9199763Z   "status": "done",
+2026-09-21T10:31:08.9199967Z }
+2026-09-21T10:31:08.9200070Z 
+2026-09-21T10:31:08.9200202Z [31m+ Received:[39m
+2026-09-21T10:31:08.9200409Z undefined
+2026-09-21T10:31:08.9200521Z 
+2026-09-21T10:31:08.9200848Z [36m [2m❯[22m src/core/reconfirmation/jobs.test.ts:[2m528:23[22m[39m
+2026-09-21T10:31:08.9201472Z     [90m526|[39m     const [runResult] = await runDueJobs(sql, clock, partialInvoker, h…
+2026-09-21T10:31:08.9202167Z     [90m527|[39m
+2026-09-21T10:31:08.9202637Z     [90m528|[39m     expect(runResult).toMatchObject({ action: "escalate", status: "don…
+2026-09-21T10:31:08.9203139Z     [90m   |[39m                       [31m^[39m
+2026-09-21T10:31:08.9203677Z     [90m529|[39m     expect(await hostNotificationRecipientIds()).toEqual([...hostIds].…
+2026-09-21T10:31:08.9204567Z     [90m530|[39m     [34mexpect[39m([35mawait[39m [34mnotificationCount[39m([32m"host"[39m))[33m.[39m[34mtoBe[39m([34m2[39m)[33m;[39m
+2026-09-21T10:31:08.9205047Z 
+2026-09-21T10:31:08.9205271Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/15]⎯[22m[39m
+2026-09-21T10:31:08.9205472Z 
+2026-09-21T10:31:08.9206234Z [41m[1m FAIL [22m[49m src/core/reconfirmation/jobs.test.ts[2m > [22mreconfirmation jobs[2m > [22mreclaims only an expired job lease
+2026-09-21T10:31:08.9207076Z [31m[1mAssertionError[22m: expected [] to have a length of 1 but got +0[39m
+2026-09-21T10:31:08.9207395Z 
+2026-09-21T10:31:08.9207526Z [32m- Expected[39m
+2026-09-21T10:31:08.9207780Z [31m+ Received[39m
+2026-09-21T10:31:08.9207908Z 
+2026-09-21T10:31:08.9208021Z [32m- 1[39m
+2026-09-21T10:31:08.9208239Z [31m+ 0[39m
+2026-09-21T10:31:08.9208357Z 
+2026-09-21T10:31:08.9208775Z [36m [2m❯[22m src/core/reconfirmation/jobs.test.ts:[2m554:7[22m[39m
+2026-09-21T10:31:08.9209519Z     [90m552|[39m     [34mexpect[39m(
+2026-09-21T10:31:08.9210316Z     [90m553|[39m       [35mawait[39m [34mrunDueJobs[39m(sql[33m,[39m clock[33m,[39m [34mscriptedInvoker[39m(clock)[33m,[39m homeId)[33m,[39m
+2026-09-21T10:31:08.9211098Z     [90m554|[39m     )[33m.[39m[34mtoHaveLength[39m([34m1[39m)[33m;[39m
+2026-09-21T10:31:08.9211831Z     [90m   |[39m       [31m^[39m
+2026-09-21T10:31:08.9212758Z     [90m555|[39m     [35mconst[39m [job] [33m=[39m [35mawait[39m sql[33m<[39m
+2026-09-21T10:31:08.9213734Z     [90m556|[39m       { status: string; attempt_count: number; claim_token: string | n…
+2026-09-21T10:31:08.9214360Z 
+2026-09-21T10:31:08.9214648Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/15]⎯[22m[39m
+2026-09-21T10:31:08.9214918Z 
+2026-09-21T10:31:08.9214959Z 
+2026-09-21T10:31:08.9216036Z [2m Test Files [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m35 passed[39m[22m[90m (37)[39m
+2026-09-21T10:31:08.9217177Z [2m      Tests [22m [1m[31m15 failed[39m[22m[2m | [22m[1m[32m163 passed[39m[22m[90m (178)[39m
+2026-09-21T10:31:08.9218048Z [2m   Start at [22m 10:30:30
+2026-09-21T10:31:08.9218731Z [2m   Duration [22m 38.00s[2m (transform 889ms, setup 0ms, import 24.19s, tests 9.01s, environment 4ms)[22m
+2026-09-21T10:31:08.9219144Z 
+2026-09-21T10:31:08.9219150Z 
+2026-09-21T10:31:08.9265406Z ##[error]AssertionError: expected '2026-09-16T07:00:00.000Z' to be '2026-09-17T07:00:00.000Z' // Object.is equality
+2026-09-21T10:31:08.9277299Z 
+2026-09-21T10:31:08.9280446Z ##[error]AssertionError: promise resolved "[]" instead of rejecting
+2026-09-21T10:31:08.9282252Z 
+2026-09-21T10:31:08.9285200Z ##[error]AssertionError: expected [] to deeply equal [ ObjectContaining{…} ]
+2026-09-21T10:31:08.9289466Z 
+2026-09-21T10:31:08.9292504Z ##[error]AssertionError: expected [] to deeply equal [ ObjectContaining{…} ]
+2026-09-21T10:31:08.9294359Z 
+2026-09-21T10:31:08.9296686Z ##[error]AssertionError: expected [] to have a length of 1 but got +0
+2026-09-21T10:31:08.9298230Z 
+2026-09-21T10:31:08.9300942Z ##[error]AssertionError: expected 'confirmed' to be 'reconfirmed' // Object.is equality
+2026-09-21T10:31:08.9302764Z 
+2026-09-21T10:31:08.9305277Z ##[error]AssertionError: expected [] to have a length of 1 but got +0
+2026-09-21T10:31:08.9307283Z 
+2026-09-21T10:31:08.9310117Z ##[error]AssertionError: promise resolved "[]" instead of rejecting
+2026-09-21T10:31:08.9312029Z 
+2026-09-21T10:31:08.9315341Z ##[error]AssertionError: expected undefined to match object { action: 'escalate', status: 'done' }
+2026-09-21T10:31:08.9317751Z 
+2026-09-21T10:31:08.9321093Z ##[error]AssertionError: promise resolved "[]" instead of rejecting
+2026-09-21T10:31:08.9323089Z 
+2026-09-21T10:31:08.9327262Z ##[error]AssertionError: expected [] to deeply equal [ ObjectContaining{…} ]
+2026-09-21T10:31:08.9329724Z 
+2026-09-21T10:31:08.9332114Z ##[error]AssertionError: expected +0 to be 1 // Object.is equality
+2026-09-21T10:31:08.9334002Z 
+2026-09-21T10:31:08.9337795Z ##[error]AssertionError: expected undefined to match object { action: 'chase', status: 'done' }
+2026-09-21T10:31:08.9340294Z 
+2026-09-21T10:31:08.9343700Z ##[error]AssertionError: expected undefined to match object { action: 'escalate', status: 'done' }
+2026-09-21T10:31:08.9346151Z 
+2026-09-21T10:31:08.9348571Z ##[error]AssertionError: expected [] to have a length of 1 but got +0
+2026-09-21T10:31:08.9685162Z [ELIFECYCLE] Command failed with exit code 1.
+2026-09-21T10:31:08.9957310Z ##[error]Process completed with exit code 1.

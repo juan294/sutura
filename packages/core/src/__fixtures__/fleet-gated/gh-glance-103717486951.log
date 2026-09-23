@@ -1,0 +1,837 @@
+2026-09-13T11:36:52.2217488Z 
+2026-09-13T11:36:52.2223442Z > gh-glance@0.14.1 prepare
+2026-09-13T11:36:52.2224184Z > node -e "process.exit(require('fs').existsSync('.git')?0:1)" && husky || true
+2026-09-13T11:36:52.2224579Z 
+2026-09-13T11:36:52.2986367Z 
+2026-09-13T11:36:52.2987206Z added 155 packages, and audited 156 packages in 3s
+2026-09-13T11:36:52.2987636Z 
+2026-09-13T11:36:52.2988040Z 47 packages are looking for funding
+2026-09-13T11:36:52.2988807Z   run `npm fund` for details
+2026-09-13T11:36:52.2993769Z 
+2026-09-13T11:36:52.2994024Z found 0 vulnerabilities
+2026-09-13T11:36:52.3615391Z ##[group]Run npm run test:pty
+2026-09-13T11:36:52.3615925Z [36;1mnpm run test:pty[0m
+2026-09-13T11:36:52.3672094Z shell: /usr/bin/bash -e {0}
+2026-09-13T11:36:52.3672599Z ##[endgroup]
+2026-09-13T11:36:52.4683920Z 
+2026-09-13T11:36:52.4684714Z > gh-glance@0.14.1 test:pty
+2026-09-13T11:36:52.4685809Z > node --test --test-concurrency=1 --test-timeout=600000 test/pty/*.test.mjs
+2026-09-13T11:36:52.4686323Z 
+2026-09-13T11:36:52.5182026Z TAP version 13
+2026-09-13T11:38:47.0628139Z # Subtest: POLL-02 running CI is checked every five seconds, not at the two-second floor
+2026-09-13T11:38:47.0633564Z ok 1 - POLL-02 running CI is checked every five seconds, not at the two-second floor
+2026-09-13T11:38:47.0634312Z   ---
+2026-09-13T11:38:47.0646015Z   duration_ms: 18978.283151
+2026-09-13T11:38:47.0646860Z   type: 'test'
+2026-09-13T11:38:47.0647226Z   ...
+2026-09-13T11:38:47.0648076Z # Subtest: POLL-02 a quiet list waits its 30s interval and is checked within two seconds of it
+2026-09-13T11:38:47.0649374Z ok 2 - POLL-02 a quiet list waits its 30s interval and is checked within two seconds of it
+2026-09-13T11:38:47.0650092Z   ---
+2026-09-13T11:38:47.0650474Z   duration_ms: 37120.363855
+2026-09-13T11:38:47.0650879Z   type: 'test'
+2026-09-13T11:38:47.0651256Z   ...
+2026-09-13T11:38:47.0651858Z # Subtest: POLL-01 --background off emits zero inactive data calls
+2026-09-13T11:38:47.0652691Z ok 3 - POLL-01 --background off emits zero inactive data calls
+2026-09-13T11:38:47.0653258Z   ---
+2026-09-13T11:38:47.0653586Z   duration_ms: 8739.135841
+2026-09-13T11:38:47.0653976Z   type: 'test'
+2026-09-13T11:38:47.0654363Z   ...
+2026-09-13T11:38:47.0666340Z # Subtest: POLL-03 complete run names never ask for the workflow catalog
+2026-09-13T11:38:47.0667686Z ok 4 - POLL-03 complete run names never ask for the workflow catalog
+2026-09-13T11:38:47.0668307Z   ---
+2026-09-13T11:38:47.0668653Z   duration_ms: 10102.533476
+2026-09-13T11:38:47.0669056Z   type: 'test'
+2026-09-13T11:38:47.0669381Z   ...
+2026-09-13T11:38:47.0670042Z # Subtest: POLL-03 a missing name asks for the catalog once and reuses it
+2026-09-13T11:38:47.0670980Z ok 5 - POLL-03 a missing name asks for the catalog once and reuses it
+2026-09-13T11:38:47.0671573Z   ---
+2026-09-13T11:38:47.0671903Z   duration_ms: 6813.364121
+2026-09-13T11:38:47.0672302Z   type: 'test'
+2026-09-13T11:38:47.0672745Z   ...
+2026-09-13T11:38:47.0673408Z # Subtest: REFRESH-01 r keeps If-None-Match and a quiet 304 spends nothing
+2026-09-13T11:38:47.0674355Z ok 6 - REFRESH-01 r keeps If-None-Match and a quiet 304 spends nothing
+2026-09-13T11:38:47.0675181Z   ---
+2026-09-13T11:38:47.0675515Z   duration_ms: 8341.559138
+2026-09-13T11:38:47.0675904Z   type: 'test'
+2026-09-13T11:38:47.0676230Z   ...
+2026-09-13T11:38:47.0676916Z # Subtest: REFRESH-03 Width mode keeps both width resets and starts no refresh
+2026-09-13T11:38:47.0677903Z ok 7 - REFRESH-03 Width mode keeps both width resets and starts no refresh
+2026-09-13T11:38:47.0678515Z   ---
+2026-09-13T11:38:47.0678854Z   duration_ms: 7462.401257
+2026-09-13T11:38:47.0679242Z   type: 'test'
+2026-09-13T11:38:47.0679561Z   ...
+2026-09-13T11:38:47.0680253Z # Subtest: PAGE-01 scrolling toward the end acquires one page, and only then
+2026-09-13T11:38:47.0681234Z ok 8 - PAGE-01 scrolling toward the end acquires one page, and only then
+2026-09-13T11:38:47.0681850Z   ---
+2026-09-13T11:38:47.0682187Z   duration_ms: 11364.80229
+2026-09-13T11:38:47.0682584Z   type: 'test'
+2026-09-13T11:38:47.0682915Z   ...
+2026-09-13T11:38:47.0683541Z # Subtest: PAGE-01 a list nobody scrolls never asks for a second page
+2026-09-13T11:38:47.0684332Z ok 9 - PAGE-01 a list nobody scrolls never asks for a second page
+2026-09-13T11:38:47.0685046Z   ---
+2026-09-13T11:38:47.0685362Z   duration_ms: 5580.492071
+2026-09-13T11:38:47.0685703Z   type: 'test'
+2026-09-13T11:38:47.0685994Z   ...
+2026-09-13T11:39:17.4600883Z # Subtest: a healthy process writes dashboard state for restart
+2026-09-13T11:39:17.4601996Z ok 10 - a healthy process writes dashboard state for restart
+2026-09-13T11:39:17.4603125Z   ---
+2026-09-13T11:39:17.4603533Z   duration_ms: 0.928597
+2026-09-13T11:39:17.4603966Z   type: 'test'
+2026-09-13T11:39:17.4606643Z   ...
+2026-09-13T11:39:17.4642064Z # Subtest: same-target restart keeps stale Actions rows under a live rate-limit error
+2026-09-13T11:39:17.4643205Z ok 11 - same-target restart keeps stale Actions rows under a live rate-limit error
+2026-09-13T11:39:17.4665489Z   ---
+2026-09-13T11:39:17.4665929Z   duration_ms: 0.408014
+2026-09-13T11:39:17.4666385Z   type: 'test'
+2026-09-13T11:39:17.4666677Z   ...
+2026-09-13T11:39:17.4667180Z # Subtest: a blind Security refresh preserves cached alerts
+2026-09-13T11:39:17.4668315Z ok 12 - a blind Security refresh preserves cached alerts
+2026-09-13T11:39:17.4668796Z   ---
+2026-09-13T11:39:17.4669117Z   duration_ms: 0.227993
+2026-09-13T11:39:17.4669479Z   type: 'test'
+2026-09-13T11:39:17.4669794Z   ...
+2026-09-13T11:39:17.4670355Z # Subtest: a different repository target never receives cached rows
+2026-09-13T11:39:17.4671108Z ok 13 - a different repository target never receives cached rows
+2026-09-13T11:39:17.4671620Z   ---
+2026-09-13T11:39:17.4671907Z   duration_ms: 0.124447
+2026-09-13T11:39:17.4672238Z   type: 'test'
+2026-09-13T11:39:17.4672512Z   ...
+2026-09-13T11:39:17.5216922Z # Subtest: terminal replay preserves a compact dashboard and its guard row
+2026-09-13T11:39:17.5217854Z ok 14 - terminal replay preserves a compact dashboard and its guard row
+2026-09-13T11:39:17.5225514Z   ---
+2026-09-13T11:39:17.5225992Z   duration_ms: 2.94458
+2026-09-13T11:39:17.5226473Z   type: 'test'
+2026-09-13T11:39:17.5227055Z   ...
+2026-09-13T11:39:17.5227951Z # Subtest: terminal replay applies incremental cursor updates without accumulating status lines
+2026-09-13T11:39:17.5229264Z ok 15 - terminal replay applies incremental cursor updates without accumulating status lines
+2026-09-13T11:39:17.5230247Z   ---
+2026-09-13T11:39:17.5230896Z   duration_ms: 0.673253
+2026-09-13T11:39:17.5231467Z   type: 'test'
+2026-09-13T11:39:17.5231945Z   ...
+2026-09-13T11:39:17.5232821Z # Subtest: terminal replay retains transient status accumulation evidence
+2026-09-13T11:39:17.5234347Z ok 16 - terminal replay retains transient status accumulation evidence
+2026-09-13T11:39:17.5235176Z   ---
+2026-09-13T11:39:17.5235502Z   duration_ms: 0.435345
+2026-09-13T11:39:17.5235880Z   type: 'test'
+2026-09-13T11:39:17.5236186Z   ...
+2026-09-13T11:39:17.5238979Z # Subtest: terminal replay drops only the PTY EOF echo and preserves printable caret-D text
+2026-09-13T11:39:17.5240190Z ok 17 - terminal replay drops only the PTY EOF echo and preserves printable caret-D text
+2026-09-13T11:39:17.5241352Z   ---
+2026-09-13T11:39:17.5241677Z   duration_ms: 0.375235
+2026-09-13T11:39:17.5242049Z   type: 'test'
+2026-09-13T11:39:17.5242365Z   ...
+2026-09-13T11:39:19.6229448Z # Subtest: capture termination reaps the full stdin producer and script trees
+2026-09-13T11:39:19.6230697Z ok 18 - capture termination reaps the full stdin producer and script trees
+2026-09-13T11:39:19.6231495Z   ---
+2026-09-13T11:39:19.6232081Z   duration_ms: 2106.854822
+2026-09-13T11:39:19.6232628Z   type: 'test'
+2026-09-13T11:39:19.6232855Z   ...
+2026-09-13T11:40:00.1046816Z # Subtest: a quiet Actions tab spends nothing after its first fetch
+2026-09-13T11:40:00.1047718Z ok 19 - a quiet Actions tab spends nothing after its first fetch
+2026-09-13T11:40:00.1048253Z   ---
+2026-09-13T11:40:00.1048574Z   duration_ms: 14542.065089
+2026-09-13T11:40:00.1048943Z   type: 'test'
+2026-09-13T11:40:00.1049305Z   ...
+2026-09-13T11:40:00.1049953Z # Subtest: a changed Actions runs entity returns 200 and publishes the new row
+2026-09-13T11:40:00.1051032Z ok 20 - a changed Actions runs entity returns 200 and publishes the new row
+2026-09-13T11:40:00.1051697Z   ---
+2026-09-13T11:40:00.1052292Z   duration_ms: 10311.834569
+2026-09-13T11:40:00.1052690Z   type: 'test'
+2026-09-13T11:40:00.1053004Z   ...
+2026-09-13T11:40:00.1053669Z # Subtest: R resynchronizes a quiet tab by dropping If-None-Match and spending again
+2026-09-13T11:40:00.1055257Z ok 21 - R resynchronizes a quiet tab by dropping If-None-Match and spending again
+2026-09-13T11:40:00.1056004Z   ---
+2026-09-13T11:40:00.1056313Z   duration_ms: 15574.912554
+2026-09-13T11:40:00.1056672Z   type: 'test'
+2026-09-13T11:40:00.1056967Z   ...
+2026-09-13T11:40:36.7565298Z # Subtest: the app reaches the data layer at all
+2026-09-13T11:40:36.7566372Z ok 22 - the app reaches the data layer at all
+2026-09-13T11:40:36.7566974Z   ---
+2026-09-13T11:40:36.7567352Z   duration_ms: 1.008998
+2026-09-13T11:40:36.7567723Z   type: 'test'
+2026-09-13T11:40:36.7568039Z   ...
+2026-09-13T11:40:36.7568806Z # Subtest: healthy startup does not probe optional failure context
+2026-09-13T11:40:36.7570240Z ok 23 - healthy startup does not probe optional failure context
+2026-09-13T11:40:36.7570891Z   ---
+2026-09-13T11:40:36.7571230Z   duration_ms: 0.202916
+2026-09-13T11:40:36.7571597Z   type: 'test'
+2026-09-13T11:40:36.7572032Z   ...
+2026-09-13T11:40:36.7572871Z # Subtest: an inaccessible repository uses cached auth context without crossing a paced repo slot
+2026-09-13T11:40:36.7574292Z ok 24 - an inaccessible repository uses cached auth context without crossing a paced repo slot
+2026-09-13T11:40:36.7575766Z   ---
+2026-09-13T11:40:36.7576572Z   duration_ms: 0.19254
+2026-09-13T11:40:36.7577288Z   type: 'test'
+2026-09-13T11:40:36.7577641Z   ...
+2026-09-13T11:40:36.7578330Z # Subtest: the failure frame preserves terminal geometry and clean teardown
+2026-09-13T11:40:36.7579305Z ok 25 - the failure frame preserves terminal geometry and clean teardown
+2026-09-13T11:40:36.7579909Z   ---
+2026-09-13T11:40:36.7580235Z   duration_ms: 0.130426
+2026-09-13T11:40:36.7580621Z   type: 'test'
+2026-09-13T11:40:36.7580933Z   ...
+2026-09-13T11:40:36.7581567Z # Subtest: detached missing-remote setup advertises no unavailable keys
+2026-09-13T11:40:36.7588558Z ok 26 - detached missing-remote setup advertises no unavailable keys
+2026-09-13T11:40:36.7589179Z   ---
+2026-09-13T11:40:36.7589487Z   duration_ms: 0.228845
+2026-09-13T11:40:36.7589850Z   type: 'test'
+2026-09-13T11:40:36.7590181Z   ...
+2026-09-13T11:40:36.7590925Z # Subtest: the alternate screen is entered exactly once and left exactly once
+2026-09-13T11:40:36.7591887Z ok 27 - the alternate screen is entered exactly once and left exactly once
+2026-09-13T11:40:36.7592494Z   ---
+2026-09-13T11:40:36.7605792Z   duration_ms: 0.094332
+2026-09-13T11:40:36.7606194Z   type: 'test'
+2026-09-13T11:40:36.7606522Z   ...
+2026-09-13T11:40:36.7606987Z # Subtest: the cursor is restored before exit
+2026-09-13T11:40:36.7607612Z ok 28 - the cursor is restored before exit
+2026-09-13T11:40:36.7608078Z   ---
+2026-09-13T11:40:36.7608417Z   duration_ms: 0.081222
+2026-09-13T11:40:36.7608791Z   type: 'test'
+2026-09-13T11:40:36.7609138Z   ...
+2026-09-13T11:40:36.7609820Z # Subtest: the final frame leaves one physical terminal row as a scroll guard
+2026-09-13T11:40:36.7610815Z ok 29 - the final frame leaves one physical terminal row as a scroll guard
+2026-09-13T11:40:36.7611429Z   ---
+2026-09-13T11:40:36.7611742Z   duration_ms: 0.173461
+2026-09-13T11:40:36.7612119Z   type: 'test'
+2026-09-13T11:40:36.7612431Z   ...
+2026-09-13T11:40:36.7612924Z # Subtest: no rendered line exceeds the terminal width
+2026-09-13T11:40:36.7613594Z ok 30 - no rendered line exceeds the terminal width
+2026-09-13T11:40:36.7614055Z   ---
+2026-09-13T11:40:36.7614364Z   duration_ms: 0.3861
+2026-09-13T11:40:36.7614722Z   type: 'test'
+2026-09-13T11:40:36.7615258Z   ...
+2026-09-13T11:40:36.7615900Z # Subtest: a pane narrower than the table minimum still renders its chrome
+2026-09-13T11:40:36.7616861Z ok 31 - a pane narrower than the table minimum still renders its chrome
+2026-09-13T11:40:36.7635624Z   ---
+2026-09-13T11:40:36.7636209Z   duration_ms: 0.411509
+2026-09-13T11:40:36.7636846Z   type: 'test'
+2026-09-13T11:40:36.7637335Z   ...
+2026-09-13T11:40:36.7638075Z # Subtest: the panel frame and tab bar are drawn at full width
+2026-09-13T11:40:36.7639029Z ok 32 - the panel frame and tab bar are drawn at full width
+2026-09-13T11:40:36.7639704Z   ---
+2026-09-13T11:40:36.7640463Z   duration_ms: 0.138218
+2026-09-13T11:40:36.7641006Z   type: 'test'
+2026-09-13T11:40:36.7641527Z   ...
+2026-09-13T11:40:36.7642389Z # Subtest: the frame does not repaint by full clear in steady state
+2026-09-13T11:40:36.7643393Z ok 33 - the frame does not repaint by full clear in steady state
+2026-09-13T11:40:36.7644088Z   ---
+2026-09-13T11:40:36.7644561Z   duration_ms: 0.098608
+2026-09-13T11:40:36.7645306Z   type: 'test'
+2026-09-13T11:40:36.7645774Z   ...
+2026-09-13T11:40:36.7646288Z # Subtest: SIGTERM exits 143
+2026-09-13T11:40:36.7646896Z ok 34 - SIGTERM exits 143
+2026-09-13T11:40:36.7647890Z   ---
+2026-09-13T11:40:36.7648371Z   duration_ms: 0.06671
+2026-09-13T11:40:36.7648894Z   type: 'test'
+2026-09-13T11:40:36.7649359Z   ...
+2026-09-13T11:40:36.7649970Z # Subtest: SIGINT exits 130 and SIGHUP exits 129
+2026-09-13T11:40:36.7650794Z ok 35 - SIGINT exits 130 and SIGHUP exits 129
+2026-09-13T11:40:36.7651441Z   ---
+2026-09-13T11:40:36.7651907Z   duration_ms: 8094.639743
+2026-09-13T11:40:36.7652437Z   type: 'test'
+2026-09-13T11:40:36.7652922Z   ...
+2026-09-13T11:40:36.7653828Z # Subtest: nothing is written to the primary buffer after the alternate screen is left
+2026-09-13T11:40:36.7655254Z ok 36 - nothing is written to the primary buffer after the alternate screen is left
+2026-09-13T11:40:36.7656049Z   ---
+2026-09-13T11:40:36.7656373Z   duration_ms: 0.175063
+2026-09-13T11:40:36.7656718Z   type: 'test'
+2026-09-13T11:40:36.7657019Z   ...
+2026-09-13T11:40:37.3445781Z # Subtest: the shell fixture finds API paths and conditional headers independent of flag position
+2026-09-13T11:40:37.3447095Z ok 37 - the shell fixture finds API paths and conditional headers independent of flag position
+2026-09-13T11:40:37.3447921Z   ---
+2026-09-13T11:40:37.3448256Z   duration_ms: 9.47344
+2026-09-13T11:40:37.3448614Z   type: 'test'
+2026-09-13T11:40:37.3448929Z   ...
+2026-09-13T11:40:37.3465444Z # Subtest: the shared fixture makes conditional core observations free and pins rate_limit core wrong
+2026-09-13T11:40:37.3468078Z ok 38 - the shared fixture makes conditional core observations free and pins rate_limit core wrong
+2026-09-13T11:40:37.3469004Z   ---
+2026-09-13T11:40:37.3469803Z   duration_ms: 290.406271
+2026-09-13T11:40:37.3470213Z   type: 'test'
+2026-09-13T11:40:37.3470534Z   ...
+2026-09-13T11:40:37.3471397Z # Subtest: the shell fixture routes opt-in oracle GraphQL JSON input with independent charged evidence
+2026-09-13T11:40:37.3472682Z ok 39 - the shell fixture routes opt-in oracle GraphQL JSON input with independent charged evidence
+2026-09-13T11:40:37.3473412Z   ---
+2026-09-13T11:40:37.3473739Z   duration_ms: 46.572162
+2026-09-13T11:40:37.3474146Z   type: 'test'
+2026-09-13T11:40:37.3474455Z   ...
+2026-09-13T11:40:37.3475485Z # Subtest: fixture token lookup is synthetic and local; user responses expose the chosen principal
+2026-09-13T11:40:37.3476250Z ok 40 - fixture token lookup is synthetic and local; user responses expose the chosen principal
+2026-09-13T11:40:37.3476688Z   ---
+2026-09-13T11:40:37.3476888Z   duration_ms: 83.751086
+2026-09-13T11:40:37.3477130Z   type: 'test'
+2026-09-13T11:40:37.3477329Z   ...
+2026-09-13T11:40:37.3477806Z # Subtest: oracle token lookup emits only synthetic credentials without recording an HTTP request
+2026-09-13T11:40:37.3478517Z ok 41 - oracle token lookup emits only synthetic credentials without recording an HTTP request
+2026-09-13T11:40:37.3478966Z   ---
+2026-09-13T11:40:37.3479173Z   duration_ms: 42.332295
+2026-09-13T11:40:37.3479413Z   type: 'test'
+2026-09-13T11:40:37.3479614Z   ...
+2026-09-13T11:40:37.3480060Z # Subtest: a workflows fixture completes independently when it owns the only HTTP slot
+2026-09-13T11:40:37.3480721Z ok 42 - a workflows fixture completes independently when it owns the only HTTP slot
+2026-09-13T11:40:37.3481130Z   ---
+2026-09-13T11:40:37.3481337Z   duration_ms: 41.346352
+2026-09-13T11:40:37.3481572Z   type: 'test'
+2026-09-13T11:40:37.3481776Z   ...
+2026-09-13T11:40:47.7658588Z # Subtest: twelve real panes share one startup probe and every active pane progresses safely
+2026-09-13T11:40:47.7660290Z ok 43 - twelve real panes share one startup probe and every active pane progresses safely
+2026-09-13T11:40:47.7661374Z   ---
+2026-09-13T11:40:47.7661726Z   duration_ms: 10079.745354
+2026-09-13T11:40:47.7661981Z   type: 'test'
+2026-09-13T11:40:47.7662186Z   ...
+2026-09-13T11:40:58.7851042Z # Subtest: twelve mixed active panes pace core and GraphQL without consuming either reserve
+2026-09-13T11:40:58.7852364Z ok 44 - twelve mixed active panes pace core and GraphQL without consuming either reserve
+2026-09-13T11:40:58.7852957Z   ---
+2026-09-13T11:40:58.7853184Z   duration_ms: 11012.043122
+2026-09-13T11:40:58.7853716Z   type: 'test'
+2026-09-13T11:40:58.7853925Z   ...
+2026-09-13T11:41:12.3273434Z # Subtest: manual refresh wins a held lane without stacking repeated requests
+2026-09-13T11:41:12.3277532Z not ok 45 - manual refresh wins a held lane without stacking repeated requests
+2026-09-13T11:41:12.3278333Z   ---
+2026-09-13T11:41:12.3278761Z   duration_ms: 13546.096557
+2026-09-13T11:41:12.3279213Z   type: 'test'
+2026-09-13T11:41:12.3279854Z   location: '/home/runner/work/gh-glance/gh-glance/test/pty/governor.test.mjs:281:1'
+2026-09-13T11:41:12.3280604Z   failureType: 'testCodeFailure'
+2026-09-13T11:41:12.3281031Z   error: |-
+2026-09-13T11:41:12.3316241Z     lower-priority work started before manual refresh: {"events":[{"sequence":1,"type":"start","at":1789299658872,"pid":13129,"ownerPid":13121,"pane":"manual","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":1,"type":"end","at":1789299658873,"pid":13129,"ownerPid":13121,"pane":"manual","argv":["--version"]},{"sequence":2,"type":"start","at":1789299659310,"pid":13158,"ownerPid":13121,"pane":"manual","argv":["api","-i","graphql","--input","-","--hostname","github.com"],"graphqlOperation":"graphql.observer","cost":{"core":0,"graphql":1},"before":{"graphql":{"limit":10000,"used":0,"remaining":10000,"resetMs":1789300258775}},"after":{"graphql":{"limit":10000,"used":1,"remaining":9999,"resetMs":1789300258775}}},{"sequence":2,"type":"end","at":1789299659311,"pid":13158,"ownerPid":13121,"pane":"manual","argv":["api","-i","graphql","--input","-","--hostname","github.com"]},{"sequence":3,"type":"start","at":1789299659521,"pid":13193,"ownerPid":13185,"pane":"competitor","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":3,"type":"end","at":1789299659522,"pid":13193,"ownerPid":13185,"pane":"competitor","argv":["--version"]},{"sequence":4,"type":"start","at":1789299670048,"pid":13630,"ownerPid":13185,"pane":"competitor","argv":["api","-i","graphql","--input","-","--hostname","github.com"],"graphqlOperation":"graphql.observer","cost":{"core":0,"graphql":1},"before":{"graphql":{"limit":10000,"used":1,"remaining":9999,"resetMs":1789300258775}},"after":{"graphql":{"limit":10000,"used":2,"remaining":9998,"resetMs":1789300258775}}},{"sequence":4,"type":"end","at":1789299670049,"pid":13630,"ownerPid":13185,"pane":"competitor","argv":["api","-i","graphql","--input","-","--hostname","github.com"]},{"sequence":5,"type":"start","at":1789299670325,"pid":13648,"ownerPid":13185,"pane":"competitor","argv":["api","-i","user","--hostname","github.com","-H","If-None-Match: \"fixture-201d2c8844669301\""],"cost":{"core":0,"graphql":0}},{"sequence":5,"type":"end","at":1789299670326,"pid":13648,"ownerPid":13185,"pane":"competitor","argv":["api","-i","user","--hostname","github.com","-H","If-None-Match: \"fixture-201d2c8844669301\""],"status":304},{"sequence":6,"type":"start","at":1789299670581,"pid":13669,"ownerPid":13185,"pane":"competitor","argv":["api","-i","repos/acme/widget/actions/runs?exclude_pull_requests=true&per_page=60","--hostname","github.com","--jq","[.workflow_runs[] | {databaseId: .id, displayTitle: .display_title, workflowName: .name, number: .run_number, headBranch: .head_branch, status, conclusion, startedAt: .run_started_at, updatedAt: .updated_at, workflowId: .workflow_id, url: .html_url}]"],"cost":{"core":1,"graphql":0},"before":{"core":{"limit":10000,"used":0,"remaining":10000,"resetMs":1789300258775}},"after":{"core":{"limit":10000,"used":1,"remaining":9999,"resetMs":1789300258775}}},{"sequence":6,"type":"end","at":1789299671383,"pid":13669,"ownerPid":13185,"pane":"competitor","argv":["api","-i","repos/acme/widget/actions/runs?exclude_pull_requests=true&per_page=60","--hostname","github.com","--jq","[.workflow_runs[] | {databaseId: .id, displayTitle: .display_title, workflowName: .name, number: .run_number, headBranch: .head_branch, status, conclusion, startedAt: .run_started_at, updatedAt: .updated_at, workflowId: .workflow_id, url: .html_url}]"],"status":200},{"sequence":7,"type":"start","at":1789299671475,"pid":13713,"ownerPid":13121,"pane":"manual","argv":["api","-i","repos/acme/widget/actions/runs?exclude_pull_requests=true&per_page=60","--hostname","github.com","--jq","[.workflow_runs[] | {databaseId: .id, displayTitle: .display_title, workflowName: .name, number: .run_number, headBranch: .head_branch, status, conclusion, startedAt: .run_started_at, updatedAt: .updated_at, workflowId: .workflow_id, url: .html_url}]"],"cost":{"core":1,"graphql":0},"before":{"core":{"limit":10000,"used":1,"remaining":9999,"resetMs":1789300258775}},"after":{"core":{"limit":10000,"used":2,"remaining":9998,"resetMs":1789300258775}}}],"held":{"0c20e633-dcb3-46f2-9c9f-9f38329b45ae":{"leaseId":"705b9732-53c3-4107-8cbf-c3cc2d2ffd86","tab":"actions","priority":"manual","costs":{"core":1,"graphql":0},"requestedAt":1789299659407,"expiresAt":1789299749407},"52afd9b9-404c-4463-ad96-aeb5ab687037":{"leaseId":"22cc56d3-5239-473a-8e88-c9df3e3370a5","tab":"actions","priority":"tab-switch","costs":{"core":1,"graphql":0},"requestedAt":1789299659923,"expiresAt":1789299749923}},"reservations":{"reservation:6a608119-7ab8-4d24-8d73-9ad6062f024b":{"leaseId":"6a608119-7ab8-4d24-8d73-9ad6062f024b","intentId":"6a608119-7ab8-4d24-8d73-9ad6062f024b","costs":{"core":1,"graphql":0},"actualCosts":null,"accountedCosts":{"core":1,"graphql":0},"notBefore":1789299592775,"status":"started","epochs":{"core":null,"graphql":null},"startedAt":1789299592775,"completedAt":null,"outcome":null},"reservation:028c58ab-bcbc-4634-abed-b89817783627":{"leaseId":"028c58ab-bcbc-4634-abed-b89817783627","intentId":"028c58ab-bcbc-4634-abed-b89817783627","costs":{"core":1,"graphql":0},"actualCosts":{"core":0,"graphql":0},"accountedCosts":{"core":0,"graphql":0},"notBefore":1789299670282,"status":"completed","epochs":{"core":"10000:1789299668000","graphql":null},"startedAt":1789299670282,"completedAt":1789299670341,"outcome":"measured-success"},"reservation:0c20e633-dcb3-46f2-9c9f-9f38329b45ae":{"leaseId":"705b9732-53c3-4107-8cbf-c3cc2d2ffd86","intentId":"0c20e633-dcb3-46f2-9c9f-9f38329b45ae","costs":{"core":1,"graphql":0},"actualCosts":null,"accountedCosts":{"core":0,"graphql":0},"notBefore":1789299670349,"status":"started","epochs":{"core":"10000:1789300258000","graphql":null},"startedAt":1789299670472,"completedAt":null,"outcome":null},"reservation:52afd9b9-404c-4463-ad96-aeb5ab687037":{"leaseId":"22cc56d3-5239-473a-8e88-c9df3e3370a5","intentId":"52afd9b9-404c-4463-ad96-aeb5ab687037","costs":{"core":1,"graphql":0},"actualCosts":{"core":1,"graphql":0},"accountedCosts":{"core":1,"graphql":0},"notBefore":1789299670422.4563,"status":"completed","epochs":{"core":"10000:1789300258000","graphql":null},"startedAt":1789299670440,"completedAt":1789299671391,"outcome":"measured-success"}},"leases":{"705b9732-53c3-4107-8cbf-c3cc2d2ffd86":{"expiresAt":1789299760024,"floorMs":40000,"activeTab":"actions","phaseSeed":{"seed":"705b9732-53c3-4107-8cbf-c3cc2d2ffd86","registeredAt":1789299659258},"demand":{"core":1,"graphql":0}},"22cc56d3-5239-473a-8e88-c9df3e3370a5":{"expiresAt":1789299760365,"floorMs":40000,"activeTab":"actions","phaseSeed":{"seed":"22cc56d3-5239-473a-8e88-c9df3e3370a5","registeredAt":1789299659917},"demand":{"core":1,"graphql":0}}}}
+2026-09-13T11:41:12.3340902Z     + actual - expected
+2026-09-13T11:41:12.3341153Z     
+2026-09-13T11:41:12.3341357Z     + 'competitor'
+2026-09-13T11:41:12.3341588Z     - 'manual'
+2026-09-13T11:41:12.3341792Z     
+2026-09-13T11:41:12.3341992Z   code: 'ERR_ASSERTION'
+2026-09-13T11:41:12.3342454Z   name: 'AssertionError'
+2026-09-13T11:41:12.3342710Z   expected: 'manual'
+2026-09-13T11:41:12.3342938Z   actual: 'competitor'
+2026-09-13T11:41:12.3343174Z   operator: 'strictEqual'
+2026-09-13T11:41:12.3343415Z   stack: |-
+2026-09-13T11:41:12.3343955Z     TestContext.<anonymous> (file:///home/runner/work/gh-glance/gh-glance/test/pty/governor.test.mjs:345:10)
+2026-09-13T11:41:12.3344667Z     process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-09-13T11:41:12.3345577Z     async Test.run (node:internal/test_runner/test:1054:7)
+2026-09-13T11:41:12.3346067Z     async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+2026-09-13T11:41:12.3346605Z   ...
+2026-09-13T11:41:17.3772835Z # Subtest: twelve exhausted core panes share one visible hold and make no REST data calls
+2026-09-13T11:41:17.3774039Z ok 46 - twelve exhausted core panes share one visible hold and make no REST data calls
+2026-09-13T11:41:17.3774715Z   ---
+2026-09-13T11:41:17.3775277Z   duration_ms: 5051.197426
+2026-09-13T11:41:17.3775695Z   type: 'test'
+2026-09-13T11:41:17.3776007Z   ...
+2026-09-13T11:41:39.1210439Z # Subtest: a held core pane switches to Issues and spends only GraphQL
+2026-09-13T11:41:39.1347528Z ok 47 - a held core pane switches to Issues and spends only GraphQL
+2026-09-13T11:41:39.1479826Z   ---
+2026-09-13T11:41:39.1535638Z   duration_ms: 21706.569319
+2026-09-13T11:41:39.1584713Z   type: 'test'
+2026-09-13T11:41:39.1615337Z   ...
+2026-09-13T11:42:19.4053632Z # Subtest: a real reset resumes all panes, while atomic external burn limits the next epoch
+2026-09-13T11:42:19.4055104Z ok 48 - a real reset resumes all panes, while atomic external burn limits the next epoch
+2026-09-13T11:42:19.4056071Z   ---
+2026-09-13T11:42:19.4056412Z   duration_ms: 40323.424542
+2026-09-13T11:42:19.4056790Z   type: 'test'
+2026-09-13T11:42:19.4057096Z   ...
+2026-09-13T11:43:32.6033451Z # Subtest: probe and reservation owner crashes recover without optimistic spend
+2026-09-13T11:43:32.6034555Z ok 49 - probe and reservation owner crashes recover without optimistic spend
+2026-09-13T11:43:32.6035542Z   ---
+2026-09-13T11:43:32.6035926Z   duration_ms: 73200.172446
+2026-09-13T11:43:32.6036338Z   type: 'test'
+2026-09-13T11:43:32.6036667Z   ...
+2026-09-13T11:43:33.1551377Z # Subtest: GQL-01 the observer and a data page are priced apart, and both meter themselves
+2026-09-13T11:43:33.1552743Z ok 50 - GQL-01 the observer and a data page are priced apart, and both meter themselves
+2026-09-13T11:43:33.1553533Z   ---
+2026-09-13T11:43:33.1553913Z   duration_ms: 79.150094
+2026-09-13T11:43:33.1554389Z   type: 'test'
+2026-09-13T11:43:33.1556151Z   ...
+2026-09-13T11:43:33.1591914Z # Subtest: GQL-03 cursors advance explicitly and each page reports its own completeness
+2026-09-13T11:43:33.1593184Z ok 51 - GQL-03 cursors advance explicitly and each page reports its own completeness
+2026-09-13T11:43:33.1593880Z   ---
+2026-09-13T11:43:33.1594203Z   duration_ms: 78.874128
+2026-09-13T11:43:33.1594583Z   type: 'test'
+2026-09-13T11:43:33.1595195Z   ...
+2026-09-13T11:43:33.1595860Z # Subtest: GQL-04 the fixture refuses a document the app should never send
+2026-09-13T11:43:33.1596801Z ok 52 - GQL-04 the fixture refuses a document the app should never send
+2026-09-13T11:43:33.1597397Z   ---
+2026-09-13T11:43:33.1597718Z   duration_ms: 120.872821
+2026-09-13T11:43:33.1598087Z   type: 'test'
+2026-09-13T11:43:33.1598413Z   ...
+2026-09-13T11:43:33.1599180Z # Subtest: GQL-06 the stateful fixture debits GraphQL by document and never by command shape
+2026-09-13T11:43:33.1600322Z ok 53 - GQL-06 the stateful fixture debits GraphQL by document and never by command shape
+2026-09-13T11:43:33.1601021Z   ---
+2026-09-13T11:43:33.1601345Z   duration_ms: 88.03567
+2026-09-13T11:43:33.1601711Z   type: 'test'
+2026-09-13T11:43:33.1602019Z   ...
+2026-09-13T11:43:33.1602707Z # Subtest: GQL-03 a connection larger than one page is walked by explicit cursors
+2026-09-13T11:43:33.1603688Z ok 54 - GQL-03 a connection larger than one page is walked by explicit cursors
+2026-09-13T11:43:33.1604691Z   ---
+2026-09-13T11:43:33.1605255Z   duration_ms: 123.795077
+2026-09-13T11:43:33.1605633Z   type: 'test'
+2026-09-13T11:43:33.1605947Z   ...
+2026-09-13T11:43:46.1653832Z # Subtest: ID-05: a discoverable live legacy lease requires restart and starts no GitHub work
+2026-09-13T11:43:46.1690932Z ok 55 - ID-05: a discoverable live legacy lease requires restart and starts no GitHub work
+2026-09-13T11:43:46.1691716Z   ---
+2026-09-13T11:43:46.1692127Z   duration_ms: 4317.273207
+2026-09-13T11:43:46.1692856Z   type: 'test'
+2026-09-13T11:43:46.1693401Z   ...
+2026-09-13T11:43:46.1694355Z # Subtest: ID-05: expired legacy leases do not forgive started uncertainty or a future hold
+2026-09-13T11:43:46.1696119Z ok 56 - ID-05: expired legacy leases do not forgive started uncertainty or a future hold
+2026-09-13T11:43:46.1696945Z   ---
+2026-09-13T11:43:46.1697394Z   duration_ms: 4312.000767
+2026-09-13T11:43:46.1698113Z   type: 'test'
+2026-09-13T11:43:46.1698465Z   ...
+2026-09-13T11:43:46.1699195Z # Subtest: ID-05: corrupt legacy protocol fails closed without replacing its evidence
+2026-09-13T11:43:46.1700291Z ok 57 - ID-05: corrupt legacy protocol fails closed without replacing its evidence
+2026-09-13T11:43:46.1700956Z   ---
+2026-09-13T11:43:46.1701279Z   duration_ms: 4312.320879
+2026-09-13T11:43:46.1701644Z   type: 'test'
+2026-09-13T11:43:46.1701980Z   ...
+2026-09-13T11:44:18.5126478Z # Subtest: ID-08: two real panes serialize all four tabs and control requests through the shared permit
+2026-09-13T11:44:18.5138016Z ok 58 - ID-08: two real panes serialize all four tabs and control requests through the shared permit
+2026-09-13T11:44:18.5140733Z   ---
+2026-09-13T11:44:18.5141476Z   duration_ms: 29158.91833
+2026-09-13T11:44:18.5142036Z   type: 'test'
+2026-09-13T11:44:18.5142370Z   ...
+2026-09-13T11:44:18.5143146Z # Subtest: cold identity verification keeps quit responsive and stops its owned HTTP child
+2026-09-13T11:44:18.5144301Z ok 59 - cold identity verification keeps quit responsive and stops its owned HTTP child
+2026-09-13T11:44:18.5145272Z   ---
+2026-09-13T11:44:18.5145595Z   duration_ms: 1138.490462
+2026-09-13T11:44:18.5145981Z   type: 'test'
+2026-09-13T11:44:18.5146294Z   ...
+2026-09-13T11:44:18.5147115Z # Subtest: SIGTERM during cold identity verification restores the terminal and stops its HTTP child
+2026-09-13T11:44:18.5148345Z ok 60 - SIGTERM during cold identity verification restores the terminal and stops its HTTP child
+2026-09-13T11:44:18.5149086Z   ---
+2026-09-13T11:44:18.5149408Z   duration_ms: 2058.782918
+2026-09-13T11:44:18.5149773Z   type: 'test'
+2026-09-13T11:44:18.5150095Z   ...
+2026-09-13T11:44:19.5436638Z # Subtest: quit during cold identity completion lock contention stays prompt and preserves uncertainty
+2026-09-13T11:44:19.5437871Z ok 61 - quit during cold identity completion lock contention stays prompt and preserves uncertainty
+2026-09-13T11:44:19.5438553Z   ---
+2026-09-13T11:44:19.5438854Z   duration_ms: 1033.929242
+2026-09-13T11:44:19.5439201Z   type: 'test'
+2026-09-13T11:44:19.5439507Z   ...
+2026-09-13T11:45:02.5606020Z # Subtest: ID-02/03/06: switched accounts fence delayed rows, settle the old ledger, and isolate restart caches
+2026-09-13T11:45:02.5607698Z ok 62 - ID-02/03/06: switched accounts fence delayed rows, settle the old ledger, and isolate restart caches
+2026-09-13T11:45:02.5608483Z   ---
+2026-09-13T11:45:02.5608802Z   duration_ms: 42970.299968
+2026-09-13T11:45:02.5609200Z   type: 'test'
+2026-09-13T11:45:02.5609529Z   ...
+2026-09-13T11:45:43.8967288Z # Subtest: keys are advertised only when stdin is interactive
+2026-09-13T11:45:43.8968635Z ok 63 - keys are advertised only when stdin is interactive
+2026-09-13T11:45:43.8969727Z   ---
+2026-09-13T11:45:43.8970414Z   duration_ms: 0.882167
+2026-09-13T11:45:43.8970988Z   type: 'test'
+2026-09-13T11:45:43.8971524Z   ...
+2026-09-13T11:45:43.8972176Z # Subtest: a digit switches tabs
+2026-09-13T11:45:43.8972903Z ok 64 - a digit switches tabs
+2026-09-13T11:45:43.8973520Z   ---
+2026-09-13T11:45:43.8974067Z   duration_ms: 0.186621
+2026-09-13T11:45:43.8977021Z   type: 'test'
+2026-09-13T11:45:43.8978022Z   ...
+2026-09-13T11:45:43.8982927Z # Subtest: q quits cleanly and leaves nothing on the primary buffer
+2026-09-13T11:45:43.8984071Z ok 65 - q quits cleanly and leaves nothing on the primary buffer
+2026-09-13T11:45:43.8985118Z   ---
+2026-09-13T11:45:43.8985704Z   duration_ms: 0.201303
+2026-09-13T11:45:43.8986291Z   type: 'test'
+2026-09-13T11:45:43.8986787Z   ...
+2026-09-13T11:45:43.8987719Z # Subtest: keyboard width changes persist across processes and defaults remove deviations
+2026-09-13T11:45:43.8989133Z ok 66 - keyboard width changes persist across processes and defaults remove deviations
+2026-09-13T11:45:43.8990497Z   ---
+2026-09-13T11:45:43.8991015Z   duration_ms: 16092.65496
+2026-09-13T11:45:43.8991508Z   type: 'test'
+2026-09-13T11:45:43.8991869Z   ...
+2026-09-13T11:45:43.8992404Z # Subtest: compact width-mode input is a persistence no-op
+2026-09-13T11:45:43.8993033Z ok 67 - compact width-mode input is a persistence no-op
+2026-09-13T11:45:43.8993523Z   ---
+2026-09-13T11:45:43.8994109Z   duration_ms: 8046.544938
+2026-09-13T11:45:43.8994661Z   type: 'test'
+2026-09-13T11:45:43.8995317Z   ...
+2026-09-13T11:45:43.8996186Z # Subtest: quitting the missing-remote prompt makes no repository change
+2026-09-13T11:45:43.8997326Z ok 68 - quitting the missing-remote prompt makes no repository change
+2026-09-13T11:45:43.8998127Z   ---
+2026-09-13T11:45:43.8998631Z   duration_ms: 0.225529
+2026-09-13T11:45:43.8999171Z   type: 'test'
+2026-09-13T11:45:43.8999661Z   ...
+2026-09-13T11:46:25.6933506Z # Subtest: capture parsing strips SGR input and records mouse shutdown before screen restore
+2026-09-13T11:46:25.6935219Z ok 69 - capture parsing strips SGR input and records mouse shutdown before screen restore
+2026-09-13T11:46:25.6936077Z   ---
+2026-09-13T11:46:25.6936519Z   duration_ms: 1.766408
+2026-09-13T11:46:25.6936968Z   type: 'test'
+2026-09-13T11:46:25.6937356Z   ...
+2026-09-13T11:46:25.6938031Z # Subtest: a split press stops resizing after an outside-header release
+2026-09-13T11:46:25.6939070Z ok 70 - a split press stops resizing after an outside-header release
+2026-09-13T11:46:25.6939736Z   ---
+2026-09-13T11:46:25.6941950Z   duration_ms: 8976.280629
+2026-09-13T11:46:25.6942356Z   type: 'test'
+2026-09-13T11:46:25.6942675Z   ...
+2026-09-13T11:46:25.6943225Z # dashboard=70; frame=0; width=1; preference=0 (50ms polls)
+2026-09-13T11:46:25.6945049Z # Subtest: SIGTERM disables active mouse reporting before restoring the screen
+2026-09-13T11:46:25.6946041Z ok 71 - SIGTERM disables active mouse reporting before restoring the screen
+2026-09-13T11:46:25.6946662Z   ---
+2026-09-13T11:46:25.6946994Z   duration_ms: 4044.429325
+2026-09-13T11:46:25.6947366Z   type: 'test'
+2026-09-13T11:46:25.6947675Z   ...
+2026-09-13T11:46:25.6948496Z # Subtest: an uncaught crash disables mouse reporting before printing its primary-buffer diagnostic
+2026-09-13T11:46:25.6949776Z ok 72 - an uncaught crash disables mouse reporting before printing its primary-buffer diagnostic
+2026-09-13T11:46:25.6954484Z   ---
+2026-09-13T11:46:25.6956998Z   duration_ms: 4043.51922
+2026-09-13T11:46:25.6957448Z   type: 'test'
+2026-09-13T11:46:25.6957778Z   ...
+2026-09-13T11:46:25.6958649Z # Subtest: remote setup disables mouse reporting before handing the terminal to gh
+2026-09-13T11:46:25.6962765Z ok 73 - remote setup disables mouse reporting before handing the terminal to gh
+2026-09-13T11:46:25.6963457Z   ---
+2026-09-13T11:46:25.6963785Z   duration_ms: 8296.96051
+2026-09-13T11:46:25.6964164Z   type: 'test'
+2026-09-13T11:46:25.6964479Z   ...
+2026-09-13T11:46:25.6965474Z # Subtest: outside, wheel, non-left, and move-without-press reports do not persist widths
+2026-09-13T11:46:25.6966740Z ok 74 - outside, wheel, non-left, and move-without-press reports do not persist widths
+2026-09-13T11:46:25.6967530Z   ---
+2026-09-13T11:46:25.6967951Z   duration_ms: 8052.164932
+2026-09-13T11:46:25.6968415Z   type: 'test'
+2026-09-13T11:46:25.6968829Z   ...
+2026-09-13T11:46:25.6969573Z # Subtest: otherwise valid mouse drags are a compact-layout persistence no-op
+2026-09-13T11:46:25.6971046Z ok 75 - otherwise valid mouse drags are a compact-layout persistence no-op
+2026-09-13T11:46:25.6971835Z   ---
+2026-09-13T11:46:25.6972253Z   duration_ms: 8045.598829
+2026-09-13T11:46:25.6972721Z   type: 'test'
+2026-09-13T11:46:25.6973124Z   ...
+2026-09-13T11:47:06.4908387Z # Subtest: a sustained run of 304s returns pacing without letting charged work outrun it
+2026-09-13T11:47:06.4914640Z ok 76 - a sustained run of 304s returns pacing without letting charged work outrun it
+2026-09-13T11:47:06.4915555Z   ---
+2026-09-13T11:47:06.4916030Z   duration_ms: 40442.077868
+2026-09-13T11:47:06.4916871Z   type: 'test'
+2026-09-13T11:47:06.4917193Z   ...
+2026-09-13T11:47:06.4917735Z # spent=15 allowance=13.3 data=11 conditional=7 elapsed=40000
+2026-09-13T11:47:27.7060184Z # Subtest: with no --repo, all-remotes inference routes API calls to github.com
+2026-09-13T11:47:27.7061694Z ok 77 - with no --repo, all-remotes inference routes API calls to github.com
+2026-09-13T11:47:27.7062857Z   ---
+2026-09-13T11:47:27.7063526Z   duration_ms: 0.901006
+2026-09-13T11:47:27.7064138Z   type: 'test'
+2026-09-13T11:47:27.7064690Z   ...
+2026-09-13T11:47:27.7065879Z # Subtest: a two-part --repo pins github.com despite conflicting environment targets
+2026-09-13T11:47:27.7067232Z ok 78 - a two-part --repo pins github.com despite conflicting environment targets
+2026-09-13T11:47:27.7068080Z   ---
+2026-09-13T11:47:27.7068602Z   duration_ms: 0.217357
+2026-09-13T11:47:27.7069144Z   type: 'test'
+2026-09-13T11:47:27.7069628Z   ...
+2026-09-13T11:47:27.7070382Z # Subtest: a host-qualified --repo routes BOTH halves to the host
+2026-09-13T11:47:27.7071412Z ok 79 - a host-qualified --repo routes BOTH halves to the host
+2026-09-13T11:47:27.7071960Z   ---
+2026-09-13T11:47:27.7072318Z   duration_ms: 0.158639
+2026-09-13T11:47:27.7072708Z   type: 'test'
+2026-09-13T11:47:27.7073068Z   ...
+2026-09-13T11:47:27.7076526Z # Subtest: the budget probe is routed to the host too
+2026-09-13T11:47:27.7078268Z ok 80 - the budget probe is routed to the host too
+2026-09-13T11:47:27.7078793Z   ---
+2026-09-13T11:47:27.7079489Z   duration_ms: 0.249695
+2026-09-13T11:47:27.7079972Z   type: 'test'
+2026-09-13T11:47:27.7080370Z   ...
+2026-09-13T11:50:23.9175269Z # Subtest: Checking colour state tolerates combined and split SGR sequences
+2026-09-13T11:50:23.9176523Z ok 81 - Checking colour state tolerates combined and split SGR sequences
+2026-09-13T11:50:23.9177273Z   ---
+2026-09-13T11:50:23.9177671Z   duration_ms: 1.724534
+2026-09-13T11:50:23.9178035Z   type: 'test'
+2026-09-13T11:50:23.9178346Z   ...
+2026-09-13T11:50:23.9179093Z # Subtest: a timer-driven list failure recovers in the same process
+2026-09-13T11:50:23.9180109Z ok 82 - a timer-driven list failure recovers in the same process
+2026-09-13T11:50:23.9180768Z   ---
+2026-09-13T11:50:23.9181104Z   duration_ms: 0.366111
+2026-09-13T11:50:23.9181574Z   type: 'test'
+2026-09-13T11:50:23.9181956Z   ...
+2026-09-13T11:50:23.9182587Z # Subtest: empty list output stays silent and retries on the next tick
+2026-09-13T11:50:23.9183562Z ok 83 - empty list output stays silent and retries on the next tick
+2026-09-13T11:50:23.9184229Z   ---
+2026-09-13T11:50:23.9184577Z   duration_ms: 10051.777105
+2026-09-13T11:50:23.9185203Z   type: 'test'
+2026-09-13T11:50:23.9185643Z   ...
+2026-09-13T11:50:23.9188179Z # Subtest: empty Security source output preserves rows and retries without an internal note
+2026-09-13T11:50:23.9190219Z ok 84 - empty Security source output preserves rows and retries without an internal note
+2026-09-13T11:50:23.9215846Z   ---
+2026-09-13T11:50:23.9226983Z   duration_ms: 23725.066675
+2026-09-13T11:50:23.9227398Z   type: 'test'
+2026-09-13T11:50:23.9227671Z   ...
+2026-09-13T11:50:23.9228316Z # Subtest: R bypasses a source auth backoff that r deliberately leaves in place
+2026-09-13T11:50:23.9229308Z ok 85 - R bypasses a source auth backoff that r deliberately leaves in place
+2026-09-13T11:50:23.9229835Z   ---
+2026-09-13T11:50:23.9230056Z   duration_ms: 0.511069
+2026-09-13T11:50:23.9230287Z   type: 'test'
+2026-09-13T11:50:23.9230774Z   ...
+2026-09-13T11:50:23.9231155Z # Subtest: Ink screen-reader rendering has a linear content smoke test
+2026-09-13T11:50:23.9231674Z ok 86 - Ink screen-reader rendering has a linear content smoke test
+2026-09-13T11:50:23.9232156Z   ---
+2026-09-13T11:50:23.9232461Z   duration_ms: 0.271699
+2026-09-13T11:50:23.9232828Z   type: 'test'
+2026-09-13T11:50:23.9233130Z   ...
+2026-09-13T11:50:23.9233588Z # Subtest: quitting aborts an in-flight open child instead of waiting for it
+2026-09-13T11:50:23.9234168Z ok 87 - quitting aborts an in-flight open child instead of waiting for it
+2026-09-13T11:50:23.9235249Z   ---
+2026-09-13T11:50:23.9235569Z   duration_ms: 0.160351
+2026-09-13T11:50:23.9235924Z   type: 'test'
+2026-09-13T11:50:23.9236215Z   ...
+2026-09-13T11:50:23.9236655Z # Subtest: selection stays visible and opens the same item after rows insert above it
+2026-09-13T11:50:23.9237289Z ok 88 - selection stays visible and opens the same item after rows insert above it
+2026-09-13T11:50:23.9237682Z   ---
+2026-09-13T11:50:23.9237896Z   duration_ms: 0.29906
+2026-09-13T11:50:23.9238125Z   type: 'test'
+2026-09-13T11:50:23.9238333Z   ...
+2026-09-13T11:50:23.9238679Z # Subtest: NO_COLOR retains an ASCII failure marker in the tab bar
+2026-09-13T11:50:23.9239160Z ok 89 - NO_COLOR retains an ASCII failure marker in the tab bar
+2026-09-13T11:50:23.9239487Z   ---
+2026-09-13T11:50:23.9239685Z   duration_ms: 0.35228
+2026-09-13T11:50:23.9239911Z   type: 'test'
+2026-09-13T11:50:23.9240113Z   ...
+2026-09-13T11:50:23.9240444Z # Subtest: a narrow auth failure starts with the recovery action
+2026-09-13T11:50:23.9240916Z ok 90 - a narrow auth failure starts with the recovery action
+2026-09-13T11:50:23.9241227Z   ---
+2026-09-13T11:50:23.9241488Z   duration_ms: 0.427023
+2026-09-13T11:50:23.9241768Z   type: 'test'
+2026-09-13T11:50:23.9242012Z   ...
+2026-09-13T11:50:23.9242763Z # Subtest: a cache-hydrated adapted check is static and settles before routine polls
+2026-09-13T11:50:23.9243833Z ok 91 - a cache-hydrated adapted check is static and settles before routine polls
+2026-09-13T11:50:23.9244418Z   ---
+2026-09-13T11:50:23.9244696Z   duration_ms: 0.29218
+2026-09-13T11:50:23.9245139Z   type: 'test'
+2026-09-13T11:50:23.9245419Z   ...
+2026-09-13T11:50:23.9246018Z # Subtest: short help keeps essential actions and points to the full reference
+2026-09-13T11:50:23.9246903Z ok 92 - short help keeps essential actions and points to the full reference
+2026-09-13T11:50:23.9247459Z   ---
+2026-09-13T11:50:23.9247736Z   duration_ms: 0.137957
+2026-09-13T11:50:23.9248057Z   type: 'test'
+2026-09-13T11:50:23.9248328Z   ...
+2026-09-13T11:50:29.4511090Z # Subtest: SEC-01 a confirmed secondary limit holds the shared transport for one ladder step
+2026-09-13T11:50:29.4512069Z ok 93 - SEC-01 a confirmed secondary limit holds the shared transport for one ladder step
+2026-09-13T11:50:29.4512816Z   ---
+2026-09-13T11:50:29.4513215Z   duration_ms: 5175.640023
+2026-09-13T11:50:29.4513775Z   type: 'test'
+2026-09-13T11:50:29.4514261Z   ...
+2026-09-13T11:50:34.1119820Z # Subtest: SEC-02 a permission failure holds neither the transport nor the ladder
+2026-09-13T11:50:34.1121089Z ok 94 - SEC-02 a permission failure holds neither the transport nor the ladder
+2026-09-13T11:50:34.1121767Z   ---
+2026-09-13T11:50:34.1122006Z   duration_ms: 4663.516441
+2026-09-13T11:50:34.1122265Z   type: 'test'
+2026-09-13T11:50:34.1122543Z   ...
+2026-09-13T11:51:09.3161255Z # Subtest: nothing is selected until you move
+2026-09-13T11:51:09.3162583Z ok 95 - nothing is selected until you move
+2026-09-13T11:51:09.3163044Z   ---
+2026-09-13T11:51:09.3163323Z   duration_ms: 1.269971
+2026-09-13T11:51:09.3163598Z   type: 'test'
+2026-09-13T11:51:09.3163804Z   ...
+2026-09-13T11:51:09.3195904Z # Subtest: moving the cursor marks exactly one row
+2026-09-13T11:51:09.3206143Z ok 96 - moving the cursor marks exactly one row
+2026-09-13T11:51:09.3206786Z   ---
+2026-09-13T11:51:09.3207182Z   duration_ms: 0.317237
+2026-09-13T11:51:09.3207656Z   type: 'test'
+2026-09-13T11:51:09.3208066Z   ...
+2026-09-13T11:51:09.3209177Z # Subtest: the cursor marker is plain ASCII so it survives NO_COLOR
+2026-09-13T11:51:09.3210257Z ok 97 - the cursor marker is plain ASCII so it survives NO_COLOR
+2026-09-13T11:51:09.3211214Z   ---
+2026-09-13T11:51:09.3211850Z   duration_ms: 0.221874
+2026-09-13T11:51:09.3212537Z   type: 'test'
+2026-09-13T11:51:09.3212884Z   ...
+2026-09-13T11:51:09.3213454Z # Subtest: selection does not disturb the terminal lifecycle
+2026-09-13T11:51:09.3214242Z ok 98 - selection does not disturb the terminal lifecycle
+2026-09-13T11:51:09.3214947Z   ---
+2026-09-13T11:51:09.3215278Z   duration_ms: 0.117567
+2026-09-13T11:51:09.3215960Z   type: 'test'
+2026-09-13T11:51:09.3216273Z   ...
+2026-09-13T11:51:09.3216843Z # Subtest: the frame keeps its geometry while a row is selected
+2026-09-13T11:51:09.3217651Z ok 99 - the frame keeps its geometry while a row is selected
+2026-09-13T11:51:09.3218183Z   ---
+2026-09-13T11:51:09.3218506Z   duration_ms: 0.201333
+2026-09-13T11:51:09.3218870Z   type: 'test'
+2026-09-13T11:51:09.3219184Z   ...
+2026-09-13T11:51:09.3219754Z # Subtest: opening a run uses at most one paced databaseId call
+2026-09-13T11:51:09.3220651Z ok 100 - opening a run uses at most one paced databaseId call
+2026-09-13T11:51:09.3221224Z   ---
+2026-09-13T11:51:09.3221561Z   duration_ms: 0.128834
+2026-09-13T11:51:09.3221975Z   type: 'test'
+2026-09-13T11:51:09.3222320Z   ...
+2026-09-13T11:51:14.9320997Z # Subtest: footer layout keeps semantic status and essential actions from 80 to 24 columns
+2026-09-13T11:51:14.9324016Z ok 101 - footer layout keeps semantic status and essential actions from 80 to 24 columns
+2026-09-13T11:51:14.9325655Z   ---
+2026-09-13T11:51:14.9326200Z   duration_ms: 5244.666462
+2026-09-13T11:51:14.9326775Z   type: 'test'
+2026-09-13T11:51:14.9327283Z   ...
+2026-09-13T11:53:03.4376155Z # Subtest: four ample panes explain a shared lane without moving the hint group
+2026-09-13T11:53:03.4377676Z ok 102 - four ample panes explain a shared lane without moving the hint group
+2026-09-13T11:53:03.4378982Z   ---
+2026-09-13T11:53:03.4379657Z   duration_ms: 43391.719073
+2026-09-13T11:53:03.4380283Z   type: 'test'
+2026-09-13T11:53:03.4380823Z   ...
+2026-09-13T11:53:03.4381665Z # Subtest: Setup and NO_COLOR footers keep explicit semantic labels
+2026-09-13T11:53:03.4382796Z ok 103 - Setup and NO_COLOR footers keep explicit semantic labels
+2026-09-13T11:53:03.4383618Z   ---
+2026-09-13T11:53:03.4384203Z   duration_ms: 4638.715482
+2026-09-13T11:53:03.4384960Z   type: 'test'
+2026-09-13T11:53:03.4385520Z   ...
+2026-09-13T11:53:03.4386342Z # Subtest: A folder with no remote enters setup before any coordination
+2026-09-13T11:53:03.4387439Z ok 104 - A folder with no remote enters setup before any coordination
+2026-09-13T11:53:03.4388092Z   ---
+2026-09-13T11:53:03.4388620Z   duration_ms: 626.108337
+2026-09-13T11:53:03.4389210Z   type: 'test'
+2026-09-13T11:53:03.4389751Z   ...
+2026-09-13T11:53:03.4390650Z # Subtest: ASCII profile keeps the same status label and a width-one marker
+2026-09-13T11:53:03.4391802Z ok 105 - ASCII profile keeps the same status label and a width-one marker
+2026-09-13T11:53:03.4392730Z   ---
+2026-09-13T11:53:03.4393090Z   duration_ms: 3806.963306
+2026-09-13T11:53:03.4393630Z   type: 'test'
+2026-09-13T11:53:03.4394134Z   ...
+2026-09-13T11:53:03.4395236Z # Subtest: delayed admitted startup animates Checking and settles to Watching
+2026-09-13T11:53:03.4396435Z ok 106 - delayed admitted startup animates Checking and settles to Watching
+2026-09-13T11:53:03.4397344Z   ---
+2026-09-13T11:53:03.4397821Z   duration_ms: 9312.45905
+2026-09-13T11:53:03.4398379Z   type: 'test'
+2026-09-13T11:53:03.4398868Z   ...
+2026-09-13T11:53:03.4399684Z # Subtest: a future adapted check stays still, shows next, and then settles
+2026-09-13T11:53:03.4400775Z ok 107 - a future adapted check stays still, shows next, and then settles
+2026-09-13T11:53:03.4401630Z   ---
+2026-09-13T11:53:03.4402118Z   duration_ms: 13434.119254
+2026-09-13T11:53:03.4402673Z   type: 'test'
+2026-09-13T11:53:03.4403150Z   ...
+2026-09-13T11:53:03.4404381Z # Subtest: a long future grant uses a coarse minute interval without moving full hints
+2026-09-13T11:53:03.4405857Z ok 108 - a long future grant uses a coarse minute interval without moving full hints
+2026-09-13T11:53:03.4406699Z   ---
+2026-09-13T11:53:03.4407261Z   duration_ms: 24242.832488
+2026-09-13T11:53:03.4407867Z   type: 'test'
+2026-09-13T11:53:03.4408350Z   ...
+2026-09-13T11:54:57.8155347Z # Subtest: manual refresh waits without motion and animates only after admission
+2026-09-13T11:54:57.8166839Z ok 109 - manual refresh waits without motion and animates only after admission
+2026-09-13T11:54:57.8183315Z   ---
+2026-09-13T11:54:57.8185409Z   duration_ms: 19785.77249
+2026-09-13T11:54:57.8185829Z   type: 'test'
+2026-09-13T11:54:57.8186153Z   ...
+2026-09-13T11:54:57.8186761Z # Subtest: a held core tab stays Paused while a selected GraphQL tab progresses
+2026-09-13T11:54:57.8187715Z ok 110 - a held core tab stays Paused while a selected GraphQL tab progresses
+2026-09-13T11:54:57.8188314Z   ---
+2026-09-13T11:54:57.8188636Z   duration_ms: 2678.73157
+2026-09-13T11:54:57.8188995Z   type: 'test'
+2026-09-13T11:54:57.8189316Z   ...
+2026-09-13T11:54:57.8189942Z # Subtest: corrupt, live-locked, and blocked storage pause with no data calls
+2026-09-13T11:54:57.8190870Z ok 111 - corrupt, live-locked, and blocked storage pause with no data calls
+2026-09-13T11:54:57.8191381Z   ---
+2026-09-13T11:54:57.8191596Z   duration_ms: 23528.896894
+2026-09-13T11:54:57.8191841Z   type: 'test'
+2026-09-13T11:54:57.8192035Z   ...
+2026-09-13T11:54:57.8192355Z # Subtest: a sub-threshold coordination blip stays silent
+2026-09-13T11:54:57.8192802Z ok 112 - a sub-threshold coordination blip stays silent
+2026-09-13T11:54:57.8193103Z   ---
+2026-09-13T11:54:57.8193309Z   duration_ms: 8234.789009
+2026-09-13T11:54:57.8193536Z   type: 'test'
+2026-09-13T11:54:57.8193733Z   ...
+2026-09-13T11:54:57.8194187Z # Subtest: a sustained coordination notice can appear and clear without overflowing the frame
+2026-09-13T11:54:57.8195124Z ok 113 - a sustained coordination notice can appear and clear without overflowing the frame
+2026-09-13T11:54:57.8195666Z   ---
+2026-09-13T11:54:57.8195882Z   duration_ms: 9170.442306
+2026-09-13T11:54:57.8196154Z   type: 'test'
+2026-09-13T11:54:57.8196422Z   ...
+2026-09-13T11:54:57.8196799Z # Subtest: a non-budget failure settles on Failed and stops status motion
+2026-09-13T11:54:57.8197336Z ok 114 - a non-budget failure settles on Failed and stops status motion
+2026-09-13T11:54:57.8197697Z   ---
+2026-09-13T11:54:57.8197900Z   duration_ms: 3397.317657
+2026-09-13T11:54:57.8198137Z   type: 'test'
+2026-09-13T11:54:57.8198328Z   ...
+2026-09-13T11:54:57.8198756Z # Subtest: incomplete Security observation preserves known rows and shows Limited
+2026-09-13T11:54:57.8199366Z ok 115 - incomplete Security observation preserves known rows and shows Limited
+2026-09-13T11:54:57.8199751Z   ---
+2026-09-13T11:54:57.8199941Z   duration_ms: 5451.261434
+2026-09-13T11:54:57.8200171Z   type: 'test'
+2026-09-13T11:54:57.8200369Z   ...
+2026-09-13T11:54:57.8200830Z # Subtest: linear screen-reader polling omits adapted Checking but retains manual Checking
+2026-09-13T11:54:57.8201946Z ok 116 - linear screen-reader polling omits adapted Checking but retains manual Checking
+2026-09-13T11:54:57.8202677Z   ---
+2026-09-13T11:54:57.8203026Z   duration_ms: 11348.093729
+2026-09-13T11:54:57.8203392Z   type: 'test'
+2026-09-13T11:54:57.8203709Z   ...
+2026-09-13T11:54:57.8204380Z # Subtest: linear screen-reader output retains startup, holds, failures, limits, stale rows, and errors
+2026-09-13T11:54:57.8205345Z ok 117 - linear screen-reader output retains startup, holds, failures, limits, stale rows, and errors
+2026-09-13T11:54:57.8205806Z   ---
+2026-09-13T11:54:57.8206010Z   duration_ms: 39854.954172
+2026-09-13T11:54:57.8206245Z   type: 'test'
+2026-09-13T11:54:57.8206441Z   ...
+2026-09-13T11:54:58.2666403Z # Subtest: the shared fixture recovers a dead private lock without using governor state
+2026-09-13T11:54:58.2674595Z ok 118 - the shared fixture recovers a dead private lock without using governor state
+2026-09-13T11:54:58.2685726Z   ---
+2026-09-13T11:54:58.2686323Z   duration_ms: 50.14227
+2026-09-13T11:54:58.2686960Z   type: 'test'
+2026-09-13T11:54:58.2687320Z   ...
+2026-09-13T11:54:58.2688216Z # Subtest: the shared fixture recovers an exact dead recovery marker
+2026-09-13T11:54:58.2689280Z ok 119 - the shared fixture recovers an exact dead recovery marker
+2026-09-13T11:54:58.2690104Z   ---
+2026-09-13T11:54:58.2690596Z   duration_ms: 42.188572
+2026-09-13T11:54:58.2691107Z   type: 'test'
+2026-09-13T11:54:58.2691755Z   ...
+2026-09-13T11:55:20.6459268Z # Subtest: manual refresh bursts create one unchanged held-sample probe demand
+2026-09-13T11:55:20.6460899Z ok 120 - manual refresh bursts create one unchanged held-sample probe demand
+2026-09-13T11:55:20.6461580Z   ---
+2026-09-13T11:55:20.6461945Z   duration_ms: 22385.973833
+2026-09-13T11:55:20.6462383Z   type: 'test'
+2026-09-13T11:55:20.6462761Z   ...
+2026-09-13T11:55:30.7360721Z # Subtest: a held core resource leaves both GraphQL tabs usable
+2026-09-13T11:55:30.7385749Z ok 121 - a held core resource leaves both GraphQL tabs usable
+2026-09-13T11:55:30.7415943Z   ---
+2026-09-13T11:55:30.7424542Z   duration_ms: 10085.05821
+2026-09-13T11:55:30.7425332Z   type: 'test'
+2026-09-13T11:55:30.7425807Z   ...
+2026-09-13T11:56:06.9773951Z # Subtest: a real reset gets one fresh probe then one phased active request per pane
+2026-09-13T11:56:06.9775615Z ok 122 - a real reset gets one fresh probe then one phased active request per pane
+2026-09-13T11:56:06.9915688Z   ---
+2026-09-13T11:56:06.9952998Z   duration_ms: 36205.728655
+2026-09-13T11:56:06.9995851Z   type: 'test'
+2026-09-13T11:56:07.0055907Z   ...
+2026-09-13T11:56:07.0060541Z # reset publication 1789300562468; slots 1789300564666,1789300565565.6287,1789300566465.4805; starts 1789300564712,1789300565611,1789300566511; horizon 1789300609267.266; lane 899.6329999999999
+2026-09-13T11:56:12.4649166Z # Subtest: twelve panes share probe ownership and start bounded phased work
+2026-09-13T11:56:12.4679596Z ok 123 - twelve panes share probe ownership and start bounded phased work
+2026-09-13T11:56:12.4755982Z   ---
+2026-09-13T11:56:12.4845409Z   duration_ms: 5476.633701
+2026-09-13T11:56:12.4965628Z   type: 'test'
+2026-09-13T11:56:12.5025714Z   ...
+2026-09-13T11:56:12.5302952Z # {"publicationAt":1789300569336,"progressHorizonAt":1789300578324,"laneInterval":900,"progressObserved":true,"preReleaseActive":1,"preReleaseEvents":[{"sequence":1,"type":"start","at":1789300567155,"pid":45510,"ownerPid":45361,"pane":"pane-5","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":2,"type":"start","at":1789300567157,"pid":45493,"ownerPid":45405,"pane":"pane-11","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":3,"type":"start","at":1789300567191,"pid":45521,"ownerPid":45390,"pane":"pane-6","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":1,"type":"end","at":1789300567199,"pid":45510,"ownerPid":45361,"pane":"pane-5","argv":["--version"]},{"sequence":2,"type":"end","at":1789300567202,"pid":45493,"ownerPid":45405,"pane":"pane-11","argv":["--version"]},{"sequence":3,"type":"end","at":1789300567235,"pid":45521,"ownerPid":45390,"pane":"pane-6","argv":["--version"]},{"sequence":4,"type":"start","at":1789300567270,"pid":45480,"ownerPid":45277,"pane":"pane-0","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":4,"type":"end","at":1789300567314,"pid":45480,"ownerPid":45277,"pane":"pane-0","argv":["--version"]},{"sequence":5,"type":"start","at":1789300567324,"pid":45538,"ownerPid":45346,"pane":"pane-3","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":6,"type":"start","at":1789300567329,"pid":45546,"ownerPid":45455,"pane":"pane-10","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":7,"type":"start","at":1789300567334,"pid":45544,"ownerPid":45306,"pane":"pane-2","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":8,"type":"start","at":1789300567336,"pid":45569,"ownerPid":45430,"pane":"pane-8","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":9,"type":"start","at":1789300567353,"pid":45554,"ownerPid":45305,"pane":"pane-1","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":5,"type":"end","at":1789300567367,"pid":45538,"ownerPid":45346,"pane":"pane-3","argv":["--version"]},{"sequence":10,"type":"start","at":1789300567371,"pid":45615,"ownerPid":45389,"pane":"pane-7","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":11,"type":"start","at":1789300567374,"pid":45576,"ownerPid":45442,"pane":"pane-9","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":12,"type":"start","at":1789300567376,"pid":45584,"ownerPid":45330,"pane":"pane-4","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":7,"type":"end","at":1789300567382,"pid":45544,"ownerPid":45306,"pane":"pane-2","argv":["--version"]},{"sequence":6,"type":"end","at":1789300567383,"pid":45546,"ownerPid":45455,"pane":"pane-10","argv":["--version"]},{"sequence":8,"type":"end","at":1789300567389,"pid":45569,"ownerPid":45430,"pane":"pane-8","argv":["--version"]},{"sequence":9,"type":"end","at":1789300567402,"pid":45554,"ownerPid":45305,"pane":"pane-1","argv":["--version"]},{"sequence":10,"type":"end","at":1789300567412,"pid":45615,"ownerPid":45389,"pane":"pane-7","argv":["--version"]},{"sequence":11,"type":"end","at":1789300567419,"pid":45576,"ownerPid":45442,"pane":"pane-9","argv":["--version"]},{"sequence":12,"type":"end","at":1789300567422,"pid":45584,"ownerPid":45330,"pane":"pane-4","argv":["--version"]},{"sequence":13,"type":"start","at":1789300569241,"pid":45972,"ownerPid":45390,"pane":"pane-6","argv":["api","-i","user","--hostname","github.com"],"cost":{"core":1,"graphql":0},"before":{"core":{"limit":5000,"used":0,"remaining":5000,"resetMs":1789304166927}},"after":{"core":{"limit":5000,"used":1,"remaining":4999,"resetMs":1789304166927}}},{"sequence":13,"type":"end","at":1789300569283,"pid":45972,"ownerPid":45390,"pane":"pane-6","argv":["api","-i","user","--hostname","github.com"],"status":200},{"sequence":14,"type":"start","at":1789300569639,"pid":46023,"ownerPid":45390,"pane":"pane-6","argv":["api","-i","graphql","--input","-","--hostname","github.com"],"graphqlOperation":"graphql.observer","cost":{"core":0,"graphql":1},"before":{"graphql":{"limit":5000,"used":0,"remaining":5000,"resetMs":1789304166927}},"after":{"graphql":{"limit":5000,"used":1,"remaining":4999,"resetMs":1789304166927}}},{"sequence":14,"type":"end","at":1789300569684,"pid":46023,"ownerPid":45390,"pane":"pane-6","argv":["api","-i","graphql","--input","-","--hostname","github.com"]},{"sequence":15,"type":"start","at":1789300571062,"pid":46225,"ownerPid":45361,"pane":"pane-5","argv":["api","-i","repos/{owner}/{repo}/actions/runs?exclude_pull_requests=true&per_page=60","--hostname","github.com","--jq","[.workflow_runs[] | {databaseId: .id, displayTitle: .display_title, workflowName: .name, number: .run_number, headBranch: .head_branch, status, conclusion, startedAt: .run_started_at, updatedAt: .updated_at, workflowId: .workflow_id, url: .html_url}]"],"cost":{"core":1,"graphql":0},"before":{"core":{"limit":5000,"used":1,"remaining":4999,"resetMs":1789304166927}},"after":{"core":{"limit":5000,"used":2,"remaining":4998,"resetMs":1789304166927}}},{"sequence":15,"type":"end","at":1789300571103,"pid":46225,"ownerPid":45361,"pane":"pane-5","argv":["api","-i","repos/{owner}/{repo}/actions/runs?exclude_pull_requests=true&per_page=60","--hostname","github.com","--jq","[.workflow_runs[] | {databaseId: .id, displayTitle: .display_title, workflowName: .name, number: .run_number, headBranch: .head_branch, status, conclusion, startedAt: .run_started_at, updatedAt: .updated_at, workflowId: .workflow_id, url: .html_url}]"],"status":200},{"sequence":16,"type":"start","at":1789300571959,"pid":46342,"ownerPid":45389,"pane":"pane-7","argv":["api","-i","repos/{owner}/{repo}/actions/runs?exclude_pull_requests=true&per_page=60","--hostname","github.com","--jq","[.workflow_runs[] | {databaseId: .id, displayTitle: .display_title, workflowName: .name, number: .run_number, headBranch: .head_branch, status, conclusion, startedAt: .run_started_at, updatedAt: .updated_at, workflowId: .workflow_id, url: .html_url}]"],"cost":{"core":1,"graphql":0},"before":{"core":{"limit":5000,"used":2,"remaining":4998,"resetMs":1789304166927}},"after":{"core":{"limit":5000,"used":3,"remaining":4997,"resetMs":1789304166927}}}],"fixtureLockArtifacts":{},"probes":[{"at":1789300569639,"pane":"pane-6"}],"runs":[{"at":1789300571062,"pane":"pane-5"},{"at":1789300571959,"pane":"pane-7"}],"maxDataConcurrency":1,"leases":{},"intents":{},"reservations":{"reservation:3510b6b7-4668-4ed4-889c-f98ed4950d8d":{"leaseId":"3510b6b7-4668-4ed4-889c-f98ed4950d8d","status":"started","notBefore":1789300569058},"reservation:ca0af7fe-cc91-449d-bf30-416bb98ae5f5":{"leaseId":"6373f77e-607f-476d-a5c3-c5cf57fcd574","status":"completed","notBefore":1789300571013},"reservation:4798cf24-9f33-4d87-b5ec-f82f09c00ac6":{"leaseId":"a8aa4ab5-bbc0-4173-9107-b0f623db6dd8","status":"completed","notBefore":1789300571912.2534}}}
+2026-09-13T11:56:20.8869879Z # Subtest: twelve held panes share one block probe instead of retrying per pane
+2026-09-13T11:56:20.8946315Z ok 124 - twelve held panes share one block probe instead of retrying per pane
+2026-09-13T11:56:20.8996699Z   ---
+2026-09-13T11:56:20.9049951Z   duration_ms: 8420.525682
+2026-09-13T11:56:20.9125629Z   type: 'test'
+2026-09-13T11:56:20.9205463Z   ...
+2026-09-13T11:57:24.1965192Z # Subtest: twelve panes preserve one runtime rate-limit block across the minute
+2026-09-13T11:57:24.1966431Z ok 125 - twelve panes preserve one runtime rate-limit block across the minute
+2026-09-13T11:57:24.1967133Z   ---
+2026-09-13T11:57:24.1967429Z   duration_ms: 63371.636712
+2026-09-13T11:57:24.1967722Z   type: 'test'
+2026-09-13T11:57:24.1967935Z   ...
+2026-09-13T11:57:24.1969076Z # core starts 1; probes 2; publication 1789300583391; registered undefined; first horizon 1789300620824; first lane 9717.416666666668; failure end 1789300585369; block observed 1789300585389; next probe 1789300643591; deadline 1789300688591; block rate-limit
+2026-09-13T11:57:24.2113613Z 1..125
+2026-09-13T11:57:24.2113979Z # tests 125
+2026-09-13T11:57:24.2114290Z # suites 0
+2026-09-13T11:57:24.2114573Z # pass 124
+2026-09-13T11:57:24.2115153Z # fail 1
+2026-09-13T11:57:24.2115367Z # cancelled 0
+2026-09-13T11:57:24.2115586Z # skipped 0
+2026-09-13T11:57:24.2115786Z # todo 0
+2026-09-13T11:57:24.2116019Z # duration_ms 1231710.893522
+2026-09-13T11:57:24.2255996Z ##[error]Process completed with exit code 1.
+2026-09-13T11:57:24.2399591Z Post job cleanup.
+2026-09-13T11:57:24.3218834Z [command]/usr/bin/git version
+2026-09-13T11:57:24.3263248Z git version 2.55.0
+2026-09-13T11:57:24.3297702Z Temporarily overriding HOME='/home/runner/work/_temp/e89c10fb-de6f-46c4-80e2-aed0dd5a8f0d' before making global git config changes
+2026-09-13T11:57:24.3299207Z Adding repository directory to the temporary git global config as a safe directory
+2026-09-13T11:57:24.3303114Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/gh-glance/gh-glance
+2026-09-13T11:57:24.3335060Z Removing SSH command configuration
+2026-09-13T11:57:24.3341154Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-09-13T11:57:24.3374683Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-09-13T11:57:24.3610565Z Removing HTTP extra header
+2026-09-13T11:57:24.3615361Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-09-13T11:57:24.3651438Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-09-13T11:57:24.3880348Z Removing includeIf entries pointing to credentials config files
+2026-09-13T11:57:24.3888342Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-09-13T11:57:24.3914206Z includeif.gitdir:/home/runner/work/gh-glance/gh-glance/.git.path
+2026-09-13T11:57:24.3915389Z includeif.gitdir:/home/runner/work/gh-glance/gh-glance/.git/worktrees/*.path
+2026-09-13T11:57:24.3916234Z includeif.gitdir:/github/workspace/.git.path
+2026-09-13T11:57:24.3916942Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-09-13T11:57:24.3923290Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/gh-glance/gh-glance/.git.path
+2026-09-13T11:57:24.3947595Z /home/runner/work/_temp/git-credentials-34233d3f-08af-4e4b-8a26-390ca3e3ea25.config
+2026-09-13T11:57:24.3957521Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/gh-glance/gh-glance/.git.path \/home\/runner\/work\/_temp\/git\-credentials\-34233d3f\-08af\-4e4b\-8a26\-390ca3e3ea25\.config
+2026-09-13T11:57:24.3994377Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/gh-glance/gh-glance/.git/worktrees/*.path
+2026-09-13T11:57:24.4017428Z /home/runner/work/_temp/git-credentials-34233d3f-08af-4e4b-8a26-390ca3e3ea25.config
+2026-09-13T11:57:24.4025908Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/gh-glance/gh-glance/.git/worktrees/*.path \/home\/runner\/work\/_temp\/git\-credentials\-34233d3f\-08af\-4e4b\-8a26\-390ca3e3ea25\.config
+2026-09-13T11:57:24.4065404Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-09-13T11:57:24.4087226Z /github/runner_temp/git-credentials-34233d3f-08af-4e4b-8a26-390ca3e3ea25.config
+2026-09-13T11:57:24.4093957Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-34233d3f\-08af\-4e4b\-8a26\-390ca3e3ea25\.config
+2026-09-13T11:57:24.4123952Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-09-13T11:57:24.4145797Z /github/runner_temp/git-credentials-34233d3f-08af-4e4b-8a26-390ca3e3ea25.config
+2026-09-13T11:57:24.4153516Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-34233d3f\-08af\-4e4b\-8a26\-390ca3e3ea25\.config
+2026-09-13T11:57:24.4186633Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-09-13T11:57:24.4426408Z Removing credentials config '/home/runner/work/_temp/git-credentials-34233d3f-08af-4e4b-8a26-390ca3e3ea25.config'
+2026-09-13T11:57:24.4628432Z Cleaning up orphan processes

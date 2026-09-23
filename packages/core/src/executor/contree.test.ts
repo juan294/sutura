@@ -835,7 +835,11 @@ describe('ContreeExecutor', () => {
           got: 'file:vendor/got-v12',
           'node-fetch': 'file:vendor/node-fetch-v3',
         },
+        pnpm: { patchedDependencies: { 'extract-zip@2.0.1': 'patches/extract-zip@2.0.1.patch' } },
       }));
+      await mkdir(join(dir, 'patches'), { recursive: true });
+      await writeFile(join(dir, 'patches', 'extract-zip@2.0.1.patch'), 'diff --git a/index.js b/index.js\n');
+      await writeFile(join(dir, 'patches', 'unreferenced.patch'), 'diff --git a/x b/x\n');
       await writeFile(join(dir, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n");
       await mkdir(join(dir, 'packages', 'core'), { recursive: true });
       await writeFile(join(dir, 'packages', 'core', 'package.json'), '{"name":"core"}\n');
@@ -897,6 +901,8 @@ describe('ContreeExecutor', () => {
         expect(entries).toContain(`vendor/${dependency}/package.json`);
         expect(entries).toContain(`vendor/${dependency}/index.js`);
       }
+      expect(entries).toContain('patches/extract-zip@2.0.1.patch');
+      expect(entries).not.toContain('patches/unreferenced.patch');
       expect(entries).not.toContain('fixtures/untrusted/package.json');
       expect(entries).not.toContain('node_modules/vitest/index.js');
       expect(entries).not.toContain('.env');
@@ -1215,6 +1221,17 @@ describe('ContreeExecutor', () => {
       }));
       await expect(executor.snapshot(scripted, 'base', DEPENDENCY_REPLACE))
         .rejects.toThrow(/lifecycle scripts are unsupported/u);
+
+      await writeFile(join(unsafe, 'package.json'), JSON.stringify({
+        pnpm: { patchedDependencies: { fixture: '../outside.patch' } },
+      }));
+      await expect(executor.snapshot(unsafe, 'base', DEPENDENCY_REPLACE))
+        .rejects.toThrow(/unsafe pnpm patch path/u);
+      await writeFile(join(unsafe, 'package.json'), JSON.stringify({
+        pnpm: { patchedDependencies: { fixture: 'patches/missing.patch' } },
+      }));
+      await expect(executor.snapshot(unsafe, 'base', DEPENDENCY_REPLACE))
+        .rejects.toThrow(/pnpm patch file does not exist: patches\/missing\.patch/u);
     } finally {
       await rm(unsafe, { recursive: true, force: true });
       await rm(scripted, { recursive: true, force: true });
