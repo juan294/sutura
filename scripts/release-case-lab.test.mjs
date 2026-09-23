@@ -276,11 +276,39 @@ test('check reads the controller release.json from git when gh is unauthenticate
     await buildConsistentTree(directory);
     const gitCalls = [];
     const base = simpleGitStub();
+    // A shallow CI checkout: the controller object is absent until fetched by sha.
+    let fetched = false;
     const dependencies = dependenciesFor(directory, {
       gh: async () => { throw new Error('gh: To get started with GitHub CLI, please run: gh auth login'); },
       git: async (args) => {
         gitCalls.push(args.join(' '));
-        if (args[0] === 'fetch' && args.includes('--depth=1')) return '';
+        if (args[0] === 'fetch' && args.includes('--depth=1')) { fetched = true; return ''; }
+        if (args[0] === 'show') {
+          assert.equal(args[1], `${NEWEST_COMMIT}:${FILES.release}`);
+          if (!fetched) throw new Error(`fatal: invalid object name '${NEWEST_COMMIT}'`);
+          return `${JSON.stringify({ version: '0.3.0', actionSha: NEWEST_COMMIT })}\n`;
+        }
+        return base(args);
+      },
+    });
+    const release = await check(dependencies);
+    assert.deepEqual(release, { tag: NEWEST_TAG, version: '0.3.0', commit: NEWEST_COMMIT });
+    assert.ok(gitCalls.includes(`fetch --quiet --depth=1 origin ${NEWEST_COMMIT}`), 'fetches the controller commit by sha');
+  });
+});
+
+// The pre-push hook checks the controller-pin commit before either it or the
+// bind commit it names has reached GitHub; the bind commit exists only locally.
+test('check reads a controller commit that exists only in the local repository', async () => {
+  await withTempDirectory(async (directory) => {
+    await buildConsistentTree(directory);
+    const base = simpleGitStub();
+    const dependencies = dependenciesFor(directory, {
+      gh: async () => { throw new Error(`gh: Not Found (HTTP 404) for ${NEWEST_COMMIT}`); },
+      git: async (args) => {
+        if (args[0] === 'fetch' && args.includes('--depth=1')) {
+          throw new Error(`fatal: remote error: upload-pack: not our ref ${NEWEST_COMMIT}`);
+        }
         if (args[0] === 'show') {
           assert.equal(args[1], `${NEWEST_COMMIT}:${FILES.release}`);
           return `${JSON.stringify({ version: '0.3.0', actionSha: NEWEST_COMMIT })}\n`;
@@ -290,7 +318,6 @@ test('check reads the controller release.json from git when gh is unauthenticate
     });
     const release = await check(dependencies);
     assert.deepEqual(release, { tag: NEWEST_TAG, version: '0.3.0', commit: NEWEST_COMMIT });
-    assert.ok(gitCalls.includes(`fetch --quiet --depth=1 origin ${NEWEST_COMMIT}`), 'fetches the controller commit by sha');
   });
 });
 

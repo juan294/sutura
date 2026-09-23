@@ -185,9 +185,19 @@ function withEvidenceUrl(text, url) {
   return text.replace(EVIDENCE_URL_PATTERN, `const EVIDENCE_URL = '${url}';`);
 }
 
-/** release.json as committed at the controller commit, read through the API so a shallow CI checkout needs no local object. */
+/**
+ * release.json as committed at the controller commit. The local object comes
+ * first: the pre-push hook checks the controller pin before the bind commit it
+ * names has reached GitHub. A shallow CI checkout lacks the object, so it falls
+ * back to the API and then to fetching the commit by sha.
+ */
 async function controllerReleaseJson(dependencies, sha) {
   const valid = (parsed) => (typeof parsed?.version === 'string' && typeof parsed?.actionSha === 'string' ? parsed : null);
+  try {
+    return valid(JSON.parse(await dependencies.git(['show', `${sha}:${FILES.release}`])));
+  } catch {
+    // Not in the local object store; read it from GitHub below.
+  }
   try {
     const encoded = await withTransportRetry(dependencies, () => dependencies.gh([
       'api', `repos/juan294/sutura/contents/${FILES.release}?ref=${sha}`, '--jq', '.content',
