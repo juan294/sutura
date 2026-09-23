@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-23
+
+### Fixed
+
+- The failing CI command now survives log truncation: the classifier's 20 KB front-cutting tail carries the nearest `Run`/`$` header past the byte cap instead of dropping it, and the adapter falls back to a custom-named step's `##[group]Run` header when the step's display name never matches. Fixtures are the real failed-step windows of 15 gated fleet runs; 16 of 17 measured gated fleet runs now yield a real command (#150).
+- The dependency snapshot now admits the files named in `pnpm.patchedDependencies`, with the same refusals as `file:`/vendor directories; preparation-failure excerpts are redacted before publication, and redaction now recognises npm `_authToken=`/`_auth=` values and `npm_` granular tokens.
+- The sandbox Git baseline now adds its manifest with `git add --force`, so files a repository tracks under its own `.gitignore` (the cc-rpi layout: `.claude/**`, `docs/agents`, `docs/research`) are no longer refused; the refusal stopped the run at infra-stop, and 9 of 19 local fleet checkouts track such paths (#152).
+- The Case Lab controller is now pinned to the commit that carries the release rather than the tag, so the demo's controller checkout reads a `release.json` naming the newest release instead of the previous one; the first live publish after every tag no longer fails.
+- The Case Lab release-check gate reads the controller commit's `release.json` from git when `gh` is unauthenticated, instead of failing on the GitHub contents API.
+- The release gate retries the `--unshallow` deepen fetch on `.git/shallow.lock` contention, fixing a collision when the pre-push hook runs concurrently on a shallow CI checkout.
+- The Case Lab release check deepens a shallow checkout before testing tag reachability; in CI a one-commit checkout made every earlier tag read as unreachable and the check refused the release squash with "no v* tag is reachable".
+
 ## [0.3.1] - 2026-09-17
 
 ### Added
