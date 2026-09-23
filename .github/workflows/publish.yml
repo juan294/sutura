@@ -60,6 +60,20 @@ jobs:
         run: |
           version=$(node --print "require('./packages/cli/package.json').version")
           echo "sutura@$version is already published."
+      - name: Wait for npm to serve the published version
+        # A provenance-signed publish is "being processed" for a few minutes;
+        # verifying at once fails with ETARGET (v0.3.1, v0.3.2).
+        run: |
+          version=$(node --print "require('./packages/cli/package.json').version")
+          for attempt in $(seq 1 30); do
+            if npm view "sutura@$version" version >/dev/null 2>&1; then
+              echo "npm serves sutura@$version after $attempt attempt(s)."
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "npm did not serve sutura@$version within 10 minutes." >&2
+          exit 1
       - name: Verify public npm and Action artifacts
         run: node scripts/test-public-install.mjs --candidate-evidence "$RUNNER_TEMP/candidate-install-evidence.json" > "$RUNNER_TEMP/public-install-evidence.json"
       - name: Compare candidate and public artifacts
