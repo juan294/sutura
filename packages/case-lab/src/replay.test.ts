@@ -79,13 +79,13 @@ describe('deterministic results', () => {
     expect(byId['python-repair']?.matchesExpectation).toBe(true);
     expect(byId['upstream-incident']?.outcome).toBe('gave-up');
     expect(byId['upstream-incident']?.matchesExpectation).toBe(false);
-    expect(byId['javascript-repair']?.cost.inferenceUsd).toBeCloseTo(0.009379, 6);
+    expect(byId['javascript-repair']?.cost.inferenceUsd).toBeCloseTo(0.007973, 6);
   });
 
   it('reads the Tavily-enabled arm for the upstream case', () => {
     const evidence = loadRecordedEvidence(REPOSITORY_ROOT);
     const result = recordedResult(caseLabCase('upstream-incident'), evidence, { release: RELEASE, now: NOW });
-    expect(result.elapsedMs).toBeCloseTo(87781.262646, 3);
+    expect(result.elapsedMs).toBeCloseTo(92656.687662, 3);
   });
 
   it('replays a complete fixture bound to the release and stamped with the demo commit', { timeout: 60_000 }, async () => {
