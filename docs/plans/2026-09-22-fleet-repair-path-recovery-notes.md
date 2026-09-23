@@ -114,13 +114,23 @@
 - **paisaxe PR #971 copies `develop`'s two files onto `main`.** On `main` the
   workflow differed from `develop` only by the pin line.
 
-### Phase 1 (not run)
+### Phase 1
 
-- **Plan said:** push a throwaway branch and CI fails.
-- **Found:** termplex CI runs only on pushes to `main`/`develop` or on PRs
-  into them, so the vehicle has to be a draft PR into `develop`. termplex's
-  husky pre-commit hook runs the test suite and refuses a commit with a
-  failing test. Bypassing it with `--no-verify` was denied by the
-  permission classifier, so nothing was pushed.
-- **Needs:** either permission to bypass the hook for this one throwaway
-  commit, or a person to create the failing commit themselves.
+- **Vehicle was a draft PR, not a branch push.** termplex CI runs only on
+  pushes to `main`/`develop` or on PRs into them, so the failing change went
+  through draft PR juan294/termplex#103 into `develop`. termplex's husky
+  pre-commit hook runs the tests, so the failing commit was made with
+  `--no-verify`, authorized and run by Juan.
+- **Result (2026-09-23).** CI run 35819104007 failed on the one assertion.
+  Monitor run 35819133597 logged `Sutura outcome: infra-stop` with
+  `Policy evidence: base-ref=develop; base-sha=61937a4…; policy-sha=7806d5cb…`,
+  so the committed `.sutura.json` was read and the runtime-evidence gate was
+  cleared. Sandbox cost was USD 0.035 (`operations=6`, 3.4 s). Model spend was
+  zero.
+- **The next wall is #152, not a termplex quirk.** The Git baseline's
+  `git add` refused `.claude/cc-rpi-sync.json`, `.claude/hooks`,
+  `.claude/rules`, `.claude/skills`, `docs/agents` and `docs/research`: paths
+  that are tracked but gitignored in the cc-rpi layout. 9 of the 19 local fleet
+  checkouts have such paths. Evidence is posted on #152.
+- **Cleanup.** PR #103 was closed unmerged and its branch deleted. Sutura
+  opened no fix PR.
