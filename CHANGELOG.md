@@ -8,6 +8,7 @@
 
 - A run with several failed steps diagnoses the one that finished first instead of whichever log came last. An aggregate gate job that only asserts other jobs' results always finishes after them, and its `echo` line was being reproduced green, which stopped four fleet runs at infra-stop. If the chosen command still reproduces green, the next failed step with a different command gets one more reproduction attempt (#151).
 - The Case Lab release gate reads the controller commit from the local repository before asking GitHub, so the push that completes a Case Lab cycle is no longer refused as unreadable.
+- The Case Lab release gate accepts a checkout that is already complete when it tries to deepen it; on `main`'s CI checkout `git fetch --unshallow` refused the repository as complete, and the pre-push contract test failed.
 
 ### Changed
 
