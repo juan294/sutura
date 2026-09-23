@@ -207,6 +207,23 @@ test('newest release tag retries the deepen fetch when another git process holds
   assert.deepEqual(sleepCalls, [2_000]);
 });
 
+// main CI run 35901365671: a concurrent hook deepened the checkout between the
+// shallow check and the fetch, and the fetch refused a complete repository.
+test('newest release tag accepts a checkout another process already deepened', async () => {
+  const git = async (args) => {
+    if (args[0] === 'ls-remote') return `${V020_COMMIT}\trefs/tags/v0.2.0`;
+    if (args[0] === 'rev-parse') return 'true\n';
+    if (args[0] === 'fetch' && args.includes('--unshallow')) {
+      throw new Error('Command failed: git fetch --quiet --unshallow origin main\nfatal: --unshallow on a complete repository does not make sense');
+    }
+    if (args[0] === 'fetch') return '';
+    if (args[0] === 'merge-base') return '';
+    throw new Error(`unstubbed git command: ${args.join(' ')}`);
+  };
+  const newest = await newestReleaseTag(dependenciesFor('.', { git }));
+  assert.equal(newest.tag, 'v0.2.0');
+});
+
 test('newest release tag resolves a lightweight tag (no ^{} line) to its ref sha', async () => {
   const git = async (args) => {
     if (args[0] === 'ls-remote') return `${V020_COMMIT}\trefs/tags/v0.2.0`;

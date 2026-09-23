@@ -31,6 +31,7 @@ state. It does not replace or rewrite any historical manifest.
 | Release | `release-v0.3.0-benchmark`  | Complete: 51/51 cases, 55/55 evaluations on candidate `c94eee20…`; USD 4.11234948 recorded (inference USD 0.15101, sandbox USD 3.96133948); zero false approvals. Sanitized evidence: `sutura-v0.3.0-release-benchmark-evidence.md`. |
 | Release | `release-v0.3.1-benchmark`  | Complete: 51/51 cases, 55/55 evaluations on candidate `e724f3b2…`; USD 3.77378306 recorded (inference USD 0.144067, sandbox USD 3.62971606); zero false approvals. Sanitized evidence: `sutura-v0.3.1-release-benchmark-evidence.md`. |
 | Release | `release-v0.3.2-benchmark`  | Complete: 51/51 cases, 55/55 evaluations on candidate `96d3d2ea…`; USD 4.30537814 recorded (inference USD 0.153345, sandbox USD 4.15203314); zero false approvals. Sanitized evidence: `sutura-v0.3.2-release-benchmark-evidence.md`. |
+| Release | `release-v0.3.3-benchmark`  | Prepared 2026-09-23 for the v0.3.3 cycle; unexecuted. First release benchmark with the GPT-6 Astra and TypeSafe Jev voices passed their keys, on candidate `d545a53e…`; cap USD 15.                                                |
 
 Each stage gates the next. Stop dependent jobs after a failed control or incomplete run. Paid Data Lab comparisons and other roadmap experiments need their own concrete requests; Stage 3 does not authorize them. The completed Stage 3 result does not authorize or establish acceptance for Stage 4.
 

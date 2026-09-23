@@ -102,7 +102,13 @@ export async function newestReleaseTag(dependencies) {
   // accept is one sitting at HEAD. Deepen before testing ancestry.
   const shallow = (await dependencies.git(['rev-parse', '--is-shallow-repository'])).trim() === 'true';
   if (shallow) {
-    await withTransportRetry(dependencies, () => dependencies.git(['fetch', '--quiet', '--unshallow', 'origin', 'main']));
+    try {
+      await withTransportRetry(dependencies, () => dependencies.git(['fetch', '--quiet', '--unshallow', 'origin', 'main']));
+    } catch (error) {
+      // A concurrent hook can deepen the checkout between the shallow check and
+      // this fetch; the history this function needs is then already present.
+      if (!/--unshallow on a complete repository/u.test(error instanceof Error ? error.message : String(error))) throw error;
+    }
   }
   const lines = tagsOutput.split('\n').filter(Boolean);
   // "<sha>\trefs/tags/v0.3.0" (annotated tag object) and "<sha>\trefs/tags/v0.3.0^{}" (peeled commit)
