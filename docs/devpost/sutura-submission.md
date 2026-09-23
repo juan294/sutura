@@ -2,7 +2,7 @@
 
 > AI agents make CI pass. Sutura verifies the fix, filters flaky failures, rejects unsafe shortcuts, and opens an evidence-backed PR for human review.
 
-Canonical package identity for this source: `sutura@0.3.2`.
+Canonical package identity for this source: `sutura@0.3.3`.
 
 ## Try it out
 

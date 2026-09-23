@@ -43,7 +43,7 @@
   layalga and cirujano, each trimmed to the failed step's time window, plus a
   `runs.json` manifest. `github/fleet-gated.captured.test.ts` holds the fleet
   table, the Cause B named test and the false-positive guard. archy was
-  verified locally only (`pnpm run test:release-evidence` recovered) and is not
+  verified locally only (a real command recovered) and is not
   committed.
   Why: no private-repository content goes into a public repository. 16 of the
   17 runs are verified; the sutura run has no fleet-log record to replay.

@@ -9,7 +9,7 @@ on:
         required: true
         type: string
       subject-sha:
-        description: Exact v0.3.2 candidate commit
+        description: Exact v0.3.3 candidate commit
         required: true
         type: string
       case-id:
@@ -104,6 +104,8 @@ jobs:
         env:
           NEBIUS_API_KEY: ${{ secrets.NEBIUS_API_KEY }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
           CONTREE_TOKEN: ${{ secrets.CONTREE_TOKEN }}
           CONTREE_PROJECT: ${{ vars.CONTREE_PROJECT }}
           CASE_ID: ${{ inputs.case-id }}

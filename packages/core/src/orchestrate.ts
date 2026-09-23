@@ -93,6 +93,8 @@ export interface FailedStepLog {
   jobName: string;
   stepName: string;
   log: string;
+  /** When the step finished; orders a multi-failure run (see rankFailedSteps). */
+  completedAt?: string;
 }
 
 export interface FailingWorkflowRun {
@@ -294,6 +296,33 @@ export function collectFailedLogs(steps: readonly FailedStepLog[]): string {
       return `[${jobName} / ${stepName}]\n${tail}`;
     })
     .join('\n\n');
+}
+
+/**
+ * Failed steps ordered earliest-finished first. An aggregate gate job that only
+ * asserts other jobs' results (`needs`) always finishes after the jobs it
+ * reflects, so ranking by time diagnoses the real failure instead of the gate
+ * (#151). Ties and steps without a time keep their job order.
+ */
+export function rankFailedSteps(steps: readonly FailedStepLog[]): FailedStepLog[] {
+  const time = ({ completedAt }: FailedStepLog) => {
+    const parsed = completedAt === undefined ? Number.NaN : Date.parse(completedAt);
+    return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+  };
+  return steps
+    .map((step, index) => ({ step, index, at: time(step) }))
+    .sort((left, right) => (left.at - right.at) || (left.index - right.index))
+    .map(({ step }) => step);
+}
+
+/**
+ * The diagnosis log with the chosen step last: the classifier reads the tail
+ * and the last command header, so that step's output and command lead.
+ */
+export function diagnosisLog(ranked: readonly FailedStepLog[], chosen: number): string {
+  const primary = ranked[chosen];
+  const others = ranked.filter((_, index) => index !== chosen);
+  return collectFailedLogs(primary === undefined ? others : [...others, primary]);
 }
 
 function safeSourcePath(path: string): string | null {
@@ -595,8 +624,15 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     note: 'Repository policy validated before provider execution',
   });
   const marker = attemptMarker(run.runId);
-  const failedLog = collectFailedLogs(run.failedSteps);
-  const mechanical = classifyMechanically(failedLog);
+  const rankedSteps = rankFailedSteps(run.failedSteps);
+  // Only a step whose own log shows a command can be diagnosed; otherwise the
+  // header carried past truncation would come from a different step.
+  const candidates = rankedSteps.flatMap((step, index) =>
+    classifyMechanically(collectFailedLogs([step])).failingCmd === 'unknown' ? [] : [index]);
+  let failedLog = diagnosisLog(rankedSteps, candidates[0] ?? 0);
+  let mechanical = candidates.length === 0
+    ? { ...classifyMechanically(failedLog), failingCmd: 'unknown' }
+    : classifyMechanically(failedLog);
   if (mechanical.failingCmd === 'unknown') {
     throw new OrchestrationError(
       'Failed-step logs do not contain an observed failing command',
@@ -686,19 +722,38 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     return caseFile;
   }
   try {
-  const reproduction = await executor.run(
-    setup.imageId,
-    sandboxTargetCommand(mechanical.failingCmd, runtime),
-    { cwd: SNAPSHOT_CWD },
-  );
-  stageLedger.record({
-    stage: 'reproduction',
-    attempt: 1,
-    network: 'disabled',
-    result: reproduction,
-    parentImageId: setup.imageId,
-    note: 'Observed failing command reproduction',
-  });
+  const reproduce = async (attempt: number) => {
+    const result = await executor.run(
+      setup.imageId,
+      sandboxTargetCommand(mechanical.failingCmd, runtime),
+      { cwd: SNAPSHOT_CWD },
+    );
+    stageLedger.record({
+      stage: 'reproduction',
+      attempt,
+      network: 'disabled',
+      result,
+      parentImageId: setup.imageId,
+      note: 'Observed failing command reproduction',
+    });
+    return result;
+  };
+  let reproduction = await reproduce(1);
+  if (reproduction.exitCode === 0) {
+    // One more candidate, not a loop: the next-earliest failed step whose
+    // observed command differs, for a chosen step that was flaky or only
+    // reflected another job's failure.
+    const next = candidates.slice(1)
+      .map((index) => diagnosisLog(rankedSteps, index))
+      .map((log) => ({ log, diagnosis: classifyMechanically(log) }))
+      .find(({ diagnosis }) =>
+        diagnosis.failingCmd !== 'unknown' && diagnosis.failingCmd !== mechanical.failingCmd);
+    if (next !== undefined) {
+      failedLog = next.log;
+      mechanical = next.diagnosis;
+      reproduction = await reproduce(2);
+    }
+  }
 
   if (reproduction.exitCode === 0) {
     const caseFile = noReproductionCaseFile(

@@ -47,10 +47,10 @@ retention branch is skipped entirely — the header is never carried at all.
 | gh-glance | `Run npm run test:pty` | 1 | A |
 | cirujano / sutura | `Run pnpm run test` | 1 / 4 | A |
 | layalga | `Run browser tests` | **0** | B |
-| archy | `Test release-evidence contracts` | **0** | B |
+| archy (private) | a custom display name | **0** | B |
 
-Layalga's real header is `##[group]Run pnpm …`; archy's is
-`##[group]Run pnpm run test:release-evidence`.
+Layalga's real header is `##[group]Run pnpm …`; archy's is likewise a
+`##[group]Run pnpm …` command header.
 
 **Do not use the step name as the command.** Layalga's display name
 "Run browser tests" matches `failingCommand`'s

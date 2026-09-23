@@ -35,9 +35,9 @@ concurrency:
 
 env:
   # Must equal packages/case-lab/release.json actionSha and the literal in the Action step.
-  SUTURA_ACTION_SHA: e724f3b22de79d6ab3f40cffa96de7776c256ce9
+  SUTURA_ACTION_SHA: 96d3d2eaacb66a6b56175508e44ef6dd54c01899
   # A juan294/sutura commit that contains packages/case-lab. Updated by `case-lab verify-pin`.
-  SUTURA_CONTROLLER_SHA: 88446895c17d9d9809ccedab5d47f1a8c4e7e29b
+  SUTURA_CONTROLLER_SHA: 4ce864ce300ad2d92b41c09f572712669136b2f5
   CASE_LAB_DAILY_RUN_CAP: '24'
   RESULTS_BRANCH: case-lab-results
 
@@ -181,7 +181,7 @@ jobs:
       - name: Run Sutura at the exact release
         id: sutura
         continue-on-error: true
-        uses: juan294/sutura/packages/action@e724f3b22de79d6ab3f40cffa96de7776c256ce9
+        uses: juan294/sutura/packages/action@96d3d2eaacb66a6b56175508e44ef6dd54c01899
         with:
           github-token: ${{ github.token }}
           run-id: ${{ steps.failed-ci.outputs.run-id }}

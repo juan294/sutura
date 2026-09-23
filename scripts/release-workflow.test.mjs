@@ -8,7 +8,7 @@ async function text(path) {
   return readFile(new URL(path, root), 'utf8');
 }
 
-test('all release-bearing packages and the public API declare 0.3.2', async () => {
+test('all release-bearing packages and the public API declare 0.3.3', async () => {
   const manifests = await Promise.all([
     'package.json',
     'packages/action/package.json',
@@ -18,8 +18,8 @@ test('all release-bearing packages and the public API declare 0.3.2', async () =
     'packages/evaluation/package.json',
     'packages/placebo/package.json',
   ].map(async (path) => JSON.parse(await text(path))));
-  assert.deepEqual(manifests.map(({ version }) => version), Array(7).fill('0.3.2'));
-  assert.match(await text('packages/core/src/index.ts'), /VERSION = '0\.3\.2'/u);
+  assert.deepEqual(manifests.map(({ version }) => version), Array(7).fill('0.3.3'));
+  assert.match(await text('packages/core/src/index.ts'), /VERSION = '0\.3\.3'/u);
 });
 
 test('ordinary CI runs deterministic release contract and candidate install checks', async () => {
@@ -78,6 +78,18 @@ test('publication validates tag and bundle before publish, then verifies public 
   assert.match(workflow, /id-token: write/u);
 });
 
+// v0.3.1 and v0.3.2 both published, then failed verification because npm was
+// still processing the provenance-signed package (ETARGET one second later).
+test('publication waits for npm to serve the version before verifying it', async () => {
+  const workflow = await text('.github/workflows/publish.yml');
+  const wait = workflow.indexOf('- name: Wait for npm to serve the published version');
+  const verify = workflow.indexOf('- name: Verify public npm and Action artifacts');
+  assert.ok(wait > 0 && wait < verify, 'the wait step runs before the public verification');
+  assert.match(workflow.slice(wait, verify), /npm view "sutura@\$version" version/u);
+  assert.match(workflow.slice(wait, verify), /for attempt in \$\(seq 1 \d+\)/u);
+  assert.match(workflow.slice(wait, verify), /exit 1/u);
+});
+
 test('publication trusts the exact-head CI check instead of re-running the full local gate', async () => {
   const workflow = await text('.github/workflows/publish.yml');
   assert.doesNotMatch(workflow, /pnpm run typecheck/u);
@@ -110,9 +122,18 @@ test('Placebo live workflow is manual, read-only, exact, and case-bounded', asyn
   assert.doesNotMatch(workflow, /pull-requests: write|issues: write|id-token: write/u);
 });
 
+// The v0.3.1 and v0.3.2 release benchmarks ran without either optional audit
+// voice because this step never received their keys.
+test('Placebo live workflow passes the optional audit voices their keys', async () => {
+  const workflow = await text('.github/workflows/placebo-live-case.yml');
+  const step = workflow.slice(workflow.indexOf('- name: Run one live Placebo case'));
+  assert.match(step, /OPENAI_API_KEY: \$\{\{ secrets\.OPENAI_API_KEY \}\}/u);
+  assert.match(step, /TYPESAFE_API_KEY: \$\{\{ secrets\.TYPESAFE_API_KEY \}\}/u);
+});
+
 test('versioned release evidence requirements name every authorization gate', async () => {
-  const requirements = JSON.parse(await text('docs/demo/sutura-v0.3.2-release-evidence-requirements.json'));
-  assert.equal(requirements.releaseVersion, '0.3.2');
+  const requirements = JSON.parse(await text('docs/demo/sutura-v0.3.3-release-evidence-requirements.json'));
+  assert.equal(requirements.releaseVersion, '0.3.3');
   assert.deepEqual(requirements.requiredEvidenceIds, [
     'benchmark', 'candidate-matrix', 'demo', 'dogfood', 'devpost', 'feedback',
     'github-release', 'local-gate', 'marketplace', 'npm', 'public-matrix',

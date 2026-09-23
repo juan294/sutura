@@ -233,9 +233,9 @@ Set `NEBIUS_API_KEY`, `CONTREE_TOKEN`, `CONTREE_PROJECT`, and optional
 `TAVILY_API_KEY`, `OPENAI_API_KEY`, and `TYPESAFE_API_KEY` in your environment. Then run these commands:
 
 ```bash
-npx sutura@0.3.2 init
+npx sutura@0.3.3 init
 sed -n '1,220p' .github/workflows/sutura.yml
-npx sutura@0.3.2 doctor
+npx sutura@0.3.3 doctor
 git add .github/workflows/sutura.yml
 git commit -m "ci: add Sutura repair monitor"
 git push
@@ -247,7 +247,7 @@ Review the generated workflow before committing it. It becomes active only
 after it is committed and reaches the repository's default branch, either by a
 direct push or through the repository's normal pull-request process.
 
-The installer resolves the `v0.3.2` Action tag and writes its immutable commit
+The installer resolves the `v0.3.3` Action tag and writes its immutable commit
 SHA into the generated workflow. `doctor` resolves the tag again and verifies
 the pin. Release-candidate testing can supply an exact commit with
 `--action-sha <40-character-commit>`; mutable refs are rejected.
@@ -256,7 +256,7 @@ Maintainers verify the published npm package and independently resolved immutabl
 Action tag from a fresh temporary consumer with:
 
 ```bash
-node scripts/test-public-install.mjs --release 0.3.2
+node scripts/test-public-install.mjs --release 0.3.3
 ```
 
 The command installs only that exact public npm version, disables lifecycle
@@ -366,11 +366,11 @@ and Super model as production. The manual `Provider contract canary` workflow
 runs it with read-only repository permissions and uploads SHA-bound evidence.
 Unverified Super model overrides fail closed.
 
-The versioned [release evidence requirements](docs/demo/sutura-v0.3.2-release-evidence-requirements.json)
+The versioned [release evidence requirements](docs/demo/sutura-v0.3.3-release-evidence-requirements.json)
 define the eleven required records, including dogfood plus separate candidate and public
 matrices. Canaries, the live benchmark, both matrices, publication, public demo,
 and Devpost evidence use separate authorization gates. The v0.2.0 benchmark and
-matrices remain immutable failed baselines. v0.3.2 evidence stays pending until
+matrices remain immutable failed baselines. v0.3.3 evidence stays pending until
 each required gate is authorized and passed.
 
 ### Evaluation Lab
