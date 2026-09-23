@@ -31,7 +31,7 @@ function artifact(definition, mode = 'candidate', overrides = {}) {
     expectedOutcome: definition.expectedOutcome,
     actualOutcome: definition.expectedOutcome,
     auditApproved: ['fixed', 'audit-approved'].includes(definition.expectedOutcome),
-    packageVersion: '0.3.2',
+    packageVersion: '0.3.3',
     packageMode: mode,
     packageContentHash: PACKAGE_HASH,
     actionCommit: ACTION_SHA,
