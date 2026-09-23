@@ -1713,6 +1713,8 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     failingImage: setup.imageId,
     executor,
     llm: fullContext.llm,
+    ...(ctx.secondOpinion === undefined ? {} : { secondOpinion: ctx.secondOpinion }),
+    ...(ctx.typesafeAudit === undefined ? {} : { typesafeAudit: ctx.typesafeAudit }),
     cost: ctx.cost,
     triageN: ctx.triageN,
     raceK: ctx.raceK,

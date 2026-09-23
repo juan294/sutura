@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The local heal path (`sutura heal --case-dir`, which the Placebo release benchmark drives) now passes the optional GPT-6 Astra second opinion and TypeSafe Jev calibrated audit to adjudication. The CLI built both from `OPENAI_API_KEY` and `TYPESAFE_API_KEY`, but `healCase` dropped them, so every benchmark audit recorded them as not configured; the GitHub Action path was unaffected.
+
 ## [0.3.3] - 2026-09-23
 
 ### Fixed

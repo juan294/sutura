@@ -1125,6 +1125,23 @@ describe('healCase', () => {
     },
   );
 
+  // The v0.3.3 release benchmark (Placebo drives healCase) recorded every
+  // optional voice as "Not configured" although the CLI had built both.
+  it('passes the optional audit voices through to adjudication', async () => {
+    const secondOpinion = vi.fn(async () => ({ usd: 0, text: JSON.stringify({ approved: true, reasoning: 'second look agrees' }) }));
+    const decide = vi.fn(async () => { throw new Error('stub TypeSafe unavailable'); });
+    const { ctx } = context('repair-off-by-one', [1, 1, 1, 1, 1, 0, 0], 'test-assertion', {
+      secondOpinion: { chat: secondOpinion },
+      typesafeAudit: { modelId: () => 'jev-test', decide },
+    });
+
+    const caseFile = await healCase(ctx);
+
+    expect(secondOpinion).toHaveBeenCalled();
+    expect(decide).toHaveBeenCalled();
+    expect(JSON.stringify(caseFile.audit)).not.toContain('Not configured');
+  });
+
   it('repairs a real Placebo fixture after one snapshot and one pre-inference reproduction', async () => {
     const { ctx, executor, chat } = context(
       'repair-off-by-one',
