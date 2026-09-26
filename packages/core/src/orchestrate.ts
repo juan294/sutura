@@ -52,6 +52,7 @@ import { renderCaseFile } from './report/casefile.js';
 import { renderComment } from './report/markdown.js';
 import { isSensitiveRepositoryPath } from './security/repository-path.js';
 import { detectRuntimeAtPath } from './runtime/detect.js';
+import { nodeImageRefForRepository } from './runtime/node.js';
 import type { RuntimeId } from './runtime/types.js';
 import type { ReplayRecorder } from './replay/bundle.js';
 
@@ -683,9 +684,10 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
   const executionRecorder = loadedPolicy.policy.verification?.mode === 'required'
     ? new VerificationExecutionRecorder({ executor: ctx.executor, llm: ctx.llm, mode: ctx.evidenceMode ?? 'local' }) : undefined;
   const executor = new AllowlistedExecutor(executionRecorder?.executor ?? ctx.executor);
-  const baseImage = await executor.importImage(
-    ctx.imageRef ?? runtime.imageRef,
-  );
+  const imageRef = ctx.imageRef ?? (runtime.id === 'node'
+    ? await nodeImageRefForRepository(checkoutDir)
+    : runtime.imageRef);
+  const baseImage = await executor.importImage(imageRef);
   stageLedger.record({
     stage: 'preparation',
     attempt: 0,

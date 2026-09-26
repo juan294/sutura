@@ -103,7 +103,7 @@ import { boundedTail, boundedTailWithHeader } from './text/bounded-tail.js';
 import { TraceRecorder } from './trace/recorder.js';
 import type { TraceEventInput } from './trace/types.js';
 import { detectRuntimeAtPath } from './runtime/detect.js';
-import { NODE_IMAGE_REF, NODE_RUNTIME, nodePreparationCommand } from './runtime/node.js';
+import { NODE_IMAGE_REF, NODE_RUNTIME, nodeImageRefForRepository, nodePreparationCommand } from './runtime/node.js';
 import type { RuntimeAdapter, RuntimeId } from './runtime/types.js';
 
 export const SUTURA_DEFAULT_IMAGE_REF = NODE_IMAGE_REF;
@@ -1664,7 +1664,10 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     throw new HealCaseError('Python runtime image must use the verified exact digest');
   }
   const executor = new AllowlistedExecutor(ctx.executor);
-  const baseImage = await executor.importImage(ctx.imageRef ?? runtime.imageRef);
+  const imageRef = ctx.imageRef ?? (runtime.id === 'node'
+    ? await nodeImageRefForRepository(ctx.caseDir)
+    : runtime.imageRef);
+  const baseImage = await executor.importImage(imageRef);
   ledger.record({
     stage: 'preparation',
     attempt: 0,

@@ -958,6 +958,9 @@ function includeSnapshotPath(
         `ConTree repository overlay refuses installed dependency path: ${path}`,
       );
     }
+    // Documentation media can exhaust the provider's image layer without
+    // contributing to source reproduction or repair.
+    if (/^docs\/.*\.(?:avif|gif|jpe?g|mp4|pdf|png|svg|webm|webp)$/iu.test(path)) return false;
     return !isSensitiveRepositoryPath(path);
   }
   return isDependencyInputPath(path, workspacePatterns, localPaths);
@@ -985,11 +988,7 @@ async function listNonGitFiles(
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
       const path = directory ? `${directory}/${entry.name}` : entry.name;
       validateSnapshotPath(path);
-      if (entry.name.toLowerCase() === '.npmrc') {
-        throw new ContreeError(
-          'ConTree dependency preparation refuses repository .npmrc credentials',
-        );
-      }
+      if (entry.name.toLowerCase() === '.npmrc') await assertSafeNpmrc(root, path);
       if (isInstalledDependencyPath(path)) {
         continue;
       }
@@ -1079,7 +1078,7 @@ export async function listSnapshotFiles(
   dir: string,
   profile: SnapshotProfile,
 ): Promise<string[]> {
-  if (profile === 'dependency-inputs') await assertNoNpmrc(dir);
+  if (profile === 'dependency-inputs') await assertSafeNpmrcFiles(dir);
   const workspacePatterns = profile === 'dependency-inputs'
     ? await dependencyWorkspacePatterns(dir)
     : [];
@@ -1109,10 +1108,8 @@ export async function listSnapshotFiles(
       .toString('utf8')
       .split('\0')
       .filter((path) => path.length > 0 && !deletedPaths.has(path));
-    if (listedFiles.some((path) => path.split('/').at(-1)?.toLowerCase() === '.npmrc')) {
-      throw new ContreeError(
-        'ConTree dependency preparation refuses repository .npmrc credentials',
-      );
+    for (const path of listedFiles) {
+      if (path.split('/').at(-1)?.toLowerCase() === '.npmrc') await assertSafeNpmrc(dir, path);
     }
     const files = listedFiles.filter((path) =>
       includeSnapshotPath(path, profile, workspacePatterns, localPaths));
@@ -1248,7 +1245,7 @@ async function createSnapshotArchive(
   }
 }
 
-async function assertNoNpmrc(dir: string): Promise<void> {
+async function assertSafeNpmrcFiles(dir: string): Promise<void> {
   const root = await realpath(dir);
   const directories = [''];
   for (let index = 0; index < directories.length; index += 1) {
@@ -1256,9 +1253,7 @@ async function assertNoNpmrc(dir: string): Promise<void> {
     const entries = await readdir(join(root, directory), { withFileTypes: true });
     for (const entry of entries) {
       if (entry.name.toLowerCase() === '.npmrc') {
-        throw new ContreeError(
-          'ConTree dependency preparation refuses repository .npmrc credentials',
-        );
+        await assertSafeNpmrc(root, directory ? `${directory}/${entry.name}` : entry.name);
       }
       if (
         entry.isDirectory() &&
@@ -1268,6 +1263,20 @@ async function assertNoNpmrc(dir: string): Promise<void> {
       }
     }
   }
+}
+
+async function assertSafeNpmrc(root: string, path: string): Promise<void> {
+  const reject = (): never => {
+    throw new ContreeError('ConTree dependency preparation refuses repository .npmrc credentials');
+  };
+  const absolute = join(root, path);
+  const metadata = await lstat(absolute);
+  if (!metadata.isFile() || metadata.size > MAX_DEPENDENCY_CONTROL_BYTES) reject();
+  const lines = (await readFile(absolute, 'utf8')).split(/\r?\n/u);
+  if (lines.some((line) => {
+    const value = line.trim();
+    return value !== '' && !value.startsWith('#') && value !== 'engine-strict=true';
+  })) reject();
 }
 
 async function rejectRegistryCredentials(

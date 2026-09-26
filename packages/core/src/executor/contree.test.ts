@@ -16,6 +16,7 @@ import {
   ContreeError,
   ContreeExecutor,
   buildSnapshotCommandForTest,
+  listSnapshotFiles,
 } from './contree.js';
 
 const REPOSITORY_OVERLAY = {
@@ -1001,6 +1002,36 @@ describe('ContreeExecutor', () => {
         DEPENDENCY_REPLACE,
       )).rejects.toThrow(/repository \.npmrc credentials/u);
       expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('accepts engine-strict npmrc without putting it in either snapshot', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sutura-contree-safe-npmrc-'));
+    try {
+      await execFileAsync('git', ['init', '--quiet', dir]);
+      await writeFile(join(dir, '.npmrc'), 'engine-strict=true\n');
+      await writeFile(join(dir, 'package.json'), '{"name":"fixture"}\n');
+      await execFileAsync('git', ['-C', dir, 'add', '.npmrc', 'package.json']);
+      expect(await listSnapshotFiles(dir, 'dependency-inputs')).toEqual(['package.json']);
+      expect(await listSnapshotFiles(dir, 'repository')).toEqual(['package.json']);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('omits documentation media from the repository overlay', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sutura-contree-docs-media-'));
+    try {
+      await mkdir(join(dir, 'docs'), { recursive: true });
+      await mkdir(join(dir, 'app'), { recursive: true });
+      await writeFile(join(dir, 'docs', 'guide.md'), '# Guide\n');
+      await writeFile(join(dir, 'docs', 'screenshot.png'), 'image');
+      await writeFile(join(dir, 'app', 'logo.png'), 'image');
+      expect((await listSnapshotFiles(dir, 'repository')).sort()).toEqual([
+        'app/logo.png', 'docs/guide.md',
+      ]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

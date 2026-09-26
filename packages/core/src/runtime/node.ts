@@ -1,7 +1,48 @@
+import { lstat, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { shellQuote } from '../engine/shell.js';
 import type { DependencyPreparation, RuntimeAdapter, RuntimeEvidence } from './types.js';
 
 export const NODE_IMAGE_REF = 'node:22';
+
+/** Choose a supported sandbox major from the repository's declared Node version. */
+export async function nodeImageRefForRepository(dir: string): Promise<string> {
+  let nvmMajor: number | undefined;
+  try {
+    const path = join(dir, '.nvmrc');
+    const metadata = await lstat(path);
+    if (!metadata.isFile() || metadata.size > 64) throw new Error('Invalid .nvmrc');
+    const version = (await readFile(path, 'utf8')).trim();
+    const match = /^v?(\d+)(?:\.\d+(?:\.\d+)?)?$/u.exec(version);
+    if (!match) throw new Error('Unsupported .nvmrc Node version');
+    nvmMajor = Number(match[1]);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+
+  let engineMajor: number | undefined;
+  try {
+    const path = join(dir, 'package.json');
+    const metadata = await lstat(path);
+    if (!metadata.isFile() || metadata.size > 1_048_576) throw new Error('Invalid package.json');
+    const parsed: unknown = JSON.parse(await readFile(path, 'utf8'));
+    if (typeof parsed === 'object' && parsed !== null && 'engines' in parsed) {
+      const engines = parsed.engines;
+      if (typeof engines === 'object' && engines !== null && 'node' in engines && typeof engines.node === 'string') {
+        const match = /^(?:>=|\^|~)?\s*(22|24)(?:\.\d+)?(?:\.\d+)?(?:\s|$)/u.exec(engines.node);
+        if (match) engineMajor = Number(match[1]);
+      }
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  if (nvmMajor !== undefined && engineMajor !== undefined && nvmMajor !== engineMajor) {
+    throw new Error('Node version declarations conflict between .nvmrc and package.json');
+  }
+  const major = nvmMajor ?? engineMajor ?? 22;
+  if (major !== 22 && major !== 24) throw new Error(`Unsupported sandbox Node major: ${major}`);
+  return `node:${major}`;
+}
 
 const COREPACK_PACKAGE_MANAGER_COMMAND = /(?:^|[\s;&|()])(?:pnpm|yarn)(?=$|[\s;&|()<>])/u;
 const PACKAGE_BINARY_COMMAND = /^(?:ava|eslint|jest|mocha|tap|ts-node|tsc|tsx|vite|vitest)(?=$|[\s;&|])/u;
