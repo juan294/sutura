@@ -94,3 +94,6 @@ Go directly to these paths -- never search for them.
 | ADRs                     | `docs/decisions/`                                           |                                                           |
 | PR descriptions          | `docs/prs/{number}_description.md`                          |                                                           |
 | Release playbook         | `docs/release/e2e-pro-playbook.md`                          | Wave A adopted; profile pending first release             |
+<!-- rpi:claude-import:start -->
+@AGENTS.md
+<!-- rpi:claude-import:end -->
