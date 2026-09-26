@@ -1021,16 +1021,18 @@ describe('ContreeExecutor', () => {
     }
   });
 
-  it('omits documentation media from the repository overlay', async () => {
+  it('omits plan evidence media but retains documentation assets read by tests', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sutura-contree-docs-media-'));
     try {
       await mkdir(join(dir, 'docs'), { recursive: true });
+      await mkdir(join(dir, 'docs', 'plans', 'phase', 'evidence'), { recursive: true });
       await mkdir(join(dir, 'app'), { recursive: true });
       await writeFile(join(dir, 'docs', 'guide.md'), '# Guide\n');
       await writeFile(join(dir, 'docs', 'screenshot.png'), 'image');
+      await writeFile(join(dir, 'docs', 'plans', 'phase', 'evidence', 'screenshot.png'), 'image');
       await writeFile(join(dir, 'app', 'logo.png'), 'image');
       expect((await listSnapshotFiles(dir, 'repository')).sort()).toEqual([
-        'app/logo.png', 'docs/guide.md',
+        'app/logo.png', 'docs/guide.md', 'docs/screenshot.png',
       ]);
     } finally {
       await rm(dir, { recursive: true, force: true });

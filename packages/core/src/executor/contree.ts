@@ -958,9 +958,9 @@ function includeSnapshotPath(
         `ConTree repository overlay refuses installed dependency path: ${path}`,
       );
     }
-    // Documentation media can exhaust the provider's image layer without
-    // contributing to source reproduction or repair.
-    if (/^docs\/.*\.(?:avif|gif|jpe?g|mp4|pdf|png|svg|webm|webp)$/iu.test(path)) return false;
+    // Plan evidence screenshots can exhaust the provider's image layer.
+    // Keep other documentation assets: repository tests may read them.
+    if (/^docs\/plans\/.*\/evidence\/.*\.(?:avif|gif|jpe?g|mp4|pdf|png|svg|webm|webp)$/iu.test(path)) return false;
     return !isSensitiveRepositoryPath(path);
   }
   return isDependencyInputPath(path, workspacePatterns, localPaths);
