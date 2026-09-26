@@ -60,12 +60,23 @@ function failedStepLog(
   const inclusiveEnd = /\.\d+Z$/u.test(step.completedAt) ? end : end + 999;
   let matching = lines.filter(({ time }) => time >= start && time <= inclusiveEnd);
   const groupMarker = `##[group]${step.name}`;
-  let groupIndex = matching.findLastIndex(({ line }) => line.includes(groupMarker));
-  // A step with a custom display name never matches its own name marker. The
-  // time window already confines `matching` to this step, so its last command
-  // group is the header of the command that failed.
-  if (groupIndex < 0) groupIndex = matching.findLastIndex(({ line }) => GROUP_RUN_MARKER.test(line));
-  if (groupIndex >= 0) matching = matching.slice(groupIndex);
+  let groupIndex = matching.findIndex(({ line }) => line.includes(groupMarker));
+  if (groupIndex < 0) {
+    // GitHub timestamps step bounds to whole seconds, while log lines have
+    // subsecond precision. A later `if: always()` action can therefore start
+    // inside the failed step's inclusive end second. Select the Run group
+    // containing the error, rather than that later action's Run group.
+    const errorIndex = matching.findIndex(({ line }) => line.includes('##[error]'));
+    groupIndex = errorIndex < 0
+      ? matching.findIndex(({ line }) => GROUP_RUN_MARKER.test(line))
+      : matching.findLastIndex(({ line }, index) =>
+        index <= errorIndex && GROUP_RUN_MARKER.test(line));
+  }
+  if (groupIndex >= 0) {
+    const nextGroup = matching.findIndex(({ line }, index) =>
+      index > groupIndex && GROUP_RUN_MARKER.test(line));
+    matching = matching.slice(groupIndex, nextGroup < 0 ? undefined : nextGroup);
+  }
   if (matching.length === 0) {
     throw new GitHubAdapterError(`Job logs contain no lines for failed step ${step.name}`);
   }

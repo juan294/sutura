@@ -1,9 +1,12 @@
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import {
   capturedFailingRun,
   capturedRun,
 } from '../__fixtures__/captured/captured-live-run.test-helper.js';
+import { classifyMechanically } from '../diagnose/classify.js';
 import { GitHubAdapter, GitHubAdapterError } from './adapter.js';
 import type { GitHubApi, WorkflowJobRecord, WorkflowRunRecord } from './types.js';
 
@@ -88,6 +91,61 @@ describe('captured GitHub adapter regressions', () => {
     expect(currentLog).toContain('Hook timed out in 10000ms');
     expect(preFixLog).not.toContain('##[group]Run pnpm run test');
     expect(preFixLog).toContain('Hook timed out in 10000ms');
+  });
+
+  it('keeps the failed Chapa shell step when a later action starts in the same second', async () => {
+    // Captured from Chapa CI run 36229068529, job 108368603840.
+    const log = await readFile(fileURLToPath(new URL(
+      '__fixtures__/chapa-shard-36229068529.log', import.meta.url,
+    )), 'utf8');
+    const api = capturedApi({
+      listJobsForWorkflowRun: async () => [{
+        id: 108368603840,
+        name: 'Test Shard (1)',
+        conclusion: 'failure',
+        steps: [{
+          name: 'Test shard with coverage (blob report)',
+          conclusion: 'failure',
+          startedAt: '2026-09-26T08:12:33Z',
+          completedAt: '2026-09-26T08:13:49Z',
+        }],
+      }],
+      downloadJobLogs: async () => log,
+    });
+
+    const run = await adapter(api).getFailingRun(CAPTURED_RUN_ID);
+    const failedLog = run.failedSteps[0]?.log ?? '';
+    expect(failedLog).toContain('expected -1 to be 5');
+    expect(failedLog).not.toContain('actions/upload-artifact@v7');
+    expect(classifyMechanically(failedLog).failingCmd).toContain('pnpm exec vitest run');
+    expect(classifyMechanically(failedLog).failingCmd).toContain('--shard=1/2');
+  });
+
+  it('keeps the failed Spoken Letter shell step before its same-second artifact upload', async () => {
+    // Captured from Spoken Letter CI run 36229327486, job 108369351708.
+    const log = await readFile(fileURLToPath(new URL(
+      '__fixtures__/spoken-shard-36229327486.log', import.meta.url,
+    )), 'utf8');
+    const api = capturedApi({
+      listJobsForWorkflowRun: async () => [{
+        id: 108369351708,
+        name: 'coverage (3)',
+        conclusion: 'failure',
+        steps: [{
+          name: 'Test unit suite (shard 3/4, coverage → blob)',
+          conclusion: 'failure',
+          startedAt: '2026-09-26T08:17:52Z',
+          completedAt: '2026-09-26T08:24:23Z',
+        }],
+      }],
+      downloadJobLogs: async () => log,
+    });
+
+    const run = await adapter(api).getFailingRun(CAPTURED_RUN_ID);
+    const failedLog = run.failedSteps[0]?.log ?? '';
+    expect(failedLog).toContain('Process completed with exit code 1');
+    expect(failedLog).not.toContain('actions/upload-artifact@');
+    expect(classifyMechanically(failedLog).failingCmd).toContain('pnpm exec vitest run src packages/audio-contract/src --shard=3/4');
   });
 
   it.each(['', '0', '../1'])('rejects invalid workflow run id %j', (runId) => {

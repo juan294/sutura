@@ -32,13 +32,30 @@ function githubLogPayload(line: string): string {
 }
 
 const COMMAND_HEADER = /^(?:Run|\$)\s+(\S.*)$/;
+const ACTION_REFERENCE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+$/u;
+const ANSI_SGR = /\x1b\[[0-9;]*m/gu;
 
 export function isCommandHeader(line: string): boolean {
-  return COMMAND_HEADER.test(githubLogPayload(line));
+  const matched = COMMAND_HEADER.exec(githubLogPayload(line));
+  return matched !== null && !ACTION_REFERENCE.test(matched[1] ?? '');
 }
 
 function boundedCommandLog(log: string): string {
   return boundedTailWithHeader(log, LOG_BOUNDS, isCommandHeader);
+}
+
+function shellScriptCommand(lines: readonly string[], headerIndex: number): string | null {
+  const script: string[] = [];
+  for (let index = headerIndex + 1; index < lines.length; index += 1) {
+    const raw = lines[index] ?? '';
+    if (raw.includes('##[endgroup]')) break;
+    const line = githubLogPayload(raw).replace(ANSI_SGR, '').trim();
+    if (line.startsWith('shell:')) return script.length > 0 ? script.join('\n') : null;
+    if (!line || line.startsWith('#')) continue;
+    if (line.startsWith('env:') || line.startsWith('with:')) break;
+    script.push(line);
+  }
+  return null;
 }
 
 function failingCommand(log: string): string {
@@ -48,8 +65,10 @@ function failingCommand(log: string): string {
   for (let index = 0; index < lines.length; index += 1) {
     const line = githubLogPayload(lines[index] ?? '');
     const runMatch = COMMAND_HEADER.exec(line);
-    if (runMatch?.[1]) {
-      command = runMatch[1].trim();
+    if (runMatch?.[1] && !ACTION_REFERENCE.test(runMatch[1])) {
+      const header = runMatch[1].trim();
+      command = shellScriptCommand(lines, index) ??
+        (header.startsWith('#') ? '' : header);
       continue;
     }
 

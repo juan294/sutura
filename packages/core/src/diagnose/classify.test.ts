@@ -87,6 +87,14 @@ describe('failure classification', () => {
     expect(classifyMechanically(log).failingCmd).toBe('pnpm run test');
   });
 
+  it('does not treat a GitHub Action reference as a shell command', () => {
+    expect(classifyMechanically([
+      '2026-09-26T08:24:23.3870657Z ##[group]Run actions/upload-artifact@v7',
+      '2026-09-26T08:24:23.3871172Z with:',
+      '2026-09-26T08:24:23.3871487Z   name: coverage-blob-3',
+    ].join('\n')).failingCmd).toBe('unknown');
+  });
+
   it('does not classify a passing flaky-named test as the active failure', () => {
     const log = [
       'Run pnpm run test',

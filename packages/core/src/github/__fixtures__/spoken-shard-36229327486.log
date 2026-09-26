@@ -1,0 +1,14 @@
+2026-09-26T08:17:52.5601332Z ##[group]Run pnpm exec vitest run src packages/audio-contract/src --shard=3/4 --coverage --reporter=blob --coverage.thresholds.lines=0 --coverage.thresholds.functions=0 --coverage.thresholds.statements=0 --coverage.thresholds.branches=0
+2026-09-26T08:17:52.5603089Z pnpm exec vitest run src packages/audio-contract/src --shard=3/4 --coverage --reporter=blob --coverage.thresholds.lines=0 --coverage.thresholds.functions=0 --coverage.thresholds.statements=0 --coverage.thresholds.branches=0
+2026-09-26T08:17:52.5669432Z shell: /usr/bin/bash -e {0}
+2026-09-26T08:17:52.5669732Z env:
+2026-09-26T08:17:52.5670008Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-09-26T08:17:52.5670322Z   CI: true
+2026-09-26T08:17:52.5670507Z ##[endgroup]
+2026-09-26T08:18:18.8933483Z Not implemented: navigation to another Document
+2026-09-26T08:18:18.8934972Z Not implemented: navigation to another Document
+2026-09-26T08:18:36.1942891Z Not implemented: navigation to another Document
+2026-09-26T08:24:23.2798743Z blob report written to /home/runner/work/spoken-letter/spoken-letter/.vitest/blob/blob-3-4.json
+2026-09-26T08:24:23.3795846Z ##[error]Process completed with exit code 1.
+2026-09-26T08:24:23.3870657Z ##[group]Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+2026-09-26T08:24:23.3871172Z with:
