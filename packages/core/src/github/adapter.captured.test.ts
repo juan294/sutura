@@ -7,6 +7,7 @@ import {
   capturedRun,
 } from '../__fixtures__/captured/captured-live-run.test-helper.js';
 import { classifyMechanically } from '../diagnose/classify.js';
+import { extractSourceReferences } from '../orchestrate.js';
 import { GitHubAdapter, GitHubAdapterError } from './adapter.js';
 import type { GitHubApi, WorkflowJobRecord, WorkflowRunRecord } from './types.js';
 
@@ -119,6 +120,43 @@ describe('captured GitHub adapter regressions', () => {
     expect(failedLog).not.toContain('actions/upload-artifact@v7');
     expect(classifyMechanically(failedLog).failingCmd).toContain('pnpm exec vitest run');
     expect(classifyMechanically(failedLog).failingCmd).toContain('--shard=1/2');
+  });
+
+  it('keeps untimestamped assertion lines with the failed step', async () => {
+    const log = [
+      'orphan line before the first timestamp',
+      '2026-09-26T11:02:49.000Z ##[group]Run tests',
+      '2026-09-26T11:02:50.000Z ##[error]AssertionError: expected -1 to be 5',
+      '',
+      '- Expected',
+      '+ Received',
+      ' ❯ apps/web/lib/sutura-trial.test.ts:5:33',
+      '2026-09-26T11:02:50.100Z ##[error]Process completed with exit code 1.',
+      '2026-09-26T11:02:50.200Z ##[group]Run actions/upload-artifact@v7',
+    ].join('\n');
+    const api = capturedApi({
+      listJobsForWorkflowRun: async () => [{
+        id: 5,
+        name: 'Test Shard (1)',
+        conclusion: 'failure',
+        steps: [{
+          name: 'Run tests',
+          conclusion: 'failure',
+          startedAt: '2026-09-26T11:02:49Z',
+          completedAt: '2026-09-26T11:02:50Z',
+        }],
+      }],
+      downloadJobLogs: async () => log,
+    });
+
+    const run = await adapter(api).getFailingRun(CAPTURED_RUN_ID);
+    const failedLog = run.failedSteps[0]?.log ?? '';
+    expect(failedLog).toContain('❯ apps/web/lib/sutura-trial.test.ts:5:33');
+    expect(extractSourceReferences(failedLog)).toContainEqual({
+      path: 'apps/web/lib/sutura-trial.test.ts', line: 5,
+    });
+    expect(failedLog).not.toContain('orphan line');
+    expect(failedLog).not.toContain('actions/upload-artifact@v7');
   });
 
   it('keeps the failed Spoken Letter shell step before its same-second artifact upload', async () => {
