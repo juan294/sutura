@@ -39,10 +39,18 @@ function timestamp(line: string): number | null {
 interface TimestampedLogLine { line: string; time: number }
 
 function parseTimestampedLog(log: string): TimestampedLogLine[] {
-  return log.split(/\r?\n/).flatMap((line) => {
+  const lines: TimestampedLogLine[] = [];
+  let lastTime: number | null = null;
+  const rawLines = log.split(/\r?\n/);
+  if (log.endsWith('\n')) rawLines.pop();
+  for (const line of rawLines) {
     const time = timestamp(line);
-    return time === null ? [] : [{ line, time }];
-  });
+    if (time !== null) lastTime = time;
+    // GitHub emits multiline errors with a timestamp only on their first line.
+    // Keep the continuation in that step so assertion locations reach repair.
+    if (lastTime !== null) lines.push({ line, time: lastTime });
+  }
+  return lines;
 }
 
 function failedStepLog(
