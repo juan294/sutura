@@ -8,7 +8,7 @@ import type { HealLlm } from '../heal.js';
 import type { RecoveryInput } from './hypotheses.js';
 
 function setup(overrides: Partial<RecoveryInput> = {}) {
-  const source = "test('name', async () => { expect(load()).toBe('ADA'); });\n";
+  const source = "test('name', async () => {\n  expect(load()).toBe('ADA');\n});\n";
   const sourceHash = createHash('sha256').update(source).digest('hex');
   const run = vi.fn(async () => ({ imageId: 'probe-child', exitCode: 1, stdout: `SUTURA_SOURCE_SHA256=${sourceHash}\nAssertionError: expected Promise to be ADA`, stderr: '', truncated: false, metrics: {} }));
   const chat = vi.fn(async () => ({ text: JSON.stringify({ hypotheses: [{ signalIndex: 0, sourceIndex: 0, intent: 'await-operation', probeId: 'async-completion' }] }), usd: 0.001 }));
@@ -16,7 +16,7 @@ function setup(overrides: Partial<RecoveryInput> = {}) {
   const executor: Executor = { run, runMany: async () => [], importImage: async () => 'unused', snapshot: async () => 'unused', operationCapacity: () => ({ limit: 1, active: 0, available: 1 }), cancel: async (operationId) => ({ operationId, requested: true, terminal: 'cancelled' }) };
   const input: RecoveryInput = {
     initialDiagnosis: { class: 'test-assertion', confidence: 0.4, signals: ['mechanical:test-assertion', 'llm:test-bug'], failingCmd: 'pnpm test', errorExcerpt: 'Expected Promise to be ADA' },
-    failedLog: 'AssertionError: expected Promise to be ADA', sourceContext: { sources: [{ path: 'case.test.js', startLine: 1, content: source, truncated: false }] },
+    failedLog: 'AssertionError: expected Promise to be ADA\n ❯ case.test.js:2:22', sourceContext: { sources: [{ path: 'case.test.js', startLine: 1, content: source, truncated: false }] },
     baseline: { kind: 'local-snapshot', sourceSha: null, policyBaseSha: null, policySha256: 'a'.repeat(64), baselineImageId: 'baseline', snapshotSha256: null },
     policy: createDefaultRepositoryPolicy(), executor, llm, budget: new RepairBudget(), trustedCommand: 'pnpm test', repairReservationUsd: 0.05, observe: vi.fn(), ...overrides,
   };
@@ -32,13 +32,14 @@ describe('diagnosis recovery scheduling', () => {
     expect(recovered.attempts[1]?.authorization).toBeDefined();
     expect(recovered.evidence.hypotheses[1]).toMatchObject({ status: 'passed' });
     expect(run).toHaveBeenCalledTimes(1);
-    expect(chat).toHaveBeenCalledTimes(1);
+    expect(chat).not.toHaveBeenCalled();
     expect(recovered.audit).toBeDefined();
     expect(input.budget.snapshot().modelTurns).toBeGreaterThan(1);
   });
 
   it('never executes a model-supplied command or uses fabricated expected values', async () => {
     const { input, run, chat } = setup();
+    input.sourceContext = { sources: [{ ...input.sourceContext.sources[0]!, content: "test('name', async () => { expect(load()).toBe('ADA'); expect(other()).toBe('BEE'); });\n" }] };
     chat.mockResolvedValue({ text: JSON.stringify({ hypotheses: [{ signalIndex: 0, sourceIndex: 0, intent: 'await-operation', probeId: 'async-completion', command: 'arbitrary-command' }] }), usd: 0.001 });
     const result = await recoverDiagnosis(input);
     expect(run).not.toHaveBeenCalled();
@@ -97,9 +98,49 @@ describe('diagnosis recovery scheduling', () => {
 
   it('retains provider failure as infrastructure evidence rather than an invalid proposal', async () => {
     const { input, run, chat } = setup();
+    input.sourceContext = { sources: [{ ...input.sourceContext.sources[0]!, content: "test('name', async () => { expect(load()).toBe('ADA'); expect(other()).toBe('BEE'); });\n" }] };
     chat.mockRejectedValue(new Error('Provider connection failed'));
     const result = await recoverDiagnosis(input);
     expect(result.evidence).toMatchObject({ status: 'infra-stop', reason: 'hypothesis-provider-failed' });
     expect(run).not.toHaveBeenCalled();
+  });
+
+  it('selects one unambiguous missing-await test target from controller evidence without a model hypothesis', async () => {
+    const { input, run, chat } = setup();
+    chat.mockResolvedValue({ text: '{invalid', usd: 0.001 });
+    input.sourceContext.sources.push({ path: 'load.js', startLine: 1, content: 'export async function load() { return "ADA"; }\n', truncated: false });
+    const result = await recoverDiagnosis(input);
+    expect(chat).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(result.evidence).toMatchObject({ status: 'passed', reason: 'controller-authorized-recovery' });
+    expect(result.evidence.hypotheses[1]).toMatchObject({ path: 'case.test.js', intent: 'await-operation', status: 'passed' });
+  });
+
+  it('does not choose a missing-await target when two test sources match', async () => {
+    const { input, chat } = setup();
+    input.sourceContext.sources.push({ path: 'other.test.js', startLine: 1, content: "test('other', async () => { expect(other()).toBe('BEE'); });\n", truncated: false });
+    input.failedLog += '\n ❯ other.test.js:1:37';
+    await recoverDiagnosis(input);
+    expect(chat).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not infer a target from a commented assertion or an unrelated stack line', async () => {
+    const { input, chat } = setup();
+    input.sourceContext = { sources: [{ path: 'case.test.js', startLine: 1, content: "// expect(load()).toBe('ADA');\nthrow Error('failure');\n", truncated: false }] };
+    await recoverDiagnosis(input);
+    expect(chat).toHaveBeenCalledTimes(1);
+    chat.mockClear();
+    input.sourceContext = { sources: [{ path: 'case.test.js', startLine: 1, content: "expect(load()).toBe('ADA');\nthrow Error('failure');\n", truncated: false }] };
+    input.failedLog = 'AssertionError: expected Promise to be ADA\n ❯ case.test.js:2:7';
+    await recoverDiagnosis(input);
+    expect(chat).toHaveBeenCalledTimes(1);
+  });
+
+  it('abstains when a second referenced test has two candidate calls', async () => {
+    const { input, chat } = setup();
+    input.sourceContext.sources.push({ path: 'other.test.js', startLine: 1, content: "expect(one()).toBe('ONE'); expect(two()).toBe('TWO');\n", truncated: false });
+    input.failedLog += '\n ❯ other.test.js:1:25';
+    await recoverDiagnosis(input);
+    expect(chat).toHaveBeenCalledTimes(1);
   });
 });

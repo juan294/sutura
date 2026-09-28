@@ -153,4 +153,12 @@ describe('real repairFailure diagnosis recovery', () => {
     expect(result.appliedDiffs.every((diff) => !diff.includes("toBe('WRONG')"))).toBe(true);
     expect(result.baselineAfterExitCode).not.toBe(0);
   }, 180_000);
+
+  it('repairs the real missing-await fixture without trusting a model hypothesis', async () => {
+    const result = await runRecoveryControllerCase('repair-missing-await', { invalidRecoveryHypothesis: true });
+    expect(result.caseFile.outcome, JSON.stringify(result.caseFile.recovery)).toBe('fixed');
+    expect(result.inferenceCalls).not.toContain('hypotheses');
+    expect(result.caseFile.recovery?.authorizations).toHaveLength(1);
+    expect(result.proofCount).toBeGreaterThan(0);
+  }, 180_000);
 });

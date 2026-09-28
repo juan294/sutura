@@ -20,7 +20,7 @@ function targetPath(diff: string): string {
 }
 
 /** Inference is scripted; every reproduction, proof, patch and suite outcome comes from a local process. */
-export async function runRecoveryControllerCase(caseId: string, options: { rewriteAssertion?: boolean } = {}) {
+export async function runRecoveryControllerCase(caseId: string, options: { rewriteAssertion?: boolean; invalidRecoveryHypothesis?: boolean } = {}) {
   const fixture = (await discoverCases(undefined, { includeVersionedCases: true })).find(({ id }) => id === caseId);
   if (!fixture) throw new Error(`Missing recovery fixture ${caseId}`);
   const runtime = await createPortableTestRuntime();
@@ -79,6 +79,7 @@ export async function runRecoveryControllerCase(caseId: string, options: { rewri
         // json_schema drift), and 'diagnosis-recovery' also routes to super.
         if (settings?.purpose === 'diagnosis-recovery') {
           inferenceCalls.push('hypotheses');
+          if (options.invalidRecoveryHypothesis) return { text: '{invalid', usd: 0.000001 };
           const input = request(messages) as { sources: Array<{ path: string }>; signals: Array<{ id: string }> };
           const strict = target === 'tsconfig.json';
           const signalIndex = input.signals.findIndex(({ id }) => strict ? id === 'strict-requirement' : id !== 'strict-requirement');
