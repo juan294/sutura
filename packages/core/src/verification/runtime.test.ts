@@ -84,6 +84,38 @@ it('fails the gate when Nemotron approves and the second opinion refuses', async
   }));
 });
 
+it('shows the executed fresh-suite command and exit status to every audit voice', async () => {
+  const suiteCommand = 'tsc --noEmit && vitest run';
+  const hasExecution = (evidence: Record<string, unknown>) =>
+    evidence.afterCommand === suiteCommand && evidence.afterExitCode === 0;
+  const executor = { run: vi.fn(async () => ({ imageId: 'result', exitCode: 0, stdout: '1 test passed', stderr: '', metrics: {} })) } as unknown as Executor;
+  const evidenceAwareLlm = () => ({ chat: vi.fn(async (_tier: string, messages: Array<{ content: string }>) => {
+    const evidence = JSON.parse(messages[1]?.content ?? '{}') as Record<string, unknown>;
+    return hasExecution(evidence)
+      ? { text: '{"approved":true,"reasoning":"The typecheck and test command exited zero."}' }
+      : { text: '{"approved":false,"reasoning":"The typecheck execution is not shown."}' };
+  }) });
+  const llm = evidenceAwareLlm() as unknown as HealLlm;
+  const secondOpinion = evidenceAwareLlm() as unknown as HealLlm;
+  const typesafeAudit: TypeSafeAuditClient = {
+    modelId: () => TYPESAFE_AUDIT_MODEL,
+    decide: vi.fn(async (state) => jevDecision(hasExecution(state as Record<string, unknown>) ? 0 : 1, 1)),
+  };
+  const policy = createDefaultRepositoryPolicy();
+  const prepared = await prepareRuntimeChallenges({ executor, llm, policy, baselineImage: 'baseline', policyBaseSha: '', policyHash: '', baselineSnapshotHash: '', failureExcerpt: 'TS2322', baselineSources: [] });
+  const result = await evaluateRuntimeCandidate({
+    executor, llm, policy, prepared, baselineImage: 'baseline', secondOpinion, typesafeAudit,
+    winner: { candidate: { id: 'candidate', diff, rationale: 'repair' }, imageId: 'candidate', nodeId: 'node', held: true, exitCode: 0 },
+    diagnosis: { class: 'typecheck', confidence: 1, signals: ['TS2322'], failingCmd: suiteCommand, errorExcerpt: 'TS2322' },
+    beforeLog: 'TS2322', suiteCommand,
+  });
+  expect(result.verdict.approved).toBe(true);
+  expect(executor.run).toHaveBeenCalledWith('candidate', suiteCommand, expect.objectContaining({ network: 'disabled' }));
+  expect(llm.chat).toHaveBeenCalled();
+  expect(secondOpinion.chat).toHaveBeenCalled();
+  expect(typesafeAudit.decide).toHaveBeenCalled();
+});
+
 it('passes the gate with a skipped row when Nemotron approves and no second opinion is configured', async () => {
   const result = await evaluateWithSecondOpinion(undefined);
   expect(result.verdict.approved).toBe(true);
@@ -165,9 +197,16 @@ it('fails the gate on Nemotron\'s reasoning when Nemotron already refused, and s
 
 it('records a "Not run" calibrated-audit row when the fresh suite rerun fails', async () => {
   const executor = { run: vi.fn(async () => ({ imageId: 'result', exitCode: 1, stdout: '', stderr: 'failed', metrics: {} })) } as unknown as Executor;
-  const result = await evaluateWithSecondOpinion(undefined, undefined, executor);
+  const secondOpinion = { chat: vi.fn(async () => ({ text: '{"approved":true,"reasoning":"Looks fine."}' })) } as unknown as HealLlm;
+  const typesafeAudit: TypeSafeAuditClient = {
+    modelId: () => TYPESAFE_AUDIT_MODEL,
+    decide: vi.fn(async () => jevDecision(0, 1)),
+  };
+  const result = await evaluateWithSecondOpinion(secondOpinion, typesafeAudit, executor);
   expect(result.verdict.approved).toBe(false);
   expect(result.verdict.checks).toContainEqual(expect.objectContaining({
     name: 'typesafe-audit', passed: false, evidence: 'Not run: the fresh suite rerun failed',
   }));
+  expect(secondOpinion.chat).not.toHaveBeenCalled();
+  expect(typesafeAudit.decide).not.toHaveBeenCalled();
 });

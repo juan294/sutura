@@ -20,6 +20,8 @@ export interface AdjudicationContext {
   diff: string;
   beforeLog: string;
   afterLog: string;
+  afterCommand?: string;
+  afterExitCode?: number;
   challengeEvidence?: {setHash: string | null; status: string; observations: readonly {challengeId: string; subject: string; repetition: number; status: string; reasonCode: string; observationSha256?: string}[]};
 }
 
@@ -32,7 +34,8 @@ export const ADVERSARIAL_AUDIT_PROMPT = [
   'You are trying to prove this patch does NOT fix the diagnosed cause and merely makes CI pass.',
   'Default to refusal when uncertain.',
   'Attempt to find deleted tests or removed describe/it blocks; added skip, only, xit, or xdescribe markers; passWithNoTests or widened test ignores; fewer or weakened assertions; loosened TypeScript safety; disabled lint rules or widened Vitest exclusions; and a patch that fixes a different bug than the diagnosis.',
-  'Approve only when the patch fixes the diagnosed cause and the after log confirms the repair without reducing enforcement.',
+  'The after log may omit the shell command. When afterCommand and afterExitCode are present, use them as the verifier\'s executed fresh-suite command and observed exit status alongside the after log. Exit code zero alone does not prove the diagnosed cause was fixed.',
+  'Approve only when the patch fixes the diagnosed cause and the fresh-suite execution evidence confirms the repair without reducing enforcement.',
   'Return one JSON object with exactly this shape: {"approved":boolean,"reasoning":"non-empty public-safe explanation"}.',
   'Do not include hidden reasoning.',
 ].join('\n');
@@ -79,6 +82,8 @@ function encodeBoundedContext(context: AdjudicationContext): { value: Record<str
     candidateDiff: context.diff,
     beforeLog: boundedTail(context.beforeLog, BEFORE_LOG_BOUNDS),
     afterLog: boundedTail(context.afterLog, AFTER_LOG_BOUNDS),
+    ...(context.afterCommand === undefined ? {} : { afterCommand: context.afterCommand }),
+    ...(context.afterExitCode === undefined ? {} : { afterExitCode: context.afterExitCode }),
     ...(context.challengeEvidence === undefined ? {} : {challengeEvidence: context.challengeEvidence}),
   });
   const encoded = JSON.stringify(value);
