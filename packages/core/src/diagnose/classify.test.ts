@@ -134,6 +134,104 @@ describe('failure classification', () => {
     );
   });
 
+  it('keeps a missing relative module local when Nano calls it an upstream dependency', async () => {
+    const log = "Run pnpm test\nCannot find module './missing.js' imported from /workspace/calculate.js";
+    const llm = scriptedLlm({
+      class: 'dep-upstream-breaking',
+      confidence: 0.97,
+      signals: ['llm:missing-module'],
+      failingCmd: 'pnpm test',
+      errorExcerpt: "Cannot find module './missing.js'",
+    });
+
+    expect(classifyMechanically(log).class).toBe('build');
+    await expect(classify(llm, log)).resolves.toMatchObject({
+      class: 'build',
+      confidence: 0.49,
+      failingCmd: 'pnpm test',
+      signals: expect.arrayContaining(['mechanical:build', 'llm:dep-upstream-breaking']),
+    });
+  });
+
+  it('keeps a missing package import in the upstream dependency class', async () => {
+    const log = "Run pnpm test\nCannot find module 'left-pad' imported from /workspace/calculate.js";
+    const llm = scriptedLlm({
+      class: 'dep-upstream-breaking',
+      confidence: 0.91,
+      signals: ['llm:missing-package'],
+      failingCmd: 'pnpm test',
+      errorExcerpt: "Cannot find module 'left-pad'",
+    });
+
+    expect(classifyMechanically(log).class).toBe('dep-upstream-breaking');
+    await expect(classify(llm, log)).resolves.toMatchObject({
+      class: 'dep-upstream-breaking',
+      confidence: 0.91,
+    });
+  });
+
+  it('does not call a missing relative import inside node_modules a local build failure', async () => {
+    const log = "Run pnpm test\nCannot find module './missing.js' imported from /workspace/node_modules/widget/index.js";
+    const llm = scriptedLlm({
+      class: 'dep-upstream-breaking', confidence: 0.91,
+      signals: ['llm:dependency-import'], failingCmd: 'pnpm test',
+      errorExcerpt: "Cannot find module './missing.js'",
+    });
+
+    expect(classifyMechanically(log).class).toBe('dep-upstream-breaking');
+    await expect(classify(llm, log)).resolves.toMatchObject({ class: 'dep-upstream-breaking' });
+  });
+
+  it('does not override a stronger TypeScript failure with an earlier relative import error', async () => {
+    const log = "Run pnpm test\nCannot find module './missing.js' imported from /workspace/calculate.js\nerror TS2322: incompatible return type";
+    const llm = scriptedLlm({
+      class: 'typecheck', confidence: 0.91,
+      signals: ['llm:ts2322'], failingCmd: 'pnpm test',
+      errorExcerpt: 'error TS2322: incompatible return type',
+    });
+
+    expect(classifyMechanically(log).class).toBe('typecheck');
+    await expect(classify(llm, log)).resolves.toMatchObject({ class: 'typecheck' });
+  });
+
+  it('keeps an unknown importer in the upstream dependency class', async () => {
+    const log = "Run pnpm test\nCannot find module './missing.js' imported from /external/widget.js";
+    const llm = scriptedLlm({
+      class: 'dep-upstream-breaking', confidence: 0.91,
+      signals: ['llm:unknown-importer'], failingCmd: 'pnpm test',
+      errorExcerpt: "Cannot find module './missing.js'",
+    });
+
+    expect(classifyMechanically(log).class).toBe('dep-upstream-breaking');
+    await expect(classify(llm, log)).resolves.toMatchObject({ class: 'dep-upstream-breaking' });
+  });
+
+  it('does not treat an unplugged package below the workspace as owned source', async () => {
+    const log = "Run pnpm test\nCannot find module './missing.js' imported from /workspace/.yarn/unplugged/widget/index.js";
+    const llm = scriptedLlm({
+      class: 'dep-upstream-breaking', confidence: 0.91,
+      signals: ['llm:dependency-import'], failingCmd: 'pnpm test',
+      errorExcerpt: "Cannot find module './missing.js'",
+    });
+
+    expect(classifyMechanically(log).class).toBe('dep-upstream-breaking');
+    await expect(classify(llm, log)).resolves.toMatchObject({ class: 'dep-upstream-breaking' });
+  });
+
+  it('preserves another Nano class when a local import is also present', async () => {
+    const log = "Run pnpm test\nCannot find module './missing.js' imported from /workspace/calculate.js";
+    const llm = scriptedLlm({
+      class: 'test-bug', confidence: 0.82,
+      signals: ['llm:test-context'], failingCmd: 'pnpm test',
+      errorExcerpt: "Cannot find module './missing.js'",
+    });
+
+    await expect(classify(llm, log)).resolves.toMatchObject({
+      class: 'test-bug', confidence: 0.49,
+      signals: expect.arrayContaining(['mechanical:build', 'llm:test-bug']),
+    });
+  });
+
   it('sends only the final 200 log lines to nano', async () => {
     const llm = scriptedLlm({
       class: 'infra',

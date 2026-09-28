@@ -3,12 +3,15 @@ import type { Diagnosis, FailureClass } from '../domain.js';
 import { extractJson } from '../llm/json.js';
 import type { TierLlm } from '../llm/types.js';
 import { redactExternalMessages } from '../security/external-text.js';
-import { FAILURE_TAXONOMY } from '../taxonomy.js';
+import { FAILURE_TAXONOMY, LOCAL_RELATIVE_MODULE_ERROR } from '../taxonomy.js';
 import { boundedTail, boundedTailWithHeader } from '../text/bounded-tail.js';
 
 const FAILURE_CLASSES = Object.freeze(
   Object.keys(FAILURE_TAXONOMY) as FailureClass[],
 );
+const COMPETING_FAILURE_CLASSES = [
+  'typecheck', 'lint', 'test-assertion', 'test-bug', 'flaky-timing', 'env-config', 'infra',
+] as const;
 const LOG_BOUNDS = { maxLines: 200, maxCharacters: 20_000, maxBytes: 20_000 };
 const EXCERPT_BOUNDS = { ...LOG_BOUNDS, maxLines: 20 };
 
@@ -94,6 +97,9 @@ function bestTaxonomyMatch(log: string): {
   failureClass: FailureClass;
   matched: string[];
 } {
+  if (hasLocalRelativeModuleFailure(log)) {
+    return { failureClass: 'build', matched: [LOCAL_RELATIVE_MODULE_ERROR.source] };
+  }
   let bestClass: FailureClass = 'infra';
   let bestMatches: string[] = [];
 
@@ -108,6 +114,12 @@ function bestTaxonomyMatch(log: string): {
   }
 
   return { failureClass: bestClass, matched: bestMatches };
+}
+
+function hasLocalRelativeModuleFailure(log: string): boolean {
+  if (!LOCAL_RELATIVE_MODULE_ERROR.test(log)) return false;
+  return COMPETING_FAILURE_CLASSES
+    .every((failureClass) => !FAILURE_TAXONOMY[failureClass].signatures.some((signature) => signature.test(log)));
 }
 
 export function classifyMechanically(logExcerpt: string): MechanicalDiagnosis {
@@ -246,6 +258,8 @@ export async function classify(
   const agrees = classAgrees && commandAgrees;
   return {
     ...model,
+    class: model.class === 'dep-upstream-breaking' && hasLocalRelativeModuleFailure(boundedLog)
+      ? mechanical.class : model.class,
     confidence: agrees ? model.confidence : Math.min(model.confidence, 0.49),
     failingCmd: mechanical.failingCmd,
     signals: Array.from(

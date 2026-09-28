@@ -7,6 +7,10 @@ export interface TaxonomyEntry {
   notes: string;
 }
 
+// Limit this evidence to a source file at the sandbox workspace root. A
+// relative import inside an installed dependency is not ownership proof.
+export const LOCAL_RELATIVE_MODULE_ERROR = /\bCannot find module\s+['"]\.{1,2}\/[^'"\s]+['"]\s+imported from\s+(?:file:\/\/)?\/workspace\/[A-Za-z0-9_-][A-Za-z0-9._-]*\.[cm]?[jt]sx?(?![A-Za-z0-9_./-])/i;
+
 export const FAILURE_TAXONOMY: Readonly<Record<FailureClass, TaxonomyEntry>> = {
   typecheck: {
     signatures: [/\bTS\d{4}\b/, /\btsc\b[^\n]*(?:failed|error)/i],
@@ -28,10 +32,11 @@ export const FAILURE_TAXONOMY: Readonly<Record<FailureClass, TaxonomyEntry>> = {
       /\bbuild failed\b/i,
       /\bfailed to compile\b/i,
       /\b(?:vite|webpack|rollup)\b[^\n]*(?:build|error)/i,
+      LOCAL_RELATIVE_MODULE_ERROR,
     ],
     examples: ['Build failed: Could not resolve entry module'],
     repairable: true,
-    notes: 'Compilation or packaging failures outside type checking.',
+    notes: 'Compilation or packaging failures outside type checking, including missing relative source imports.',
   },
   'test-assertion': {
     signatures: [
@@ -72,7 +77,7 @@ export const FAILURE_TAXONOMY: Readonly<Record<FailureClass, TaxonomyEntry>> = {
     ],
     examples: ['ERR_MODULE_NOT_FOUND for a package import'],
     repairable: true,
-    notes: 'A dependency is absent, incompatible, or changed upstream.',
+    notes: 'A package dependency is absent, incompatible, or changed upstream; relative source imports are local build failures.',
   },
   'env-config': {
     signatures: [
