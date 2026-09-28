@@ -1,0 +1,19 @@
+# Phase 2 — Measured blockers and candidate hardening
+
+Parent: [Hackathon completion](../2026-09-28-sutura-hackathon-completion.md). Depends on phase 1's reconciled incident ledger. Target exit October 5. Owner: Sutura integration owner. Code work uses an isolated worktree and returns locally to `develop`.
+
+## Scope and decisions
+
+Triage the phase 1 failure classes against the completed [repair-path work](../2026-09-22-fleet-repair-path-recovery.md?plain=1#L135) and current release [six gave-up repair cases and hidden preservation](../../demo/sutura-v0.3.3-release-benchmark-evidence.md?plain=1#L67). Do not reimplement #150/#152. Keep [#136](https://github.com/juan294/sutura/issues/136) parked unless a post-fix run proves a genuinely commandless failed step; if it does, bind one trusted fallback to a unique workflow/job/step identity and working directory, label observed-versus-configured provenance, and refuse ambiguous or unsafe commands. Investigate [#135](https://github.com/juan294/sutura/issues/135) for any in-scope project that still hits the snapshot cap. If reproduced, implement bounded trusted exclusions of non-executable assets, record resolved exclusions and omitted byte count in both the case file and replay bundle, and prove source/tests/dependency inputs cannot be excluded. Keep detailed omitted paths private unless cleared for public release. Otherwise record the excluded project's operational status and leave the issue open with evidence.
+
+For quality misses, replay captured failures before modifying behavior. Prioritize the named legacy repair failures, required challenge execution and hidden preservation. Add a failing regression/contract test first; retain all benchmark cases and score definitions. A behavior change creates a new candidate, so v0.3.3 evidence is historical. Prepare a frozen candidate inventory of source SHA, package/Action bundle hash, policy, models, prompts, images, corpus and split hashes. Review and simplify changes, then run all local gates. The existing [verified repair phase 10](../2026-09-05-sutura-verified-repair-program-phases/phase-10.md?plain=1#L18) governs preflight readiness.
+
+## Acceptance
+
+Automated: Each repaired blocker has a failing-before/passing-after test and captured replay. Snapshot tests prove trusted policy cannot hide required inputs; file-count, source/archive-byte, sensitive-path, symlink and traversal guards remain fail-closed; case file and replay omission evidence agree. A genuinely commandless fallback, if built, is distinguishable from an observed command and rejects untrusted head policy. Quality tests reject known deceptive patches and preserve the valid repair path. Run focused tests, `pnpm run typecheck`, `pnpm run lint`, `pnpm run test`, `pnpm run build`, `pnpm run verify:bundle` and `pnpm run ci:local` sequentially on the integrated candidate; record skipped credential-gated checks.
+
+Manual: Review the phase 1 blocker denominator and document disposition for #135, #136 and every new recurrent class. Obtain independent code/plan review and a simplify pass. Prepare a concrete finite provider canary and measurement manifest with actual candidate and pricing, caps, reserve, stop/cleanup procedure and zero inherited authorization. At least one consumer repair can be counted only after exact repair CI and target-branch green, via natural evidence or a separately approved bounded trial. A trial that stops safely still records useful evidence but does not satisfy recovery.
+
+Stop if a new false approval, unqualified challenge, hidden-test leak, unsupported provider contract, preview trigger or unpriced spend appears. Phase 3 receives the immutable candidate, local gate report and reviewable capped manifest.
+
+`[batch-eligible]` Captured-log analysis and public-safe case redaction may proceed in separate read-only worktrees. Core/controller fixes and their tests have one owner and integrate sequentially.
