@@ -158,7 +158,7 @@ describe('runControlledRepairAttempt', () => {
       policySha256: 'a'.repeat(64), baselineImageId: 'baseline', snapshotSha256: null };
     const session = createRepairAuthorizationSession({ baseline, failingCommand: 'vitest run', policy, sources: [source] });
     expect(await deriveRepairAuthorization(session, { kind: 'await-operation', path: source.path,
-      evidenceReferences: ['promise-mismatch'], controllerProbe: { id: 'async-completion', imageId: 'baseline',
+      evidenceReferences: ['promise-mismatch', 'controller-stack-line:5'], controllerProbe: { id: 'async-completion', imageId: 'baseline',
         exitCode: 1, output: "AssertionError: expected Promise to be 'ADA'", sourceSha256: createHash('sha256').update(broken).digest('hex'),
         failingCommand: 'vitest run' } })).toEqual({ ok: true });
     const caseDiagnosis: Diagnosis = { class: 'test-bug', confidence: 0.49, signals: ['promise-mismatch'],
@@ -169,17 +169,20 @@ describe('runControlledRepairAttempt', () => {
       path: source.path, startLine: 5, endLine: 5, new: "  expect(await renderName()).toBe('ADA');",
     }], context.sourceContext);
     const executor = new InMemoryExecutor((_command, _parent, index) => [runResult(0, repairedDiff), runResult(0, '1 passed')][index]!);
-    const outcome = await runControlledRepairAttempt({ ...context, llm: llm(JSON.stringify({ replacement: repaired })).model,
+    const scripted = llm(JSON.stringify({ replacement: repaired }));
+    const outcome = await runControlledRepairAttempt({ ...context, llm: scripted.model,
       executor, initialImageId: 'baseline', budget: new RepairBudget() });
     expect(outcome).toMatchObject({ status: 'submitted' });
     if (outcome.status !== 'submitted') throw new Error('Missing submitted candidate');
     expect(outcome.candidate.diff).toContain("+  expect(await renderName()).toBe('ADA');");
+    expect(scripted.chat).not.toHaveBeenCalled();
     expect(executor.calls.filter((call) => call.kind === 'run')).toHaveLength(2);
 
     const rejectedExecutor = new InMemoryExecutor(() => runResult(0));
     const weakened = broken.replace("toBe('ADA')", "toBe('BOB')");
     const rejected = await runControlledRepairAttempt({ ...context, llm: llm(JSON.stringify({ replacement: weakened })).model,
-      executor: rejectedExecutor, initialImageId: 'baseline', budget: new RepairBudget() });
+      executor: rejectedExecutor, initialImageId: 'baseline', budget: new RepairBudget(),
+      feedback: { candidateDiff: repairedDiff, testOutput: 'still failing', errorFingerprint: 'rejected-first-attempt' } });
     expect(rejected).toMatchObject({ status: 'gave-up', failureKind: 'policy' });
     expect(rejectedExecutor.calls).toHaveLength(0);
   });

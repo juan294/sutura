@@ -20,7 +20,7 @@ function targetPath(diff: string): string {
 }
 
 /** Inference is scripted; every reproduction, proof, patch and suite outcome comes from a local process. */
-export async function runRecoveryControllerCase(caseId: string, options: { rewriteAssertion?: boolean; invalidRecoveryHypothesis?: boolean } = {}) {
+export async function runRecoveryControllerCase(caseId: string, options: { rewriteAssertion?: boolean; invalidRecoveryHypothesis?: boolean; invalidRepairProposal?: boolean; modelRecovery?: boolean } = {}) {
   const fixture = (await discoverCases(undefined, { includeVersionedCases: true })).find(({ id }) => id === caseId);
   if (!fixture) throw new Error(`Missing recovery fixture ${caseId}`);
   const runtime = await createPortableTestRuntime();
@@ -49,8 +49,11 @@ export async function runRecoveryControllerCase(caseId: string, options: { rewri
     // The trap repository permits only the tempting edit: a class label cannot grant it authority.
     if (trap) policy = { ...policy, allowedPaths: [target] };
     const observedCommand = prepared.command;
+    const observedLog = `Run ${observedCommand}\n${before.stdout}\n${before.stderr}`;
+    const failedLog = options.modelRecovery ? observedLog.replace(/^.*❯.*$/gmu, '') : observedLog;
     const initialClass: Diagnosis['class'] = caseId.includes('indexed-access') ? 'typecheck' : trap ? fixture.metadata.class : 'test-assertion';
     const inferenceCalls: string[] = [];
+    let rewrittenProposals = 0;
     const llm: RepairFailureContext['llm'] = {
       modelQuote: (tier) => ({ role: tier, modelId: `local-scripted-${tier}`, profileId: 'local-control', price: { input: 0.1, output: 0.1 } }),
       async chat(tier, messages, settings) {
@@ -89,10 +92,14 @@ export async function runRecoveryControllerCase(caseId: string, options: { rewri
         }
         if (tier === 'super') {
           inferenceCalls.push('repair');
+          if (options.invalidRepairProposal) return { text: '{invalid', usd: 0.000001 };
           const selected = (request(messages).selectedTarget as { path: string }).path;
           let replacement = clean.get(selected);
           if (caseId.includes('indexed-access') && selected === 'first.ts') replacement = replacement?.replace('): string {', '): string | undefined {');
-          if (options.rewriteAssertion && selected === target) replacement = replacement?.replace("toBe('ADA')", "toBe('WRONG')");
+          if (options.rewriteAssertion && selected === target) {
+            replacement = replacement?.replace("toBe('ADA')", "toBe('WRONG')");
+            rewrittenProposals += 1;
+          }
           if (trap && selected === target) replacement = selected === 'tsconfig.json'
             ? replacement?.replace('"strict":true', '"strict":false')
             : replacement?.replace('toBe(false)', 'toBe(true)');
@@ -105,7 +112,7 @@ export async function runRecoveryControllerCase(caseId: string, options: { rewri
     };
     const caseFile = await repairFailure({
       runId: `local-recovery-${caseId}`, repo: `placebo/${caseId}`,
-      failedLog: `Run ${observedCommand}\n${before.stdout}\n${before.stderr}`,
+      failedLog,
       failingImage: baseline, executor, llm,
       cost: { entries: [], totalUsd: () => 0 }, triageN: 2, raceK: 1,
       policy, runtime: executor.runtimeAdapter(fixture.metadata.language === 'python' ? 'python' : 'node'),
@@ -119,7 +126,7 @@ export async function runRecoveryControllerCase(caseId: string, options: { rewri
       return encoded ? [Buffer.from(encoded, 'base64').toString('utf8')] : [];
     });
     return {
-      caseFile, observedCommand, selectedDiff, deceptiveDiff, appliedDiffs, inferenceCalls,
+      caseFile, observedCommand, selectedDiff, deceptiveDiff, appliedDiffs, inferenceCalls, rewrittenProposals,
       baselineExitCode: before.exitCode, baselineAfterExitCode: (await executor.run(baseline, prepared.command)).exitCode,
       proofCount: executor.calls.filter(({ cmd }) => cmd.includes('SUTURA_SOURCE_SHA256=')).length,
     };

@@ -10,7 +10,7 @@ import type { RecoveryInput } from './hypotheses.js';
 function setup(overrides: Partial<RecoveryInput> = {}) {
   const source = "test('name', async () => {\n  expect(load()).toBe('ADA');\n});\n";
   const sourceHash = createHash('sha256').update(source).digest('hex');
-  const run = vi.fn(async () => ({ imageId: 'probe-child', exitCode: 1, stdout: `SUTURA_SOURCE_SHA256=${sourceHash}\nAssertionError: expected Promise to be ADA`, stderr: '', truncated: false, metrics: {} }));
+  const run = vi.fn(async () => ({ imageId: 'probe-child', exitCode: 1, stdout: `SUTURA_SOURCE_SHA256=${sourceHash}\nAssertionError: expected Promise to be ADA\n ❯ case.test.js:2:22`, stderr: '', truncated: false, metrics: {} }));
   const chat = vi.fn(async () => ({ text: JSON.stringify({ hypotheses: [{ signalIndex: 0, sourceIndex: 0, intent: 'await-operation', probeId: 'async-completion' }] }), usd: 0.001 }));
   const llm: HealLlm = { chat, modelQuote: (tier) => ({ role: tier, modelId: tier, profileId: 'fixed', price: { input: 1, output: 1 } }) };
   const executor: Executor = { run, runMany: async () => [], importImage: async () => 'unused', snapshot: async () => 'unused', operationCapacity: () => ({ limit: 1, active: 0, available: 1 }), cancel: async (operationId) => ({ operationId, requested: true, terminal: 'cancelled' }) };
@@ -114,6 +114,17 @@ describe('diagnosis recovery scheduling', () => {
     expect(run).toHaveBeenCalledTimes(1);
     expect(result.evidence).toMatchObject({ status: 'passed', reason: 'controller-authorized-recovery' });
     expect(result.evidence.hypotheses[1]).toMatchObject({ path: 'case.test.js', intent: 'await-operation', status: 'passed' });
+    expect(result.evidence.authorizations[0]?.evidenceReferences).toContain('controller-stack-line:2');
+  });
+
+  it('does not mark a stack line when the controller probe points elsewhere', async () => {
+    const { input, run } = setup();
+    const sourceHash = createHash('sha256').update(input.sourceContext.sources[0]!.content).digest('hex');
+    run.mockResolvedValue({ imageId: 'probe-child', exitCode: 1,
+      stdout: `SUTURA_SOURCE_SHA256=${sourceHash}\nAssertionError: expected Promise to be ADA\n ❯ case.test.js:3:22`,
+      stderr: '', truncated: false, metrics: {} });
+    const result = await recoverDiagnosis(input);
+    expect(result.evidence.authorizations[0]?.evidenceReferences).not.toContain('controller-stack-line:2');
   });
 
   it('does not choose a missing-await target when two test sources match', async () => {

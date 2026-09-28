@@ -83,24 +83,29 @@ export function validateHypotheses(value: unknown, context: { signals: readonly 
   });
 }
 
-function controllerPromiseHypotheses(context: { signals: readonly ObservedRecoverySignal[]; sources: readonly RepairSourceExcerpt[] }, failedLog: string): RecoveryHypothesis[] {
-  if (context.signals.length !== 1 || context.signals[0]?.id !== 'promise-mismatch') return [];
+function vitestStackFrames(log: string): Array<{ path: string; line: number }> {
+  const safe = redactExternalText(boundedTail(log, LOG_BOUNDS)).text.replace(/\u001b\[[0-9;]*m/gu, '');
+  return [...safe.matchAll(/^\s*❯\s+(\S+\.test\.[cm]?[jt]s):(\d+):\d+\s*$/gmu)]
+    .map((match) => ({ path: match[1]!, line: Number(match[2]) }));
+}
+
+function controllerPromiseHypotheses(context: { signals: readonly ObservedRecoverySignal[]; sources: readonly RepairSourceExcerpt[] }, failedLog: string): { hypotheses: RecoveryHypothesis[]; path: string; line: number } | undefined {
+  if (context.signals.length !== 1 || context.signals[0]?.id !== 'promise-mismatch') return undefined;
   // A single Vitest stack line must point to the exact complete source line;
   // this avoids guessing a repair target from a Promise message alone.
-  const log = redactExternalText(boundedTail(failedLog, LOG_BOUNDS)).text.replace(/\u001b\[[0-9;]*m/gu, '');
-  const frames = [...log.matchAll(/^\s*❯\s+(\S+\.test\.[cm]?[jt]s):(\d+):\d+\s*$/gmu)];
-  if (frames.length !== 1) return [];
-  const [, reportedPath, reportedLine] = frames[0]!;
+  const frames = vitestStackFrames(failedLog);
+  if (frames.length !== 1) return undefined;
+  const { path: reportedPath, line: reportedLine } = frames[0]!;
   const candidates = context.sources.flatMap((source, sourceIndex) => {
     if (source.startLine !== 1 || source.truncated || !reportedPath ||
       (reportedPath !== source.path && !reportedPath.endsWith(`/${source.path}`))) return [];
-    const line = source.content.split(/\r?\n/u)[Number(reportedLine) - 1];
+    const line = source.content.split(/\r?\n/u)[reportedLine - 1];
     if (!line || !/^\s*expect\(\s*(?!await\b)[A-Za-z_$][\w$]*\(\s*\)\s*\)\s*\.\s*to(?:Be|Equal)\s*\(/u.test(line)) return [];
     const calls = [...line.matchAll(/\bexpect\(\s*(?!await\b)[A-Za-z_$][\w$]*\(\s*\)\s*\)\s*\.\s*to(?:Be|Equal)\s*\(/gu)];
     return calls.length === 1 ? [sourceIndex] : [];
   });
-  if (candidates.length !== 1) return [];
-  return validateHypotheses({ hypotheses: [{ signalIndex: 0, sourceIndex: candidates[0], intent: 'await-operation', probeId: 'async-completion' }] }, context);
+  if (candidates.length !== 1) return undefined;
+  return { hypotheses: validateHypotheses({ hypotheses: [{ signalIndex: 0, sourceIndex: candidates[0], intent: 'await-operation', probeId: 'async-completion' }] }, context), path: context.sources[candidates[0]!]!.path, line: reportedLine };
 }
 
 function probeCommand(source: RepairSourceExcerpt, command: string): string {
@@ -160,7 +165,8 @@ export async function recoverDiagnosis(input: RecoveryInput): Promise<RecoveryRe
     const signals = observedRecoverySignals(input.failedLog);
     if (signals.length === 0) return result;
     const sources = input.sourceContext.sources;
-    let hypotheses = controllerPromiseHypotheses({ signals, sources }, input.failedLog);
+    const controllerSelection = controllerPromiseHypotheses({ signals, sources }, input.failedLog);
+    let hypotheses = controllerSelection?.hypotheses ?? [];
     if (hypotheses.length === 0) {
       const messages = redactExternalMessages([
         { role: 'system' as const, content: 'Investigate at most two alternative diagnoses. Return exactly {"hypotheses":[{"signalIndex":0,"sourceIndex":0,"intent":"await-operation","probeId":"async-completion"}]}. Choose only supplied source and observed signal indices. Intents: await-operation, await-setup (probe async-completion), restore-strict-config (probe strict-json). Do not supply commands, paths, grants, expected values or replacement code. Use an empty array when evidence does not support these narrow repairs.' },
@@ -199,7 +205,12 @@ export async function recoverDiagnosis(input: RecoveryInput): Promise<RecoveryRe
         if (stopped()) { observation.status = 'insufficient'; observation.reason = 'cancelled'; continue; }
         const session = createRepairAuthorizationSession({ baseline: input.baseline, failingCommand: input.initialDiagnosis.failingCmd, policy: input.policy, sources });
         const strictKey = /noUncheckedIndexedAccess/u.test(signals.find(({ id }) => id === hypothesis.signal)?.excerpt ?? '') ? 'noUncheckedIndexedAccess' as const : 'strict' as const;
-        const grant = await deriveRepairAuthorization(session, { kind: hypothesis.intent as RepairAuthorizationKind, path: source.path, evidenceReferences: [hypothesis.signal, `source:${hypothesis.sourceSha256}`], controllerProbe: { id: hypothesis.probeId!, imageId: input.baseline.baselineImageId, exitCode: executed.exitCode, output: output.replace(/^SUTURA_SOURCE_SHA256=.*\n/u, ''), sourceSha256: matches[0]![1]!, failingCommand: input.initialDiagnosis.failingCmd }, ...(hypothesis.intent === 'restore-strict-config' ? { strictKey } : {}) });
+        const probeFrames = vitestStackFrames(output);
+        const stackConfirmed = controllerSelection?.hypotheses.includes(hypothesis) === true &&
+          controllerSelection.path === source.path && probeFrames.length === 1 &&
+          probeFrames[0]!.line === controllerSelection.line &&
+          (probeFrames[0]!.path === source.path || probeFrames[0]!.path.endsWith(`/${source.path}`));
+        const grant = await deriveRepairAuthorization(session, { kind: hypothesis.intent as RepairAuthorizationKind, path: source.path, evidenceReferences: [hypothesis.signal, `source:${hypothesis.sourceSha256}`, ...(stackConfirmed ? [`controller-stack-line:${controllerSelection!.line}`] : [])], controllerProbe: { id: hypothesis.probeId!, imageId: input.baseline.baselineImageId, exitCode: executed.exitCode, output: output.replace(/^SUTURA_SOURCE_SHA256=.*\n/u, ''), sourceSha256: matches[0]![1]!, failingCommand: input.initialDiagnosis.failingCmd }, ...(hypothesis.intent === 'restore-strict-config' ? { strictKey } : {}) });
         if (!grant.ok) { observation.status = 'insufficient'; observation.reason = grant.reason; continue; }
         observation.status = 'passed'; observation.reason = 'narrow-grant-issued';
         result.attempts.push({ hypothesisId: hypothesis.id, diagnosis: { ...input.initialDiagnosis, class: hypothesis.class, signals: [...input.initialDiagnosis.signals, `recovery:${hypothesis.id}`] }, authorization: { session, baseline: input.baseline } });

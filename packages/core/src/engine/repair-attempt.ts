@@ -9,6 +9,7 @@ import { policyAllowsPatchPath } from '../policy/evaluate.js';
 import { assertExternalEditableText, redactExternalJsonValue } from '../security/external-text.js';
 import type { RepairAgentContext, RepairAgentOutcome } from './repair-agent.js';
 import { publicRepairReason, requestRepairModel } from './repair-model-call.js';
+import { controllerAwaitReplacement } from './controller-await-proposal.js';
 import { RepairToolRuntime, type RepairToolResult } from './repair-tools.js';
 import { isAuthorizedRepairTarget, repairAuthorizationEvidence } from './repair-authorization.js';
 import { isRepairPathAdmissible } from './patch-rules.js';
@@ -558,12 +559,25 @@ export async function runControlledRepairAttempt(
   }
   const { messages, schema, requestBytes, slots } = contract;
   const options = proposalOptions(ctx, slots.length);
-  const response = await requestRepairModel({
-    llm: ctx.llm, budget: ctx.budget, messages, options,
-    worstCaseUsd: (price) => worstCaseRequestUsd(requestBytes, price.input, price.output),
-    ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
-    ...(ctx.observeCapacity === undefined ? {} : { observeCapacity: ctx.observeCapacity }),
+  const controllerReplacement = ctx.feedback === undefined
+    ? await controllerAwaitReplacement({
+        sourceContext: ctx.sourceContext, slots,
+        ...(ctx.authorization === undefined ? {} : { authorization: ctx.authorization }),
+      })
+    : undefined;
+  if (controllerReplacement !== undefined) ctx.trace?.record({
+    type: 'search-decision', stage: 'search',
+    summary: 'Propose exact await insertion from source-hash-bound controller grant',
+    ...(ctx.branchId === undefined ? {} : { childNodeId: ctx.branchId }),
   });
+  const response = controllerReplacement === undefined
+    ? await requestRepairModel({
+        llm: ctx.llm, budget: ctx.budget, messages, options,
+        worstCaseUsd: (price) => worstCaseRequestUsd(requestBytes, price.input, price.output),
+        ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
+        ...(ctx.observeCapacity === undefined ? {} : { observeCapacity: ctx.observeCapacity }),
+      })
+    : { ok: true as const, reply: { text: JSON.stringify({ replacement: controllerReplacement }), usd: 0 } };
   if (!response.ok) return response.outcome;
   const { reply } = response;
   if (reply.finishReason === 'length') {
@@ -639,9 +653,11 @@ export async function runControlledRepairAttempt(
   const { proposals, proposalDiff } = parsedAttempt;
   const proposalDiffHash = digest(proposalDiff);
   const proposalId = `repair-${proposalDiffHash.slice(0, 12)}`;
-  const proposalRationale = slots.length === 1
-    ? 'Replace the controller-selected source excerpt.'
-    : 'Replace every controller-selected slot as one transaction.';
+  const proposalRationale = controllerReplacement !== undefined
+    ? 'Insert await at the controller-proven assertion line.'
+    : slots.length === 1
+      ? 'Replace the controller-selected source excerpt.'
+      : 'Replace every controller-selected slot as one transaction.';
   const tools = new RepairToolRuntime({
     executor: ctx.executor,
     initialImageId: ctx.initialImageId,
