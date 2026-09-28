@@ -171,3 +171,11 @@ those tests named. The saved bundles were not changed. Assertions now check
 the earlier exact request path and historical/current prompt distinction;
 the targeted replay suite passed 17/17 after that repair. The failed full
 gate remains recorded and needs a clean-candidate rerun.
+
+The next clean-commit `pnpm run ci:local` on `bd51e30` passed the early gates
+and core tests, then found the same prompt-drift assertion in the separate
+case-lab replay suite. Its first mismatch moved from the recorded failed-step
+log to the current taxonomy prompt at provider sequence 44. The saved bundle
+remains unchanged. The case-lab assertion now checks the exact first mismatch,
+and its package suite passed 222/222. A final clean-candidate full gate remains
+required.

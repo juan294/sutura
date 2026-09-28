@@ -127,8 +127,8 @@ describe('deterministic results', () => {
     // recorded before the Phase 2 fix (docs/plans/2026-09-15-launch-readiness-v0.3.1-phases/phase-2.md)
     // to the 16KB trusted-test-output refusal. The current GitHub adapter also retains
     // untimestamped continuation lines in multiline errors. This historical bundle captured
-    // the old, shorter failed-step log, so the first replay mismatch now occurs at the
-    // provider request containing that log. Keep the recorded bundle untouched.
+    // the old, shorter failed-step log. The current taxonomy prompt now diverges first at
+    // the provider request; keep the recorded bundle untouched.
     const bytes = readFileSync(LIVE_BUNDLE_FIXTURE);
     const bundle = JSON.parse(bytes.toString('utf8')) as Record<string, unknown> & {
       actionSha: string; outcome: string; executor: Array<{ sequence: number; args: unknown[] }>;
@@ -154,10 +154,11 @@ describe('deterministic results', () => {
     expect(error).toBeInstanceOf(ReplayMismatchError);
     const mismatch = error as ReplayMismatchError;
     expect(mismatch.sequence).toBe(44);
-    expect(mismatch.path).toBe('$.messages[1].content');
+    expect(mismatch.path).toBe('$.messages[0].content');
     expect(typeof mismatch.expected).toBe('string');
     expect(typeof mismatch.actual).toBe('string');
-    expect(mismatch.actual as string).toContain('Check out the trusted demo default branch');
+    expect(mismatch.expected as string).toContain('Compilation or packaging failures outside type checking.');
+    expect(mismatch.actual as string).toContain('missing relative source imports.');
     expect(mismatch.expected).not.toBe(mismatch.actual);
     // The pre-fix binding (bundle actionSha === demoSha) refused this real bundle.
     await expect(replayedResult(caseLabCase('javascript-repair'), fixture, {
