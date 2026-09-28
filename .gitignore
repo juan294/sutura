@@ -44,6 +44,10 @@ coverage/
 .sutura/external-matrix-cleanup-*.json
 .sutura/fleet-dogfood-config.json
 .sutura/fleet-dogfood-metrics/
+.sutura/fleet-dogfood-config-*.json
+.sutura/fleet-dogfood-inventory-*.json
+.sutura/fleet-dogfood-phase1/
+.sutura/fleet-reconcile-*.json
 
 # Environment: never commit secrets
 .env

@@ -3,13 +3,17 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 
 import {
   collectFleetMetrics,
+  GhFleetClient,
+  mergeMonitorEvents,
   parseCaseFileHtml,
   parseReplayIdentityJson,
   parseTerminalFailureJson,
   publicFleetSummary,
+  readMonitorEvidence,
   writeFleetMetrics,
 } from './fleet-dogfood-metrics.mjs';
 
@@ -271,4 +275,171 @@ test('public summary removes repository identities and daily snapshots are idemp
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('parsed terminal evidence survives collector crash and later artifact expiry', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sutura-monitor-proof-'));
+  const config = { schemaVersion: 'sutura-fleet-config-v1', owner: 'owner', repositories: ['alpha'],
+    startedAt: '2026-09-13T00:00:00.000Z', actionCommit: 'a'.repeat(40) };
+  const runs = [11, 12].map((id) => ({ id, conclusion: 'success',
+    run_started_at: '2026-09-13T09:00:00Z', updated_at: '2026-09-13T09:01:00Z',
+    html_url: `https://example.test/${id}` }));
+  try {
+    const crashing = {
+      async listWorkflowRuns() { return runs; },
+      async listArtifacts(_repository, id) {
+        if (id === 12) throw new Error('later API page failed');
+        return [{ id: 1, name: 'sutura-case-file-11.html', expired: false }];
+      },
+      async downloadArtifact() { return FIXED_HTML; },
+    };
+    await assert.rejects(() => collectFleetMetrics(config, crashing,
+      new Date('2026-09-14T00:00:00.000Z'), { evidenceDirectory: directory }), /later API page/u);
+    const saved = await readMonitorEvidence(directory);
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0].outcome, 'fixed');
+    const expired = {
+      async listWorkflowRuns() { return [runs[0]]; },
+      async listArtifacts() { return [{ id: 1, name: 'sutura-case-file-11.html', expired: true }]; },
+    };
+    const result = await collectFleetMetrics(config, expired,
+      new Date('2026-09-15T00:00:00.000Z'), { previousEvents: saved });
+    assert.equal(result.events[0].outcome, 'fixed');
+    assert.equal(result.summary.outcomes.fixed, 1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('replay-enriched evidence wins over the primary checkpoint regardless of read order', () => {
+  const primary = { repository: 'alpha', runId: 11, runAttempt: 1, outcome: 'infra-stop',
+    sourceRunId: '41', actionSha: 'a'.repeat(40), costStatus: 'unavailable' };
+  const enriched = { ...primary, replayComplete: true, providerInvocations: 1,
+    runtime: 'node', searchStarted: true };
+  assert.equal(mergeMonitorEvents([primary, enriched], [])[0].replayComplete, true);
+  assert.equal(mergeMonitorEvents([enriched, primary], [])[0].replayComplete, true);
+});
+
+test('CI pagination expands prior failed attempts hidden by a successful rerun', async () => {
+  const client = new GhFleetClient('owner');
+  let queriedWindow;
+  client.api = async (path) => {
+    if (path.includes('/attempts/1')) return {
+      id: 41, run_attempt: 1, workflow_id: 12, head_branch: 'develop',
+      head_sha: 'a'.repeat(40), conclusion: 'failure', created_at: '2026-09-12T10:00:00Z',
+      updated_at: '2026-09-20T10:00:00Z',
+    };
+    if (path.includes('/attempts/2')) return {
+      id: 41, run_attempt: 2, workflow_id: 12, head_branch: 'develop',
+      head_sha: 'a'.repeat(40), conclusion: 'success', created_at: '2026-09-20T10:30:00Z',
+      updated_at: '2026-09-20T11:00:00Z',
+    };
+    queriedWindow = path;
+    return [{ total_count: 1, workflow_runs: [{ id: 41, run_attempt: 2, workflow_id: 12,
+      head_branch: 'develop', head_sha: 'a'.repeat(40), conclusion: 'success',
+      created_at: '2026-09-12T10:00:00Z', updated_at: '2026-09-20T11:00:00Z' }] }];
+  };
+  const runs = await client.listCiRuns('alpha', { id: 12 }, '2026-09-13T00:00:00.000Z');
+  assert.deepEqual(runs.map(({ attempt, conclusion }) => [attempt, conclusion]),
+    [[1, 'failure'], [2, 'success']]);
+  assert.equal(runs[1].createdAt, '2026-09-20T10:30:00Z');
+  assert.match(queriedWindow, /2026-08-09T00%3A00%3A00\.000Z/u);
+});
+
+test('CI pagination rejects a capped or incomplete API result', async () => {
+  const client = new GhFleetClient('owner');
+  client.api = async () => [{ total_count: 1000, workflow_runs: [{ id: 41 }] }];
+  await assert.rejects(() => client.listCiRuns('alpha', { id: 12 }, '2026-09-13T00:00:00.000Z'),
+    /cap|incomplete/u);
+});
+
+test('CI listing skips parent runs whose latest attempt predates the comparison window', async () => {
+  const client = new GhFleetClient('owner');
+  let attemptReads = 0;
+  client.api = async (path) => {
+    if (path.includes('/attempts/')) { attemptReads += 1; throw new Error('stale run should not be expanded'); }
+    return [{ total_count: 1, workflow_runs: [{ id: 41, run_attempt: 3,
+      updated_at: '2026-09-12T23:59:00Z' }] }];
+  };
+  const runs = await client.listCiRuns('alpha', { id: 12 }, '2026-09-13T00:00:00.000Z');
+  assert.equal(runs.length, 0);
+  assert.equal(attemptReads, 0);
+});
+
+test('CI pagination splits a capped time window without losing either half', async () => {
+  const client = new GhFleetClient('owner');
+  let requests = 0;
+  client.api = async () => {
+    requests += 1;
+    if (requests === 1) return [{ total_count: 1000, workflow_runs: [] }];
+    const id = requests === 2 ? 41 : 42;
+    return [{ total_count: 1, workflow_runs: [{ id, run_attempt: 1,
+      workflow_id: 12, head_branch: 'develop', head_sha: 'a'.repeat(40),
+      conclusion: 'failure', updated_at: '2026-09-20T10:00:00Z' }] }];
+  };
+  const runs = await client.listCiRuns('alpha', { id: 12 }, '2026-09-13T00:00:00.000Z');
+  assert.deepEqual(runs.map(({ id }) => id), [41, 42]);
+  assert.equal(requests, 3);
+});
+
+test('terminal evidence is checkpointed before the optional replay request finishes', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sutura-terminal-checkpoint-'));
+  let releaseReplay;
+  const replay = new Promise((resolve) => { releaseReplay = resolve; });
+  const client = {
+    async listWorkflowRuns() { return [{ id: 11, conclusion: 'success',
+      run_started_at: '2026-09-13T09:00:00Z', updated_at: '2026-09-13T09:01:00Z' }]; },
+    async listArtifacts() { return [
+      { id: 1, name: 'sutura-case-file-11.html', expired: false },
+      { id: 2, name: 'sutura-replay-11.json', expired: false },
+    ]; },
+    async downloadArtifact(_repository, _id, artifact) {
+      return artifact.name.includes('case-file') ? FIXED_HTML : replay;
+    },
+  };
+  const config = { schemaVersion: 'sutura-fleet-config-v1', owner: 'owner', repositories: ['alpha'],
+    startedAt: '2026-09-13T00:00:00.000Z', actionCommit: 'a'.repeat(40) };
+  try {
+    const collection = collectFleetMetrics(config, client, new Date('2026-09-14T00:00:00.000Z'),
+      { evidenceDirectory: directory });
+    let saved = [];
+    for (let index = 0; index < 30 && saved.length === 0; index += 1) {
+      await delay(10);
+      saved = await readMonitorEvidence(directory);
+    }
+    assert.equal(saved[0]?.outcome, 'fixed');
+    releaseReplay('{}');
+    await collection;
+  } finally {
+    releaseReplay('{}');
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('repair PR lookup proves the source marker, parent commit and real diff digest', async () => {
+  const sourceSha = 'a'.repeat(40);
+  const client = new GhFleetClient('owner');
+  client.api = async (path) => {
+    if (path.includes('/pulls?')) return [[{ number: 91,
+      head: { ref: 'sutura/fix-41', sha: 'c'.repeat(40) }, base: { ref: 'develop' },
+      body: '<!-- sutura-run:NDE -->', merged_at: '2026-09-20T11:00:00Z',
+      merge_commit_sha: 'e'.repeat(40) }]];
+    if (path.includes('/pulls/91/files')) return [[{ filename: 'src/index.ts', status: 'modified', patch: '@@ -1 +1 @@' }]];
+    if (path.includes('/commits/')) return { parents: [{ sha: sourceSha }] };
+    throw new Error(`Unexpected path: ${path}`);
+  };
+  const pr = await client.findRepairPr('alpha', { id: 41, branch: 'develop', headSha: sourceSha });
+  assert.equal(pr.diffSha.length, 64);
+  assert.equal(pr.sourceSha, sourceSha);
+  assert.equal(pr.merged, true);
+  client.api = async (path) => {
+    if (path.includes('/pulls?')) return [[{ number: 91,
+      head: { ref: 'sutura/fix-41', sha: 'c'.repeat(40) }, base: { ref: 'develop' },
+      body: '<!-- sutura-run:NDE -->', merged_at: null, merge_commit_sha: null }]];
+    if (path.includes('/pulls/91/files')) return [[{ filename: 'src/index.ts', status: 'modified', patch: '@@ -1 +1 @@' }]];
+    if (path.includes('/commits/')) return { parents: [{ sha: 'b'.repeat(40) }] };
+    throw new Error(`Unexpected path: ${path}`);
+  };
+  await assert.rejects(() => client.findRepairPr('alpha', { id: 41, branch: 'develop', headSha: sourceSha }),
+    /parent|source/u);
 });
