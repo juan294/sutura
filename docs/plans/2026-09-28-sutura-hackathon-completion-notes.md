@@ -162,3 +162,12 @@ additional reuse or allocation change. The focused classifier, grounding and
 orchestration suites passed 164/164; `pnpm run typecheck`, `pnpm run lint`, and
 `git diff --check` passed after simplification. No paid or public outcome is
 claimed from these local checks.
+
+The first clean-commit `pnpm run ci:local` on `1ba94bc` passed release
+contracts, setup, offline smoke, typecheck, lint and bundle parity, then
+failed two historical replay tests. The new taxonomy prompt correctly
+diverged at the recorded provider request before the older executor mismatch
+those tests named. The saved bundles were not changed. Assertions now check
+the earlier exact request path and historical/current prompt distinction;
+the targeted replay suite passed 17/17 after that repair. The failed full
+gate remains recorded and needs a clean-candidate rerun.

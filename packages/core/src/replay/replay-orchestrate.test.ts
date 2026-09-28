@@ -168,10 +168,12 @@ describe('replayBundle', () => {
       .toEqual(Array.from({ length: 7 }, () => ({ enable_thinking: false })));
 
     const error = await captureReplayMismatch(bundle);
-    expect(error.sequence).toBe(7);
-    expect(error.path).toBe('$.method');
-    expect(error.expected).toBe('runMany');
-    expect(error.actual).toBe('run');
+    // The current taxonomy prompt now diverges before the older executor
+    // runMany/run contract; the saved provider request must remain immutable.
+    expect(error.sequence).toBe(50);
+    expect(error.path).toBe('$.messages[0].content');
+    expect(error.expected).toContain('Compilation or packaging failures outside type checking.');
+    expect(error.actual).toContain('missing relative source imports.');
     expect(JSON.stringify(bundle)).toBe(originalBundle);
   });
 
@@ -193,12 +195,13 @@ describe('replayBundle', () => {
     expect(capturedSuperRequestBodies(bundle).map(({ chat_template_kwargs }) => chat_template_kwargs))
       .toEqual(Array.from({ length: 6 }, () => ({ enable_thinking: false })));
 
-    // Historical triage batches predate individually budgeted operations and identities.
+    // The taxonomy prompt changes before this historical triage batch reaches
+    // its older executor operation contract.
     const error = await captureReplayMismatch(bundle);
-    expect(error.sequence).toBe(7);
-    expect(error.path).toBe('$.method');
-    expect(error.expected).toBe('runMany');
-    expect(error.actual).toBe('run');
+    expect(error.sequence).toBe(44);
+    expect(error.path).toBe('$.messages[0].content');
+    expect(error.expected).toContain('Compilation or packaging failures outside type checking.');
+    expect(error.actual).toContain('missing relative source imports.');
     expect(JSON.stringify(bundle)).toBe(originalBundle);
   });
 
