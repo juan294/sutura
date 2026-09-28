@@ -4,12 +4,13 @@ import { createHash } from 'node:crypto';
 import { moduleSystemInstruction } from './module-syntax.js';
 import type { Candidate } from '../domain.js';
 import type { ChatMessage, ChatOptions, JsonSchema } from '../llm/types.js';
+import { RoutingAbstentionError } from '../llm/router.js';
 import { policyAllowsPatchPath } from '../policy/evaluate.js';
 import { assertExternalEditableText, redactExternalJsonValue } from '../security/external-text.js';
 import type { RepairAgentContext, RepairAgentOutcome } from './repair-agent.js';
 import { publicRepairReason, requestRepairModel } from './repair-model-call.js';
 import { RepairToolRuntime, type RepairToolResult } from './repair-tools.js';
-import { isAuthorizedRepairTarget } from './repair-authorization.js';
+import { isAuthorizedRepairTarget, repairAuthorizationEvidence } from './repair-authorization.js';
 import { isRepairPathAdmissible } from './patch-rules.js';
 import {
   modelRepairSlots,
@@ -116,6 +117,7 @@ function proposalExample(slots: readonly RepairTargetSlot[]): unknown {
   return slots.length === 1 ? REPAIR_PROPOSAL_EXAMPLE : REPAIR_PAIR_PROPOSAL_EXAMPLE;
 }
 export const CONTROLLED_REPAIR_MAX_TOKENS = 8_192;
+const AWAIT_GRANT_INSTRUCTION = 'Insert only necessary await and async tokens; preserve every other original source byte. Await the existing asynchronous call in the observed assertion or direct setup. Do not change expected values, assertions, imports, names, or test discovery.';
 
 function digest(value: string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -199,8 +201,9 @@ export function prepareControlledRepairProposalTemplate(
 }
 
 function buildProposalTemplate(
-  ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 'policy' | 'runtimeId'>,
+  ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 'policy' | 'runtimeId' | 'authorization'>,
   sources: PreparedSourceEvidence[],
+  instructionEstimate?: string,
 ): ControlledRepairProposalTemplate {
   if (sources.length === 0) {
     throw new RepairProposalPreparationError(
@@ -243,6 +246,7 @@ function buildProposalTemplate(
     })),
     trustedCommandId: 'diagnosed',
   };
+  const grants = ctx.authorization === undefined ? [] : repairAuthorizationEvidence(ctx.authorization.session);
   const repairInstruction = ctx.diagnosis.class === 'test-bug'
     ? 'Repair the diagnosed test defect; do not change policy.'
     : 'The failing assertion declares required behavior. Repair production source; do not change tests or policy.';
@@ -257,7 +261,10 @@ function buildProposalTemplate(
         ? 'The controller selects exactly one target excerpt. You cannot select a path or line range.'
         : 'The controller selects every slot. Name each slot by its supplied slot identifier; you cannot select a path or line range, and you cannot add, drop or repeat a slot.',
       'replacement must be the complete new text for the entire selected target excerpt, including every unchanged line and without supplied line numbers.',
-      repairInstruction,
+      instructionEstimate ?? (slots.length === 1 && grants.some((grant) => grant.path === slots[0]!.path &&
+        (grant.kind === 'await-operation' || grant.kind === 'await-setup'))
+        ? AWAIT_GRANT_INSTRUCTION
+        : repairInstruction),
       'Use an empty replacement only when deleting the entire selected excerpt is the diagnosed repair.',
       'Change the smallest necessary part of the excerpt, but return the full replacement excerpt.',
       'Do not include analysis or markdown.',
@@ -476,7 +483,7 @@ export function recoveryRepairReservationUsd(
     ...ctx.diagnosis, class: failureClass,
     signals: [...ctx.diagnosis.signals, 'recovery:hypothesis-2'],
   }))];
-  const templates: Array<{ diagnosis: typeof ctx.diagnosis; template: ControlledRepairProposalTemplate }> = [];
+  const templates: Array<{ diagnosis: typeof ctx.diagnosis; template: ControlledRepairProposalTemplate; optional?: boolean }> = [];
   if (sources.some(({ editable }) => editable)) {
     templates.push({ diagnosis: ctx.diagnosis, template: buildProposalTemplate(ctx, sources) });
   }
@@ -494,14 +501,31 @@ export function recoveryRepairReservationUsd(
           diagnosis, policy: ctx.policy, ...(ctx.runtimeId === undefined ? {} : { runtimeId: ctx.runtimeId }),
         }, estimate),
       });
+      // Quote the possible grant prompt itself: routing can change tiers at a
+      // request-size boundary, so adding bytes to an ordinary quote is unsafe.
+      templates.push({
+        diagnosis,
+        template: buildProposalTemplate({
+          diagnosis, policy: ctx.policy, ...(ctx.runtimeId === undefined ? {} : { runtimeId: ctx.runtimeId }),
+        }, estimate, AWAIT_GRANT_INSTRUCTION),
+        optional: true,
+      });
     }
   }
   let maximum = REPAIR_ATTEMPT_MINIMUM_INFERENCE_USD;
-  for (const { diagnosis, template } of templates) {
+  for (const { diagnosis, template, optional } of templates) {
     for (let index = 0; index < template.targetCount; index++) {
       const { messages, requestBytes } = template.contract(undefined, index);
-      const quote = ctx.llm.modelQuote?.('super', messages, proposalOptions({ diagnosis, budget: ctx.budget }));
-      if (quote === undefined) throw new Error('Repair model routing quote is unavailable');
+      let quote;
+      try { quote = ctx.llm.modelQuote?.('super', messages, proposalOptions({ diagnosis, budget: ctx.budget })); }
+      catch (error) {
+        if (optional && error instanceof RoutingAbstentionError) continue;
+        throw error;
+      }
+      if (quote === undefined) {
+        if (optional) continue;
+        throw new Error('Repair model routing quote is unavailable');
+      }
       maximum = Math.max(maximum, worstCaseRequestUsd(requestBytes, quote.price.input, quote.price.output));
     }
   }
