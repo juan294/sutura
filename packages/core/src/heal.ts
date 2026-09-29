@@ -8,7 +8,7 @@ import { parseRuntimeCandidateEvidence, type RuntimeCandidateEvidence } from './
 import { challengeSubjectRecords } from './challenges/runner.js';
 import { canonicalJson } from './replay/canonical-json.js';
 import { evaluateRuntimeCandidate, type RuntimeCandidateResult } from './verification/runtime.js';
-import { prepareRuntimeChallenges, type PreparedRuntimeChallenges } from './challenges/runtime.js';
+import { prepareRuntimeChallenges, summarizeChallengePreparation, type PreparedRuntimeChallenges } from './challenges/runtime.js';
 import { runMechanicalChecks } from './audit/mechanical.js';
 import { budgetedRecoveryPorts, reserveRecoveryAudit, withinRecoveryDeadline } from './diagnose/hypotheses-budget.js';
 import { recoverDiagnosis, recoverySourceClasses, type DiagnosisRecoveryEvidence } from './diagnose/hypotheses.js';
@@ -777,6 +777,7 @@ function makeCaseFile(
     | 'runtime'
     | 'recovery'
     | 'verificationRuns'
+    | 'preparedChallenges'
   >,
   diagnosis: Diagnosis,
   triageVerdict: CaseFile['triage'],
@@ -817,6 +818,7 @@ function makeCaseFile(
     outcome,
     ...(ctx.recovery === undefined ? {} : { recovery: ctx.recovery }),
     ...(ctx.verificationRuns === undefined ? {} : { verificationRuns: ctx.verificationRuns }),
+    ...(ctx.preparedChallenges === undefined ? {} : { challengePreparation: summarizeChallengePreparation(ctx.preparedChallenges) }),
     cost: ctx.cost,
     policy: policyEvidenceFor(ctx),
     stages: ctx.stageLedger?.entries() ?? [],

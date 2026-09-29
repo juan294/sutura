@@ -1823,6 +1823,10 @@ it('heals a required local contract using one frozen source manifest through the
     const outcome = await healCase({ ...base, caseDir: directory, failureCommand: 'pnpm test', executor, llm: { ...base.llm, chat }, policy, candidateDiff: HONEST_DIFF });
     expect(outcome.outcome, JSON.stringify(outcome)).toBe('fixed');
     expect(outcome.verificationRuns?.[0]?.verification.challengeAssurance).toBe(true);
+    expect(outcome.challengePreparation).toEqual({
+      reason: null, retainedCount: 1, excludedCount: 0, qualifiedCount: 1,
+      excludedReasons: [], disqualifiedReasons: [],
+    });
     expect(outcome.verification?.commands).toHaveLength(executor.calls.filter(call => call.kind === 'run').length);
     expect(outcome.verification?.mode).toBe('local');
     expect(snapshots).toHaveLength(2);

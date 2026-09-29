@@ -1,4 +1,5 @@
 import type { RuntimeCandidateEvidence } from './verification/runtime-evidence.js';
+import type { ChallengePreparationDiagnostics } from './challenges/runtime.js';
 import type { CounterfactualEvidence } from './counterfactual/types.js';
 import type { RunMetrics } from './executor/types.js';
 import type { TraceEvent } from './trace/types.js';
@@ -175,6 +176,8 @@ export interface CaseFile {
   verification?: VerificationEvidence;
   verificationArtifact?: VerificationArtifact;
   verificationRuns?: RuntimeCandidateEvidence[];
+  /** Bounded controller reason codes and counts, without generated probe text or inputs. */
+  challengePreparation?: ChallengePreparationDiagnostics;
   /** Public observations only; serialized recovery evidence cannot create edit grants. */
   recovery?: DiagnosisRecoveryEvidence;
 }

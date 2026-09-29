@@ -31,6 +31,28 @@ export interface PreparedRuntimeChallenges {
   readonly qualified: readonly ChallengeQualification[];
   readonly reason: string | null;
 }
+export interface ChallengePreparationDiagnostics {
+  reason: string | null;
+  retainedCount: number;
+  excludedCount: number;
+  qualifiedCount: number;
+  excludedReasons: Array<{ reasonCode: string; count: number }>;
+  disqualifiedReasons: Array<{ reasonCode: string; count: number }>;
+}
+/** Only controller-owned reason codes and counts leave the private challenge context. */
+export function summarizeChallengePreparation(prepared: PreparedRuntimeChallenges): ChallengePreparationDiagnostics {
+  const counts = (reasons: string[]) => [...new Set(reasons)].sort().map(reasonCode => ({
+    reasonCode, count: reasons.filter(reason => reason === reasonCode).length,
+  }));
+  return {
+    reason: prepared.reason,
+    retainedCount: prepared.set?.challenges.length ?? 0,
+    excludedCount: prepared.set?.excluded.length ?? 0,
+    qualifiedCount: prepared.qualified.filter(item => item.qualified).length,
+    excludedReasons: counts(prepared.set?.excluded.map(item => item.reasonCode) ?? []),
+    disqualifiedReasons: counts(prepared.qualified.filter(item => !item.qualified).map(item => item.reasonCode)),
+  };
+}
 // Probe handles hold controller-only assertions and cannot be serialized or supplied by a patch.
 const handles = new WeakMap<PreparedRuntimeChallenges, ReadonlyMap<string, FrozenProbe>>();
 async function repetitions(executor: Executor, image: ImageId, id: string, probe: FrozenProbe, subject: 'baseline' | 'candidate', observe?: RuntimeChallengeInput['observe']): Promise<ChallengeObservation[]> {
@@ -131,15 +153,18 @@ Return a JSON object with a challenges array. Choose at most three probes. Only 
   let reason: string | null = set.excluded.some(x => x.reasonCode !== 'retention-limit') ? 'invalid-probe' : null;
   for (const challenge of set.challenges) {
     const validated = validateChallengeProposal(challenge, { policy: input.policy, sourceHashes: new Map(sources.map(s => [s.path, digest(s.content)])), trustedContractIds: new Set(verification.contracts.map(c => c.id)) });
+    if (!validated.ok || challenge.relationId !== 'equals') {
+      reason = 'invalid-probe';
+      qualified.push({ challengeId: challenge.id, qualified: false, reasonCode: validated.ok ? 'unsupported-relation' : validated.reasonCode, observations: [] });
+      continue;
+    }
     let probe: FrozenProbe;
     try {
-      if (!validated.ok || challenge.relationId !== 'equals')
-        throw Error('invalid probe');
       probe = freezeProbe(verification, input.policyBaseSha === null ? { policyBaseSha: null, policyHash: input.policyHash, localSnapshotSha256: input.baselineSnapshotHash } : { policyBaseSha: input.policyBaseSha, policyHash: input.policyHash }, { contractId: challenge.contractId, args: challenge.inputs });
     }
-    catch {
+    catch (error) {
       reason = 'invalid-probe';
-      qualified.push({ challengeId: challenge.id, qualified: false, reasonCode: 'invalid-probe', observations: [] });
+      qualified.push({ challengeId: challenge.id, qualified: false, reasonCode: error instanceof Error && error.message.startsWith('input outside') ? 'input-outside-domain' : 'invalid-probe', observations: [] });
       continue;
     }
     const observations = await repetitions(input.executor, input.baselineImage, challenge.id, probe, 'baseline', input.observe);

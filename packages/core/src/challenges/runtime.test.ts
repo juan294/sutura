@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { expect, it, vi } from 'vitest';
-import { prepareRuntimeChallenges, runRuntimeChallenges } from './runtime.js';
+import { prepareRuntimeChallenges, runRuntimeChallenges, summarizeChallengePreparation } from './runtime.js';
 import { createDefaultRepositoryPolicy } from '../policy/load.js';
 import type { Executor } from '../executor/types.js';
 import type { HealLlm } from '../heal.js';
@@ -38,6 +38,25 @@ it('never discards an invalid frozen challenge to approve the remaining one', as
   s.chat.mockResolvedValue({ text: JSON.stringify({ challenges: [proposal, { ...proposal, id: 'bad', inputs: [-1, 10] }] }) });
   const prepared = await prepareRuntimeChallenges(s.input);
   expect((await runRuntimeChallenges(prepared, s.executor, 'ceil')).status).toBe('insufficient');
+  expect(summarizeChallengePreparation(prepared)).toEqual({
+    reason: 'invalid-probe', retainedCount: 2, excludedCount: 0, qualifiedCount: 1,
+    excludedReasons: [], disqualifiedReasons: [{ reasonCode: 'input-outside-domain', count: 1 }],
+  });
+});
+
+it('reports excluded proposal codes without retaining generated text or inputs', async () => {
+  const s = setup();
+  s.chat.mockResolvedValue({ text: JSON.stringify({ challenges: [proposal, {
+    ...proposal, id: 'bad', probeId: 'Invalid ID', rationale: 'sk_test_abcdefgh12345678', inputs: ['private-value'],
+  }] }) });
+  const prepared = await prepareRuntimeChallenges(s.input);
+  const summary = summarizeChallengePreparation(prepared);
+  expect(summary).toEqual({
+    reason: 'invalid-probe', retainedCount: 1, excludedCount: 1, qualifiedCount: 1,
+    excludedReasons: [{ reasonCode: 'invalid-probe', count: 1 }], disqualifiedReasons: [],
+  });
+  expect(JSON.stringify(summary)).not.toContain('private-value');
+  expect(JSON.stringify(summary)).not.toContain('sk_test_abcdefgh12345678');
 });
 it('binds every repetition to the original subject image and stores observed byte digests', async () => {
   const s = setup();
