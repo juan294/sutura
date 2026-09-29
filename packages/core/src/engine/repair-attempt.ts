@@ -107,15 +107,13 @@ export class RepairProposalPreparationError extends Error {
 const REPAIR_PROPOSAL_EXAMPLE = Object.freeze({
   [REPAIR_PROPOSAL_FIELDS.replacement]: 'complete replacement for the controller-selected excerpt',
 });
-const REPAIR_PAIR_PROPOSAL_EXAMPLE = Object.freeze({
-  [REPAIR_PROPOSAL_FIELDS.replacements]: [{
-    [REPAIR_PROPOSAL_FIELDS.slot]: 'slot-1',
-    [REPAIR_PROPOSAL_FIELDS.replacement]: 'complete replacement for that slot',
-  }],
-});
-
 function proposalExample(slots: readonly RepairTargetSlot[]): unknown {
-  return slots.length === 1 ? REPAIR_PROPOSAL_EXAMPLE : REPAIR_PAIR_PROPOSAL_EXAMPLE;
+  return slots.length === 1 ? REPAIR_PROPOSAL_EXAMPLE : {
+    [REPAIR_PROPOSAL_FIELDS.replacements]: slots.map(({ slotId }) => ({
+      [REPAIR_PROPOSAL_FIELDS.slot]: slotId,
+      [REPAIR_PROPOSAL_FIELDS.replacement]: 'complete replacement for that slot',
+    })),
+  };
 }
 export const CONTROLLED_REPAIR_MAX_TOKENS = 8_192;
 const AWAIT_GRANT_INSTRUCTION = 'Insert only necessary await and async tokens; preserve every other original source byte. Await the existing asynchronous call in the observed assertion or direct setup. Do not change expected values, assertions, imports, names, or test discovery.';
