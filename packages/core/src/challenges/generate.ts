@@ -52,7 +52,12 @@ export interface FrozenChallengeSet {
 export interface ChallengeGenerationContext {
   failureExcerpt: string;
   baselineSources: Array<{ path: string; startLine: number; content: string }>;
-  contractExcerpts: Array<{ contractId: string; path: string; excerpt: string }>;
+  contractExcerpts: Array<{
+    contractId: string;
+    path: string;
+    excerpt: string;
+    citation: ChallengeContractRef | null;
+  }>;
   baselineSnapshotHash: string;
   trustedPolicySha: string;
 }
@@ -112,6 +117,7 @@ export function buildChallengeGenerationPrompt(
       'Name only a controller-supplied probe identifier, bounded typed inputs, a declared contract identifier and one of its declared relations.',
       'You cannot supply an expected value, test source, a shell command, a dependency, a runner flag or a new contract. Expected values come from the trusted policy.',
       'Cite the contract excerpt each challenge relies on. A citation does not establish semantics.',
+      'Copy a supplied citation object exactly into contractRefs; do not calculate or invent a source hash. If citation is null, do not propose that contract.',
       'Do not include analysis or markdown.',
     ].join('\n'),
   };

@@ -66,10 +66,30 @@ export async function prepareRuntimeChallenges(input: RuntimeChallengeInput): Pr
     return Object.freeze(prepared);
   }
   const sources = input.baselineSources.filter(s => policyAllowsSourceRead(s.path, input.policy));
-  const context = { failureExcerpt: input.failureExcerpt, baselineSources: sources, contractExcerpts: verification.contracts.map(c => ({ contractId: c.id, path: c.target.path, excerpt: canonicalJson({ contract: c, sourceSha256: sources.find(s => s.path === c.target.path) ? digest(sources.find(s => s.path === c.target.path)!.content) : null, relationId: 'equals' }) })), baselineSnapshotHash: input.baselineSnapshotHash, trustedPolicySha: input.policyHash };
+  const contractExcerpts = verification.contracts.map(c => {
+    const source = sources.find(s => s.path === c.target.path);
+    return {
+      contractId: c.id,
+      path: c.target.path,
+      excerpt: canonicalJson({ contract: c, relationId: 'equals' }),
+      citation: source ? {
+        path: source.path,
+        sha256: digest(source.content),
+        startLine: source.startLine,
+        endLine: source.startLine + source.content.trimEnd().split(/\r?\n/u).length - 1,
+      } : null,
+    };
+  });
+  const context: ChallengeGenerationContext = {
+    failureExcerpt: input.failureExcerpt,
+    baselineSources: sources,
+    contractExcerpts,
+    baselineSnapshotHash: input.baselineSnapshotHash,
+    trustedPolicySha: input.policyHash,
+  };
   const prompt = buildChallengeGenerationPrompt(context);
   prompt.messages[0] = { ...prompt.messages[0]!, role: 'system', content: `${prompt.messages[0]!.content}
-Return {"challenges":[{"id":"probe-1","kind":"preservation or bug-regression","contractRefs":[{"path":"declared target path","sha256":"supplied sourceSha256","startLine":1,"endLine":1}],"rationale":"short contract reason","probeId":"probe-1","inputs":[],"contractId":"declared contract id","relationId":"equals"}]}. Choose at most three probes. Use supplied source hashes; never invent a hash. Only equals is supported by this runtime.` };
+Return {"challenges":[{"id":"probe-1","kind":"preservation or bug-regression","contractRefs":[{"path":"declared target path","sha256":"supplied citation hash","startLine":1,"endLine":1}],"rationale":"short contract reason","probeId":"probe-1","inputs":[],"contractId":"declared contract id","relationId":"equals"}]}. Choose at most three probes. Copy one supplied citation object exactly; never invent a hash. Only equals is supported by this runtime.` };
   const reply = await input.llm.chat('super', prompt.messages, { purpose: 'challenge-generation', maxTokens: 2048, temperature: 0, responseFormat: { type: 'json_object' } });
   let proposals: unknown[];
   try {

@@ -19,6 +19,13 @@ function setup() {
 it('generates and qualifies once before any candidate and shares frozen probes across alternatives', async () => {
   const s = setup();
   const prepared = await prepareRuntimeChallenges(s.input);
+  const messages = (s.chat.mock.calls[0] as unknown as [unknown, Array<{ role: string; content: string }>])[1];
+  const generation = JSON.parse(messages[1]!.content) as {
+    contractExcerpts: Array<{ citation: { path: string; sha256: string; startLine: number; endLine: number } }>;
+  };
+  expect(generation.contractExcerpts[0]?.citation).toEqual({
+    path: 'src/pages.js', sha256: hash(source), startLine: 1, endLine: 1,
+  });
   expect(s.calls).toEqual(['generate', 'baseline', 'baseline']);
   expect((await runRuntimeChallenges(prepared, s.executor, 'floor')).status).toBe('failed');
   expect((await runRuntimeChallenges(prepared, s.executor, 'ceil')).status).toBe('passed');
