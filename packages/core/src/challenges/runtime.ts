@@ -6,7 +6,7 @@ import { policyAllowsSourceRead } from '../policy/evaluate.js';
 import { canonicalJson } from '../replay/canonical-json.js';
 import { BudgetExceededError } from '../engine/repair-budget.js';
 import { redactExternalText } from '../security/external-text.js';
-import { buildChallengeGenerationPrompt, freezeChallengeSet, type FrozenChallengeSet, type ChallengeGenerationContext } from './generate.js';
+import { buildChallengeGenerationPrompt, classifyFrozenChallenges, freezeChallengeSet, type ChallengeKind, type FrozenChallengeSet, type ChallengeGenerationContext } from './generate.js';
 import { buildObservationCommand, decodeObservation, evaluateObservation, freezeProbe, type FrozenProbe } from './protocol.js';
 import { validateChallengeProposal } from './validate.js';
 import type { ChallengeObservation, ChallengeQualification, ChallengeRunResult } from './runner.js';
@@ -150,6 +150,7 @@ Return a JSON object with a challenges array. Choose at most three probes. Only 
   const baseline: ChallengeObservation[] = [];
   const qualified: ChallengeQualification[] = [];
   const probes = new Map<string, FrozenProbe>();
+  const observedKinds = new Map<string, ChallengeKind>();
   let reason: string | null = set.excluded.some(x => x.reasonCode !== 'retention-limit') ? 'invalid-probe' : null;
   for (const challenge of set.challenges) {
     const validated = validateChallengeProposal(challenge, { policy: input.policy, sourceHashes: new Map(sources.map(s => [s.path, digest(s.content)])), trustedContractIds: new Set(verification.contracts.map(c => c.id)) });
@@ -169,17 +170,22 @@ Return a JSON object with a challenges array. Choose at most three probes. Only 
     }
     const observations = await repetitions(input.executor, input.baselineImage, challenge.id, probe, 'baseline', input.observe);
     baseline.push(...observations);
-    const expected = challenge.kind === 'preservation' ? 'passed' : 'failed';
-    const ok = observations.every(o => o.status === expected);
+    // The model suggests inputs; only trusted baseline assertions classify their behavior.
+    let observedKind: ChallengeKind | null = null;
+    if (observations.every(o => o.status === 'passed')) observedKind = 'preservation';
+    else if (observations.every(o => o.status === 'failed' && o.reasonCode === 'assertion-mismatch')) observedKind = 'bug-regression';
+    const ok = observedKind !== null;
     qualified.push({ challengeId: challenge.id, qualified: ok, reasonCode: ok ? 'qualified' : 'baseline-not-qualified', observations });
-    if (ok)
+    if (observedKind !== null) {
+      observedKinds.set(challenge.id, observedKind);
       probes.set(challenge.id, probe);
-    else
+    } else {
       reason = 'invalid-probe';
+    }
   }
   if (probes.size === 0)
     reason ??= 'missing-contract';
-  const prepared = { mode: verification.mode, set, baseline, qualified, reason };
+  const prepared = { mode: verification.mode, set: classifyFrozenChallenges(set, observedKinds), baseline, qualified, reason };
   // Deep-freeze public preparation records; assertions remain in the private map.
   const freeze = (value: unknown): void => { if (value && typeof value === 'object') {
     Object.values(value).forEach(freeze);

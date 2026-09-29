@@ -225,3 +225,19 @@ export function freezeChallengeSet(input: {
   };
   return { ...base, setHash: digest(canonicalJson(base)) };
 }
+
+/** Bind the final challenge kind to trusted baseline observations before any candidate runs. */
+export function classifyFrozenChallenges(set: FrozenChallengeSet, observedKinds: ReadonlyMap<string, ChallengeKind>): FrozenChallengeSet {
+  const base = {
+    version: set.version,
+    baselineSnapshotHash: set.baselineSnapshotHash,
+    trustedPolicySha: set.trustedPolicySha,
+    contextHash: set.contextHash,
+    promptHash: set.promptHash,
+    challenges: set.challenges.map(challenge => ({
+      ...challenge, kind: observedKinds.get(challenge.id) ?? challenge.kind,
+    })),
+    excluded: set.excluded,
+  };
+  return { ...base, setHash: digest(canonicalJson(base)) };
+}

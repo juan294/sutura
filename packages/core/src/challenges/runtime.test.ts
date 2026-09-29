@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { expect, it, vi } from 'vitest';
 import { prepareRuntimeChallenges, runRuntimeChallenges, summarizeChallengePreparation } from './runtime.js';
 import { createDefaultRepositoryPolicy } from '../policy/load.js';
+import { canonicalJson } from '../replay/canonical-json.js';
 import type { Executor } from '../executor/types.js';
 import type { HealLlm } from '../heal.js';
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
@@ -33,10 +34,38 @@ it('generates and qualifies once before any candidate and shares frozen probes a
   expect(s.calls).toEqual(['generate', 'baseline', 'baseline', 'floor', 'floor', 'ceil', 'ceil']);
   expect(JSON.stringify(s.chat.mock.calls)).not.toContain('candidateDiff');
 });
+it('classifies a trusted baseline pass as preservation even when the model labels it a regression', async () => {
+  const s = setup();
+  const prepared = await prepareRuntimeChallenges({ ...s.input, baselineImage: 'ceil' });
+  expect(prepared.reason).toBeNull();
+  expect(prepared.qualified).toEqual([expect.objectContaining({ qualified: true, reasonCode: 'qualified' })]);
+  expect(prepared.set?.challenges[0]?.kind).toBe('preservation');
+  const { setHash, ...boundSet } = prepared.set!;
+  expect(setHash).toBe(hash(canonicalJson(boundSet)));
+  expect((await runRuntimeChallenges(prepared, s.executor, 'ceil')).status).toBe('passed');
+  expect(s.calls).toEqual(['generate', 'ceil', 'ceil', 'ceil', 'ceil']);
+});
+it('classifies a trusted baseline assertion failure as regression even when the model labels it preservation', async () => {
+  const s = setup();
+  s.chat.mockResolvedValue({ text: JSON.stringify({ challenges: [{ ...proposal, kind: 'preservation' }] }) });
+  const prepared = await prepareRuntimeChallenges(s.input);
+  expect(prepared.reason).toBeNull();
+  expect(prepared.set?.challenges[0]?.kind).toBe('bug-regression');
+  expect((await runRuntimeChallenges(prepared, s.executor, 'ceil')).status).toBe('passed');
+});
+it('refuses mixed baseline observations instead of assigning a challenge kind', async () => {
+  const s = setup();
+  s.run.mockResolvedValueOnce({ imageId: 'discard', exitCode: 0, stdout: JSON.stringify({ version: 1, value: 2 }), stderr: '', metrics: {} });
+  const prepared = await prepareRuntimeChallenges(s.input);
+  expect(prepared.reason).toBe('invalid-probe');
+  expect(prepared.qualified[0]?.reasonCode).toBe('baseline-not-qualified');
+  expect((await runRuntimeChallenges(prepared, s.executor, 'ceil')).status).toBe('insufficient');
+});
 it('never discards an invalid frozen challenge to approve the remaining one', async () => {
   const s = setup();
-  s.chat.mockResolvedValue({ text: JSON.stringify({ challenges: [proposal, { ...proposal, id: 'bad', inputs: [-1, 10] }] }) });
+  s.chat.mockResolvedValue({ text: JSON.stringify({ challenges: [{ ...proposal, kind: 'preservation' }, { ...proposal, id: 'bad', inputs: [-1, 10] }] }) });
   const prepared = await prepareRuntimeChallenges(s.input);
+  expect(prepared.set?.challenges[0]?.kind).toBe('bug-regression');
   expect((await runRuntimeChallenges(prepared, s.executor, 'ceil')).status).toBe('insufficient');
   expect(summarizeChallengePreparation(prepared)).toEqual({
     reason: 'invalid-probe', retainedCount: 2, excludedCount: 0, qualifiedCount: 1,
