@@ -11,6 +11,7 @@ import { boundedTail } from '../text/bounded-tail.js';
 import { shellQuote } from '../engine/shell.js';
 import { BudgetExceededError, type RepairBudget, type RepairCapacityReservation } from '../engine/repair-budget.js';
 import { REPAIR_ATTEMPT_COSTS } from '../engine/repair-attempt.js';
+import { controllerPythonAwaitReplacement } from '../engine/controller-await-proposal.js';
 import type { RepairSourceContext, RepairSourceExcerpt } from '../engine/repair.js';
 import {
   createRepairAuthorizationSession, deriveRepairAuthorization, repairAuthorizationEvidence,
@@ -87,6 +88,17 @@ function vitestStackFrames(log: string): Array<{ path: string; line: number }> {
   const safe = redactExternalText(boundedTail(log, LOG_BOUNDS)).text.replace(/\u001b\[[0-9;]*m/gu, '');
   return [...safe.matchAll(/^\s*❯\s+(\S+\.test\.[cm]?[jt]s):(\d+):\d+\s*$/gmu)]
     .map((match) => ({ path: match[1]!, line: Number(match[2]) }));
+}
+
+function pythonUnittestStackLine(log: string, sourcePath: string): number | undefined {
+  const safe = redactExternalText(boundedTail(log, LOG_BOUNDS)).text;
+  const traces = safe.split('Traceback (most recent call last):');
+  if (traces.length !== 2) return undefined;
+  const end = traces[1]!.indexOf("\nTypeError: 'coroutine' object is not subscriptable");
+  if (end < 0) return undefined;
+  const frames = [...traces[1]!.slice(0, end).matchAll(/^\s*File "([^"\n]+\.py)", line ([1-9]\d*), in test_[A-Za-z_]\w*\s*$/gmu)]
+    .filter((match) => match[1] === sourcePath || match[1]?.endsWith(`/${sourcePath}`));
+  return frames.length === 1 ? Number(frames[0]![2]) : undefined;
 }
 
 function controllerPromiseHypotheses(context: { signals: readonly ObservedRecoverySignal[]; sources: readonly RepairSourceExcerpt[] }, failedLog: string): { hypotheses: RecoveryHypothesis[]; path: string; line: number } | undefined {
@@ -210,7 +222,13 @@ export async function recoverDiagnosis(input: RecoveryInput): Promise<RecoveryRe
           controllerSelection.path === source.path && probeFrames.length === 1 &&
           probeFrames[0]!.line === controllerSelection.line &&
           (probeFrames[0]!.path === source.path || probeFrames[0]!.path.endsWith(`/${source.path}`));
-        const grant = await deriveRepairAuthorization(session, { kind: hypothesis.intent as RepairAuthorizationKind, path: source.path, evidenceReferences: [hypothesis.signal, `source:${hypothesis.sourceSha256}`, ...(stackConfirmed ? [`controller-stack-line:${controllerSelection!.line}`] : [])], controllerProbe: { id: hypothesis.probeId!, imageId: input.baseline.baselineImageId, exitCode: executed.exitCode, output: output.replace(/^SUTURA_SOURCE_SHA256=.*\n/u, ''), sourceSha256: matches[0]![1]!, failingCommand: input.initialDiagnosis.failingCmd }, ...(hypothesis.intent === 'restore-strict-config' ? { strictKey } : {}) });
+        const pythonLine = hypothesis.intent === 'await-operation' && source.path.endsWith('.py')
+          ? pythonUnittestStackLine(input.failedLog, source.path) : undefined;
+        const pythonStackConfirmed = pythonLine !== undefined &&
+          pythonLine === pythonUnittestStackLine(output, source.path) &&
+          await controllerPythonAwaitReplacement(source.content, source.path, pythonLine) !== undefined;
+        const stackLine = stackConfirmed ? controllerSelection!.line : pythonStackConfirmed ? pythonLine : undefined;
+        const grant = await deriveRepairAuthorization(session, { kind: hypothesis.intent as RepairAuthorizationKind, path: source.path, evidenceReferences: [hypothesis.signal, `source:${hypothesis.sourceSha256}`, ...(stackLine === undefined ? [] : [`controller-stack-line:${stackLine}`])], controllerProbe: { id: hypothesis.probeId!, imageId: input.baseline.baselineImageId, exitCode: executed.exitCode, output: output.replace(/^SUTURA_SOURCE_SHA256=.*\n/u, ''), sourceSha256: matches[0]![1]!, failingCommand: input.initialDiagnosis.failingCmd }, ...(hypothesis.intent === 'restore-strict-config' ? { strictKey } : {}) });
         if (!grant.ok) { observation.status = 'insufficient'; observation.reason = grant.reason; continue; }
         observation.status = 'passed'; observation.reason = 'narrow-grant-issued';
         result.attempts.push({ hypothesisId: hypothesis.id, diagnosis: { ...input.initialDiagnosis, class: hypothesis.class, signals: [...input.initialDiagnosis.signals, `recovery:${hypothesis.id}`] }, authorization: { session, baseline: input.baseline } });

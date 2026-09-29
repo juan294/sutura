@@ -5,13 +5,15 @@ import {
   createRepairAuthorizationSession, deriveRepairAuthorization,
   type ControllerBaselineBinding,
 } from './repair-authorization.js';
-import { controllerAwaitReplacement } from './controller-await-proposal.js';
+import { controllerAwaitReplacement, controllerPythonAwaitReplacement } from './controller-await-proposal.js';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const path = 'case.test.js';
 const prefix = "import { expect, test } from 'vitest';\ntest('renders', async () => {\n";
 const suffix = '\n});\n';
 const assertion = "  expect(renderName()).toBe('ADA');";
+const pythonPath = 'tests/test_profile.py';
+const pythonSource = 'import unittest\nfrom profile import fetch_profile\n\nclass ProfileTest(unittest.IsolatedAsyncioTestCase):\n    async def test_profile(self):\n        result = fetch_profile(" Ada ")\n        self.assertEqual(result["name"], "ADA")\n';
 
 async function granted(source: string, line?: number) {
   const baseline: ControllerBaselineBinding = {
@@ -66,4 +68,47 @@ it('requires the controller stack marker for the exact assertion line', async ()
   const source = prefix + assertion + suffix;
   expect(await controllerAwaitReplacement(await granted(source))).toBeUndefined();
   expect(await controllerAwaitReplacement(await granted(source, 2))).toBeUndefined();
+});
+
+it('inserts only the missing Python await next to a confirmed unittest assertion', async () => {
+  const source = pythonSource;
+  const baseline: ControllerBaselineBinding = {
+    kind: 'local-snapshot', sourceSha: null, policyBaseSha: null,
+    snapshotSha256: null, baselineImageId: 'baseline', policySha256: 'a'.repeat(64),
+  };
+  const policy = createDefaultRepositoryPolicy();
+  const excerpt = { path: pythonPath, startLine: 1, content: source, truncated: false };
+  const session = createRepairAuthorizationSession({
+    baseline, failingCommand: 'python3 -B -m unittest discover -s tests', policy, sources: [excerpt],
+  });
+  expect(await deriveRepairAuthorization(session, {
+    kind: 'await-operation', path: pythonPath,
+    evidenceReferences: ['coroutine-mismatch', 'controller-stack-line:7'],
+    controllerProbe: {
+      id: 'async-completion', imageId: 'baseline', exitCode: 1,
+      output: "TypeError: 'coroutine' object is not subscriptable",
+      sourceSha256: hash(source), failingCommand: 'python3 -B -m unittest discover -s tests',
+    },
+  })).toEqual({ ok: true });
+  const input = {
+    authorization: { session, baseline }, sourceContext: { sources: [excerpt] },
+    slots: [{ slotId: 'slot-1', path: pythonPath, startLine: 1,
+      endLine: source.split('\n').length, contentSha256: hash(source), generated: false }],
+  };
+  expect(await controllerAwaitReplacement(input))
+    .toBe(source.replace('result = fetch_profile', 'result = await fetch_profile'));
+  expect(await controllerAwaitReplacement({ ...input, slots: [{ ...input.slots[0]!, contentSha256: hash('stale') }] }))
+    .toBeUndefined();
+});
+
+it('refuses Python edits outside the one adjacent, observed coroutine assignment', async () => {
+  for (const source of [
+    pythonSource.replace('self.assertEqual(result[', 'self.assertEqual(other['),
+    pythonSource.replace('        self.assertEqual', '\n        self.assertEqual'),
+    pythonSource.replace('unittest.IsolatedAsyncioTestCase', 'unittest.TestCase'),
+    pythonSource.replace('result = fetch_profile', 'result = await fetch_profile'),
+  ]) {
+    expect(await controllerPythonAwaitReplacement(source, pythonPath, 7)).toBeUndefined();
+  }
+  expect(await controllerPythonAwaitReplacement(pythonSource, pythonPath, 6)).toBeUndefined();
 });

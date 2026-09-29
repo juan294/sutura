@@ -172,4 +172,15 @@ describe('real repairFailure diagnosis recovery', () => {
     expect(result.selectedDiff).not.toContain('WRONG');
     expect(result.baselineAfterExitCode).not.toBe(0);
   }, 180_000);
+
+  it('replays live run 36568076140: repairs the granted Python coroutine assignment with invalid model proposals', async () => {
+    const result = await runRecoveryControllerCase('python-repair-await-result-preservation', {
+      invalidRepairProposal: true,
+    });
+    expect(result.caseFile.outcome, JSON.stringify(result.caseFile.recovery)).toBe('fixed');
+    expect(result.selectedDiff).toContain('+        result = await fetch_profile(" Ada ")');
+    expect(result.caseFile.trace?.some((entry) => entry.type === 'search-decision' &&
+      entry.summary === 'Propose exact await insertion from source-hash-bound controller grant')).toBe(true);
+    expect(result.baselineAfterExitCode).not.toBe(0);
+  }, 180_000);
 });

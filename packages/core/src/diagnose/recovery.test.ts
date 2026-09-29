@@ -7,6 +7,8 @@ import type { Executor } from '../executor/types.js';
 import type { HealLlm } from '../heal.js';
 import type { RecoveryInput } from './hypotheses.js';
 
+const pythonSource = 'import unittest\nfrom profile import fetch_profile\n\nclass ProfileTest(unittest.IsolatedAsyncioTestCase):\n    async def test_profile(self):\n        result = fetch_profile(" Ada ")\n        self.assertEqual(result["name"], "ADA")\n';
+
 function setup(overrides: Partial<RecoveryInput> = {}) {
   const source = "test('name', async () => {\n  expect(load()).toBe('ADA');\n});\n";
   const sourceHash = createHash('sha256').update(source).digest('hex');
@@ -125,6 +127,36 @@ describe('diagnosis recovery scheduling', () => {
       stderr: '', truncated: false, metrics: {} });
     const result = await recoverDiagnosis(input);
     expect(result.evidence.authorizations[0]?.evidenceReferences).not.toContain('controller-stack-line:2');
+  });
+
+  it('binds a Python await grant to the same failing unittest line in both observations', async () => {
+    const { input, run } = setup();
+    const path = 'tests/test_profile.py';
+    const hash = createHash('sha256').update(pythonSource).digest('hex');
+    const traceback = 'Traceback (most recent call last):\n  File "/workspace/tests/test_profile.py", line 7, in test_profile\n    self.assertEqual(result["name"], "ADA")\nTypeError: \'coroutine\' object is not subscriptable\nRuntimeWarning: coroutine was never awaited\n  File "/workspace/tests/test_profile.py", line 6, in test_profile';
+    input.initialDiagnosis = { ...input.initialDiagnosis, failingCmd: 'python3 -B -m unittest discover -s tests' };
+    input.trustedCommand = input.initialDiagnosis.failingCmd;
+    input.sourceContext = { sources: [{ path, startLine: 1, content: pythonSource, truncated: false }] };
+    input.failedLog = traceback;
+    run.mockResolvedValue({ imageId: 'probe-child', exitCode: 1,
+      stdout: `SUTURA_SOURCE_SHA256=${hash}\n${traceback}`, stderr: '', truncated: false, metrics: {} });
+    const result = await recoverDiagnosis(input);
+    expect(result.evidence.authorizations[0]?.evidenceReferences).toContain('controller-stack-line:7');
+  });
+
+  it('withholds the Python line marker when the controller probe moves the failure', async () => {
+    const { input, run } = setup();
+    const path = 'tests/test_profile.py';
+    const hash = createHash('sha256').update(pythonSource).digest('hex');
+    input.initialDiagnosis = { ...input.initialDiagnosis, failingCmd: 'python3 -B -m unittest discover -s tests' };
+    input.trustedCommand = input.initialDiagnosis.failingCmd;
+    input.sourceContext = { sources: [{ path, startLine: 1, content: pythonSource, truncated: false }] };
+    input.failedLog = 'Traceback (most recent call last):\n  File "/workspace/tests/test_profile.py", line 7, in test_profile\nTypeError: \'coroutine\' object is not subscriptable';
+    run.mockResolvedValue({ imageId: 'probe-child', exitCode: 1,
+      stdout: `SUTURA_SOURCE_SHA256=${hash}\nTraceback (most recent call last):\n  File "/workspace/tests/test_profile.py", line 6, in test_profile\nTypeError: 'coroutine' object is not subscriptable`,
+      stderr: '', truncated: false, metrics: {} });
+    const result = await recoverDiagnosis(input);
+    expect(result.evidence.authorizations[0]?.evidenceReferences).not.toContain('controller-stack-line:7');
   });
 
   it('does not choose a missing-await target when two test sources match', async () => {
