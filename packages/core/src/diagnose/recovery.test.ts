@@ -8,6 +8,8 @@ import type { HealLlm } from '../heal.js';
 import type { RecoveryInput } from './hypotheses.js';
 
 const pythonSource = 'import unittest\nfrom profile import fetch_profile\n\nclass ProfileTest(unittest.IsolatedAsyncioTestCase):\n    async def test_profile(self):\n        result = fetch_profile(" Ada ")\n        self.assertEqual(result["name"], "ADA")\n';
+const helperTest = "import { expect, test } from 'vitest';\nimport { loadProfile } from './profile.js';\nconst load = (name) => loadProfile(name);\ntest('name', async () => {\n  const profile = load(' Ada ');\n  expect(profile.name).toBe('ADA');\n});\n";
+const helperLog = "test name: async setup\nAssertionError: expected undefined to be 'ADA'\n ❯ case.test.js:6:24";
 
 function setup(overrides: Partial<RecoveryInput> = {}) {
   const source = "test('name', async () => {\n  expect(load()).toBe('ADA');\n});\n";
@@ -117,6 +119,39 @@ describe('diagnosis recovery scheduling', () => {
     expect(result.evidence).toMatchObject({ status: 'passed', reason: 'controller-authorized-recovery' });
     expect(result.evidence.hypotheses[1]).toMatchObject({ path: 'case.test.js', intent: 'await-operation', status: 'passed' });
     expect(result.evidence.authorizations[0]?.evidenceReferences).toContain('controller-stack-line:2');
+  });
+
+  it('binds a helper setup grant to the same stack line and complete async export', async () => {
+    const { input, run, chat } = setup();
+    const sourceHash = createHash('sha256').update(helperTest).digest('hex');
+    input.failedLog = helperLog;
+    input.sourceContext.sources = [
+      { path: 'case.test.js', startLine: 1, content: helperTest, truncated: false },
+      { path: 'profile.js', startLine: 1, content: 'export async function loadProfile(name) { return { name }; }\n', truncated: false },
+    ];
+    run.mockResolvedValue({ imageId: 'probe-child', exitCode: 1,
+      stdout: `SUTURA_SOURCE_SHA256=${sourceHash}\n${helperLog}`,
+      stderr: '', truncated: false, metrics: {} });
+    const result = await recoverDiagnosis(input);
+    expect(chat).not.toHaveBeenCalled();
+    expect(result.evidence).toMatchObject({ status: 'passed', reason: 'controller-authorized-recovery' });
+    expect(result.evidence.hypotheses[1]).toMatchObject({ intent: 'await-setup', path: 'case.test.js', status: 'passed' });
+    expect(result.evidence.authorizations[0]?.evidenceReferences).toContain('controller-stack-line:6');
+  });
+
+  it('does not bind a helper setup grant when the probe stack line moves', async () => {
+    const { input, run } = setup();
+    const sourceHash = createHash('sha256').update(helperTest).digest('hex');
+    input.failedLog = helperLog;
+    input.sourceContext.sources = [
+      { path: 'case.test.js', startLine: 1, content: helperTest, truncated: false },
+      { path: 'profile.js', startLine: 1, content: 'export async function loadProfile(name) { return { name }; }\n', truncated: false },
+    ];
+    run.mockResolvedValue({ imageId: 'probe-child', exitCode: 1,
+      stdout: `SUTURA_SOURCE_SHA256=${sourceHash}\n${helperLog.replace(':6:', ':5:')}`,
+      stderr: '', truncated: false, metrics: {} });
+    const result = await recoverDiagnosis(input);
+    expect(result.evidence.authorizations[0]?.evidenceReferences ?? []).not.toContain('controller-stack-line:6');
   });
 
   it('does not mark a stack line when the controller probe points elsewhere', async () => {

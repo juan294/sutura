@@ -5,7 +5,7 @@ import {
   createRepairAuthorizationSession, deriveRepairAuthorization,
   type ControllerBaselineBinding,
 } from './repair-authorization.js';
-import { controllerAwaitReplacement, controllerPythonAwaitReplacement } from './controller-await-proposal.js';
+import { controllerAwaitReplacement, controllerJsSetupAwaitReplacement, controllerPythonAwaitReplacement } from './controller-await-proposal.js';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const path = 'case.test.js';
@@ -14,6 +14,41 @@ const suffix = '\n});\n';
 const assertion = "  expect(renderName()).toBe('ADA');";
 const pythonPath = 'tests/test_profile.py';
 const pythonSource = 'import unittest\nfrom profile import fetch_profile\n\nclass ProfileTest(unittest.IsolatedAsyncioTestCase):\n    async def test_profile(self):\n        result = fetch_profile(" Ada ")\n        self.assertEqual(result["name"], "ADA")\n';
+const setupSource = "import { expect, test } from 'vitest';\nimport { loadProfile } from './profile.js';\n\nconst load = (name) => loadProfile(name);\ntest('name', async () => {\n  const profile = load(' Ada ');\n  expect(profile.name).toBe('ADA');\n});\n";
+const profileSource = 'export async function loadProfile(name) { return { name }; }\n';
+const setupSources = [{ path: 'case.test.js', startLine: 1, content: setupSource, truncated: false },
+  { path: 'profile.js', startLine: 1, content: profileSource, truncated: false }];
+
+it('proposes one setup await only when a complete imported async helper closes the call', async () => {
+  expect(await controllerJsSetupAwaitReplacement(setupSource, path, 7, setupSources))
+    .toBe(setupSource.replace("const profile = load(' Ada ');", "const profile = await load(' Ada ');"));
+});
+
+it('refuses setup edits without the exact assertion, stack line, or async source closure', async () => {
+  expect(await controllerJsSetupAwaitReplacement(setupSource, path, 6, setupSources)).toBeUndefined();
+  for (const content of [
+    setupSource.replace('expect(profile.name)', 'expect(other.name)'),
+    setupSource.replace("const profile = load(' Ada ');", "const profile = await load(' Ada ');"),
+    setupSource.replace('  expect(profile.name)', '\n  expect(profile.name)'),
+    setupSource.replace('async () =>', '() =>'),
+    setupSource.replace("test('name', async () => {", "test('name', async () => { const load = () => ({ name: 'ADA' });"),
+    setupSource.replace("test('name', async () => {", "test('name', async () => { const { load } = { load: () => ({ name: 'ADA' }) };"),
+    setupSource.replace("test('name'", "load = () => ({ name: 'ADA' });\ntest('name'"),
+    setupSource.replace('const load = (name) => loadProfile(name);', 'const load = (loadProfile) => loadProfile(loadProfile);'),
+  ]) {
+    expect(await controllerJsSetupAwaitReplacement(content, path, 7, [
+      { ...setupSources[0]!, content }, setupSources[1]!,
+    ])).toBeUndefined();
+  }
+  for (const sources of [
+    [setupSources[0]!],
+    [setupSources[0]!, { ...setupSources[1]!, truncated: true }],
+    [setupSources[0]!, { ...setupSources[1]!, content: profileSource.replace('async ', '') }],
+    [setupSources[0]!, { ...setupSources[1]!, content: `${profileSource}loadProfile = () => ({ name: 'ADA' });\n` }],
+    [setupSources[0]!, { ...setupSources[1]!, content: `${profileSource}({ loadProfile } = { loadProfile: () => ({ name: 'ADA' }) });\n` }],
+    [setupSources[0]!, { ...setupSources[1]!, content: `${profileSource}for (loadProfile of [() => ({ name: 'ADA' })]) {}\n` }],
+  ]) expect(await controllerJsSetupAwaitReplacement(setupSource, path, 7, sources)).toBeUndefined();
+});
 
 async function granted(source: string, line?: number) {
   const baseline: ControllerBaselineBinding = {

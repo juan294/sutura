@@ -183,4 +183,16 @@ describe('real repairFailure diagnosis recovery', () => {
       entry.summary === 'Propose exact await insertion from source-hash-bound controller grant')).toBe(true);
     expect(result.baselineAfterExitCode).not.toBe(0);
   }, 180_000);
+
+  it('replays live run 36584415309: repairs the helper setup with invalid model hypotheses and proposals', async () => {
+    const result = await runRecoveryControllerCase('repair-await-helper-preservation', {
+      invalidRecoveryHypothesis: true, invalidRepairProposal: true,
+    });
+    expect(result.caseFile.outcome, JSON.stringify(result.caseFile.recovery)).toBe('fixed');
+    expect(result.inferenceCalls).not.toContain('hypotheses');
+    expect(result.selectedDiff).toContain("+  const profile = await load(' Ada ');");
+    expect(result.caseFile.trace?.some((entry) => entry.type === 'search-decision' &&
+      entry.summary === 'Propose exact await insertion from source-hash-bound controller grant')).toBe(true);
+    expect(result.baselineAfterExitCode).not.toBe(0);
+  }, 180_000);
 });

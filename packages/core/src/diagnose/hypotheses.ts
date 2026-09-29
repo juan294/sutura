@@ -11,7 +11,7 @@ import { boundedTail } from '../text/bounded-tail.js';
 import { shellQuote } from '../engine/shell.js';
 import { BudgetExceededError, type RepairBudget, type RepairCapacityReservation } from '../engine/repair-budget.js';
 import { REPAIR_ATTEMPT_COSTS } from '../engine/repair-attempt.js';
-import { controllerPythonAwaitReplacement } from '../engine/controller-await-proposal.js';
+import { controllerJsSetupAwaitReplacement, controllerPythonAwaitReplacement } from '../engine/controller-await-proposal.js';
 import type { RepairSourceContext, RepairSourceExcerpt } from '../engine/repair.js';
 import {
   createRepairAuthorizationSession, deriveRepairAuthorization, repairAuthorizationEvidence,
@@ -101,23 +101,27 @@ function pythonUnittestStackLine(log: string, sourcePath: string): number | unde
   return frames.length === 1 ? Number(frames[0]![2]) : undefined;
 }
 
-function controllerPromiseHypotheses(context: { signals: readonly ObservedRecoverySignal[]; sources: readonly RepairSourceExcerpt[] }, failedLog: string): { hypotheses: RecoveryHypothesis[]; path: string; line: number } | undefined {
-  if (context.signals.length !== 1 || context.signals[0]?.id !== 'promise-mismatch') return undefined;
+async function controllerPromiseHypotheses(context: { signals: readonly ObservedRecoverySignal[]; sources: readonly RepairSourceExcerpt[] }, failedLog: string): Promise<{ hypotheses: RecoveryHypothesis[]; path: string; line: number } | undefined> {
+  if (context.signals.length !== 1 || !['promise-mismatch', 'async-setup'].includes(context.signals[0]?.id ?? '')) return undefined;
   // A single Vitest stack line must point to the exact complete source line;
   // this avoids guessing a repair target from a Promise message alone.
   const frames = vitestStackFrames(failedLog);
   if (frames.length !== 1) return undefined;
   const { path: reportedPath, line: reportedLine } = frames[0]!;
-  const candidates = context.sources.flatMap((source, sourceIndex) => {
+  const candidates = (await Promise.all(context.sources.map(async (source, sourceIndex) => {
     if (source.startLine !== 1 || source.truncated || !reportedPath ||
       (reportedPath !== source.path && !reportedPath.endsWith(`/${source.path}`))) return [];
     const line = source.content.split(/\r?\n/u)[reportedLine - 1];
+    if (context.signals[0]!.id === 'async-setup') {
+      const replacement = await controllerJsSetupAwaitReplacement(source.content, source.path, reportedLine, context.sources);
+      return replacement === undefined ? [] : [sourceIndex];
+    }
     if (!line || !/^\s*expect\(\s*(?!await\b)[A-Za-z_$][\w$]*\(\s*\)\s*\)\s*\.\s*to(?:Be|Equal)\s*\(/u.test(line)) return [];
     const calls = [...line.matchAll(/\bexpect\(\s*(?!await\b)[A-Za-z_$][\w$]*\(\s*\)\s*\)\s*\.\s*to(?:Be|Equal)\s*\(/gu)];
     return calls.length === 1 ? [sourceIndex] : [];
-  });
+  }))).flat();
   if (candidates.length !== 1) return undefined;
-  return { hypotheses: validateHypotheses({ hypotheses: [{ signalIndex: 0, sourceIndex: candidates[0], intent: 'await-operation', probeId: 'async-completion' }] }, context), path: context.sources[candidates[0]!]!.path, line: reportedLine };
+  return { hypotheses: validateHypotheses({ hypotheses: [{ signalIndex: 0, sourceIndex: candidates[0], intent: context.signals[0]!.id === 'async-setup' ? 'await-setup' : 'await-operation', probeId: 'async-completion' }] }, context), path: context.sources[candidates[0]!]!.path, line: reportedLine };
 }
 
 function probeCommand(source: RepairSourceExcerpt, command: string): string {
@@ -177,7 +181,7 @@ export async function recoverDiagnosis(input: RecoveryInput): Promise<RecoveryRe
     const signals = observedRecoverySignals(input.failedLog);
     if (signals.length === 0) return result;
     const sources = input.sourceContext.sources;
-    const controllerSelection = controllerPromiseHypotheses({ signals, sources }, input.failedLog);
+    const controllerSelection = await controllerPromiseHypotheses({ signals, sources }, input.failedLog);
     let hypotheses = controllerSelection?.hypotheses ?? [];
     if (hypotheses.length === 0) {
       const messages = redactExternalMessages([
