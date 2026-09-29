@@ -59,13 +59,14 @@ export async function runRecoveryControllerCase(caseId: string, options: { rewri
       async chat(tier, messages, settings) {
         if (settings?.purpose === 'challenge-generation') {
           inferenceCalls.push('challenge-generation');
-          const input = request(messages) as { contractExcerpts: Array<{ contractId: string; path: string; excerpt: string }> };
-          const challenges = input.contractExcerpts.map(({ contractId, path, excerpt }, index) => {
-            const declared = JSON.parse(excerpt) as { sourceSha256: string; relationId: string; contract: { kind: string; examples?: Array<{ args: unknown[] }> } };
+          const input = request(messages) as { contractExcerpts: Array<{ contractId: string; excerpt: string; citation: { path: string; sha256: string; startLine: number; endLine: number } | null }> };
+          const challenges = input.contractExcerpts.map(({ contractId, excerpt, citation }, index) => {
+            const declared = JSON.parse(excerpt) as { relationId: string; contract: { kind: string; examples?: Array<{ args: unknown[] }> } };
             if (declared.contract.kind !== 'exact' || !declared.contract.examples?.[0]) throw new Error('Unregistered recovery preservation contract');
+            if (!citation) throw new Error('Missing controller-owned recovery citation');
             return {
               id: `preservation-${index}`, kind: 'preservation',
-              contractRefs: [{ path, sha256: declared.sourceSha256, startLine: 1, endLine: 1 }],
+              contractRefs: [citation],
               rationale: 'Preserve the declared asynchronous profile behavior',
               probeId: `preservation-${index}`, inputs: declared.contract.examples[0].args,
               contractId, relationId: declared.relationId,
