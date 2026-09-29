@@ -57,6 +57,7 @@ export interface ChallengeGenerationContext {
     path: string;
     excerpt: string;
     citation: ChallengeContractRef | null;
+    allowedInputsJson?: string[];
   }>;
   baselineSnapshotHash: string;
   trustedPolicySha: string;
@@ -118,6 +119,7 @@ export function buildChallengeGenerationPrompt(
       'You cannot supply an expected value, test source, a shell command, a dependency, a runner flag or a new contract. Expected values come from the trusted policy.',
       'Cite the contract excerpt each challenge relies on. A citation does not establish semantics.',
       'Copy a supplied citation object exactly into contractRefs; do not calculate or invent a source hash. If citation is null, do not propose that contract.',
+      'For exact, codec-round-trip and json-property contracts, parse allowedInputsJson and copy one listed argument array exactly. Do not invent inputs for these contracts.',
       'Do not include analysis or markdown.',
     ].join('\n'),
   };

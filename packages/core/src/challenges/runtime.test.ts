@@ -56,3 +56,46 @@ it('refuses a denied contract target before disclosing it to generation or runni
   expect(s.chat).not.toHaveBeenCalled();
   expect(s.run).not.toHaveBeenCalled();
 });
+
+it('shows exact-contract arguments and a valid example in the challenge prompt', async () => {
+  const s = setup();
+  s.policy.verification.contracts = [{
+    id: 'pages', kind: 'exact',
+    target: { adapter: 'javascript', path: 'src/pages.js', export: 'pages' },
+    examples: [{ args: [20, 10], expected: 3 }],
+  }] as unknown as typeof s.policy.verification.contracts;
+  const chat = vi.fn(async (_model: string, messages: Array<{ content: string }>) => {
+    const example = messages[0]!.content.match(/A valid shape using the first cited contract is (.+)\. Change kind/u)?.[1];
+    if (!example) throw Error('missing challenge example');
+    return { text: example };
+  });
+  s.input.llm = { chat } as unknown as HealLlm;
+
+  const prepared = await prepareRuntimeChallenges(s.input);
+
+  const messages = chat.mock.calls[0]![1];
+  const user = JSON.parse(messages[1]!.content) as { contractExcerpts: Array<{ allowedInputsJson: string[] }> };
+  expect(user.contractExcerpts[0]?.allowedInputsJson).toEqual(['[20,10]']);
+  expect(messages[0]!.content).toContain('"inputs":[20,10]');
+  expect(messages[0]!.content).not.toContain('"inputs":[]');
+  expect(prepared.reason).toBeNull();
+  expect(prepared.qualified).toEqual([expect.objectContaining({ challengeId: 'probe-1', qualified: true })]);
+  expect((await runRuntimeChallenges(prepared, s.executor, 'floor')).status).toBe('passed');
+  expect((await runRuntimeChallenges(prepared, s.executor, 'ceil')).status).toBe('failed');
+});
+
+it('redacts exact-contract arguments in every generated message', async () => {
+  const s = setup();
+  const secret = 'sk_test_abcdefgh12345678';
+  s.policy.verification.contracts = [{
+    id: 'pages', kind: 'exact',
+    target: { adapter: 'javascript', path: 'src/pages.js', export: 'pages' },
+    examples: [{ args: [secret], expected: 2 }],
+  }] as unknown as typeof s.policy.verification.contracts;
+
+  await prepareRuntimeChallenges(s.input);
+
+  const messages = (s.chat.mock.calls[0] as unknown as [unknown, Array<{ role: string; content: string }>])[1];
+  expect(JSON.stringify(messages)).not.toContain(secret);
+  expect(JSON.stringify(messages)).toContain('[redacted token]');
+});

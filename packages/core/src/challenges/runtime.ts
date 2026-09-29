@@ -5,6 +5,7 @@ import type { RepositoryPolicy } from '../policy/schema.js';
 import { policyAllowsSourceRead } from '../policy/evaluate.js';
 import { canonicalJson } from '../replay/canonical-json.js';
 import { BudgetExceededError } from '../engine/repair-budget.js';
+import { redactExternalText } from '../security/external-text.js';
 import { buildChallengeGenerationPrompt, freezeChallengeSet, type FrozenChallengeSet, type ChallengeGenerationContext } from './generate.js';
 import { buildObservationCommand, decodeObservation, evaluateObservation, freezeProbe, type FrozenProbe } from './protocol.js';
 import { validateChallengeProposal } from './validate.js';
@@ -68,10 +69,14 @@ export async function prepareRuntimeChallenges(input: RuntimeChallengeInput): Pr
   const sources = input.baselineSources.filter(s => policyAllowsSourceRead(s.path, input.policy));
   const contractExcerpts = verification.contracts.map(c => {
     const source = sources.find(s => s.path === c.target.path);
+    const allowedInputsJson = c.kind === 'exact' ? c.examples.map(example => JSON.stringify(example.args))
+      : c.kind === 'codec-round-trip' ? c.examples.map(example => JSON.stringify([example]))
+        : c.kind === 'json-property' ? ['[]'] : undefined;
     return {
       contractId: c.id,
       path: c.target.path,
       excerpt: canonicalJson({ contract: c, relationId: 'equals' }),
+      ...(allowedInputsJson === undefined ? {} : { allowedInputsJson }),
       citation: source ? {
         path: source.path,
         sha256: digest(source.content),
@@ -88,8 +93,22 @@ export async function prepareRuntimeChallenges(input: RuntimeChallengeInput): Pr
     trustedPolicySha: input.policyHash,
   };
   const prompt = buildChallengeGenerationPrompt(context);
-  prompt.messages[0] = { ...prompt.messages[0]!, role: 'system', content: `${prompt.messages[0]!.content}
-Return {"challenges":[{"id":"probe-1","kind":"preservation or bug-regression","contractRefs":[{"path":"declared target path","sha256":"supplied citation hash","startLine":1,"endLine":1}],"rationale":"short contract reason","probeId":"probe-1","inputs":[],"contractId":"declared contract id","relationId":"equals"}]}. Choose at most three probes. Copy one supplied citation object exactly; never invent a hash. Only equals is supported by this runtime.` };
+  const exampleContract = verification.contracts.find(c => contractExcerpts.some(e => e.contractId === c.id && e.citation !== null));
+  const exampleExcerpt = contractExcerpts.find(e => e.contractId === exampleContract?.id);
+  let exampleInputs: unknown[] = [];
+  switch (exampleContract?.kind) {
+    case 'ceiling-division': exampleInputs = [0, 1]; break;
+    case 'cardinality': exampleInputs = [[]]; break;
+    case 'codec-round-trip': exampleInputs = [exampleContract.examples[0]]; break;
+    case 'exact': exampleInputs = exampleContract.examples[0]!.args; break;
+  }
+  const example = exampleExcerpt?.citation ? JSON.stringify({ challenges: [{
+    id: 'probe-1', kind: 'preservation', contractRefs: [exampleExcerpt.citation],
+    rationale: 'Preserve the cited contract', probeId: 'probe-1', inputs: exampleInputs,
+    contractId: exampleExcerpt.contractId, relationId: 'equals',
+  }] }) : null;
+  prompt.messages[0] = { ...prompt.messages[0]!, role: 'system', content: redactExternalText(`${prompt.messages[0]!.content}
+Return a JSON object with a challenges array. Choose at most three probes. Only equals is supported by this runtime. ${example === null ? '' : `A valid shape using the first cited contract is ${example}. Change kind to bug-regression only when the cited behavior fails on the baseline.`}`).text };
   const reply = await input.llm.chat('super', prompt.messages, { purpose: 'challenge-generation', maxTokens: 2048, temperature: 0, responseFormat: { type: 'json_object' } });
   let proposals: unknown[];
   try {
