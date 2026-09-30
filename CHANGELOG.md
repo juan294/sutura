@@ -2,7 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- A repair pull request now carries a neutral **Sutura repair verification** check on the repair commit. Before, Sutura's only check sat on the failing commit, and a repair pull request opened with the workflow token showed no checks at all, because GitHub holds that pull request's CI for approval. A replay bundle of a `fixed` run recorded by an earlier release does not replay with this release, and the reverse, because the fixed path now makes this call.
+
 ### Fixed
+
+- Sutura never repairs its own `sutura/fix-*` branches. The Action refuses such a run before it reads a pull request or claims the run and reports `repair-branch-skipped`; the generated workflow skips those branches. Before, a failing CI run on a repair pull request could start a repair of the repair.
+- The Action recovers its claim comment when `github-token` is a GitHub App installation token. Before, it recognised only `github-actions[bot]`, so a retry with an App token would post a second claim comment.
+- The Case Lab workflow and the external matrix `cleanup` command close their bot pull requests, delete their branches and delete the held `pull_request` CI runs GitHub creates for them, which GitHub otherwise fails after 30 days with an email to the owner.
 
 - The local heal path (`sutura heal --case-dir`, which the Placebo release benchmark drives) now passes the optional GPT-6 Astra second opinion and TypeSafe Jev calibrated audit to adjudication. The CLI built both from `OPENAI_API_KEY` and `TYPESAFE_API_KEY`, but `healCase` dropped them, so every benchmark audit recorded them as not configured; the GitHub Action path was unaffected.
 

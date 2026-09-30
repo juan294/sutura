@@ -99,6 +99,7 @@ test('cleanup closes and deletes only recorded controller-owned resources', asyn
   const ledger = append(createExternalMatrixLedger('candidate', []), value, 1);
   const closed = [];
   const deleted = [];
+  const discarded = [];
   const result = await cleanupExternalMatrixLive(ledger, {
     readPullRequest: async (url) => ({
       state: 'OPEN',
@@ -107,9 +108,13 @@ test('cleanup closes and deletes only recorded controller-owned resources', asyn
     closePullRequest: async (url) => { closed.push(url); },
     branchExists: async () => true,
     deleteBranch: async (branch) => { deleted.push(branch); },
+    listHeldRuns: async (branch) => (branch.startsWith('sutura/fix-') ? [9001] : [9000]),
+    deleteRun: async (runId) => { discarded.push(runId); },
   });
   assert.deepEqual(result.closedPullRequests, closed);
   assert.deepEqual(result.deletedBranches, deleted);
+  assert.deepEqual(result.discardedHeldRuns, discarded);
+  assert.deepEqual([...discarded].sort(), [9000, 9001]);
   assert.deepEqual(deleted, [
     value.cleanupBranch,
     `sutura/fix-${value.demoRunId}`,

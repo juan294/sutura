@@ -94,12 +94,33 @@ Sutura publishes:
 - An evidence comment on the pull request or exact failing commit.
 - One **Sutura repair audit** GitHub Check on the exact failing SHA.
 - An HTML case-file artifact linked from the comment and check.
-- A repair pull request when a candidate passes verification.
+- A repair pull request when a candidate passes verification, with one
+  **Sutura repair verification** GitHub Check on the repair commit.
 
 Every attempt ends as `fixed`, `flaky-no-patch`, `refused`, `gave-up`, or
 `infra-stop`. Generated customer workflows are advisory by default. Even a
 verified repair remains neutral and requires human review; Sutura never merges
 it.
+
+Sutura never repairs its own repair branches. The generated workflow skips a
+failed run on a `sutura/fix-*` branch, and the Action reports the outcome
+`repair-branch-skipped` without commenting, checking, or opening a pull request.
+Like `already-attempted`, that outcome fails the job only under `require-fixed`.
+
+### Your CI on a repair pull request
+
+The **Sutura repair verification** check reports what Sutura verified in its
+sandbox. It does not replace your repository's CI. When the repair pull request
+is opened with the workflow's own `github.token`, GitHub does not run your
+`pull_request` CI on it normally. In the Sutura demo repository GitHub held each
+such run for approval (`action_required`), and unapproved held runs were later
+failed by GitHub with an email to the owner.
+
+To run your CI on the repair, either approve the held run from the pull request,
+or pass a GitHub App installation token as `github-token` (for example from
+`actions/create-github-app-token`). Grant the App the same repository access as
+the generated workflow: actions read, checks write, contents write, and pull
+requests write. Pull requests opened with an App token trigger CI normally.
 
 ## Check and configure an installation
 

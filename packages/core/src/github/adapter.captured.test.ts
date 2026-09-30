@@ -7,7 +7,7 @@ import {
   capturedRun,
 } from '../__fixtures__/captured/captured-live-run.test-helper.js';
 import { classifyMechanically } from '../diagnose/classify.js';
-import { extractSourceReferences } from '../orchestrate.js';
+import { RepairBranchRunError, extractSourceReferences } from '../orchestrate.js';
 import { GitHubAdapter, GitHubAdapterError } from './adapter.js';
 import type { GitHubApi, WorkflowJobRecord, WorkflowRunRecord } from './types.js';
 
@@ -297,6 +297,18 @@ describe('captured GitHub adapter regressions', () => {
     await expect(adapter(api).getFailingRun(CAPTURED_RUN_ID)).rejects.toThrow(message);
   });
 
+  it('refuses a repair-branch run before any pull request or branch read', async () => {
+    const api = capturedApi();
+    const recorded = await api.getWorkflowRun(Number(CAPTURED_RUN_ID));
+    const reads: string[] = [];
+    api.getWorkflowRun = async () => ({ ...recorded, headBranch: 'sutura/fix-1' });
+    api.getRefSha = async (ref) => { reads.push(ref); return 'f'.repeat(40); };
+    api.listPullRequestsForCommit = async () => { reads.push('pulls'); return []; };
+
+    await expect(adapter(api).getFailingRun(CAPTURED_RUN_ID)).rejects.toBeInstanceOf(RepairBranchRunError);
+    expect(reads).toEqual([]);
+  });
+
   it('rejects an invalid direct-run branch', async () => {
     const base = capturedApi();
     const recorded = await base.getWorkflowRun(Number(CAPTURED_RUN_ID));
@@ -394,6 +406,119 @@ describe('captured GitHub adapter regressions', () => {
       headSha: 'a'.repeat(40),
       title: 'fix: captured',
     })).rejects.toThrow('Fix branch is not based on the exact failing SHA');
+  });
+
+  it('returns the verified repair commit with the created pull request', async () => {
+    const repairSha = 'c'.repeat(40);
+    const api = capturedApi({
+      getRefSha: async () => repairSha,
+      getCommitParents: async () => ['a'.repeat(40)],
+    });
+
+    await expect(adapter(api).createFixPullRequest({
+      branch: `sutura/fix-${CAPTURED_RUN_ID}`,
+      baseRef: 'develop',
+      body: 'captured repair',
+      headSha: 'a'.repeat(40),
+      title: 'fix: captured',
+    })).resolves.toEqual({ number: 10, url: 'https://example.test/pull/10', headSha: repairSha });
+  });
+
+  it('publishes a neutral Sutura check on the repair commit, not the failing commit', async () => {
+    const repairSha = 'c'.repeat(40);
+    const created: unknown[] = [];
+    const updated: unknown[] = [];
+    const api = capturedApi({
+      createCheckRun: async (input) => { created.push(input); return { id: 77 }; },
+      updateCheckRun: async (input) => { updated.push(input); },
+    });
+    const caseFile = {
+      outcome: 'fixed',
+      diagnosis: { class: 'typecheck' },
+      policy: { policySha: 'd'.repeat(40) },
+      cost: { totalUsd: () => 0.0125 },
+    } as never;
+
+    await adapter(api).completeRepairCheck({
+      pullRequest: { number: 10, url: 'https://example.test/pull/10', headSha: repairSha },
+      caseFile,
+      artifactUrl: 'https://example.test/artifact',
+    });
+
+    expect(created).toEqual([{
+      name: 'Sutura repair verification',
+      headSha: repairSha,
+      externalId: `sutura:juan294/sutura:workflow-run:${CAPTURED_RUN_ID}:repair`,
+      status: 'in_progress',
+      title: 'Sutura repair verification in progress',
+      summary: `Recording the sandbox verification for workflow run ${CAPTURED_RUN_ID}.`,
+    }]);
+    expect(updated).toEqual([{
+      checkRunId: 77,
+      status: 'completed',
+      conclusion: 'neutral',
+      detailsUrl: 'https://example.test/artifact',
+      title: 'Sutura verified this repair in a sandbox',
+      summary: expect.stringContaining('does not replace this repository\'s CI'),
+      annotations: [],
+    }]);
+    const summary = (updated[0] as { summary: string }).summary;
+    expect(summary).toContain(`Failed workflow run: ${CAPTURED_RUN_ID}`);
+    expect(summary).toContain('Outcome: fixed');
+    expect(summary).toContain('Diagnosis: typecheck');
+    expect(summary).toContain('Pull request: https://example.test/pull/10');
+  });
+
+  it.each([
+    ['a non-fixed outcome', { outcome: 'gave-up' }, 'c'.repeat(40), 'Only a fixed outcome has a repair commit to check'],
+    ['an invalid repair SHA', { outcome: 'fixed' }, 'bad', 'Repair commit SHA is invalid'],
+  ])('refuses a repair-commit check for %s', async (_case, caseFile, headSha, message) => {
+    const createCheckRun = async (): Promise<{ id: number }> => { throw new Error('must not create'); };
+
+    await expect(adapter(capturedApi({ createCheckRun })).completeRepairCheck({
+      pullRequest: { number: 10, url: 'https://example.test/pull/10', headSha },
+      caseFile: caseFile as never,
+      artifactUrl: 'https://example.test/artifact',
+    })).rejects.toThrow(message);
+  });
+
+  it('recovers a marker comment posted by any GitHub App bot token', async () => {
+    const created: unknown[] = [];
+    const api = capturedApi({
+      listCommitComments: async () => [
+        { id: 90, body: '<!-- marker --> spoofed', authorLogin: 'someone' },
+        { id: 91, body: '<!-- marker -->\n<!-- sutura-check-run:55 --> claimed', authorLogin: 'sutura-demo-app[bot]' },
+      ],
+      createCommitComment: async (...args) => { created.push(args); return { id: 44 }; },
+    });
+    const value = adapter(api);
+
+    await expect(value.claimAttempt(undefined, '<!-- marker -->')).resolves.toBeNull();
+    expect(created).toEqual([]);
+  });
+
+  it('ignores an app bot that echoes the marker without the claimed check run', async () => {
+    const api = capturedApi({
+      listCommitComments: async () => [
+        { id: 92, body: '> <!-- marker --> quoted by a review bot', authorLogin: 'review-bot[bot]' },
+      ],
+    });
+
+    await expect(adapter(api).claimAttempt(undefined, '<!-- marker -->')).resolves.toMatchObject({
+      kind: 'commit', commentId: 44,
+    });
+  });
+
+  it('ignores a marker comment posted by a user account', async () => {
+    const api = capturedApi({
+      listCommitComments: async () => [
+        { id: 90, body: '<!-- marker --> spoofed', authorLogin: 'someone' },
+      ],
+    });
+
+    await expect(adapter(api).claimAttempt(undefined, '<!-- marker -->')).resolves.toMatchObject({
+      kind: 'commit', commentId: 44,
+    });
   });
 
   it('requires an artifact port', () => {

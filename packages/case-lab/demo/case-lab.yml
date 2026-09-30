@@ -300,3 +300,30 @@ jobs:
           path: ${{ runner.temp }}/result.json
           if-no-files-found: error
           retention-days: 90
+
+      - name: Close the reported pull requests and discard their held CI runs
+        if: ${{ always() && steps.fixture.outputs.branch != '' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CASE_BRANCH: ${{ steps.fixture.outputs.branch }}
+          CI_RUN_ID: ${{ steps.failed-ci.outputs.run-id }}
+        run: |
+          # Pull requests opened with the workflow token get their pull_request CI run held
+          # for approval, and GitHub fails a held run after 30 days with an email to the owner.
+          # The result document already links both pull requests; closed ones stay readable.
+          # The repair pull request targets the case branch, so close it first.
+          branches=()
+          if [ -n "$CI_RUN_ID" ]; then branches+=("sutura/fix-${CI_RUN_ID}"); fi
+          branches+=("$CASE_BRANCH")
+          for branch in "${branches[@]}"; do
+            for pr in $(gh pr list --head "$branch" --state open --json number --jq '.[].number'); do
+              gh pr close "$pr" --comment "Case Lab recorded this request, so this bot pull request is closed. Its commits and checks stay reachable here."
+            done
+            if git ls-remote --exit-code origin "refs/heads/${branch}" >/dev/null; then
+              gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${branch}"
+            fi
+            for run in $(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?branch=${branch}&status=action_required&per_page=100" --jq '.workflow_runs[].id'); do
+              gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/${run}"
+            done
+          done

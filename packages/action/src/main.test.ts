@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ReplayRecorder, loadConfig } from '@sutura/core';
+import { RepairBranchRunError, ReplayRecorder, loadConfig } from '@sutura/core';
 
 import { GitHubAdapter, type GitHubApi } from './github.js';
 import { withFailureSafeCheck } from './failure-safe.js';
@@ -97,6 +97,22 @@ describe('action check failure safety', () => {
     expect(warnings).toEqual([
       'Sutura could not complete its GitHub check after an unexpected failure.',
     ]);
+  });
+
+  it('leaves checks and evidence untouched when a run on a repair branch is refused', async () => {
+    const completeUnexpectedFailure = vi.fn(async () => undefined);
+    const uploadReplayBundle = vi.fn(async () => ({ url: 'https://example.test/replay' }));
+
+    await expect(withFailureSafeCheck(
+      { completeUnexpectedFailure, uploadReplayBundle },
+      async () => { throw new RepairBranchRunError('77', 'sutura/fix-76'); },
+      () => undefined,
+      new ReplayRecorder('77', 'owner/repo', SHA, REPLAY_CONFIG),
+      { actionRunId: '88', targetRunId: '77', repository: 'owner/repo', actionSha: SHA },
+    )).rejects.toBeInstanceOf(RepairBranchRunError);
+
+    expect(completeUnexpectedFailure).not.toHaveBeenCalled();
+    expect(uploadReplayBundle).not.toHaveBeenCalled();
   });
 
   it('uploads an infra-stop replay bundle when orchestration crashes', async () => {
@@ -205,6 +221,34 @@ describe('runAction input guards', () => {
  await runAction({readAction:()=>({mode:'verify',githubToken:'token',runId:'77',triageN:1,requireFixed:false,captureReplay:false,environment:{}}),loadConfiguration:()=>({contreeToken:'token',contreeProject:'project'} as never),repository:()=>({owner:'owner',repo:'repo'}),environment:{GITHUB_RUN_ID:'88'},readVerification:()=>({sourceSha:SHA,policyBaseSha:SHA,candidateDiff:'diff',failingCommandId:'diagnosed'}),verify,setFailed});
  expect(verify).toHaveBeenCalledOnce();expect(setFailed).toHaveBeenCalledWith('Sutura verification: refused');
  });
+
+describe('runAction repair-branch refusal', () => {
+  it('skips a run on its own repair branch without failing the job', async () => {
+    mockOrchestrate.mockClear();
+    mockOrchestrate.mockImplementationOnce(() => {
+      throw new RepairBranchRunError('77', 'sutura/fix-76');
+    });
+    const setFailed = vi.fn();
+
+    await runAction({
+      readAction: () => ({
+        githubToken: 'github-test', runId: '77', triageN: 1,
+        requireFixed: false, captureReplay: false, environment: {},
+      }),
+      loadConfiguration: () => loadConfig({
+        NEBIUS_API_KEY: 'nebius-test',
+        CONTREE_TOKEN: 'contree-test',
+        CONTREE_PROJECT: 'project-test',
+      }),
+      repository: () => ({ owner: 'acme', repo: 'widget' }),
+      environment: { GITHUB_RUN_ID: '88' },
+      setFailed,
+    });
+
+    expect(mockOrchestrate).toHaveBeenCalledOnce();
+    expect(setFailed).not.toHaveBeenCalled();
+  });
+});
 
 describe('TypeSafe Jev calibrated audit construction', () => {
   const action = {

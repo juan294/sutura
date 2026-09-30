@@ -39,6 +39,7 @@ describe('installSutura', () => {
       expect(workflow).toContain('workflows: ["CI"]');
       expect(workflow).toContain("workflow_run.conclusion == 'timed_out'");
       expect(workflow).toContain("vars.SUTURA_DISABLED != 'true'");
+      expect(workflow).toContain("!startsWith(github.event.workflow_run.head_branch, 'sutura/fix-')");
       expect(workflow).toContain(`uses: juan294/sutura@${ACTION_SHA}`);
       expect(workflow).toContain('checks: write');
       expect(workflow).toContain('name: Sutura repair monitor');
