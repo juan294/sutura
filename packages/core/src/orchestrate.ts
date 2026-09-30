@@ -52,6 +52,7 @@ import { renderCaseFile } from './report/casefile.js';
 import { renderComment } from './report/markdown.js';
 import { isSensitiveRepositoryPath } from './security/repository-path.js';
 import { detectRuntimeAtPath } from './runtime/detect.js';
+import { nodeImageRefForRepository } from './runtime/node.js';
 import type { RuntimeId } from './runtime/types.js';
 import type { ReplayRecorder } from './replay/bundle.js';
 
@@ -121,6 +122,19 @@ export interface CompleteCheckInput {
   checkoutDir: string;
 }
 
+export interface FixPullRequest {
+  number: number;
+  url: string;
+  /** Exact commit at the tip of the repair branch when the pull request opened. */
+  headSha: string;
+}
+
+export interface CompleteRepairCheckInput {
+  pullRequest: FixPullRequest;
+  caseFile: CaseFile;
+  artifactUrl: string;
+}
+
 export interface CreateFixPullRequestInput {
   baseRef: string;
   branch: string;
@@ -134,12 +148,12 @@ export interface GitHubOrchestrationPort {
   /** Atomically persists marker and returns its comment id, or null if claimed. */
   claimAttempt(prNumber: number | undefined, marker: string): Promise<AttemptTarget | null>;
   updateAttempt(target: AttemptTarget, body: string): Promise<void>;
-  createFixPullRequest(
-    input: CreateFixPullRequestInput,
-  ): Promise<{ number: number; url: string }>;
+  createFixPullRequest(input: CreateFixPullRequestInput): Promise<FixPullRequest>;
   uploadCaseFile(name: string, html: string): Promise<{ url: string }>;
   uploadReplayBundle(name: string, json: string): Promise<{ url: string }>;
   completeCheck(target: AttemptTarget, input: CompleteCheckInput): Promise<void>;
+  /** Reports the sandbox verification on the repair commit, where the pull request shows it. */
+  completeRepairCheck(input: CompleteRepairCheckInput): Promise<void>;
 }
 
 export interface PublishFixInput {
@@ -234,6 +248,16 @@ export class AlreadyAttemptedError extends Error {
   constructor(runId: string) {
     super(`Sutura already attempted workflow run ${runId}`);
     this.name = 'AlreadyAttemptedError';
+  }
+}
+
+/** Branches Sutura pushes its repairs to; their failures are never repaired again. */
+export const REPAIR_BRANCH_PREFIX = 'sutura/fix-';
+
+export class RepairBranchRunError extends Error {
+  constructor(readonly runId: string, readonly branch: string) {
+    super(`Sutura does not repair its own repair branch ${branch} (workflow run ${runId})`);
+    this.name = 'RepairBranchRunError';
   }
 }
 
@@ -604,6 +628,9 @@ export function resolveAuditedCandidate(
 export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> {
   const run = await ctx.github.getFailingRun(ctx.runId);
   validateRun(run, ctx.runId);
+  if (run.headRef.startsWith(REPAIR_BRANCH_PREFIX)) {
+    throw new RepairBranchRunError(run.runId, run.headRef);
+  }
   const loadedPolicy = loadRepositoryPolicy(
     await ctx.repository.readPolicyAtSha(run.repo, run.baseSha),
   );
@@ -683,9 +710,10 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
   const executionRecorder = loadedPolicy.policy.verification?.mode === 'required'
     ? new VerificationExecutionRecorder({ executor: ctx.executor, llm: ctx.llm, mode: ctx.evidenceMode ?? 'local' }) : undefined;
   const executor = new AllowlistedExecutor(executionRecorder?.executor ?? ctx.executor);
-  const baseImage = await executor.importImage(
-    ctx.imageRef ?? runtime.imageRef,
-  );
+  const imageRef = ctx.imageRef ?? (runtime.id === 'node'
+    ? await nodeImageRefForRepository(checkoutDir)
+    : runtime.imageRef);
+  const baseImage = await executor.importImage(imageRef);
   stageLedger.record({
     stage: 'preparation',
     attempt: 0,
@@ -818,7 +846,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
   }
 
   const winner = resolveAuditedCandidate(caseFile);
-  const branch = `sutura/fix-${run.runId}`;
+  const branch = `${REPAIR_BRANCH_PREFIX}${run.runId}`;
   const report = await prepareReport(ctx.github, run, caseFile, marker);
   await ctx.repository.publishFix({
     branch,
@@ -827,7 +855,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     headSha: run.headSha,
     message: FIX_COMMIT_MESSAGE,
   });
-  await ctx.github.createFixPullRequest({
+  const pullRequest = await ctx.github.createFixPullRequest({
     baseRef: run.headRef,
     branch,
     body: report.body,
@@ -840,6 +868,13 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     artifactUrl: report.artifactUrl,
     checkoutDir,
   });
+  try {
+    await ctx.github.completeRepairCheck({ pullRequest, caseFile, artifactUrl: report.artifactUrl });
+  } catch {
+    // The audit check and comment already carry the decision; this check only
+    // makes it visible on the repair pull request.
+    console.warn('Sutura could not publish the repair-commit check.');
+  }
   await uploadReplay(ctx.github, run, caseFile, ctx.replay);
   return caseFile;
   } finally { await setup.cleanup?.(); }

@@ -8,7 +8,7 @@ import { parseRuntimeCandidateEvidence, type RuntimeCandidateEvidence } from './
 import { challengeSubjectRecords } from './challenges/runner.js';
 import { canonicalJson } from './replay/canonical-json.js';
 import { evaluateRuntimeCandidate, type RuntimeCandidateResult } from './verification/runtime.js';
-import { prepareRuntimeChallenges, type PreparedRuntimeChallenges } from './challenges/runtime.js';
+import { prepareRuntimeChallenges, summarizeChallengePreparation, type PreparedRuntimeChallenges } from './challenges/runtime.js';
 import { runMechanicalChecks } from './audit/mechanical.js';
 import { budgetedRecoveryPorts, reserveRecoveryAudit, withinRecoveryDeadline } from './diagnose/hypotheses-budget.js';
 import { recoverDiagnosis, recoverySourceClasses, type DiagnosisRecoveryEvidence } from './diagnose/hypotheses.js';
@@ -103,7 +103,7 @@ import { boundedTail, boundedTailWithHeader } from './text/bounded-tail.js';
 import { TraceRecorder } from './trace/recorder.js';
 import type { TraceEventInput } from './trace/types.js';
 import { detectRuntimeAtPath } from './runtime/detect.js';
-import { NODE_IMAGE_REF, NODE_RUNTIME, nodePreparationCommand } from './runtime/node.js';
+import { NODE_IMAGE_REF, NODE_RUNTIME, nodeImageRefForRepository, nodePreparationCommand } from './runtime/node.js';
 import type { RuntimeAdapter, RuntimeId } from './runtime/types.js';
 
 export const SUTURA_DEFAULT_IMAGE_REF = NODE_IMAGE_REF;
@@ -777,6 +777,7 @@ function makeCaseFile(
     | 'runtime'
     | 'recovery'
     | 'verificationRuns'
+    | 'preparedChallenges'
   >,
   diagnosis: Diagnosis,
   triageVerdict: CaseFile['triage'],
@@ -817,6 +818,7 @@ function makeCaseFile(
     outcome,
     ...(ctx.recovery === undefined ? {} : { recovery: ctx.recovery }),
     ...(ctx.verificationRuns === undefined ? {} : { verificationRuns: ctx.verificationRuns }),
+    ...(ctx.preparedChallenges === undefined ? {} : { challengePreparation: summarizeChallengePreparation(ctx.preparedChallenges) }),
     cost: ctx.cost,
     policy: policyEvidenceFor(ctx),
     stages: ctx.stageLedger?.entries() ?? [],
@@ -1664,7 +1666,10 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     throw new HealCaseError('Python runtime image must use the verified exact digest');
   }
   const executor = new AllowlistedExecutor(ctx.executor);
-  const baseImage = await executor.importImage(ctx.imageRef ?? runtime.imageRef);
+  const imageRef = ctx.imageRef ?? (runtime.id === 'node'
+    ? await nodeImageRefForRepository(ctx.caseDir)
+    : runtime.imageRef);
+  const baseImage = await executor.importImage(imageRef);
   ledger.record({
     stage: 'preparation',
     attempt: 0,
@@ -1713,6 +1718,8 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     failingImage: setup.imageId,
     executor,
     llm: fullContext.llm,
+    ...(ctx.secondOpinion === undefined ? {} : { secondOpinion: ctx.secondOpinion }),
+    ...(ctx.typesafeAudit === undefined ? {} : { typesafeAudit: ctx.typesafeAudit }),
     cost: ctx.cost,
     triageN: ctx.triageN,
     raceK: ctx.raceK,

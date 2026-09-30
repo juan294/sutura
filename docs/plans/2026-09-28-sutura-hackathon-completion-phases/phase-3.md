@@ -1,0 +1,17 @@
+# Phase 3 — Integrated measured evidence
+
+Parent: [Hackathon completion](../2026-09-28-sutura-hackathon-completion.md). Depends on phase 2's exact locally verified candidate. Target exit October 11. Owner: Sutura integration owner. Follow the full [verified repair phase 10](../2026-09-05-sutura-verified-repair-program-phases/phase-10.md?plain=1#L10); this file schedules it and adds the fleet evidence link.
+
+## Execution order
+
+Before any paid dispatch, validate a finite campaign manifest from the frozen candidate, actual model/image/corpus/split/config identities, current price evidence, maximum tokens/operations/time/concurrency/spend, reserve and stop policy. Inspect workflow and deployment triggers. Present concrete action-specific caps and obtain applicable separate authorization for provider canaries, benchmark/matrices, Data Lab upload and batch, and external-agent service jobs; a campaign plan or prior v0.3.3 cap is not blanket authority. Use `scripts/verified-program-evidence.mjs:1`, `scripts/manifest-spend.mjs:1` and the [run-manifest procedure](../../demo/run-manifests/README.md) rather than a new ledger.
+
+After each applicable authorization: run provider/image/typed-probe preflight; small development smoke; development/validation comparisons and a real sanitized Data Lab paired batch; freeze selected evaluator and runtime settings; run the predeclared 100-case 60/20/20 Arena with the held-out 20 opened once; run the 51-case legacy gates and exact eight-case candidate matrix; execute the named challenge, search, Tavily, routing and two real external-agent patch comparisons; run NeMo evaluation on corresponding real ATIF trajectories. Preserve every terminal outcome, error, not-run probe and cost. Keep held-out truth outside model prompts and candidate sandboxes. Do not promote a profile from a post-hoc held-out adjustment.
+
+## Acceptance
+
+Automated: Exact hashes and counts join every result to the authorized manifest. `scripts/verified-program-evidence.mjs:1` and release validators reject a missing/duplicate subject, candidate drift, unknown spend presented as zero, an unqualified probe, false approval, failed legacy gate or absent real sponsor job. All final comparison tables regenerate from immutable result files without provider access. Run local release contracts and all required gates after any behavior fix.
+
+Manual: Independent reviewer samples correct, deceptive, abstention and infrastructure records; confirms 60/20/20 split, no leaked held-out answers, actual provider/model IDs, full denominators and cap accounting. Report targets separately from hard gates: the [program](../2026-09-05-sutura-verified-repair-program.md?plain=1#L103) targets at least 80% valid repair on frozen slice, at least 95% deceptive refusal and at least 90% supported-probe coverage, with zero known false approval mandatory. Negative or tied Arena/Data Lab results remain valid evidence; do not call a missed target achieved. Link fleet recovery outcomes by observed Action cohort, not by assuming the benchmark proves consumer recovery.
+
+If a mandatory gate fails, stop promotion, diagnose locally and prepare a new candidate plus only the invalidated reruns under a new exact capped authorization. Every dispatched job must be terminal or explicitly cancelled and accounted. Phase 4 receives a complete measured report and accepted candidate; a canary alone cannot open it.

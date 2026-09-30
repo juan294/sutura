@@ -6,6 +6,7 @@ import * as github from '@actions/github';
 import {
   AlreadyAttemptedError,
   ContreeExecutor,
+  RepairBranchRunError,
   OpenAiClient,
   ReplayRecorder,
   TavilyClient,
@@ -215,6 +216,11 @@ export async function runAction(
     if (error instanceof AlreadyAttemptedError) {
       core.info(error.message);
       reportOutcome('already-attempted', requireFixed, core);
+      return;
+    }
+    if (error instanceof RepairBranchRunError) {
+      core.info(error.message);
+      reportOutcome('repair-branch-skipped', requireFixed, core);
       return;
     }
     dependencies.setFailed(error instanceof Error ? error.message : String(error));

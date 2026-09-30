@@ -52,7 +52,13 @@ export interface FrozenChallengeSet {
 export interface ChallengeGenerationContext {
   failureExcerpt: string;
   baselineSources: Array<{ path: string; startLine: number; content: string }>;
-  contractExcerpts: Array<{ contractId: string; path: string; excerpt: string }>;
+  contractExcerpts: Array<{
+    contractId: string;
+    path: string;
+    excerpt: string;
+    citation: ChallengeContractRef | null;
+    allowedInputsJson?: string[];
+  }>;
   baselineSnapshotHash: string;
   trustedPolicySha: string;
 }
@@ -112,6 +118,8 @@ export function buildChallengeGenerationPrompt(
       'Name only a controller-supplied probe identifier, bounded typed inputs, a declared contract identifier and one of its declared relations.',
       'You cannot supply an expected value, test source, a shell command, a dependency, a runner flag or a new contract. Expected values come from the trusted policy.',
       'Cite the contract excerpt each challenge relies on. A citation does not establish semantics.',
+      'Copy a supplied citation object exactly into contractRefs; do not calculate or invent a source hash. If citation is null, do not propose that contract.',
+      'For exact, codec-round-trip and json-property contracts, parse allowedInputsJson and copy one listed argument array exactly. Do not invent inputs for these contracts.',
       'Do not include analysis or markdown.',
     ].join('\n'),
   };
@@ -214,6 +222,22 @@ export function freezeChallengeSet(input: {
     promptHash: input.promptHash,
     challenges,
     excluded,
+  };
+  return { ...base, setHash: digest(canonicalJson(base)) };
+}
+
+/** Bind the final challenge kind to trusted baseline observations before any candidate runs. */
+export function classifyFrozenChallenges(set: FrozenChallengeSet, observedKinds: ReadonlyMap<string, ChallengeKind>): FrozenChallengeSet {
+  const base = {
+    version: set.version,
+    baselineSnapshotHash: set.baselineSnapshotHash,
+    trustedPolicySha: set.trustedPolicySha,
+    contextHash: set.contextHash,
+    promptHash: set.promptHash,
+    challenges: set.challenges.map(challenge => ({
+      ...challenge, kind: observedKinds.get(challenge.id) ?? challenge.kind,
+    })),
+    excluded: set.excluded,
   };
   return { ...base, setHash: digest(canonicalJson(base)) };
 }

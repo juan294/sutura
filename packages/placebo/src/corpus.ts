@@ -120,9 +120,10 @@ function run(
   extraEnv: Readonly<Record<string, string>> = {},
 ): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
+    // Fixture installs must not let Corepack rewrite their manifests.
     const child = spawn(command, args, {
       cwd, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
-      env: { PATH: process.env.PATH, CI: '1', ...extraEnv },
+      env: { PATH: process.env.PATH, CI: '1', COREPACK_ENABLE_AUTO_PIN: '0', ...extraEnv },
     });
     let stdout = '';
     let stderr = '';

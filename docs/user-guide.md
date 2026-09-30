@@ -1,6 +1,6 @@
 # Sutura user guide
 
-This guide covers Sutura 0.3.3 for repository owners installing the GitHub
+This guide covers Sutura 0.3.4 for repository owners installing the GitHub
 Action. Sutura is in public beta, and Nebius ConTree access remains an
 access-controlled prerequisite.
 
@@ -47,15 +47,15 @@ export TYPESAFE_API_KEY="..."
 Then generate and inspect the workflow:
 
 ```bash
-npx sutura@0.3.3 init
+npx sutura@0.3.4 init
 sed -n '1,220p' .github/workflows/sutura.yml
-npx sutura@0.3.3 doctor
+npx sutura@0.3.4 doctor
 ```
 
 If the repository has more than one workflow, select the exact workflow name:
 
 ```bash
-npx sutura@0.3.3 init --workflow "CI"
+npx sutura@0.3.4 init --workflow "CI"
 ```
 
 Use `--no-tavily` when Tavily is unavailable. For a polyglot repository, set
@@ -94,19 +94,40 @@ Sutura publishes:
 - An evidence comment on the pull request or exact failing commit.
 - One **Sutura repair audit** GitHub Check on the exact failing SHA.
 - An HTML case-file artifact linked from the comment and check.
-- A repair pull request when a candidate passes verification.
+- A repair pull request when a candidate passes verification, with one
+  **Sutura repair verification** GitHub Check on the repair commit.
 
 Every attempt ends as `fixed`, `flaky-no-patch`, `refused`, `gave-up`, or
 `infra-stop`. Generated customer workflows are advisory by default. Even a
 verified repair remains neutral and requires human review; Sutura never merges
 it.
 
+Sutura never repairs its own repair branches. The generated workflow skips a
+failed run on a `sutura/fix-*` branch, and the Action reports the outcome
+`repair-branch-skipped` without commenting, checking, or opening a pull request.
+Like `already-attempted`, that outcome fails the job only under `require-fixed`.
+
+### Your CI on a repair pull request
+
+The **Sutura repair verification** check reports what Sutura verified in its
+sandbox. It does not replace your repository's CI. When the repair pull request
+is opened with the workflow's own `github.token`, GitHub does not run your
+`pull_request` CI on it normally. In the Sutura demo repository GitHub held each
+such run for approval (`action_required`), and unapproved held runs were later
+failed by GitHub with an email to the owner.
+
+To run your CI on the repair, either approve the held run from the pull request,
+or pass a GitHub App installation token as `github-token` (for example from
+`actions/create-github-app-token`). Grant the App the same repository access as
+the generated workflow: actions read, checks write, contents write, and pull
+requests write. Pull requests opened with an App token trigger CI normally.
+
 ## Check and configure an installation
 
 Run `doctor` from the repository whenever setup or credentials change:
 
 ```bash
-npx sutura@0.3.3 doctor
+npx sutura@0.3.4 doctor
 ```
 
 It checks the local workflow, immutable Action pin, required permissions and
@@ -128,16 +149,16 @@ Each repository pins its own immutable Action commit. Updating a global npm
 package, or running a newer CLI elsewhere on the machine, does not update any
 installed workflow.
 
-Sutura 0.3.3 does not have an `upgrade` command. Upgrade each repository
+Sutura 0.3.4 does not have an `upgrade` command. Upgrade each repository
 deliberately after reading the target release notes.
 
 For an unmodified generated workflow, regenerate it with the target CLI and
 review the complete diff before committing:
 
 ```bash
-npx sutura@0.3.3 init --force
+npx sutura@0.3.4 init --force
 git diff -- .github/workflows/sutura.yml
-npx sutura@0.3.3 doctor
+npx sutura@0.3.4 doctor
 ```
 
 `init --force` replaces the entire workflow. Do not use it on a customized
@@ -179,7 +200,7 @@ gh secret set TAVILY_API_KEY
 gh secret set OPENAI_API_KEY
 gh secret set TYPESAFE_API_KEY
 gh variable set CONTREE_PROJECT
-npx sutura@0.3.3 doctor
+npx sutura@0.3.4 doctor
 ```
 
 Omit Tavily when the installation uses `--no-tavily`. `OPENAI_API_KEY` and

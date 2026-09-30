@@ -147,10 +147,52 @@ describe('real repairFailure diagnosis recovery', () => {
   }, 180_000);
 
   it('refuses a generated expected-value rewrite despite a valid await grant', async () => {
-    const result = await runRecoveryControllerCase('repair-missing-await', { rewriteAssertion: true });
+    const result = await runRecoveryControllerCase('repair-missing-await', { rewriteAssertion: true, modelRecovery: true });
+    expect(result.rewrittenProposals).toBeGreaterThan(0);
     expect(result.caseFile.outcome).not.toBe('fixed');
     expect(result.caseFile.recovery?.authorizations).not.toHaveLength(0);
     expect(result.appliedDiffs.every((diff) => !diff.includes("toBe('WRONG')"))).toBe(true);
+    expect(result.baselineAfterExitCode).not.toBe(0);
+  }, 180_000);
+
+  it('repairs the real missing-await fixture without trusting a model hypothesis', async () => {
+    const result = await runRecoveryControllerCase('repair-missing-await', { invalidRecoveryHypothesis: true });
+    expect(result.caseFile.outcome, JSON.stringify(result.caseFile.recovery)).toBe('fixed');
+    expect(result.inferenceCalls).not.toContain('hypotheses');
+    expect(result.caseFile.recovery?.authorizations).toHaveLength(1);
+    expect(result.proofCount).toBeGreaterThan(0);
+  }, 180_000);
+
+  it('repairs the exact granted missing-await assertion when model repair proposals are invalid', async () => {
+    const result = await runRecoveryControllerCase('repair-missing-await', {
+      invalidRecoveryHypothesis: true, invalidRepairProposal: true,
+    });
+    expect(result.caseFile.outcome, JSON.stringify(result.caseFile.recovery)).toBe('fixed');
+    expect(result.selectedDiff).toContain('+  expect(await renderName()).toBe(\'ADA\');');
+    expect(result.selectedDiff).not.toContain('WRONG');
+    expect(result.baselineAfterExitCode).not.toBe(0);
+  }, 180_000);
+
+  it('replays live run 36568076140: repairs the granted Python coroutine assignment with invalid model proposals', async () => {
+    const result = await runRecoveryControllerCase('python-repair-await-result-preservation', {
+      invalidRepairProposal: true,
+    });
+    expect(result.caseFile.outcome, JSON.stringify(result.caseFile.recovery)).toBe('fixed');
+    expect(result.selectedDiff).toContain('+        result = await fetch_profile(" Ada ")');
+    expect(result.caseFile.trace?.some((entry) => entry.type === 'search-decision' &&
+      entry.summary === 'Propose exact await insertion from source-hash-bound controller grant')).toBe(true);
+    expect(result.baselineAfterExitCode).not.toBe(0);
+  }, 180_000);
+
+  it('replays live run 36584415309: repairs the helper setup with invalid model hypotheses and proposals', async () => {
+    const result = await runRecoveryControllerCase('repair-await-helper-preservation', {
+      invalidRecoveryHypothesis: true, invalidRepairProposal: true,
+    });
+    expect(result.caseFile.outcome, JSON.stringify(result.caseFile.recovery)).toBe('fixed');
+    expect(result.inferenceCalls).not.toContain('hypotheses');
+    expect(result.selectedDiff).toContain("+  const profile = await load(' Ada ');");
+    expect(result.caseFile.trace?.some((entry) => entry.type === 'search-decision' &&
+      entry.summary === 'Propose exact await insertion from source-hash-bound controller grant')).toBe(true);
     expect(result.baselineAfterExitCode).not.toBe(0);
   }, 180_000);
 });

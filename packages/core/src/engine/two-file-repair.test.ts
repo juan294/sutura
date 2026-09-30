@@ -30,8 +30,8 @@ function template(sourceContext = pairSources, runtimeId: 'node' | 'python' = 'n
   return prepareControlledRepairProposalTemplate({ diagnosis, policy, sourceContext, runtimeId });
 }
 
-function pairContract() {
-  const prepared = template();
+function pairContract(sourceContext = pairSources, runtimeId: 'node' | 'python' = 'node') {
+  const prepared = template(sourceContext, runtimeId);
   for (let index = 0; index < prepared.targetCount; index += 1) {
     const contract = prepared.contract(undefined, index);
     if (contract.slots.length === 2) return contract;
@@ -44,6 +44,29 @@ function reply(entries: Array<{ slot: string; replacement: string }>): string {
 }
 
 describe('two-file repair transactions', () => {
+  it.each(['node', 'python'] as const)('shows a %s pair example accepted by its strict slot parser', async (runtimeId) => {
+    const sources = runtimeId === 'node' ? pairSources : context([
+      {
+        path: 'invoice.py', startLine: 1, truncated: false,
+        content: 'from pricing import line_total\n\ndef invoice_total(lines, discount):\n    return sum(line_total(line["unit_price"], line["quantity"]) for line in lines)\n',
+      },
+      {
+        path: 'pricing.py', startLine: 1, truncated: false,
+        content: 'def line_total(unit_price, quantity):\n    return unit_price * quantity\n',
+      },
+    ]);
+    const contract = pairContract(sources, runtimeId);
+    const prefix = 'Return exactly this shape: ';
+    const exampleLine = String(contract.messages[0]!.content).split('\n')
+      .find((line) => line.startsWith(prefix));
+    expect(exampleLine).toBeDefined();
+    const { parseControlledRepairProposalForTest } = await import('./repair-attempt.js');
+
+    const parsed = parseControlledRepairProposalForTest(exampleLine!.slice(prefix.length), contract.slots);
+
+    expect(parsed.map(({ slotId }) => slotId)).toEqual(contract.slots.map(({ slotId }) => slotId));
+  });
+
   it('offers a two-slot contract that names slots, never paths or ranges', () => {
     const contract = pairContract();
 

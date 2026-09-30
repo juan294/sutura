@@ -234,7 +234,9 @@ export { triage } from './engine/triage.js';
 export {
   AlreadyAttemptedError,
   OrchestrationError,
+  REPAIR_BRANCH_PREFIX,
   REPAIR_SOURCE_LIMITS,
+  RepairBranchRunError,
   attemptMarker,
   collectFailedLogs,
   extractSourceReferences,
@@ -309,7 +311,7 @@ export {
   redactExternalText,
 } from './security/external-text.js';
 
-export const VERSION = '0.3.3';
+export const VERSION = '0.3.4';
 
 export type {
   HealCaseContext,
@@ -488,9 +490,11 @@ export type {
 export type {
   AttemptTarget,
   CompleteCheckInput,
+  CompleteRepairCheckInput,
   CreateFixPullRequestInput,
   FailedStepLog,
   FailingWorkflowRun,
+  FixPullRequest,
   GitHubOrchestrationPort,
   OrchestrationContext,
   OrchestratorLlm,

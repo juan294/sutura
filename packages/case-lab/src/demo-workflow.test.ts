@@ -81,6 +81,22 @@ describe('demo case-lab.yml contract', () => {
     expect(WORKFLOW).toContain('name: sutura-case-lab-${{ inputs.request-id }}');
     expect(WORKFLOW).toContain('if-no-files-found: error');
   });
+
+  it('closes its bot pull requests and discards their held CI runs last, without changing the outcome', () => {
+    const last = steps.at(-1);
+    expect(last?.name).toBe('Close the reported pull requests and discard their held CI runs');
+    expect(last?.body).toContain("if: ${{ always() && steps.fixture.outputs.branch != '' }}");
+    expect(last?.body).toContain('continue-on-error: true');
+    // The repair pull request targets the case branch, so it closes first.
+    expect(last?.body).toContain('branches=()');
+    expect(last?.body.indexOf('branches+=("sutura/fix-${CI_RUN_ID}")'))
+      .toBeLessThan(last?.body.indexOf('branches+=("$CASE_BRANCH")') ?? -1);
+    expect(last?.body).toContain('gh pr close "$pr"');
+    expect(last?.body).toContain('gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${branch}"');
+    expect(last?.body).toContain('status=action_required');
+    expect(last?.body).toContain('gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/${run}"');
+    expect(last?.body).not.toMatch(/secrets\./u);
+  });
 });
 
 describe('demo materializer', () => {

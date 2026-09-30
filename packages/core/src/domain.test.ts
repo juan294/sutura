@@ -127,6 +127,7 @@ describe('domain model', () => {
       verification?: import('./verification/types.js').VerificationEvidence;
       verificationArtifact?: import('./verification/types.js').VerificationArtifact;
       verificationRuns?: import('./verification/runtime-evidence.js').RuntimeCandidateEvidence[];
+      challengePreparation?: import('./challenges/runtime.js').ChallengePreparationDiagnostics;
       recovery?: import('./diagnose/hypotheses.js').DiagnosisRecoveryEvidence;
       selectedCandidate?: {
         id: string;

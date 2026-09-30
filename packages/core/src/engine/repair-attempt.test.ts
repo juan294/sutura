@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Diagnosis } from '../domain.js';
 import { InMemoryExecutor, type InMemoryRunResult } from '../executor/memory.js';
 import { DEFAULT_MODEL_PRICES } from '../llm/cost.js';
+import { RoutingAbstentionError } from '../llm/router.js';
 import type { ChatMessage, ChatOptions, TierLlm } from '../llm/types.js';
 import { createDefaultRepositoryPolicy } from '../policy/load.js';
 import { RepairBudget } from './repair-budget.js';
@@ -94,8 +95,13 @@ describe('runControlledRepairAttempt', () => {
     expect(await deriveRepairAuthorization(session, { kind: 'await-operation', path: source.path,
       evidenceReferences: ['recorded-await-failure'], controllerProbe: { id: 'async-completion', sourceSha256: createHash('sha256').update(source.content).digest('hex'), failingCommand: diagnosis.failingCmd, imageId: 'baseline', exitCode: 1,
         output: 'AssertionError: expected Promise to be Ada' } })).toMatchObject({ ok: true });
-    expect(prepareControlledRepairProposalTemplate({ diagnosis, policy, sourceContext: { sources: [source, sourceContext.sources[0]!] },
-      authorization: { session, baseline } }).targetCount).toBe(1);
+    const template = prepareControlledRepairProposalTemplate({ diagnosis, policy,
+      sourceContext: { sources: [source, sourceContext.sources[0]!] }, authorization: { session, baseline } });
+    expect(template.targetCount).toBe(1);
+    expect(template.contract(undefined).messages[0]?.content).toContain(
+      'Insert only necessary await and async tokens; preserve every other original source byte.',
+    );
+    expect(template.contract(undefined).messages[0]?.content).not.toContain('Repair production source');
     const quoted = llm('', { input: 100, output: 3 });
     const budget = new RepairBudget();
     const quoteContext = { llm: quoted.model, diagnosis, policy, sourceContext: { sources: [source, sourceContext.sources[0]!] }, budget };
@@ -107,6 +113,28 @@ describe('runControlledRepairAttempt', () => {
     });
     expect(reserved).toBeGreaterThan(0.05);
     expect(reserved).toBeGreaterThanOrEqual(actual);
+    const recoveredDiagnosis: Diagnosis = { ...diagnosis, class: 'test-bug', signals: [...diagnosis.signals, 'recovery:hypothesis-2'] };
+    const grantedMessages = prepareControlledRepairProposalTemplate({ diagnosis: recoveredDiagnosis, policy,
+      sourceContext: { sources: [source] }, authorization: { session, baseline } }).contract(undefined).messages;
+    const routeBoundary = Buffer.byteLength(JSON.stringify(grantedMessages));
+    const adaptiveModel: TierLlm<'super'> = { ...quoted.model, modelQuote: vi.fn((_tier, messages) => {
+      const costly = Buffer.byteLength(JSON.stringify(messages)) >= routeBoundary;
+      return { role: 'super' as const, modelId: costly ? 'costly' : 'cheap', profileId: 'test',
+        price: costly ? { input: 100, output: 3 } : { input: 0.01, output: 0.03 } };
+    }) };
+    const adaptiveContext = { ...quoteContext, llm: adaptiveModel, sourceContext: { sources: [source] } };
+    expect(recoveryRepairReservationUsd(adaptiveContext)).toBeGreaterThanOrEqual(
+      controlledRepairAttemptReservationUsd({ ...adaptiveContext, diagnosis: recoveredDiagnosis,
+        executor: new InMemoryExecutor(() => runResult(1)), initialImageId: 'baseline',
+        trustedCommands: { diagnosed: diagnosis.failingCmd }, authorization: { session, baseline } }),
+    );
+    const routeLimited: TierLlm<'super'> = { ...quoted.model, modelQuote: vi.fn((_tier, messages) => {
+      if (JSON.stringify(messages).includes('Insert only necessary await and async tokens')) {
+        throw new RoutingAbstentionError('context-limit', 'test-profile');
+      }
+      return { role: 'super' as const, modelId: 'quotable', profileId: 'test', price: { input: 1, output: 3 } };
+    }) };
+    expect(recoveryRepairReservationUsd({ ...adaptiveContext, llm: routeLimited })).toBeGreaterThan(0);
     expect(quoted.chat).not.toHaveBeenCalled();
     expect(budget.snapshot().modelTurns).toBe(0);
     expect(() => prepareControlledRepairProposalTemplate({ diagnosis, policy, sourceContext: { sources: [source] } })).toThrow(/policy-admissible/u);
@@ -117,6 +145,46 @@ describe('runControlledRepairAttempt', () => {
       diagnosis: { ...diagnosis, class: 'test-bug' }, policy: createDefaultRepositoryPolicy(),
       sourceContext: { sources: [ambiguousSourceContext.sources[0]!] },
     })).toThrow(/policy-admissible/u);
+  });
+
+  it('replays the missing-await fixture through a narrow grant without weakening its assertion', async () => {
+    const repaired = await readFile(join(import.meta.dirname, '..', '..', '..', 'placebo', 'corpus',
+      'repair-missing-await', 'fixture', 'case.test.js'), 'utf8');
+    const broken = repaired.replace('expect(await renderName())', 'expect(renderName())');
+    expect(broken).not.toBe(repaired);
+    const source = { path: 'case.test.js', startLine: 1, truncated: false, content: broken };
+    const policy = createDefaultRepositoryPolicy();
+    const baseline: ControllerBaselineBinding = { kind: 'local-snapshot', sourceSha: null, policyBaseSha: null,
+      policySha256: 'a'.repeat(64), baselineImageId: 'baseline', snapshotSha256: null };
+    const session = createRepairAuthorizationSession({ baseline, failingCommand: 'vitest run', policy, sources: [source] });
+    expect(await deriveRepairAuthorization(session, { kind: 'await-operation', path: source.path,
+      evidenceReferences: ['promise-mismatch', 'controller-stack-line:5'], controllerProbe: { id: 'async-completion', imageId: 'baseline',
+        exitCode: 1, output: "AssertionError: expected Promise to be 'ADA'", sourceSha256: createHash('sha256').update(broken).digest('hex'),
+        failingCommand: 'vitest run' } })).toEqual({ ok: true });
+    const caseDiagnosis: Diagnosis = { class: 'test-bug', confidence: 0.49, signals: ['promise-mismatch'],
+      failingCmd: 'vitest run', errorExcerpt: "AssertionError: expected Promise to be 'ADA'" };
+    const context = { diagnosis: caseDiagnosis, policy, sourceContext: { sources: [source] },
+      trustedCommands: { diagnosed: 'vitest run' }, authorization: { session, baseline } };
+    const repairedDiff = anchoredEditsDiff([{
+      path: source.path, startLine: 5, endLine: 5, new: "  expect(await renderName()).toBe('ADA');",
+    }], context.sourceContext);
+    const executor = new InMemoryExecutor((_command, _parent, index) => [runResult(0, repairedDiff), runResult(0, '1 passed')][index]!);
+    const scripted = llm(JSON.stringify({ replacement: repaired }));
+    const outcome = await runControlledRepairAttempt({ ...context, llm: scripted.model,
+      executor, initialImageId: 'baseline', budget: new RepairBudget() });
+    expect(outcome).toMatchObject({ status: 'submitted' });
+    if (outcome.status !== 'submitted') throw new Error('Missing submitted candidate');
+    expect(outcome.candidate.diff).toContain("+  expect(await renderName()).toBe('ADA');");
+    expect(scripted.chat).not.toHaveBeenCalled();
+    expect(executor.calls.filter((call) => call.kind === 'run')).toHaveLength(2);
+
+    const rejectedExecutor = new InMemoryExecutor(() => runResult(0));
+    const weakened = broken.replace("toBe('ADA')", "toBe('BOB')");
+    const rejected = await runControlledRepairAttempt({ ...context, llm: llm(JSON.stringify({ replacement: weakened })).model,
+      executor: rejectedExecutor, initialImageId: 'baseline', budget: new RepairBudget(),
+      feedback: { candidateDiff: repairedDiff, testOutput: 'still failing', errorFingerprint: 'rejected-first-attempt' } });
+    expect(rejected).toMatchObject({ status: 'gave-up', failureKind: 'policy' });
+    expect(rejectedExecutor.calls).toHaveLength(0);
   });
 
   it('replays live run 8: an accepted patch is tested and submitted without exploration', async () => {

@@ -47,6 +47,7 @@ export interface RuntimeCandidateResult {
 export async function evaluateRuntimeCandidate(input: RuntimeCandidateInput): Promise<RuntimeCandidateResult> {
   let verdict: AuditVerdict = { approved: true, checks: [], reasoning: 'All executed gates passed' };
   let afterLog = '';
+  let afterExitCode: number | undefined;
   let challenges: ChallengeRunResult | null = null;
   const passed: VerificationGateResult = { status: 'passed' };
   const artifact = (id: string, value: unknown) => [{ id, sha256: createHash('sha256').update(canonicalJson(value)).digest('hex') }];
@@ -76,6 +77,7 @@ export async function evaluateRuntimeCandidate(input: RuntimeCandidateInput): Pr
             const result = await input.executor.run(input.winner.imageId, input.suiteCommand, { cwd: '/workspace', network: 'disabled' });
             input.observe?.(result, input.winner.imageId, 'Fresh suite rerun');
             afterLog = boundedTail(`${result.stdout}\n${result.stderr}`, { maxLines: 100, maxCharacters: 2000, maxBytes: 2000 });
+            afterExitCode = result.exitCode;
             if (result.exitCode !== 0) {
               verdict.reasoning = `REFUSED: fresh suite rerun exited ${result.exitCode}: ${afterLog}`;
               verdict.checks.push({ name: 'llm-adjudication', passed: false, evidence: 'Not run: the fresh suite rerun failed' });
@@ -89,7 +91,8 @@ export async function evaluateRuntimeCandidate(input: RuntimeCandidateInput): Pr
             return { status: challenges.status, reasons: challenges.status === 'passed' ? [] : [challenges.status === 'failed' ? 'assertion-failed' : 'invalid-probe'], ...(input.prepared.set === null ? {} : { artifacts: [{ id: 'challenge-set', sha256: input.prepared.set.setHash }] }) };
           }
           case 'adjudication': {
-            const adjudicationContext = { diagnosis: input.diagnosis, diff: input.winner.candidate.diff, beforeLog: input.beforeLog, afterLog, ...(challenges === null ? {} : { challengeEvidence: { setHash: input.prepared.set?.setHash ?? null, status: challenges.status, observations: challenges.observations } }) };
+            if (afterExitCode === undefined) return { status: 'insufficient', reasons: ['not-executed'] };
+            const adjudicationContext = { diagnosis: input.diagnosis, diff: input.winner.candidate.diff, beforeLog: input.beforeLog, afterLog, afterCommand: input.suiteCommand, afterExitCode, ...(challenges === null ? {} : { challengeEvidence: { setHash: input.prepared.set?.setHash ?? null, status: challenges.status, observations: challenges.observations } }) };
             const result = await adjudicate(input.llm, adjudicationContext);
             const second = await secondOpinion(input.secondOpinion, adjudicationContext, input.secondOpinionBudget);
             const third = await typesafeAudit(input.typesafeAudit, adjudicationContext, input.typesafeAuditBudget);

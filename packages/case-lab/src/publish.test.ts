@@ -67,7 +67,7 @@ describe('publishResult', () => {
       workflowRun: LINKS.workflowRun, ciRun: LINKS.ciRun, pullRequest: LINKS.pullRequest, check: LINKS.check,
     });
     expect(result.cost.status).toBe('observed');
-    expect(result.cost.inferenceUsd).toBeCloseTo(0.009379, 6);
+    expect(result.cost.inferenceUsd).toBeCloseTo(0.007973, 6);
     expect(result.caseFile?.outcome).toBe('fixed');
   });
 

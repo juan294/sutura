@@ -33,6 +33,7 @@ import { parseRepositoryPolicy } from './policy/schema.js';
 import {
   AlreadyAttemptedError,
   OrchestrationError,
+  RepairBranchRunError,
   SUTURA_SANDBOX_ENV,
   attemptMarker,
   collectFailedLogs,
@@ -89,6 +90,8 @@ function capturedDogfoodLog(rawLog: string): string {
   return lines.join('\n');
 }
 
+const REPAIR_SHA = 'fedcba9876543210fedcba9876543210fedcba98';
+
 const RUN: FailingWorkflowRun = {
   runId: '98765',
   repo: 'acme/widget',
@@ -117,6 +120,7 @@ class FakeGitHub implements GitHubOrchestrationPort {
   }> = [];
   readonly artifacts: Array<{ name: string; html: string }> = [];
   readonly checks: Array<{ target: AttemptTarget; input: import('./orchestrate.js').CompleteCheckInput }> = [];
+  readonly repairChecks: import('./orchestrate.js').CompleteRepairCheckInput[] = [];
 
   constructor(readonly run = RUN) {}
 
@@ -154,9 +158,9 @@ class FakeGitHub implements GitHubOrchestrationPort {
     body: string;
     headSha: string;
     title: string;
-  }): Promise<{ number: number; url: string }> {
+  }): Promise<{ number: number; url: string; headSha: string }> {
     this.pullRequests.push(input);
-    return { number: 43, url: 'https://github.test/acme/widget/pull/43' };
+    return { number: 43, url: 'https://github.test/acme/widget/pull/43', headSha: REPAIR_SHA };
   }
 
   async uploadCaseFile(name: string, html: string): Promise<{ url: string }> {
@@ -171,6 +175,10 @@ class FakeGitHub implements GitHubOrchestrationPort {
 
   async completeCheck(target: AttemptTarget, input: import('./orchestrate.js').CompleteCheckInput): Promise<void> {
     this.checks.push({ target, input });
+  }
+
+  async completeRepairCheck(input: import('./orchestrate.js').CompleteRepairCheckInput): Promise<void> {
+    this.repairChecks.push(input);
   }
 }
 
@@ -657,8 +665,46 @@ describe('orchestrate', () => {
     expect(github.comments[0]?.body).toContain(attemptMarker(RUN.runId));
     expect(github.comments[0]?.body).toContain('Open case-file artifact');
     expect(github.artifacts).toHaveLength(1);
+    expect(github.repairChecks).toEqual([{
+      pullRequest: { number: 43, url: 'https://github.test/acme/widget/pull/43', headSha: REPAIR_SHA },
+      caseFile,
+      artifactUrl: expect.stringContaining('https://github.test/artifacts/'),
+    }]);
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano', 'super', 'ultra']);
     expect(runCalls(executor)).toHaveLength(8);
+  });
+
+  it('keeps a fixed outcome when the repair-commit check cannot be published', async () => {
+    const { ctx, github } = context([1, 1, 1, 0, 1, 1, 0]);
+    const publish = vi.spyOn(github, 'completeRepairCheck')
+      .mockRejectedValue(new Error('checks API unavailable'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(orchestrate(ctx)).resolves.toMatchObject({ outcome: 'fixed' });
+
+    expect(publish).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith('Sutura could not publish the repair-commit check.');
+    expect(github.pullRequests).toHaveLength(1);
+    expect(github.checks).toHaveLength(1);
+  });
+
+  it('refuses a failing run on its own repair branch before claiming or checking out', async () => {
+    const { ctx, github, repository, chat } = context(
+      [1, 1, 1, 0, 1, 1, 0],
+      true,
+      { ...RUN, headRef: 'sutura/fix-12345' },
+    );
+
+    await expect(orchestrate(ctx)).rejects.toBeInstanceOf(RepairBranchRunError);
+    await expect(orchestrate(ctx)).rejects.toThrow(
+      'Sutura does not repair its own repair branch sutura/fix-12345 (workflow run 98765)',
+    );
+
+    expect(github.comments).toEqual([]);
+    expect(github.pullRequests).toEqual([]);
+    expect(repository.checkouts).toEqual([]);
+    expect(repository.policyReads).toEqual([]);
+    expect(chat).not.toHaveBeenCalled();
   });
 
   it('keeps a fixed outcome when replay upload fails', async () => {

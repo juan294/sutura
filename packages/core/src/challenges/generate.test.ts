@@ -27,7 +27,12 @@ const policy: VerificationPolicy = {
 const context: ChallengeGenerationContext = {
   failureExcerpt: 'expected 3 to be 2',
   baselineSources: [{ path: 'page-count.js', startLine: 1, content: 'export function pageCount() {}\n' }],
-  contractExcerpts: [{ contractId: 'page-count-ceiling', path: '.sutura.json', excerpt: '{"id":"page-count-ceiling"}' }],
+  contractExcerpts: [{
+    contractId: 'page-count-ceiling',
+    path: 'page-count.js',
+    excerpt: '{"id":"page-count-ceiling"}',
+    citation: { path: 'page-count.js', sha256: 'c'.repeat(64), startLine: 1, endLine: 1 },
+  }],
   baselineSnapshotHash: 'a'.repeat(64),
   trustedPolicySha: 'b'.repeat(64),
 };

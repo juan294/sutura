@@ -7,6 +7,7 @@ import type { CaseFile } from '../domain.js';
 import type { CheckAnnotation } from './types.js';
 
 export const SUTURA_CHECK_NAME = 'Sutura repair audit';
+export const SUTURA_REPAIR_CHECK_NAME = 'Sutura repair verification';
 export const MAX_CHECK_ANNOTATIONS = 50;
 const MAX_ANNOTATION_SOURCE_BYTES = 1_024 * 1_024;
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
@@ -28,6 +29,32 @@ export function checkOutput(caseFile: CaseFile): { title: string; summary: strin
       `Diagnosis: ${caseFile.diagnosis.class}`,
       `Policy SHA: ${caseFile.policy.policySha}`,
       `Inference cost: $${caseFile.cost.totalUsd().toFixed(6)}`,
+    ].join('\n').slice(0, 65_535),
+  };
+}
+
+/**
+ * The repair commit's check states what Sutura verified in its sandbox. It is
+ * neutral by design: a human still reviews the repair, and the repository's
+ * own CI has not necessarily run on this commit.
+ */
+export function repairCheckOutput(
+  caseFile: CaseFile,
+  runId: string,
+  pullRequestUrl: string,
+): { title: string; summary: string } {
+  return {
+    title: 'Sutura verified this repair in a sandbox',
+    summary: [
+      'Sutura reproduced the failing command, applied this repair in an isolated sandbox, and reran it.',
+      'This check reports that verification. It does not replace this repository\'s CI: a pull request opened with the workflow token may hold CI for approval.',
+      '',
+      `Failed workflow run: ${runId}`,
+      `Outcome: ${caseFile.outcome}`,
+      `Diagnosis: ${caseFile.diagnosis.class}`,
+      `Policy SHA: ${caseFile.policy.policySha}`,
+      `Inference cost: $${caseFile.cost.totalUsd().toFixed(6)}`,
+      `Pull request: ${pullRequestUrl}`,
     ].join('\n').slice(0, 65_535),
   };
 }

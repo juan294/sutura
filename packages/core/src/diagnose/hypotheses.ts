@@ -11,6 +11,7 @@ import { boundedTail } from '../text/bounded-tail.js';
 import { shellQuote } from '../engine/shell.js';
 import { BudgetExceededError, type RepairBudget, type RepairCapacityReservation } from '../engine/repair-budget.js';
 import { REPAIR_ATTEMPT_COSTS } from '../engine/repair-attempt.js';
+import { controllerJsSetupAwaitReplacement, controllerPythonAwaitReplacement } from '../engine/controller-await-proposal.js';
 import type { RepairSourceContext, RepairSourceExcerpt } from '../engine/repair.js';
 import {
   createRepairAuthorizationSession, deriveRepairAuthorization, repairAuthorizationEvidence,
@@ -83,6 +84,46 @@ export function validateHypotheses(value: unknown, context: { signals: readonly 
   });
 }
 
+function vitestStackFrames(log: string): Array<{ path: string; line: number }> {
+  const safe = redactExternalText(boundedTail(log, LOG_BOUNDS)).text.replace(/\u001b\[[0-9;]*m/gu, '');
+  return [...safe.matchAll(/^\s*❯\s+(\S+\.test\.[cm]?[jt]s):(\d+):\d+\s*$/gmu)]
+    .map((match) => ({ path: match[1]!, line: Number(match[2]) }));
+}
+
+function pythonUnittestStackLine(log: string, sourcePath: string): number | undefined {
+  const safe = redactExternalText(boundedTail(log, LOG_BOUNDS)).text;
+  const traces = safe.split('Traceback (most recent call last):');
+  if (traces.length !== 2) return undefined;
+  const end = traces[1]!.indexOf("\nTypeError: 'coroutine' object is not subscriptable");
+  if (end < 0) return undefined;
+  const frames = [...traces[1]!.slice(0, end).matchAll(/^\s*File "([^"\n]+\.py)", line ([1-9]\d*), in test_[A-Za-z_]\w*\s*$/gmu)]
+    .filter((match) => match[1] === sourcePath || match[1]?.endsWith(`/${sourcePath}`));
+  return frames.length === 1 ? Number(frames[0]![2]) : undefined;
+}
+
+async function controllerPromiseHypotheses(context: { signals: readonly ObservedRecoverySignal[]; sources: readonly RepairSourceExcerpt[] }, failedLog: string): Promise<{ hypotheses: RecoveryHypothesis[]; path: string; line: number } | undefined> {
+  if (context.signals.length !== 1 || !['promise-mismatch', 'async-setup'].includes(context.signals[0]?.id ?? '')) return undefined;
+  // A single Vitest stack line must point to the exact complete source line;
+  // this avoids guessing a repair target from a Promise message alone.
+  const frames = vitestStackFrames(failedLog);
+  if (frames.length !== 1) return undefined;
+  const { path: reportedPath, line: reportedLine } = frames[0]!;
+  const candidates = (await Promise.all(context.sources.map(async (source, sourceIndex) => {
+    if (source.startLine !== 1 || source.truncated || !reportedPath ||
+      (reportedPath !== source.path && !reportedPath.endsWith(`/${source.path}`))) return [];
+    const line = source.content.split(/\r?\n/u)[reportedLine - 1];
+    if (context.signals[0]!.id === 'async-setup') {
+      const replacement = await controllerJsSetupAwaitReplacement(source.content, source.path, reportedLine, context.sources);
+      return replacement === undefined ? [] : [sourceIndex];
+    }
+    if (!line || !/^\s*expect\(\s*(?!await\b)[A-Za-z_$][\w$]*\(\s*\)\s*\)\s*\.\s*to(?:Be|Equal)\s*\(/u.test(line)) return [];
+    const calls = [...line.matchAll(/\bexpect\(\s*(?!await\b)[A-Za-z_$][\w$]*\(\s*\)\s*\)\s*\.\s*to(?:Be|Equal)\s*\(/gu)];
+    return calls.length === 1 ? [sourceIndex] : [];
+  }))).flat();
+  if (candidates.length !== 1) return undefined;
+  return { hypotheses: validateHypotheses({ hypotheses: [{ signalIndex: 0, sourceIndex: candidates[0], intent: context.signals[0]!.id === 'async-setup' ? 'await-setup' : 'await-operation', probeId: 'async-completion' }] }, context), path: context.sources[candidates[0]!]!.path, line: reportedLine };
+}
+
 function probeCommand(source: RepairSourceExcerpt, command: string): string {
   const payload = Buffer.from(JSON.stringify({ path: source.path, maximum: 16_000 })).toString('base64');
   // Both scripts read bounded data only, reject symlink components, and disclose
@@ -140,24 +181,27 @@ export async function recoverDiagnosis(input: RecoveryInput): Promise<RecoveryRe
     const signals = observedRecoverySignals(input.failedLog);
     if (signals.length === 0) return result;
     const sources = input.sourceContext.sources;
-    const messages = redactExternalMessages([
-      { role: 'system' as const, content: 'Investigate at most two alternative diagnoses. Return exactly {"hypotheses":[{"signalIndex":0,"sourceIndex":0,"intent":"await-operation","probeId":"async-completion"}]}. Choose only supplied source and observed signal indices. Intents: await-operation, await-setup (probe async-completion), restore-strict-config (probe strict-json). Do not supply commands, paths, grants, expected values or replacement code. Use an empty array when evidence does not support these narrow repairs.' },
-      { role: 'user' as const, content: JSON.stringify({ initialClass: input.initialDiagnosis.class, signals, sources: sources.map((source, sourceIndex) => ({ sourceIndex, ...source })) }) },
-    ]);
-    const options = hypothesisOptions();
-    let hypotheses: RecoveryHypothesis[];
-    let reply: Awaited<ReturnType<HealLlm['chat']>>;
-    try {
-      reply = await recoveryPorts.llm.chat('super', messages, options);
-    } catch (error) {
-      Object.assign(evidence, recoveryFailure(error, stopped(), 'hypothesis-provider-failed'));
-      return result;
+    const controllerSelection = await controllerPromiseHypotheses({ signals, sources }, input.failedLog);
+    let hypotheses = controllerSelection?.hypotheses ?? [];
+    if (hypotheses.length === 0) {
+      const messages = redactExternalMessages([
+        { role: 'system' as const, content: 'Investigate at most two alternative diagnoses. Return exactly {"hypotheses":[{"signalIndex":0,"sourceIndex":0,"intent":"await-operation","probeId":"async-completion"}]}. Choose only supplied source and observed signal indices. Intents: await-operation, await-setup (probe async-completion), restore-strict-config (probe strict-json). Do not supply commands, paths, grants, expected values or replacement code. Use an empty array when evidence does not support these narrow repairs.' },
+        { role: 'user' as const, content: JSON.stringify({ initialClass: input.initialDiagnosis.class, signals, sources: sources.map((source, sourceIndex) => ({ sourceIndex, ...source })) }) },
+      ]);
+      const options = hypothesisOptions();
+      let reply: Awaited<ReturnType<HealLlm['chat']>>;
+      try {
+        reply = await recoveryPorts.llm.chat('super', messages, options);
+      } catch (error) {
+        Object.assign(evidence, recoveryFailure(error, stopped(), 'hypothesis-provider-failed'));
+        return result;
+      }
+      if (stopped()) { evidence.status = 'insufficient'; evidence.reason = 'cancelled'; return result; }
+      try {
+        if (reply.finishReason === 'length' || Buffer.byteLength(reply.text) > 16_000) throw new Error('Truncated recovery proposal');
+        hypotheses = validateHypotheses(JSON.parse(reply.text), { signals, sources });
+      } catch { evidence.status = 'insufficient'; evidence.reason = 'invalid-hypotheses'; return result; }
     }
-    if (stopped()) { evidence.status = 'insufficient'; evidence.reason = 'cancelled'; return result; }
-    try {
-      if (reply.finishReason === 'length' || Buffer.byteLength(reply.text) > 16_000) throw new Error('Truncated recovery proposal');
-      hypotheses = validateHypotheses(JSON.parse(reply.text), { signals, sources });
-    } catch { evidence.status = 'insufficient'; evidence.reason = 'invalid-hypotheses'; return result; }
     result.hypotheses.push(...hypotheses);
     evidence.status = hypotheses.length ? 'insufficient' : 'not-run'; evidence.reason = hypotheses.length ? 'no-authorized-recovery' : 'no-supported-hypothesis';
     for (const hypothesis of hypotheses) {
@@ -177,7 +221,18 @@ export async function recoverDiagnosis(input: RecoveryInput): Promise<RecoveryRe
         if (stopped()) { observation.status = 'insufficient'; observation.reason = 'cancelled'; continue; }
         const session = createRepairAuthorizationSession({ baseline: input.baseline, failingCommand: input.initialDiagnosis.failingCmd, policy: input.policy, sources });
         const strictKey = /noUncheckedIndexedAccess/u.test(signals.find(({ id }) => id === hypothesis.signal)?.excerpt ?? '') ? 'noUncheckedIndexedAccess' as const : 'strict' as const;
-        const grant = await deriveRepairAuthorization(session, { kind: hypothesis.intent as RepairAuthorizationKind, path: source.path, evidenceReferences: [hypothesis.signal, `source:${hypothesis.sourceSha256}`], controllerProbe: { id: hypothesis.probeId!, imageId: input.baseline.baselineImageId, exitCode: executed.exitCode, output: output.replace(/^SUTURA_SOURCE_SHA256=.*\n/u, ''), sourceSha256: matches[0]![1]!, failingCommand: input.initialDiagnosis.failingCmd }, ...(hypothesis.intent === 'restore-strict-config' ? { strictKey } : {}) });
+        const probeFrames = vitestStackFrames(output);
+        const stackConfirmed = controllerSelection?.hypotheses.includes(hypothesis) === true &&
+          controllerSelection.path === source.path && probeFrames.length === 1 &&
+          probeFrames[0]!.line === controllerSelection.line &&
+          (probeFrames[0]!.path === source.path || probeFrames[0]!.path.endsWith(`/${source.path}`));
+        const pythonLine = hypothesis.intent === 'await-operation' && source.path.endsWith('.py')
+          ? pythonUnittestStackLine(input.failedLog, source.path) : undefined;
+        const pythonStackConfirmed = pythonLine !== undefined &&
+          pythonLine === pythonUnittestStackLine(output, source.path) &&
+          await controllerPythonAwaitReplacement(source.content, source.path, pythonLine) !== undefined;
+        const stackLine = stackConfirmed ? controllerSelection!.line : pythonStackConfirmed ? pythonLine : undefined;
+        const grant = await deriveRepairAuthorization(session, { kind: hypothesis.intent as RepairAuthorizationKind, path: source.path, evidenceReferences: [hypothesis.signal, `source:${hypothesis.sourceSha256}`, ...(stackLine === undefined ? [] : [`controller-stack-line:${stackLine}`])], controllerProbe: { id: hypothesis.probeId!, imageId: input.baseline.baselineImageId, exitCode: executed.exitCode, output: output.replace(/^SUTURA_SOURCE_SHA256=.*\n/u, ''), sourceSha256: matches[0]![1]!, failingCommand: input.initialDiagnosis.failingCmd }, ...(hypothesis.intent === 'restore-strict-config' ? { strictKey } : {}) });
         if (!grant.ok) { observation.status = 'insufficient'; observation.reason = grant.reason; continue; }
         observation.status = 'passed'; observation.reason = 'narrow-grant-issued';
         result.attempts.push({ hypothesisId: hypothesis.id, diagnosis: { ...input.initialDiagnosis, class: hypothesis.class, signals: [...input.initialDiagnosis.signals, `recovery:${hypothesis.id}`] }, authorization: { session, baseline: input.baseline } });

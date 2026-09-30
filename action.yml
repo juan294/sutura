@@ -8,7 +8,7 @@ inputs:
     required: false
     default: heal
   github-token:
-    description: GitHub token for failed-run and source reads. Heal mode also publishes the comment, check, and repair pull request; verify mode requires only repository read access.
+    description: GitHub token for failed-run and source reads. Heal mode also publishes the comment, checks, and repair pull request; verify mode requires only repository read access. A repair pull request opened with the workflow's own token does not trigger pull_request CI normally; a GitHub App installation token does.
     required: true
   run-id:
     description: Numeric ID of the failed GitHub Actions workflow run.
@@ -127,7 +127,7 @@ inputs:
 
 outputs:
   outcome:
-    description: Final Sutura outcome for the failed run.
+    description: Final Sutura outcome for the failed run, or already-attempted or repair-branch-skipped when Sutura did not start an attempt.
   verification-status:
     description: Terminal supplied-patch verification status in verify mode.
 

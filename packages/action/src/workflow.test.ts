@@ -13,6 +13,7 @@ describe('trusted Sutura workflow', () => {
     expect(workflow).toContain('conclusion == \'failure\'');
     expect(workflow).toContain("workflow_run.conclusion == 'timed_out'");
     expect(workflow).toContain("vars.SUTURA_DISABLED != 'true'");
+    expect(workflow).toContain("!startsWith(github.event.workflow_run.head_branch, 'sutura/fix-')");
     expect(workflow).toContain('ref: ${{ github.event.repository.default_branch }}');
     expect(workflow).toContain('actions: read');
     expect(workflow).toContain('checks: write');

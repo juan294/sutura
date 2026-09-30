@@ -1,11 +1,17 @@
 import type {
   AttemptTarget,
   CompleteCheckInput,
+  CompleteRepairCheckInput,
   CreateFixPullRequestInput,
   FailingWorkflowRun,
+  FixPullRequest,
   GitHubOrchestrationPort,
 } from '../orchestrate.js';
-import { checkAnnotations, checkConclusion, checkExternalId, checkOutput, SUTURA_CHECK_NAME } from './checks.js';
+import { REPAIR_BRANCH_PREFIX, RepairBranchRunError } from '../orchestrate.js';
+import {
+  checkAnnotations, checkConclusion, checkExternalId, checkOutput, repairCheckOutput,
+  SUTURA_CHECK_NAME, SUTURA_REPAIR_CHECK_NAME,
+} from './checks.js';
 import type { GitHubAdapterOptions, GitHubApi } from './types.js';
 
 const FAILED_CONCLUSIONS = new Set(['failure', 'timed_out']);
@@ -39,10 +45,18 @@ function timestamp(line: string): number | null {
 interface TimestampedLogLine { line: string; time: number }
 
 function parseTimestampedLog(log: string): TimestampedLogLine[] {
-  return log.split(/\r?\n/).flatMap((line) => {
+  const lines: TimestampedLogLine[] = [];
+  let lastTime: number | null = null;
+  const rawLines = log.split(/\r?\n/);
+  if (log.endsWith('\n')) rawLines.pop();
+  for (const line of rawLines) {
     const time = timestamp(line);
-    return time === null ? [] : [{ line, time }];
-  });
+    if (time !== null) lastTime = time;
+    // GitHub emits multiline errors with a timestamp only on their first line.
+    // Keep the continuation in that step so assertion locations reach repair.
+    if (lastTime !== null) lines.push({ line, time: lastTime });
+  }
+  return lines;
 }
 
 function failedStepLog(
@@ -60,12 +74,23 @@ function failedStepLog(
   const inclusiveEnd = /\.\d+Z$/u.test(step.completedAt) ? end : end + 999;
   let matching = lines.filter(({ time }) => time >= start && time <= inclusiveEnd);
   const groupMarker = `##[group]${step.name}`;
-  let groupIndex = matching.findLastIndex(({ line }) => line.includes(groupMarker));
-  // A step with a custom display name never matches its own name marker. The
-  // time window already confines `matching` to this step, so its last command
-  // group is the header of the command that failed.
-  if (groupIndex < 0) groupIndex = matching.findLastIndex(({ line }) => GROUP_RUN_MARKER.test(line));
-  if (groupIndex >= 0) matching = matching.slice(groupIndex);
+  let groupIndex = matching.findIndex(({ line }) => line.includes(groupMarker));
+  if (groupIndex < 0) {
+    // GitHub timestamps step bounds to whole seconds, while log lines have
+    // subsecond precision. A later `if: always()` action can therefore start
+    // inside the failed step's inclusive end second. Select the Run group
+    // containing the error, rather than that later action's Run group.
+    const errorIndex = matching.findIndex(({ line }) => line.includes('##[error]'));
+    groupIndex = errorIndex < 0
+      ? matching.findIndex(({ line }) => GROUP_RUN_MARKER.test(line))
+      : matching.findLastIndex(({ line }, index) =>
+        index <= errorIndex && GROUP_RUN_MARKER.test(line));
+  }
+  if (groupIndex >= 0) {
+    const nextGroup = matching.findIndex(({ line }, index) =>
+      index > groupIndex && GROUP_RUN_MARKER.test(line));
+    matching = matching.slice(groupIndex, nextGroup < 0 ? undefined : nextGroup);
+  }
   if (matching.length === 0) {
     throw new GitHubAdapterError(`Job logs contain no lines for failed step ${step.name}`);
   }
@@ -80,6 +105,24 @@ function apiStatus(error: unknown): number | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
   const status = (error as { status?: unknown }).status;
   return typeof status === 'number' ? status : undefined;
+}
+
+/**
+ * A claim comment is Sutura's own when the workflow token wrote it, or when a
+ * GitHub App token (`<app>[bot]`) wrote it and it names the claimed check run.
+ * User logins cannot contain brackets, and the check-run id keeps another
+ * installed app that echoes the marker from passing for Sutura.
+ */
+function isClaimComment(
+  comment: { body: string | null; authorLogin: string | null },
+  marker: string,
+  checkRunId: number,
+): boolean {
+  if (!comment.body?.includes(marker)) return false;
+  if (comment.authorLogin === 'github-actions[bot]') return true;
+  return comment.authorLogin !== null &&
+    /^[A-Za-z0-9][A-Za-z0-9-]*\[bot\]$/u.test(comment.authorLogin) &&
+    comment.body.includes(`<!-- sutura-check-run:${checkRunId} -->`);
 }
 
 function validBranch(value: string): boolean {
@@ -116,6 +159,9 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
       !FAILED_CONCLUSIONS.has(workflowRun.conclusion ?? '') ||
       !SHA_PATTERN.test(workflowRun.headSha)) {
       throw new GitHubAdapterError('Workflow run metadata does not match the action event');
+    }
+    if (workflowRun.headBranch?.startsWith(REPAIR_BRANCH_PREFIX)) {
+      throw new RepairBranchRunError(runId, workflowRun.headBranch);
     }
 
     let prNumber: number | undefined;
@@ -230,8 +276,6 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
       const comments = prNumber === undefined
         ? await this.api.listCommitComments(run.headSha)
         : await this.api.listIssueComments(prNumber);
-      const existingComment = comments.find(({ body, authorLogin }) =>
-        authorLogin === 'github-actions[bot]' && body?.includes(marker));
       if (!this.activeCheck) {
         const created = await this.api.createCheckRun({
           name: SUTURA_CHECK_NAME, headSha: run.headSha,
@@ -244,6 +288,8 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
         }
         this.activeCheck = { id: created.id, headSha: run.headSha };
       }
+      const checkRunId = this.activeCheck.id;
+      const existingComment = comments.find((comment) => isClaimComment(comment, marker, checkRunId));
       if (existingComment) {
         this.activeAttempt = {
           marker,
@@ -310,7 +356,7 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
     }
   }
 
-  async createFixPullRequest(input: CreateFixPullRequestInput): Promise<{ number: number; url: string }> {
+  async createFixPullRequest(input: CreateFixPullRequestInput): Promise<FixPullRequest> {
     if (!validBranch(input.branch) || !validBranch(input.baseRef)) {
       throw new GitHubAdapterError('Fix or base branch is invalid');
     }
@@ -320,9 +366,34 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
     if (!parents.some((sha) => sha.toLowerCase() === input.headSha.toLowerCase())) {
       throw new GitHubAdapterError('Fix branch is not based on the exact failing SHA');
     }
-    return this.api.createPullRequest({
+    const pullRequest = await this.api.createPullRequest({
       title: input.title, head: `${this.options.owner}:${input.branch}`,
       base: input.baseRef, body: input.body,
+    });
+    return { ...pullRequest, headSha: tip };
+  }
+
+  async completeRepairCheck(input: CompleteRepairCheckInput): Promise<void> {
+    if (input.caseFile.outcome !== 'fixed') {
+      throw new GitHubAdapterError('Only a fixed outcome has a repair commit to check');
+    }
+    if (!SHA_PATTERN.test(input.pullRequest.headSha)) {
+      throw new GitHubAdapterError('Repair commit SHA is invalid');
+    }
+    const created = await this.api.createCheckRun({
+      name: SUTURA_REPAIR_CHECK_NAME, headSha: input.pullRequest.headSha,
+      externalId: `${checkExternalId(this.repository, this.options.runId)}:repair`,
+      status: 'in_progress', title: 'Sutura repair verification in progress',
+      summary: `Recording the sandbox verification for workflow run ${this.options.runId}.`,
+    });
+    if (!Number.isSafeInteger(created.id) || created.id <= 0) {
+      throw new GitHubAdapterError('GitHub returned an invalid check-run id');
+    }
+    await this.api.updateCheckRun({
+      checkRunId: created.id, status: 'completed', conclusion: 'neutral',
+      detailsUrl: input.artifactUrl,
+      ...repairCheckOutput(input.caseFile, this.options.runId, input.pullRequest.url),
+      annotations: [],
     });
   }
 

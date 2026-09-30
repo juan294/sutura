@@ -4,8 +4,8 @@ import { contentHash } from './canonical.js';
 import type { CaseLabCaseFile } from './result.js';
 import { isRecord, readBoundedJson } from './util.js';
 
-export const RECORDED_RESULT_FILE = 'docs/demo/placebo-v0.3.2-live-2026-09-23.json';
-export const RECORDED_LEDGER_FILE = 'docs/demo/placebo-v0.3.2-live-ledger-2026-09-23.json';
+export const RECORDED_RESULT_FILE = 'docs/demo/placebo-v0.3.3-live-2026-09-24.json';
+export const RECORDED_LEDGER_FILE = 'docs/demo/placebo-v0.3.3-live-ledger-2026-09-24.json';
 const MAX_EVIDENCE_BYTES = 64 * 1_024 * 1_024;
 
 export interface RecordedEvaluation {

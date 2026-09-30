@@ -121,6 +121,8 @@ export async function audit(
     diff: winner.candidate.diff,
     beforeLog: context.beforeLog,
     afterLog,
+    afterCommand: context.suiteCommand,
+    afterExitCode: rerun.exitCode,
   });
   return {
     approved: adjudication.approved,

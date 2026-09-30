@@ -1,6 +1,6 @@
 import type { CaseFile } from '@sutura/core';
 
-type ActionOutcome = CaseFile['outcome'] | 'already-attempted';
+type ActionOutcome = CaseFile['outcome'] | 'already-attempted' | 'repair-branch-skipped';
 
 interface OutcomeReporter {
   setOutput(name: string, value: string): void;

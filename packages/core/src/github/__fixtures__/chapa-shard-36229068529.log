@@ -1,0 +1,23 @@
+2026-09-26T08:12:33.4785729Z ##[group]Run # blob feeds the merge gate; github reporter surfaces failing tests as
+2026-09-26T08:12:33.4786226Z # blob feeds the merge gate; github reporter surfaces failing tests as
+2026-09-26T08:12:33.4786644Z # inline annotations (blob alone prints nothing per-test on failure).
+2026-09-26T08:12:33.4786960Z pnpm exec vitest run \
+2026-09-26T08:12:33.4787184Z   --shard=1/2 \
+2026-09-26T08:12:33.4787395Z   --coverage \
+2026-09-26T08:12:33.4787592Z   --reporter=blob \
+2026-09-26T08:12:33.4787810Z   --reporter=github-actions \
+2026-09-26T08:12:33.4788232Z   --coverage.thresholds.lines=0 \
+2026-09-26T08:12:33.4788488Z   --coverage.thresholds.functions=0 \
+2026-09-26T08:12:33.4788748Z   --coverage.thresholds.statements=0 \
+2026-09-26T08:12:33.4789005Z   --coverage.thresholds.branches=0
+2026-09-26T08:12:33.4843571Z shell: /usr/bin/bash -e {0}
+2026-09-26T08:12:33.4843842Z env:
+2026-09-26T08:12:33.4844068Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-09-26T08:12:33.4844330Z   VITEST_SHARD_RUN: true
+2026-09-26T08:12:33.4844523Z ##[endgroup]
+2026-09-26T08:13:49.2227048Z ##[error]AssertionError: expected -1 to be 5 // Object.is equality
+2026-09-26T08:13:49.2466548Z blob report written to /home/runner/work/chapa/chapa/.vitest-reports/blob-1-2.json
+2026-09-26T08:13:49.3731839Z ##[error]Process completed with exit code 1.
+2026-09-26T08:13:49.3793990Z ##[group]Run actions/upload-artifact@v7
+2026-09-26T08:13:49.3794230Z with:
+2026-09-26T08:13:49.3794406Z   name: vitest-blob-1

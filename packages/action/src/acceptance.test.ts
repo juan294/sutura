@@ -6,6 +6,7 @@ describe('required action outcome', () => {
   it('does not fail ordinary advisory runs', () => {
     expect(requiredOutcomeFailure('gave-up', false)).toBeNull();
     expect(requiredOutcomeFailure('already-attempted', false)).toBeNull();
+    expect(requiredOutcomeFailure('repair-branch-skipped', false)).toBeNull();
   });
 
   it('accepts only fixed when the caller enables the self-hosting gate', () => {

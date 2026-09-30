@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { expect, it, vi } from 'vitest';
-import { prepareRuntimeChallenges, runRuntimeChallenges } from './runtime.js';
+import { prepareRuntimeChallenges, runRuntimeChallenges, summarizeChallengePreparation } from './runtime.js';
 import { createDefaultRepositoryPolicy } from '../policy/load.js';
+import { canonicalJson } from '../replay/canonical-json.js';
 import type { Executor } from '../executor/types.js';
 import type { HealLlm } from '../heal.js';
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
@@ -19,6 +20,13 @@ function setup() {
 it('generates and qualifies once before any candidate and shares frozen probes across alternatives', async () => {
   const s = setup();
   const prepared = await prepareRuntimeChallenges(s.input);
+  const messages = (s.chat.mock.calls[0] as unknown as [unknown, Array<{ role: string; content: string }>])[1];
+  const generation = JSON.parse(messages[1]!.content) as {
+    contractExcerpts: Array<{ citation: { path: string; sha256: string; startLine: number; endLine: number } }>;
+  };
+  expect(generation.contractExcerpts[0]?.citation).toEqual({
+    path: 'src/pages.js', sha256: hash(source), startLine: 1, endLine: 1,
+  });
   expect(s.calls).toEqual(['generate', 'baseline', 'baseline']);
   expect((await runRuntimeChallenges(prepared, s.executor, 'floor')).status).toBe('failed');
   expect((await runRuntimeChallenges(prepared, s.executor, 'ceil')).status).toBe('passed');
@@ -26,11 +34,58 @@ it('generates and qualifies once before any candidate and shares frozen probes a
   expect(s.calls).toEqual(['generate', 'baseline', 'baseline', 'floor', 'floor', 'ceil', 'ceil']);
   expect(JSON.stringify(s.chat.mock.calls)).not.toContain('candidateDiff');
 });
+it('classifies a trusted baseline pass as preservation even when the model labels it a regression', async () => {
+  const s = setup();
+  const prepared = await prepareRuntimeChallenges({ ...s.input, baselineImage: 'ceil' });
+  expect(prepared.reason).toBeNull();
+  expect(prepared.qualified).toEqual([expect.objectContaining({ qualified: true, reasonCode: 'qualified' })]);
+  expect(prepared.set?.challenges[0]?.kind).toBe('preservation');
+  const { setHash, ...boundSet } = prepared.set!;
+  expect(setHash).toBe(hash(canonicalJson(boundSet)));
+  expect((await runRuntimeChallenges(prepared, s.executor, 'ceil')).status).toBe('passed');
+  expect(s.calls).toEqual(['generate', 'ceil', 'ceil', 'ceil', 'ceil']);
+});
+it('classifies a trusted baseline assertion failure as regression even when the model labels it preservation', async () => {
+  const s = setup();
+  s.chat.mockResolvedValue({ text: JSON.stringify({ challenges: [{ ...proposal, kind: 'preservation' }] }) });
+  const prepared = await prepareRuntimeChallenges(s.input);
+  expect(prepared.reason).toBeNull();
+  expect(prepared.set?.challenges[0]?.kind).toBe('bug-regression');
+  expect((await runRuntimeChallenges(prepared, s.executor, 'ceil')).status).toBe('passed');
+});
+it('refuses mixed baseline observations instead of assigning a challenge kind', async () => {
+  const s = setup();
+  s.run.mockResolvedValueOnce({ imageId: 'discard', exitCode: 0, stdout: JSON.stringify({ version: 1, value: 2 }), stderr: '', metrics: {} });
+  const prepared = await prepareRuntimeChallenges(s.input);
+  expect(prepared.reason).toBe('invalid-probe');
+  expect(prepared.qualified[0]?.reasonCode).toBe('baseline-not-qualified');
+  expect((await runRuntimeChallenges(prepared, s.executor, 'ceil')).status).toBe('insufficient');
+});
 it('never discards an invalid frozen challenge to approve the remaining one', async () => {
   const s = setup();
-  s.chat.mockResolvedValue({ text: JSON.stringify({ challenges: [proposal, { ...proposal, id: 'bad', inputs: [-1, 10] }] }) });
+  s.chat.mockResolvedValue({ text: JSON.stringify({ challenges: [{ ...proposal, kind: 'preservation' }, { ...proposal, id: 'bad', inputs: [-1, 10] }] }) });
   const prepared = await prepareRuntimeChallenges(s.input);
+  expect(prepared.set?.challenges[0]?.kind).toBe('bug-regression');
   expect((await runRuntimeChallenges(prepared, s.executor, 'ceil')).status).toBe('insufficient');
+  expect(summarizeChallengePreparation(prepared)).toEqual({
+    reason: 'invalid-probe', retainedCount: 2, excludedCount: 0, qualifiedCount: 1,
+    excludedReasons: [], disqualifiedReasons: [{ reasonCode: 'input-outside-domain', count: 1 }],
+  });
+});
+
+it('reports excluded proposal codes without retaining generated text or inputs', async () => {
+  const s = setup();
+  s.chat.mockResolvedValue({ text: JSON.stringify({ challenges: [proposal, {
+    ...proposal, id: 'bad', probeId: 'Invalid ID', rationale: 'sk_test_abcdefgh12345678', inputs: ['private-value'],
+  }] }) });
+  const prepared = await prepareRuntimeChallenges(s.input);
+  const summary = summarizeChallengePreparation(prepared);
+  expect(summary).toEqual({
+    reason: 'invalid-probe', retainedCount: 1, excludedCount: 1, qualifiedCount: 1,
+    excludedReasons: [{ reasonCode: 'invalid-probe', count: 1 }], disqualifiedReasons: [],
+  });
+  expect(JSON.stringify(summary)).not.toContain('private-value');
+  expect(JSON.stringify(summary)).not.toContain('sk_test_abcdefgh12345678');
 });
 it('binds every repetition to the original subject image and stores observed byte digests', async () => {
   const s = setup();
@@ -48,4 +103,47 @@ it('refuses a denied contract target before disclosing it to generation or runni
   expect(prepared.reason).toBe('invalid-probe');
   expect(s.chat).not.toHaveBeenCalled();
   expect(s.run).not.toHaveBeenCalled();
+});
+
+it('shows exact-contract arguments and a valid example in the challenge prompt', async () => {
+  const s = setup();
+  s.policy.verification.contracts = [{
+    id: 'pages', kind: 'exact',
+    target: { adapter: 'javascript', path: 'src/pages.js', export: 'pages' },
+    examples: [{ args: [20, 10], expected: 3 }],
+  }] as unknown as typeof s.policy.verification.contracts;
+  const chat = vi.fn(async (_model: string, messages: Array<{ content: string }>) => {
+    const example = messages[0]!.content.match(/A valid shape using the first cited contract is (.+)\. Change kind/u)?.[1];
+    if (!example) throw Error('missing challenge example');
+    return { text: example };
+  });
+  s.input.llm = { chat } as unknown as HealLlm;
+
+  const prepared = await prepareRuntimeChallenges(s.input);
+
+  const messages = chat.mock.calls[0]![1];
+  const user = JSON.parse(messages[1]!.content) as { contractExcerpts: Array<{ allowedInputsJson: string[] }> };
+  expect(user.contractExcerpts[0]?.allowedInputsJson).toEqual(['[20,10]']);
+  expect(messages[0]!.content).toContain('"inputs":[20,10]');
+  expect(messages[0]!.content).not.toContain('"inputs":[]');
+  expect(prepared.reason).toBeNull();
+  expect(prepared.qualified).toEqual([expect.objectContaining({ challengeId: 'probe-1', qualified: true })]);
+  expect((await runRuntimeChallenges(prepared, s.executor, 'floor')).status).toBe('passed');
+  expect((await runRuntimeChallenges(prepared, s.executor, 'ceil')).status).toBe('failed');
+});
+
+it('redacts exact-contract arguments in every generated message', async () => {
+  const s = setup();
+  const secret = 'sk_test_abcdefgh12345678';
+  s.policy.verification.contracts = [{
+    id: 'pages', kind: 'exact',
+    target: { adapter: 'javascript', path: 'src/pages.js', export: 'pages' },
+    examples: [{ args: [secret], expected: 2 }],
+  }] as unknown as typeof s.policy.verification.contracts;
+
+  await prepareRuntimeChallenges(s.input);
+
+  const messages = (s.chat.mock.calls[0] as unknown as [unknown, Array<{ role: string; content: string }>])[1];
+  expect(JSON.stringify(messages)).not.toContain(secret);
+  expect(JSON.stringify(messages)).toContain('[redacted token]');
 });

@@ -142,7 +142,8 @@ describe('runBenchmark', { timeout: 120_000 }, () => {
         return { ...approved(), outcome: 'refused', audit: { approved: false, checks: [], reasoning: 'refused' } };
       },
     };
-    await runBenchmark(adapter, { only: 'trap' });
+    await runBenchmark(adapter, { caseId: 'trap-assertion-tautology' });
+    expect(observations).toHaveLength(1);
     const tautology = observations.find(({ candidate }) => candidate?.includes('expect(actual).toBe(actual)'));
     expect(tautology?.source).toContain("expect(total([2, 3, 4])).toBe(9)");
     expect(tautology?.source).not.toContain('expect(actual).toBe(actual)');

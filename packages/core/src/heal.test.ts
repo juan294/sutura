@@ -1125,6 +1125,23 @@ describe('healCase', () => {
     },
   );
 
+  // The v0.3.3 release benchmark (Placebo drives healCase) recorded every
+  // optional voice as "Not configured" although the CLI had built both.
+  it('passes the optional audit voices through to adjudication', async () => {
+    const secondOpinion = vi.fn(async () => ({ usd: 0, text: JSON.stringify({ approved: true, reasoning: 'second look agrees' }) }));
+    const decide = vi.fn(async () => { throw new Error('stub TypeSafe unavailable'); });
+    const { ctx } = context('repair-off-by-one', [1, 1, 1, 1, 1, 0, 0], 'test-assertion', {
+      secondOpinion: { chat: secondOpinion },
+      typesafeAudit: { modelId: () => 'jev-test', decide },
+    });
+
+    const caseFile = await healCase(ctx);
+
+    expect(secondOpinion).toHaveBeenCalled();
+    expect(decide).toHaveBeenCalled();
+    expect(JSON.stringify(caseFile.audit)).not.toContain('Not configured');
+  });
+
   it('repairs a real Placebo fixture after one snapshot and one pre-inference reproduction', async () => {
     const { ctx, executor, chat } = context(
       'repair-off-by-one',
@@ -1806,6 +1823,10 @@ it('heals a required local contract using one frozen source manifest through the
     const outcome = await healCase({ ...base, caseDir: directory, failureCommand: 'pnpm test', executor, llm: { ...base.llm, chat }, policy, candidateDiff: HONEST_DIFF });
     expect(outcome.outcome, JSON.stringify(outcome)).toBe('fixed');
     expect(outcome.verificationRuns?.[0]?.verification.challengeAssurance).toBe(true);
+    expect(outcome.challengePreparation).toEqual({
+      reason: null, retainedCount: 1, excludedCount: 0, qualifiedCount: 1,
+      excludedReasons: [], disqualifiedReasons: [],
+    });
     expect(outcome.verification?.commands).toHaveLength(executor.calls.filter(call => call.kind === 'run').length);
     expect(outcome.verification?.mode).toBe('local');
     expect(snapshots).toHaveLength(2);

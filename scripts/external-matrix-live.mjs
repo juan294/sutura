@@ -324,6 +324,7 @@ export async function cleanupExternalMatrixLive(ledgerInput, dependencies) {
   const branches = new Set(targets.branches);
   const deletedBranches = [];
   const closedPullRequests = [];
+  const discardedHeldRuns = [];
   for (const pullRequest of targets.pullRequests) {
     const details = await dependencies.readPullRequest(pullRequest);
     if (details.state === 'OPEN') {
@@ -344,8 +345,14 @@ export async function cleanupExternalMatrixLive(ledgerInput, dependencies) {
       await dependencies.deleteBranch(branch);
       deletedBranches.push(branch);
     }
+    // Pull requests opened with the workflow token leave their pull_request CI run
+    // held for approval, and GitHub fails a held run after 30 days with an email.
+    for (const runId of await dependencies.listHeldRuns(branch)) {
+      await dependencies.deleteRun(runId);
+      discardedHeldRuns.push(runId);
+    }
   }
-  return { closedPullRequests, deletedBranches };
+  return { closedPullRequests, deletedBranches, discardedHeldRuns };
 }
 
 async function command(commandName, args, options = {}) {
@@ -543,6 +550,18 @@ async function deleteBranchDefault(branch) {
   await command('gh', ['api', '--method', 'DELETE', `repos/${DEMO_REPOSITORY}/git/refs/heads/${branch}`]);
 }
 
+async function listHeldRunsDefault(branch) {
+  const ids = await command('gh', [
+    'api', `repos/${DEMO_REPOSITORY}/actions/runs?branch=${encodeURIComponent(branch)}&status=action_required&per_page=100`,
+    '--jq', '.workflow_runs[].id',
+  ]);
+  return ids === '' ? [] : ids.split('\n').map(Number);
+}
+
+async function deleteRunDefault(runId) {
+  await command('gh', ['api', '--method', 'DELETE', `repos/${DEMO_REPOSITORY}/actions/runs/${runId}`]);
+}
+
 function valueAfter(args, flag) {
   const index = args.indexOf(flag);
   const value = index < 0 ? undefined : args[index + 1];
@@ -561,6 +580,8 @@ export async function main(args = process.argv.slice(2)) {
       closePullRequest: closePullRequestDefault,
       branchExists: branchExistsDefault,
       deleteBranch: deleteBranchDefault,
+      listHeldRuns: listHeldRunsDefault,
+      deleteRun: deleteRunDefault,
     });
     await atomicWrite(paths.cleanup, `${canonicalJson(report)}\n`);
     return report;

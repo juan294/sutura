@@ -4,12 +4,14 @@ import { createHash } from 'node:crypto';
 import { moduleSystemInstruction } from './module-syntax.js';
 import type { Candidate } from '../domain.js';
 import type { ChatMessage, ChatOptions, JsonSchema } from '../llm/types.js';
+import { RoutingAbstentionError } from '../llm/router.js';
 import { policyAllowsPatchPath } from '../policy/evaluate.js';
 import { assertExternalEditableText, redactExternalJsonValue } from '../security/external-text.js';
 import type { RepairAgentContext, RepairAgentOutcome } from './repair-agent.js';
 import { publicRepairReason, requestRepairModel } from './repair-model-call.js';
+import { controllerAwaitReplacement } from './controller-await-proposal.js';
 import { RepairToolRuntime, type RepairToolResult } from './repair-tools.js';
-import { isAuthorizedRepairTarget } from './repair-authorization.js';
+import { isAuthorizedRepairTarget, repairAuthorizationEvidence } from './repair-authorization.js';
 import { isRepairPathAdmissible } from './patch-rules.js';
 import {
   modelRepairSlots,
@@ -105,17 +107,16 @@ export class RepairProposalPreparationError extends Error {
 const REPAIR_PROPOSAL_EXAMPLE = Object.freeze({
   [REPAIR_PROPOSAL_FIELDS.replacement]: 'complete replacement for the controller-selected excerpt',
 });
-const REPAIR_PAIR_PROPOSAL_EXAMPLE = Object.freeze({
-  [REPAIR_PROPOSAL_FIELDS.replacements]: [{
-    [REPAIR_PROPOSAL_FIELDS.slot]: 'slot-1',
-    [REPAIR_PROPOSAL_FIELDS.replacement]: 'complete replacement for that slot',
-  }],
-});
-
 function proposalExample(slots: readonly RepairTargetSlot[]): unknown {
-  return slots.length === 1 ? REPAIR_PROPOSAL_EXAMPLE : REPAIR_PAIR_PROPOSAL_EXAMPLE;
+  return slots.length === 1 ? REPAIR_PROPOSAL_EXAMPLE : {
+    [REPAIR_PROPOSAL_FIELDS.replacements]: slots.map(({ slotId }) => ({
+      [REPAIR_PROPOSAL_FIELDS.slot]: slotId,
+      [REPAIR_PROPOSAL_FIELDS.replacement]: 'complete replacement for that slot',
+    })),
+  };
 }
 export const CONTROLLED_REPAIR_MAX_TOKENS = 8_192;
+const AWAIT_GRANT_INSTRUCTION = 'Insert only necessary await and async tokens; preserve every other original source byte. Await the existing asynchronous call in the observed assertion or direct setup. Do not change expected values, assertions, imports, names, or test discovery.';
 
 function digest(value: string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -199,8 +200,9 @@ export function prepareControlledRepairProposalTemplate(
 }
 
 function buildProposalTemplate(
-  ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 'policy' | 'runtimeId'>,
+  ctx: Pick<ControlledRepairAttemptContext, 'diagnosis' | 'policy' | 'runtimeId' | 'authorization'>,
   sources: PreparedSourceEvidence[],
+  instructionEstimate?: string,
 ): ControlledRepairProposalTemplate {
   if (sources.length === 0) {
     throw new RepairProposalPreparationError(
@@ -243,6 +245,7 @@ function buildProposalTemplate(
     })),
     trustedCommandId: 'diagnosed',
   };
+  const grants = ctx.authorization === undefined ? [] : repairAuthorizationEvidence(ctx.authorization.session);
   const repairInstruction = ctx.diagnosis.class === 'test-bug'
     ? 'Repair the diagnosed test defect; do not change policy.'
     : 'The failing assertion declares required behavior. Repair production source; do not change tests or policy.';
@@ -257,7 +260,10 @@ function buildProposalTemplate(
         ? 'The controller selects exactly one target excerpt. You cannot select a path or line range.'
         : 'The controller selects every slot. Name each slot by its supplied slot identifier; you cannot select a path or line range, and you cannot add, drop or repeat a slot.',
       'replacement must be the complete new text for the entire selected target excerpt, including every unchanged line and without supplied line numbers.',
-      repairInstruction,
+      instructionEstimate ?? (slots.length === 1 && grants.some((grant) => grant.path === slots[0]!.path &&
+        (grant.kind === 'await-operation' || grant.kind === 'await-setup'))
+        ? AWAIT_GRANT_INSTRUCTION
+        : repairInstruction),
       'Use an empty replacement only when deleting the entire selected excerpt is the diagnosed repair.',
       'Change the smallest necessary part of the excerpt, but return the full replacement excerpt.',
       'Do not include analysis or markdown.',
@@ -476,7 +482,7 @@ export function recoveryRepairReservationUsd(
     ...ctx.diagnosis, class: failureClass,
     signals: [...ctx.diagnosis.signals, 'recovery:hypothesis-2'],
   }))];
-  const templates: Array<{ diagnosis: typeof ctx.diagnosis; template: ControlledRepairProposalTemplate }> = [];
+  const templates: Array<{ diagnosis: typeof ctx.diagnosis; template: ControlledRepairProposalTemplate; optional?: boolean }> = [];
   if (sources.some(({ editable }) => editable)) {
     templates.push({ diagnosis: ctx.diagnosis, template: buildProposalTemplate(ctx, sources) });
   }
@@ -494,14 +500,31 @@ export function recoveryRepairReservationUsd(
           diagnosis, policy: ctx.policy, ...(ctx.runtimeId === undefined ? {} : { runtimeId: ctx.runtimeId }),
         }, estimate),
       });
+      // Quote the possible grant prompt itself: routing can change tiers at a
+      // request-size boundary, so adding bytes to an ordinary quote is unsafe.
+      templates.push({
+        diagnosis,
+        template: buildProposalTemplate({
+          diagnosis, policy: ctx.policy, ...(ctx.runtimeId === undefined ? {} : { runtimeId: ctx.runtimeId }),
+        }, estimate, AWAIT_GRANT_INSTRUCTION),
+        optional: true,
+      });
     }
   }
   let maximum = REPAIR_ATTEMPT_MINIMUM_INFERENCE_USD;
-  for (const { diagnosis, template } of templates) {
+  for (const { diagnosis, template, optional } of templates) {
     for (let index = 0; index < template.targetCount; index++) {
       const { messages, requestBytes } = template.contract(undefined, index);
-      const quote = ctx.llm.modelQuote?.('super', messages, proposalOptions({ diagnosis, budget: ctx.budget }));
-      if (quote === undefined) throw new Error('Repair model routing quote is unavailable');
+      let quote;
+      try { quote = ctx.llm.modelQuote?.('super', messages, proposalOptions({ diagnosis, budget: ctx.budget })); }
+      catch (error) {
+        if (optional && error instanceof RoutingAbstentionError) continue;
+        throw error;
+      }
+      if (quote === undefined) {
+        if (optional) continue;
+        throw new Error('Repair model routing quote is unavailable');
+      }
       maximum = Math.max(maximum, worstCaseRequestUsd(requestBytes, quote.price.input, quote.price.output));
     }
   }
@@ -534,12 +557,25 @@ export async function runControlledRepairAttempt(
   }
   const { messages, schema, requestBytes, slots } = contract;
   const options = proposalOptions(ctx, slots.length);
-  const response = await requestRepairModel({
-    llm: ctx.llm, budget: ctx.budget, messages, options,
-    worstCaseUsd: (price) => worstCaseRequestUsd(requestBytes, price.input, price.output),
-    ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
-    ...(ctx.observeCapacity === undefined ? {} : { observeCapacity: ctx.observeCapacity }),
+  const controllerReplacement = ctx.feedback === undefined
+    ? await controllerAwaitReplacement({
+        sourceContext: ctx.sourceContext, slots,
+        ...(ctx.authorization === undefined ? {} : { authorization: ctx.authorization }),
+      })
+    : undefined;
+  if (controllerReplacement !== undefined) ctx.trace?.record({
+    type: 'search-decision', stage: 'search',
+    summary: 'Propose exact await insertion from source-hash-bound controller grant',
+    ...(ctx.branchId === undefined ? {} : { childNodeId: ctx.branchId }),
   });
+  const response = controllerReplacement === undefined
+    ? await requestRepairModel({
+        llm: ctx.llm, budget: ctx.budget, messages, options,
+        worstCaseUsd: (price) => worstCaseRequestUsd(requestBytes, price.input, price.output),
+        ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
+        ...(ctx.observeCapacity === undefined ? {} : { observeCapacity: ctx.observeCapacity }),
+      })
+    : { ok: true as const, reply: { text: JSON.stringify({ replacement: controllerReplacement }), usd: 0 } };
   if (!response.ok) return response.outcome;
   const { reply } = response;
   if (reply.finishReason === 'length') {
@@ -615,9 +651,11 @@ export async function runControlledRepairAttempt(
   const { proposals, proposalDiff } = parsedAttempt;
   const proposalDiffHash = digest(proposalDiff);
   const proposalId = `repair-${proposalDiffHash.slice(0, 12)}`;
-  const proposalRationale = slots.length === 1
-    ? 'Replace the controller-selected source excerpt.'
-    : 'Replace every controller-selected slot as one transaction.';
+  const proposalRationale = controllerReplacement !== undefined
+    ? 'Insert await at the controller-proven assertion line.'
+    : slots.length === 1
+      ? 'Replace the controller-selected source excerpt.'
+      : 'Replace every controller-selected slot as one transaction.';
   const tools = new RepairToolRuntime({
     executor: ctx.executor,
     initialImageId: ctx.initialImageId,

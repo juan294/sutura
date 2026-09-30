@@ -56,7 +56,7 @@ describe('renderResultBody', () => {
     const infraStopCaseId = 'python-repair';
     for (const caseId of ['javascript-repair', 'greenwash-trap', 'flaky-failure', infraStopCaseId]) {
       const base = byId(caseId);
-      // python-repair is `fixed` in the current v0.3.2 catalog; force an infra-stop
+      // python-repair is `fixed` in the current v0.3.3 catalog; force an infra-stop
       // result here so this path stays covered regardless of the catalog outcome.
       const result = caseId === infraStopCaseId ? withOutcome(base, 'infra-stop') : base;
       const html = renderResultBody(result, caseLabCase(caseId));

@@ -285,7 +285,7 @@ class RecordedGitHubApi implements GitHubApi {
   }
 
   async createCheckRun(input: { name: string; headSha: string; externalId: string; status: 'in_progress'; title: string; summary: string }): Promise<{ id: number }> {
-    const id = 8001;
+    const id = 8001 + this.checks.length;
     this.checks.push({ id, headSha: input.headSha, externalId: input.externalId, name: input.name, status: input.status, conclusion: null });
     return { id };
   }
@@ -816,6 +816,15 @@ describe('recorded GitHub API orchestration E2E', () => {
               : 'action_required',
             detailsUrl: ARTIFACT_URL,
           }),
+          ...(storyline.outcome === 'fixed' ? [expect.objectContaining({
+            id: 8002,
+            headSha: harness.api.fixBranches.get(`heads/sutura/fix-${RUN_ID}`),
+            externalId: `sutura:acme/widget:workflow-run:${RUN_ID}:repair`,
+            name: 'Sutura repair verification',
+            status: 'completed',
+            conclusion: 'neutral',
+            detailsUrl: ARTIFACT_URL,
+          })] : []),
         ]);
 
         if (storyline.outcome === 'fixed') {

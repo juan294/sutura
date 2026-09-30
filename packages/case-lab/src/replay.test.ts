@@ -79,13 +79,13 @@ describe('deterministic results', () => {
     expect(byId['python-repair']?.matchesExpectation).toBe(true);
     expect(byId['upstream-incident']?.outcome).toBe('gave-up');
     expect(byId['upstream-incident']?.matchesExpectation).toBe(false);
-    expect(byId['javascript-repair']?.cost.inferenceUsd).toBeCloseTo(0.009379, 6);
+    expect(byId['javascript-repair']?.cost.inferenceUsd).toBeCloseTo(0.007973, 6);
   });
 
   it('reads the Tavily-enabled arm for the upstream case', () => {
     const evidence = loadRecordedEvidence(REPOSITORY_ROOT);
     const result = recordedResult(caseLabCase('upstream-incident'), evidence, { release: RELEASE, now: NOW });
-    expect(result.elapsedMs).toBeCloseTo(87781.262646, 3);
+    expect(result.elapsedMs).toBeCloseTo(92656.687662, 3);
   });
 
   it('replays a complete fixture bound to the release and stamped with the demo commit', { timeout: 60_000 }, async () => {
@@ -122,17 +122,13 @@ describe('deterministic results', () => {
       .rejects.toThrow('replay fixture must be a sutura-case-lab-replay-fixture-v1 document');
   });
 
-  it('detects that the fixed code\'s search diverges from the recorded gave-up run', { timeout: 120_000 }, async () => {
+  it('fails closed when current log parsing diverges from the recorded gave-up run', { timeout: 120_000 }, async () => {
     // Captured from the sutura-demo workflow artifact sutura-replay-34977415599.json (2026-09-15),
     // recorded before the Phase 2 fix (docs/plans/2026-09-15-launch-readiness-v0.3.1-phases/phase-2.md)
-    // to the 16KB trusted-test-output refusal. That refusal is what produced this recording's short
-    // gave-up search tree. Replaying the SAME recorded tool/LLM exchanges under the fixed code makes
-    // the search visit different checkpoint nodes (search-002 becomes `frontier` instead of
-    // `repeated-state`), so the report Sutura generates for the recorded GitHub `updateIssueComment`
-    // call no longer matches what was recorded — exactly the outcome
-    // docs/plans/2026-09-15-launch-readiness-v0.3.1.md's Success Criteria pre-authorized: "if the
-    // replay diverges, the fixture's test asserts the new mismatch message". Per plan, the recorded
-    // bundle stays untouched (it is historical evidence of the pre-fix bug); only this assertion changes.
+    // to the 16KB trusted-test-output refusal. The current GitHub adapter also retains
+    // untimestamped continuation lines in multiline errors. This historical bundle captured
+    // the old, shorter failed-step log. The current taxonomy prompt now diverges first at
+    // the provider request; keep the recorded bundle untouched.
     const bytes = readFileSync(LIVE_BUNDLE_FIXTURE);
     const bundle = JSON.parse(bytes.toString('utf8')) as Record<string, unknown> & {
       actionSha: string; outcome: string; executor: Array<{ sequence: number; args: unknown[] }>;
@@ -157,14 +153,13 @@ describe('deterministic results', () => {
     );
     expect(error).toBeInstanceOf(ReplayMismatchError);
     const mismatch = error as ReplayMismatchError;
-    expect(mismatch.sequence).toBe(16);
-    expect(mismatch.path).toBe('$[1]');
+    expect(mismatch.sequence).toBe(44);
+    expect(mismatch.path).toBe('$.messages[0].content');
     expect(typeof mismatch.expected).toBe('string');
     expect(typeof mismatch.actual).toBe('string');
-    // The recorded (pre-fix) report's checkpoint lineage: search-002 was never visited by the LLM.
-    expect(mismatch.expected as string).toContain('| search-002 | baseline | 1 | 1 | PASS | repeated-state |');
-    // The fixed code's report: search-002 is now a genuine frontier node the LLM was asked about.
-    expect(mismatch.actual as string).toContain('| search-002 | baseline | 1 | 1 | PASS | frontier |');
+    expect(mismatch.expected as string).toContain('Compilation or packaging failures outside type checking.');
+    expect(mismatch.actual as string).toContain('missing relative source imports.');
+    expect(mismatch.expected).not.toBe(mismatch.actual);
     // The pre-fix binding (bundle actionSha === demoSha) refused this real bundle.
     await expect(replayedResult(caseLabCase('javascript-repair'), fixture, {
       release: { version: '0.3.1', actionSha: LIVE_DEMO_SHA }, now: NOW, fixtureSha256: 'a'.repeat(64),

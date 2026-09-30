@@ -69,7 +69,7 @@ Run verification sequentially with `;` or `&&`, never as parallel Bash calls.
 The repair artifact is a GitHub Action + CLI; releases are tagged from `main`.
 The hosted [Case Lab](packages/case-lab/README.md) presents labeled demo results;
 live dispatch has a separate authorization gate. Demo assets (video, sample runs)
-live in `docs/demo/`. See [`docs/release/v0.3.2-case-lab-record.md`](docs/release/v0.3.2-case-lab-record.md)
+live in `docs/demo/`. See [`docs/release/v0.3.3-case-lab-record.md`](docs/release/v0.3.3-case-lab-record.md)
 for the most recent deployment check and its outcome.
 
 Rules load from `.claude/rules/` and `.claude/skills/` automatically.
@@ -94,3 +94,6 @@ Go directly to these paths -- never search for them.
 | ADRs                     | `docs/decisions/`                                           |                                                           |
 | PR descriptions          | `docs/prs/{number}_description.md`                          |                                                           |
 | Release playbook         | `docs/release/e2e-pro-playbook.md`                          | Wave A adopted; profile pending first release             |
+<!-- rpi:claude-import:start -->
+@AGENTS.md
+<!-- rpi:claude-import:end -->

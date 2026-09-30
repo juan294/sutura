@@ -7,7 +7,7 @@ import { runMechanicalChecks } from './audit/mechanical.js';
 import { shellQuote } from './engine/shell.js';
 import { SNAPSHOT_CWD, type Executor, type ImageId, type RunResult } from './executor/types.js';
 import { AllowlistedExecutor, prepareSandbox, type StageLedger } from './heal.js';
-import { NODE_RUNTIME } from './runtime/node.js';
+import { NODE_RUNTIME, nodeImageRefForRepository } from './runtime/node.js';
 import type { RuntimeAdapter } from './runtime/types.js';
 import type {
   OrderedVerificationGate,
@@ -66,7 +66,10 @@ export async function prepareAndReproduce(
   const executor = new AllowlistedExecutor(ports.executor);
   let baseImage: ImageId;
   try {
-    baseImage = await ports.executor.importImage(ports.baseImageRef ?? runtime.imageRef);
+    const imageRef = ports.baseImageRef ?? (runtime.id === 'node'
+      ? await nodeImageRefForRepository(ports.sourceDir)
+      : runtime.imageRef);
+    baseImage = await ports.executor.importImage(imageRef);
   } catch (error) {
     if (error instanceof BudgetExceededError) throw error;
     return { status: 'infra-stop', exitCodes: [], failedCommand: 'importImage' };
