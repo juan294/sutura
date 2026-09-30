@@ -59,6 +59,15 @@ test('v0.3.2 controller state is ignored before the lock-protected gate runs', a
   assert.match(ignore, /^\.sutura\/placebo-v0\.3\.2-failed-runs\/$/mu);
 });
 
+test('v0.3.3 controller state stays ignored', async () => {
+  const ignore = await readFile('.gitignore', 'utf8');
+  assert.match(ignore, /^\.sutura\/placebo-v0\.3\.3-live-ledger\.json$/mu);
+  assert.match(ignore, /^\.sutura\/placebo-v0\.3\.3-live\.lock$/mu);
+  assert.match(ignore, /^\.sutura\/placebo-v0\.3\.3-live\.lock\.recovery\/$/mu);
+  assert.match(ignore, /^\.sutura\/placebo-v0\.3\.3-live-artifacts\/$/mu);
+  assert.match(ignore, /^\.sutura\/placebo-v0\.3\.3-failed-runs\/$/mu);
+});
+
 test('v0.3.4 controller state is ignored before the lock-protected gate runs', async () => {
   const ignore = await readFile('.gitignore', 'utf8');
   assert.match(ignore, /^\.sutura\/placebo-v0\.3\.4-live-ledger\.json$/mu);
