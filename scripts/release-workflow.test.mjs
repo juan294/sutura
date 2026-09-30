@@ -19,7 +19,7 @@ test('all release-bearing packages and the public API declare 0.3.4', async () =
     'packages/placebo/package.json',
   ].map(async (path) => JSON.parse(await text(path))));
   assert.deepEqual(manifests.map(({ version }) => version), Array(7).fill('0.3.4'));
-  assert.match(await text('packages/core/src/index.ts'), /VERSION = '0\.3\.3'/u);
+  assert.match(await text('packages/core/src/index.ts'), /VERSION = '0\.3\.4'/u);
 });
 
 test('ordinary CI runs deterministic release contract and candidate install checks', async () => {

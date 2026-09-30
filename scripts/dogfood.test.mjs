@@ -212,8 +212,8 @@ test('dogfood gate in release mode fails independently on main reachability, mai
         throw new Error(`unexpected gh api: ${endpoint}`);
       },
     }, { branch: 'main', candidate: RELEASE_SHA });
-    await assert.rejects(() => gateDogfood(RELEASE_SHA, dependencies, { branch: 'main', releaseVersion: '0.3.4' }), /gate failed/u);
-    assert.match(output.join(''), /RELEASE_VERSION is 0\.3\.3 but the release tag names 0\.3\.4/u);
+    await assert.rejects(() => gateDogfood(RELEASE_SHA, dependencies, { branch: 'main', releaseVersion: '0.3.5' }), /gate failed/u);
+    assert.match(output.join(''), /RELEASE_VERSION is 0\.3\.4 but the release tag names 0\.3\.5/u);
   }
 });
 
