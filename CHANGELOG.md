@@ -2,17 +2,38 @@
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-09-30
+
 ### Added
 
-- A repair pull request now carries a neutral **Sutura repair verification** check on the repair commit. Before, Sutura's only check sat on the failing commit, and a repair pull request opened with the workflow token showed no checks at all, because GitHub holds that pull request's CI for approval. A replay bundle of a `fixed` run recorded by an earlier release does not replay with this release, and the reverse, because the fixed path now makes this call.
+- A repair pull request now carries a neutral **Sutura repair verification** check on the repair commit. Before, Sutura's only check sat on the failing commit, and a repair pull request opened with the workflow token showed no checks at all, because GitHub holds that pull request's CI for approval.
+- The case file records `challengePreparation`: counts of retained, excluded and qualified behavioral probes, and counts per reason code, without probe text or inputs. A probe that used to fail as a generic `invalid-probe` now reports `unsupported-relation`, `input-outside-domain` or the validator's own reason.
+
+### Changed
+
+- For a Node repository, the sandbox image follows `.nvmrc` or `package.json` `engines.node` (`node:22` or `node:24`, default `node:22`). The run is refused when the two disagree or declare another major version.
+- Diagnosis treats a missing relative import from a source file at the workspace root as a local `build` failure, even when the model calls it an upstream dependency, as seen in the v0.3.3 benchmark's `repair-bad-import` case. Imports from `node_modules`, `.yarn/unplugged`, unknown importers, and logs that also match another failure class are unchanged.
+- Every audit voice (Nemotron, GPT-6 Astra, TypeSafe Jev) receives the fresh-suite command and its exit code. The prompt states that an exit code of zero alone does not prove the repair, and adjudication returns `insufficient` when the fresh suite did not run.
+- Behavioral challenge generation gives the model each contract's citation (path, hash and line range) to copy, and for `exact`, `codec-round-trip` and `json-property` contracts requires one of the policy's example inputs. Whether a probe counts as preservation or bug regression is decided by what the trusted baseline observes, not by the model's label.
+- A replay bundle recorded by v0.3.3 or earlier does not replay with 0.3.4, and the reverse. The diagnosis prompt, the failed-step log selection, the audit and challenge prompts, and the calls on the `fixed` path all changed.
 
 ### Fixed
 
-- Sutura never repairs its own `sutura/fix-*` branches. The Action refuses such a run before it reads a pull request or claims the run and reports `repair-branch-skipped`; the generated workflow skips those branches. Before, a failing CI run on a repair pull request could start a repair of the repair.
-- The Action recovers its claim comment when `github-token` is a GitHub App installation token. Before, it recognised only `github-actions[bot]`, so a retry with an App token would post a second claim comment.
+- Sutura never repairs its own `sutura/fix-*` branches. The Action refuses such a run before it reads a pull request or claims the run, and reports `repair-branch-skipped`; the generated workflow skips those branches. Before, a failing CI run on a repair pull request could start a repair of the repair.
+- The Action recovers its claim comment when `github-token` is a GitHub App installation token and the comment names the claimed check run. Before, it recognised only `github-actions[bot]`, so a retry with an App token would post a second claim comment. A pull request opened with an App token triggers the repository's CI normally.
+- Missing-`await` repairs: when one Vitest stack line or Python unittest traceback, confirmed again by the controller's probe, points at a test line, the controller writes the `await` insertion itself without a model call. This covers `expect(fn())` on the failing line, a preceding assignment in Python, and an imported async helper in `.test.js`, `.test.cjs` or `.test.mjs` files. In other authorized await repairs the model may insert only `await` and `async` tokens, and the budget reservation quotes that prompt.
+- When a failed step is followed in the same second by an `if: always()` action such as `actions/upload-artifact`, the failed step is still the one selected. Action references are no longer taken as commands, and a multi-line `run:` script is recorded whole as the failing command instead of its first line.
+- Assertion lines that GitHub prints without a timestamp in a multi-line CI error, such as a diff or a `❯ file:line` location, stay with the failed step, so the source location reaches repair.
+- A repository `.npmrc` that contains only `engine-strict=true` (with comments or blank lines) no longer stops dependency preparation; it is still left out of both snapshots. Media files under `docs/` are left out of the repository overlay.
+- The two-file repair prompt's example lists the actual selected slot IDs instead of a single `slot-1` placeholder.
+- The local heal path (`sutura heal --case-dir`, which the Placebo release benchmark drives) now passes the optional GPT-6 Astra second opinion and TypeSafe Jev calibrated audit to adjudication. The CLI built both from `OPENAI_API_KEY` and `TYPESAFE_API_KEY`, but `healCase` dropped them, so every benchmark audit recorded them as not configured; the GitHub Action path was unaffected.
 - The Case Lab workflow and the external matrix `cleanup` command close their bot pull requests, delete their branches and delete the held `pull_request` CI runs GitHub creates for them, which GitHub otherwise fails after 30 days with an email to the owner.
 
-- The local heal path (`sutura heal --case-dir`, which the Placebo release benchmark drives) now passes the optional GPT-6 Astra second opinion and TypeSafe Jev calibrated audit to adjudication. The CLI built both from `OPENAI_API_KEY` and `TYPESAFE_API_KEY`, but `healCase` dropped them, so every benchmark audit recorded them as not configured; the GitHub Action path was unaffected.
+### Security
+
+- The Action bundles `undici` 6.29.0 (was 6.28.0), and the development toolchain resolves `brace-expansion` 2.1.7 and 5.0.12, past the open advisories. The Placebo fixture lockfiles keep their pinned versions because the benchmark corpus hash is frozen.
+
+Retired guidance: none.
 
 ## [0.3.3] - 2026-09-23
 

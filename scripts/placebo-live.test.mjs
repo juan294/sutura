@@ -59,7 +59,7 @@ test('v0.3.2 controller state is ignored before the lock-protected gate runs', a
   assert.match(ignore, /^\.sutura\/placebo-v0\.3\.2-failed-runs\/$/mu);
 });
 
-test('v0.3.3 controller state is ignored before the lock-protected gate runs', async () => {
+test('v0.3.4 controller state is ignored before the lock-protected gate runs', async () => {
   const ignore = await readFile('.gitignore', 'utf8');
   assert.match(ignore, /^\.sutura\/placebo-v0\.3\.3-live-ledger\.json$/mu);
   assert.match(ignore, /^\.sutura\/placebo-v0\.3\.3-live\.lock$/mu);
@@ -101,7 +101,7 @@ function artifact(caseId, overrides = {}) {
   return createPlaceboCaseArtifact({
     controllerSha: CONTROLLER_SHA,
     githubRunId: String(1000 + caseIndex),
-    subjectVersion: '0.3.3',
+    subjectVersion: '0.3.4',
     subjectSha: SUBJECT_SHA,
     packageContentHash: PACKAGE_HASH,
     packageIntegrity: PACKAGE_INTEGRITY,
@@ -615,7 +615,7 @@ test('artifact/ledger crash recovery records a completed job once', async (t) =>
   const bytes = Buffer.from(JSON.stringify(value));
   const input = { artifact:value, bytes, run:{url:`https://github.com/juan294/sutura/actions/runs/${value.githubRunId}`}, stateDirectory:directory };
   await assert.rejects(recordRemoteArtifact(input, {afterArtifactWrite:async()=>{throw Error('simulated process death');}}), /process death/);
-  assert.deepEqual(JSON.parse(await readFile(join(directory,'placebo-v0.3.3-live-artifacts/repair-off-by-one.json'))), value);
+  assert.deepEqual(JSON.parse(await readFile(join(directory,'placebo-v0.3.4-live-artifacts/repair-off-by-one.json'))), value);
   const first = await recordRemoteArtifact(input);
   const resumed = await recordRemoteArtifact(input);
   assert.equal(first.entries.length,1); assert.deepEqual(resumed,first);
