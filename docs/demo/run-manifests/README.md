@@ -35,6 +35,7 @@ state. It does not replace or rewrite any historical manifest.
 | Release | `release-v0.3.4-benchmark`  | Complete: 51/51 cases, 55/55 evaluations on candidate `bd9f259b…`; USD 4.62068567 recorded (inference USD 0.595799, sandbox USD 4.02488667) plus a USD 0.180792 upper-bound estimate for one `infra-stop`; zero false approvals; two provider `infra-stop` outcomes disclosed; both optional voices ran. Sanitized evidence: `sutura-v0.3.4-release-benchmark-evidence.md`. |
 | Release | `release-v0.3.4-benchmark-run2` | Prepared: a second 51-case run on candidate `bd9f259b…`, same configuration, cap USD 15, initial reserve USD 1.00; run because the first recorded infra-stops on a Case Lab case. |
 | Release | `release-v0.3.5-benchmark` | Complete: 51/51 cases, 55/55 evaluations on candidate `d7a104e5…`; USD 4.89970526 recorded (inference USD 0.648763, sandbox USD 4.25094226), all measured; zero false approvals; no infrastructure stops; both optional voices ran; fix rate 16/18. Sanitized evidence: `sutura-v0.3.5-release-benchmark-evidence.md`. |
+| Release | `release-v0.3.6-benchmark` | Prepared: 51 cases on candidate `5ddbbc72…` (the v0.3.6 release squash), cap USD 15, initial reserve USD 1.00; configuration unchanged from v0.3.5. |
 
 Each stage gates the next. Stop dependent jobs after a failed control or incomplete run. Paid Data Lab comparisons and other roadmap experiments need their own concrete requests; Stage 3 does not authorize them. The completed Stage 3 result does not authorize or establish acceptance for Stage 4.
 
