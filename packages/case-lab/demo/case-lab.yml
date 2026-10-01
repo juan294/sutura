@@ -125,6 +125,16 @@ jobs:
           chmod +x "$cli"
           echo "cli=$cli" >> "$GITHUB_OUTPUT"
 
+      - name: Expose the Placebo corpus where the matrix materializer expects it
+        run: |
+          # The demo's matrix materializer reads its fixtures from .sutura-action/packages/placebo/corpus,
+          # while this workflow checks the Sutura tooling out at .sutura. Without this link a live
+          # python-repair run fails here, before any provider call.
+          mkdir -p .sutura-action/packages/placebo
+          ln -s "$GITHUB_WORKSPACE/.sutura/packages/placebo/corpus" .sutura-action/packages/placebo/corpus
+          # Keep the link out of the fixture commit whatever the demo's .gitignore says.
+          echo '.sutura-action/' >> "$(git rev-parse --git-path info/exclude)"
+
       - name: Materialize the selected case
         id: materialize
         env:
@@ -146,6 +156,8 @@ jobs:
           gh auth setup-git
           git switch -c "$branch"
           # The Sutura checkout lives in .sutura; it must never enter the demo commit as a gitlink.
+          # The corpus link in .sutura-action is ignored through .git/info/exclude (see the link step).
+          # Do not name .sutura-action in a pathspec: git add exits 1 for an ignored path.
           git add -A -- . ':(exclude).sutura'
           git commit -m "case-lab(${REQUEST_ID}): materialize ${CASE_ID}"
           git push --set-upstream origin "$branch"

@@ -1,11 +1,16 @@
+import { execFileSync } from 'node:child_process';
+import { lstatSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { CASE_LAB_CASE_IDS } from './cases.js';
+import { CASE_LAB_CASES, CASE_LAB_CASE_IDS } from './cases.js';
 
 const WORKFLOW = readFileSync(resolve(import.meta.dirname, '../demo/case-lab.yml'), 'utf8');
+const REPOSITORY_ROOT = resolve(import.meta.dirname, '../../..');
+const CORPUS_LINK_STEP = 'Expose the Placebo corpus where the matrix materializer expects it';
 const MATERIALIZER = readFileSync(resolve(import.meta.dirname, '../demo/materialize-case-lab-case.mjs'), 'utf8');
 
 function stepBlocks(text: string): Array<{ name: string; body: string }> {
@@ -80,6 +85,47 @@ describe('demo case-lab.yml contract', () => {
     expect(WORKFLOW).toContain('git push origin "HEAD:${RESULTS_BRANCH}"');
     expect(WORKFLOW).toContain('name: sutura-case-lab-${{ inputs.request-id }}');
     expect(WORKFLOW).toContain('if-no-files-found: error');
+  });
+
+  it('links the Placebo corpus where the demo matrix materializer reads it, before materializing', () => {
+    const names = steps.map((step) => step.name);
+    expect(names).toContain(CORPUS_LINK_STEP);
+    expect(names.indexOf(CORPUS_LINK_STEP))
+      .toBeGreaterThan(names.indexOf('Check out the Case Lab tooling at the exact controller commit'));
+    expect(names.indexOf(CORPUS_LINK_STEP)).toBeLessThan(names.indexOf('Materialize the selected case'));
+  });
+
+  it('resolves every matrix fixture at the exact path the live python-repair run failed to read', () => {
+    // v0.3.3 live dispatch cl-1790859715678-f35cc333 failed with
+    //   ENOENT lstat <workspace>/.sutura-action/packages/placebo/corpus/python-repair-missing-await/metadata.json
+    // because the tooling is checked out at .sutura while the demo materializer reads .sutura-action.
+    const step = steps.find((candidate) => candidate.name === CORPUS_LINK_STEP);
+    expect(step).toBeDefined();
+    const script = (step?.body.split('run: |\n')[1] ?? '').split('\n').map((line) => line.replace(/^ {10}/u, '')).join('\n');
+    const workspace = mkdtempSync(join(tmpdir(), 'case-lab-corpus-link-'));
+    try {
+      symlinkSync(REPOSITORY_ROOT, join(workspace, '.sutura'));
+      execFileSync('git', ['init', '-q'], { cwd: workspace });
+      execFileSync('bash', ['-e', '-c', script], { cwd: workspace, env: { ...process.env, GITHUB_WORKSPACE: workspace } });
+      // The link must stay out of the fixture commit even when the demo's .gitignore lacks it.
+      execFileSync('git', ['check-ignore', '-q', '.sutura-action/packages/placebo/corpus'], { cwd: workspace });
+      const matrixCases = CASE_LAB_CASES.filter((item) => item.materializer.kind === 'matrix');
+      expect(matrixCases.map((item) => item.id)).toContain('python-repair');
+      for (const item of matrixCases) {
+        const metadata = join(workspace, '.sutura-action/packages/placebo/corpus', item.placeboCaseId, 'metadata.json');
+        expect(lstatSync(metadata).isFile(), metadata).toBe(true);
+      }
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('stages the fixture without naming the ignored corpus link in a pathspec', () => {
+    // `git add -A -- . ':(exclude).sutura-action'` exits 1 when the path is ignored, which would
+    // fail the whole step under `bash -e`; the link is ignored through .git/info/exclude instead.
+    const fixture = steps.find((step) => step.name === 'Push the broken branch and open the broken pull request');
+    expect(fixture?.body).toContain("git add -A -- . ':(exclude).sutura'\n");
+    expect(fixture?.body).not.toMatch(/exclude\)\.sutura-action/u);
   });
 
   it('closes its bot pull requests and discards their held CI runs last, without changing the outcome', () => {
