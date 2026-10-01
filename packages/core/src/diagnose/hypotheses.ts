@@ -94,8 +94,11 @@ function pythonUnittestStackLine(log: string, sourcePath: string): number | unde
   const safe = redactExternalText(boundedTail(log, LOG_BOUNDS)).text;
   const traces = safe.split('Traceback (most recent call last):');
   if (traces.length !== 2) return undefined;
-  const end = traces[1]!.indexOf("\nTypeError: 'coroutine' object is not subscriptable");
-  if (end < 0) return undefined;
+  // A coroutine used as a value fails as a subscript TypeError, or as an
+  // assertion comparing the never-awaited coroutine object itself.
+  const failure = /\n(?:TypeError: 'coroutine' object is not subscriptable|AssertionError: <coroutine object [A-Za-z_]\w* at 0x[0-9a-f]+> != )/u.exec(traces[1]!);
+  if (!failure) return undefined;
+  const end = failure.index;
   const frames = [...traces[1]!.slice(0, end).matchAll(/^\s*File "([^"\n]+\.py)", line ([1-9]\d*), in test_[A-Za-z_]\w*\s*$/gmu)]
     .filter((match) => match[1] === sourcePath || match[1]?.endsWith(`/${sourcePath}`));
   return frames.length === 1 ? Number(frames[0]![2]) : undefined;

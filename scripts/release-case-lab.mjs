@@ -33,6 +33,27 @@ export const FILES = Object.freeze({
   replay: 'packages/case-lab/src/replay.ts',
 });
 
+// A committed, owner-approved record that lets the Case Lab lag exactly one
+// release tag until it expires. Anything else about it fails the gate.
+export const LAG_EXCEPTION_FILE = 'packages/case-lab/release-lag-exception.json';
+
+async function readLagException(dependencies) {
+  let text;
+  try {
+    text = await dependencies.readFile(LAG_EXCEPTION_FILE, 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') return undefined;
+    throw error;
+  }
+  const record = JSON.parse(text);
+  const required = ['tag', 'reason', 'approvedBy', 'expires'];
+  if (required.some((key) => typeof record?.[key] !== 'string' || record[key].trim() === '') ||
+      !Number.isFinite(Date.parse(record.expires))) {
+    throw new ReleaseCaseLabError(`${LAG_EXCEPTION_FILE}: tag, reason, approvedBy and an ISO expires are required`);
+  }
+  return record;
+}
+
 export class ReleaseCaseLabError extends Error {
   constructor(message) {
     super(message);
@@ -263,6 +284,24 @@ export async function check(dependencies = defaultDependencies(), options = {}) 
   }
   expect(FILES.replay, 'EVIDENCE_URL', readEvidenceUrl(replayText),
     `https://github.com/juan294/sutura/blob/develop/${binding.result}`);
+  const exception = await readLagException(dependencies);
+  if (exception !== undefined) {
+    if (exception.tag !== release.tag) {
+      refusals.push(`${LAG_EXCEPTION_FILE}: the exception names ${exception.tag} but the newest release tag is ${release.tag}`);
+    } else if ((dependencies.now?.() ?? Date.now()) >= Date.parse(exception.expires)) {
+      refusals.push(`${LAG_EXCEPTION_FILE}: the exception for ${exception.tag} expired at ${exception.expires}`);
+    } else if (refusals.length === 0) {
+      dependencies.stderr.write(`WARN: ${LAG_EXCEPTION_FILE} is no longer needed; remove it\n`);
+    } else {
+      dependencies.stderr.write([
+        `WARN: the Case Lab lags release ${release.tag} under the exception in ${LAG_EXCEPTION_FILE}`,
+        `  reason: ${exception.reason}`,
+        `  approved by ${exception.approvedBy}; expires ${exception.expires}`,
+        ...refusals.map((refusal) => `  ${refusal}`),
+      ].join('\n') + '\n');
+      return { ...release, exception: { expires: exception.expires } };
+    }
+  }
   if (refusals.length > 0) {
     throw new ReleaseCaseLabError([
       `BLOCKED: the Case Lab lags release ${release.tag} (${release.commit})`,
@@ -400,7 +439,9 @@ export async function run(argv, dependencies = defaultDependencies()) {
     switch (subcommand) {
       case 'check': {
         const release = await check(dependencies);
-        dependencies.stdout.write(`PASS the Case Lab names release ${release.tag} (${release.commit})\n`);
+        dependencies.stdout.write(release.exception
+          ? `PASS under exception: the Case Lab lags release ${release.tag} until ${release.exception.expires}\n`
+          : `PASS the Case Lab names release ${release.tag} (${release.commit})\n`);
         return 0;
       }
       case 'bump': {

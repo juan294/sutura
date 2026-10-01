@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A Python unittest assertion that compares a never-awaited coroutine, such as `self.assertEqual(fetch_name(), "Ada")` failing with `AssertionError: <coroutine object fetch_name at …> != 'Ada'`, now gets the controller-written `await` insertion when the traceback and the controller probe confirm the same test line. Before, only the `TypeError: 'coroutine' object is not subscriptable` form was recognised, so this repair depended on the model, and both v0.3.4 release benchmark runs gave up on it.
+
+### Changed
+
+- The Case Lab release gate accepts a committed, owner-approved exception (`packages/case-lab/release-lag-exception.json`) that names the newest release tag, a reason, an approver and an expiry. Under it, the gate warns instead of refusing pushes while the Case Lab lags that tag; an expired exception, or one naming another tag, fails the gate.
+
 ## [0.3.4] - 2026-09-30
 
 ### Added

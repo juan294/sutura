@@ -9,6 +9,7 @@ import test from 'node:test';
 
 import {
   FILES,
+  LAG_EXCEPTION_FILE,
   bump,
   check,
   deploy,
@@ -335,6 +336,76 @@ test('check reads a controller commit that exists only in the local repository',
     });
     const release = await check(dependencies);
     assert.deepEqual(release, { tag: NEWEST_TAG, version: '0.3.0', commit: NEWEST_COMMIT });
+  });
+});
+
+const LAG_EXCEPTION = {
+  tag: NEWEST_TAG,
+  reason: 'Case Lab example regressed in this release; binding waits for the fix release',
+  approvedBy: 'Juan, 2026-10-01',
+  expires: '2026-10-08T00:00:00Z',
+};
+const BEFORE_EXPIRY = Date.parse('2026-10-02T00:00:00Z');
+
+async function buildLaggingTree(directory) {
+  await buildConsistentTree(directory);
+  await writeFixtureFile(directory, FILES.release, `${JSON.stringify({ version: '0.2.0', actionSha: V020_COMMIT }, null, 2)}\n`);
+}
+
+test('check passes a lagging Case Lab under a recorded, unexpired exception for the newest tag and warns', async () => {
+  await withTempDirectory(async (directory) => {
+    await buildLaggingTree(directory);
+    await writeFixtureFile(directory, LAG_EXCEPTION_FILE, `${JSON.stringify(LAG_EXCEPTION, null, 2)}\n`);
+    const dependencies = dependenciesFor(directory, { now: () => BEFORE_EXPIRY });
+    const release = await check(dependencies);
+    assert.equal(release.tag, NEWEST_TAG);
+    assert.deepEqual(release.exception, { expires: LAG_EXCEPTION.expires });
+    assert.equal(await run(['check'], dependencies), 0);
+    assert.match(dependencies.io.out.at(-1), /PASS under exception: the Case Lab lags release v0\.3\.0 until 2026-10-08T00:00:00Z/u);
+    const warning = dependencies.io.err.join('');
+    assert.match(warning, /WARN: the Case Lab lags release v0\.3\.0 under the exception in packages\/case-lab\/release-lag-exception\.json/u);
+    assert.match(warning, /approved by Juan, 2026-10-01; expires 2026-10-08T00:00:00Z/u);
+    assert.match(warning, /packages\/case-lab\/release\.json: version is 0\.2\.0/u);
+  });
+});
+
+test('check refuses a lagging Case Lab when the exception has expired', async () => {
+  await withTempDirectory(async (directory) => {
+    await buildLaggingTree(directory);
+    await writeFixtureFile(directory, LAG_EXCEPTION_FILE, `${JSON.stringify(LAG_EXCEPTION, null, 2)}\n`);
+    const dependencies = dependenciesFor(directory, { now: () => Date.parse('2026-10-08T00:00:00Z') });
+    await assert.rejects(() => check(dependencies), /packages\/case-lab\/release-lag-exception\.json: the exception for v0\.3\.0 expired at 2026-10-08T00:00:00Z/u);
+  });
+});
+
+test('check refuses an exception that names a different tag than the newest release', async () => {
+  await withTempDirectory(async (directory) => {
+    await buildLaggingTree(directory);
+    await writeFixtureFile(directory, LAG_EXCEPTION_FILE, `${JSON.stringify({ ...LAG_EXCEPTION, tag: 'v0.2.1' }, null, 2)}\n`);
+    const dependencies = dependenciesFor(directory, { now: () => BEFORE_EXPIRY });
+    await assert.rejects(() => check(dependencies), /packages\/case-lab\/release-lag-exception\.json: the exception names v0\.2\.1 but the newest release tag is v0\.3\.0/u);
+  });
+});
+
+test('check refuses an exception missing its reason, approver or expiry', async () => {
+  for (const field of ['reason', 'approvedBy', 'expires']) {
+    await withTempDirectory(async (directory) => {
+      await buildLaggingTree(directory);
+      const { [field]: _omitted, ...partial } = LAG_EXCEPTION;
+      await writeFixtureFile(directory, LAG_EXCEPTION_FILE, `${JSON.stringify(partial, null, 2)}\n`);
+      const dependencies = dependenciesFor(directory, { now: () => BEFORE_EXPIRY });
+      await assert.rejects(() => check(dependencies), /release-lag-exception\.json: tag, reason, approvedBy and an ISO expires are required/u);
+    });
+  }
+});
+
+test('check warns that a no-longer-needed exception can be removed once the Case Lab names the newest tag', async () => {
+  await withTempDirectory(async (directory) => {
+    await buildConsistentTree(directory);
+    await writeFixtureFile(directory, LAG_EXCEPTION_FILE, `${JSON.stringify(LAG_EXCEPTION, null, 2)}\n`);
+    const dependencies = dependenciesFor(directory, { now: () => BEFORE_EXPIRY });
+    await check(dependencies);
+    assert.match(dependencies.io.err.join(''), /WARN: packages\/case-lab\/release-lag-exception\.json is no longer needed; remove it/u);
   });
 });
 
