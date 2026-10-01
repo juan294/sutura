@@ -6,7 +6,7 @@
 
 ### Fixed
 
-- The public Case Lab's live `python-repair` case no longer stops before any provider call. The Case Lab workflow checks the Sutura tooling out at `.sutura`, but the demo repository's matrix materializer reads the Placebo corpus from `.sutura-action/packages/placebo/corpus`, so every live `python-repair` run failed at "Materialize the selected case" with `ENOENT`. Only `javascript-repair` and `greenwash-trap` had ever produced a live result. The workflow now links its corpus there and keeps the link out of the fixture commit.
+- The public Case Lab's live `python-repair` case no longer stops before any provider call. The Case Lab workflow checks the Sutura tooling out at `.sutura`, but the demo repository's matrix materializer reads the Placebo corpus from `.sutura-action/packages/placebo/corpus`, so the first live `python-repair` run failed at "Materialize the selected case" with `ENOENT`, as any other would. Only `javascript-repair` and `greenwash-trap` had ever produced a live result. The workflow now links its corpus there and keeps the link out of the fixture commit.
 
 Retired guidance: none.
 

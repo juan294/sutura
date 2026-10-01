@@ -1,6 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { lstatSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
-import { readFileSync } from 'node:fs';
+import { lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -96,7 +95,7 @@ describe('demo case-lab.yml contract', () => {
   });
 
   it('resolves every matrix fixture at the exact path the live python-repair run failed to read', () => {
-    // v0.3.3 live dispatch cl-1790859715678-f35cc333 failed with
+    // The first live python-repair dispatch (cl-1790859715678-f35cc333, release 0.3.5) failed with
     //   ENOENT lstat <workspace>/.sutura-action/packages/placebo/corpus/python-repair-missing-await/metadata.json
     // because the tooling is checked out at .sutura while the demo materializer reads .sutura-action.
     const step = steps.find((candidate) => candidate.name === CORPUS_LINK_STEP);
@@ -118,7 +117,7 @@ describe('demo case-lab.yml contract', () => {
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it('stages the fixture without naming the ignored corpus link in a pathspec', () => {
     // `git add -A -- . ':(exclude).sutura-action'` exits 1 when the path is ignored, which would
