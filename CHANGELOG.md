@@ -6,11 +6,11 @@
 
 ### Fixed
 
-- A Python unittest assertion that compares a never-awaited coroutine, such as `self.assertEqual(fetch_name(), "Ada")` failing with `AssertionError: <coroutine object fetch_name at …> != 'Ada'`, now gets the controller-written `await` insertion when the traceback and the controller probe confirm the same test line. Before, only the `TypeError: 'coroutine' object is not subscriptable` form was recognised, so this repair depended on the model, and both v0.3.4 release benchmark runs gave up on it.
+- A Python unittest assertion of the form `self.assertEqual(fetch_name(), "Ada")`, where a never-awaited coroutine is the first argument and is a plain call, now gets the controller-written `await` insertion when the traceback (`AssertionError: <coroutine object fetch_name at …> != 'Ada'`) and the controller probe confirm the same test line. Before, only the `TypeError: 'coroutine' object is not subscriptable` form was recognised, so this repair depended on the model, and both v0.3.4 release benchmark runs gave up on it. A method call, nested call or coroutine in the second position still goes to the model.
 
 ### Changed
 
-- The Case Lab release gate accepts a committed, owner-approved exception (`packages/case-lab/release-lag-exception.json`) that names the newest release tag, a reason, an approver and an expiry. Under it, the gate warns instead of refusing pushes while the Case Lab lags that tag; an expired exception, or one naming another tag, fails the gate.
+- The Case Lab release gate accepts a committed, owner-approved exception (`packages/case-lab/release-lag-exception.json`) that names the newest release tag, a reason, an approver and a strict ISO UTC expiry at most 14 days ahead. Under it, the gate warns instead of refusing only while the Case Lab names an older release; integrity refusals (a ledger or result mismatch, an evidence URL mismatch, an unreadable controller) still block, `publish-demo` refuses, and an expired exception, one naming another tag, or one left in place once the Case Lab names the newest tag fails or warns as appropriate.
 
 Retired guidance: none.
 
