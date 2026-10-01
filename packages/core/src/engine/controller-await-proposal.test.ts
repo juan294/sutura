@@ -136,6 +136,37 @@ it('inserts only the missing Python await next to a confirmed unittest assertion
     .toBeUndefined();
 });
 
+const inlinePath = 'tests/test_app.py';
+const inlineSource = 'import unittest\n\nfrom app import fetch_name\n\n\nclass AppTest(unittest.IsolatedAsyncioTestCase):\n    async def test_fetches_name(self) -> None:\n        self.assertEqual(fetch_name(), "Ada")\n';
+
+it('inserts only the missing Python await in a confirmed inline coroutine assertion', async () => {
+  expect(await controllerPythonAwaitReplacement(inlineSource, inlinePath, 8))
+    .toBe(inlineSource.replace('self.assertEqual(fetch_name(), "Ada")', 'self.assertEqual(await fetch_name(), "Ada")'));
+  expect(await controllerPythonAwaitReplacement(inlineSource.replace('fetch_name()', 'fetch_name(" Ada ")'), inlinePath, 8))
+    .toBe(inlineSource.replace('self.assertEqual(fetch_name(), "Ada")', 'self.assertEqual(await fetch_name(" Ada "), "Ada")'));
+});
+
+it('keeps a CRLF line ending on the inline Python await edit', async () => {
+  const crlf = inlineSource.replace(/\n/gu, '\r\n');
+  expect(await controllerPythonAwaitReplacement(crlf, inlinePath, 8))
+    .toBe(crlf.replace('self.assertEqual(fetch_name(), "Ada")', 'self.assertEqual(await fetch_name(), "Ada")'));
+});
+
+it('refuses inline Python edits that are not one plain first-argument call', async () => {
+  for (const source of [
+    inlineSource.replace('fetch_name()', 'await fetch_name()'),
+    inlineSource.replace('fetch_name(), "Ada")', '"Ada", fetch_name())'),
+    inlineSource.replace('fetch_name()', 'fetch_name(other())'),
+    inlineSource.replace('"Ada")', '"Ada")  # note'),
+    inlineSource.replace('"Ada")', '"Ada"); self.assertTrue(True)'),
+    inlineSource.replace('fetch_name()', 'client.fetch_name()'),
+    inlineSource.replace('"Ada")', '"Ada", msg="name")'),
+  ]) {
+    expect(await controllerPythonAwaitReplacement(source, inlinePath, 8)).toBeUndefined();
+  }
+  expect(await controllerPythonAwaitReplacement(inlineSource, inlinePath, 7)).toBeUndefined();
+});
+
 it('refuses Python edits outside the one adjacent, observed coroutine assignment', async () => {
   for (const source of [
     pythonSource.replace('self.assertEqual(result[', 'self.assertEqual(other['),

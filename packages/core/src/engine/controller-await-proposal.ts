@@ -109,7 +109,10 @@ export async function controllerJsSetupAwaitReplacement(
   return replacement;
 }
 
-/** Use only the assignment immediately before a traceback-confirmed unittest assertion. */
+/**
+ * Use only the assignment immediately before a traceback-confirmed unittest
+ * assertion, or the single plain call that is that assertion's first argument.
+ */
 export async function controllerPythonAwaitReplacement(
   source: string, path: string, assertionLine: number,
 ): Promise<string | undefined> {
@@ -120,8 +123,14 @@ export async function controllerPythonAwaitReplacement(
   if (assignment === undefined || assertion === undefined) return undefined;
   const assigned = /^([ \t]*)([A-Za-z_]\w*)([ \t]*=[ \t]*)(?!await\b)([A-Za-z_]\w*\([^#\n]*\))([ \t]*\r?)$/u.exec(assignment);
   const observed = /^([ \t]*)self\.assertEqual\([ \t]*([A-Za-z_]\w*)(?=[\[.,])/u.exec(assertion);
-  if (!assigned || !observed || assigned[1] !== observed[1] || assigned[2] !== observed[2]) return undefined;
-  lines[assertionLine - 2] = `${assigned[1]}${assigned[2]}${assigned[3]}await ${assigned[4]}${assigned[5]}`;
+  const inline = /^([ \t]*self\.assertEqual\([ \t]*)(?!await\b)([A-Za-z_]\w*\([^()#\n]*\)[ \t]*,[^()#;\n]*\)[ \t]*\r?)$/u.exec(assertion);
+  if (assigned && observed && assigned[1] === observed[1] && assigned[2] === observed[2]) {
+    lines[assertionLine - 2] = `${assigned[1]}${assigned[2]}${assigned[3]}await ${assigned[4]}${assigned[5]}`;
+  } else if (inline) {
+    lines[assertionLine - 1] = `${inline[1]}await ${inline[2]}`;
+  } else {
+    return undefined;
+  }
   const replacement = lines.join('\n');
   if ([...replacement].length > REPAIR_PROPOSAL_LIMITS.replacementCodePoints) return undefined;
   try { await validateAwaitEdit(source, replacement, path); }

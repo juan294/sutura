@@ -179,6 +179,38 @@ describe('diagnosis recovery scheduling', () => {
     expect(result.evidence.authorizations[0]?.evidenceReferences).toContain('controller-stack-line:7');
   });
 
+  it('binds a Python await grant to an inline coroutine assertion failure', async () => {
+    const { input, run } = setup();
+    const path = 'tests/test_app.py';
+    const source = 'import unittest\n\nfrom app import fetch_name\n\n\nclass AppTest(unittest.IsolatedAsyncioTestCase):\n    async def test_fetches_name(self) -> None:\n        self.assertEqual(fetch_name(), "Ada")\n';
+    const hash = createHash('sha256').update(source).digest('hex');
+    const traceback = 'Traceback (most recent call last):\n  File "/workspace/tests/test_app.py", line 8, in test_fetches_name\n    self.assertEqual(fetch_name(), "Ada")\nAssertionError: <coroutine object fetch_name at 0x7ffff6f97950> != \'Ada\'';
+    input.initialDiagnosis = { ...input.initialDiagnosis, failingCmd: 'python3 -B -m unittest discover -s tests' };
+    input.trustedCommand = input.initialDiagnosis.failingCmd;
+    input.sourceContext = { sources: [{ path, startLine: 1, content: source, truncated: false }] };
+    input.failedLog = traceback;
+    run.mockResolvedValue({ imageId: 'probe-child', exitCode: 1,
+      stdout: `SUTURA_SOURCE_SHA256=${hash}\n${traceback}`, stderr: '', truncated: false, metrics: {} });
+    const result = await recoverDiagnosis(input);
+    expect(result.evidence.authorizations[0]?.evidenceReferences).toContain('controller-stack-line:8');
+  });
+
+  it('withholds the Python line marker when the coroutine is the second assertion operand', async () => {
+    const { input, run } = setup();
+    const path = 'tests/test_app.py';
+    const source = 'import unittest\n\nfrom app import fetch_name\n\n\nclass AppTest(unittest.IsolatedAsyncioTestCase):\n    async def test_fetches_name(self) -> None:\n        self.assertEqual("Ada", fetch_name())\n';
+    const hash = createHash('sha256').update(source).digest('hex');
+    const traceback = 'Traceback (most recent call last):\n  File "/workspace/tests/test_app.py", line 8, in test_fetches_name\n    self.assertEqual("Ada", fetch_name())\nAssertionError: \'Ada\' != <coroutine object fetch_name at 0x7ffff6f97950>';
+    input.initialDiagnosis = { ...input.initialDiagnosis, failingCmd: 'python3 -B -m unittest discover -s tests' };
+    input.trustedCommand = input.initialDiagnosis.failingCmd;
+    input.sourceContext = { sources: [{ path, startLine: 1, content: source, truncated: false }] };
+    input.failedLog = traceback;
+    run.mockResolvedValue({ imageId: 'probe-child', exitCode: 1,
+      stdout: `SUTURA_SOURCE_SHA256=${hash}\n${traceback}`, stderr: '', truncated: false, metrics: {} });
+    const result = await recoverDiagnosis(input);
+    expect(result.evidence.authorizations[0]?.evidenceReferences ?? []).not.toContain('controller-stack-line:8');
+  });
+
   it('withholds the Python line marker when the controller probe moves the failure', async () => {
     const { input, run } = setup();
     const path = 'tests/test_profile.py';

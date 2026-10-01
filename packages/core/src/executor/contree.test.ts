@@ -133,7 +133,9 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('ContreeExecutor', () => {
+// Snapshot tests run real git and filesystem work; CI runners are 3-5x slower
+// than local machines, so never rely on Vitest's 5 s default (ci-parity rule).
+describe('ContreeExecutor', { timeout: 30_000 }, () => {
   it('accepts the captured workflow 33321172589 image-import operation shapes', async () => {
     const exchanges = await capturedImportImageExchanges();
     let index = 0;
