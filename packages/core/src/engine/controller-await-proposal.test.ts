@@ -146,6 +146,12 @@ it('inserts only the missing Python await in a confirmed inline coroutine assert
     .toBe(inlineSource.replace('self.assertEqual(fetch_name(), "Ada")', 'self.assertEqual(await fetch_name(" Ada "), "Ada")'));
 });
 
+it('keeps a CRLF line ending on the inline Python await edit', async () => {
+  const crlf = inlineSource.replace(/\n/gu, '\r\n');
+  expect(await controllerPythonAwaitReplacement(crlf, inlinePath, 8))
+    .toBe(crlf.replace('self.assertEqual(fetch_name(), "Ada")', 'self.assertEqual(await fetch_name(), "Ada")'));
+});
+
 it('refuses inline Python edits that are not one plain first-argument call', async () => {
   for (const source of [
     inlineSource.replace('fetch_name()', 'await fetch_name()'),
@@ -153,6 +159,8 @@ it('refuses inline Python edits that are not one plain first-argument call', asy
     inlineSource.replace('fetch_name()', 'fetch_name(other())'),
     inlineSource.replace('"Ada")', '"Ada")  # note'),
     inlineSource.replace('"Ada")', '"Ada"); self.assertTrue(True)'),
+    inlineSource.replace('fetch_name()', 'client.fetch_name()'),
+    inlineSource.replace('"Ada")', '"Ada", msg="name")'),
   ]) {
     expect(await controllerPythonAwaitReplacement(source, inlinePath, 8)).toBeUndefined();
   }

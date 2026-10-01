@@ -36,6 +36,7 @@ export const FILES = Object.freeze({
 // A committed, owner-approved record that lets the Case Lab lag exactly one
 // release tag until it expires. Anything else about it fails the gate.
 export const LAG_EXCEPTION_FILE = 'packages/case-lab/release-lag-exception.json';
+const LAG_EXCEPTION_MAX_MS = 14 * 24 * 60 * 60 * 1000;
 
 async function readLagException(dependencies) {
   let text;
@@ -45,10 +46,15 @@ async function readLagException(dependencies) {
     if (error?.code === 'ENOENT') return undefined;
     throw error;
   }
-  const record = JSON.parse(text);
+  let record;
+  try {
+    record = JSON.parse(text);
+  } catch (error) {
+    throw new ReleaseCaseLabError(`${LAG_EXCEPTION_FILE}: invalid JSON (${error instanceof Error ? error.message : String(error)})`);
+  }
   const required = ['tag', 'reason', 'approvedBy', 'expires'];
   if (required.some((key) => typeof record?.[key] !== 'string' || record[key].trim() === '') ||
-      !Number.isFinite(Date.parse(record.expires))) {
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/u.test(record.expires) || !Number.isFinite(Date.parse(record.expires))) {
     throw new ReleaseCaseLabError(`${LAG_EXCEPTION_FILE}: tag, reason, approvedBy and an ISO expires are required`);
   }
   return record;
@@ -252,9 +258,14 @@ export async function check(dependencies = defaultDependencies(), options = {}) 
     dependencies.readFile(FILES.replay, 'utf8'),
   ]);
   const json = JSON.parse(releaseText);
+  // Only "names an older release" refusals can be waived by a lag exception;
+  // integrity refusals (ledger, evidence URL, unreadable controller) never can.
   const refusals = [];
-  const expect = (file, what, observed, expected) => {
-    if (observed !== expected) refusals.push(`${file}: ${what} is ${observed} but the newest release tag ${release.tag} names ${expected}`);
+  const lags = [];
+  const expect = (file, what, observed, expected, waivable = true) => {
+    if (observed === expected) return;
+    const refusal = `${file}: ${what} is ${observed} but the newest release tag ${release.tag} names ${expected}`;
+    (waivable && observed !== 'unreadable' ? lags : refusals).push(refusal);
   };
   expect(FILES.release, 'version', json.version, release.version);
   expect(FILES.release, 'actionSha', json.actionSha, release.commit);
@@ -283,25 +294,30 @@ export async function check(dependencies = defaultDependencies(), options = {}) 
     refusals.push(`${binding.ledger}: resultHash is ${ledger.resultHash} but ${binding.result} ledgerHash is ${result.ledgerHash}`);
   }
   expect(FILES.replay, 'EVIDENCE_URL', readEvidenceUrl(replayText),
-    `https://github.com/juan294/sutura/blob/develop/${binding.result}`);
+    `https://github.com/juan294/sutura/blob/develop/${binding.result}`, false);
   const exception = await readLagException(dependencies);
   if (exception !== undefined) {
+    const now = dependencies.now?.() ?? Date.now();
+    const expires = Date.parse(exception.expires);
     if (exception.tag !== release.tag) {
       refusals.push(`${LAG_EXCEPTION_FILE}: the exception names ${exception.tag} but the newest release tag is ${release.tag}`);
-    } else if ((dependencies.now?.() ?? Date.now()) >= Date.parse(exception.expires)) {
+    } else if (now >= expires) {
       refusals.push(`${LAG_EXCEPTION_FILE}: the exception for ${exception.tag} expired at ${exception.expires}`);
-    } else if (refusals.length === 0) {
+    } else if (expires - now > LAG_EXCEPTION_MAX_MS) {
+      refusals.push(`${LAG_EXCEPTION_FILE}: the exception for ${exception.tag} expires more than 14 days after now (${exception.expires})`);
+    } else if (lags.length === 0) {
       dependencies.stderr.write(`WARN: ${LAG_EXCEPTION_FILE} is no longer needed; remove it\n`);
-    } else {
+    } else if (refusals.length === 0) {
       dependencies.stderr.write([
         `WARN: the Case Lab lags release ${release.tag} under the exception in ${LAG_EXCEPTION_FILE}`,
         `  reason: ${exception.reason}`,
         `  approved by ${exception.approvedBy}; expires ${exception.expires}`,
-        ...refusals.map((refusal) => `  ${refusal}`),
+        ...lags.map((lag) => `  ${lag}`),
       ].join('\n') + '\n');
       return { ...release, exception: { expires: exception.expires } };
     }
   }
+  refusals.push(...lags);
   if (refusals.length > 0) {
     throw new ReleaseCaseLabError([
       `BLOCKED: the Case Lab lags release ${release.tag} (${release.commit})`,
@@ -359,6 +375,9 @@ export async function publishDemo({ authorize }, dependencies) {
   if (!authorize) throw new ReleaseCaseLabError('publish-demo requires literal --authorize');
   // The local tree must already be consistent before we push it out.
   const release = await check(dependencies);
+  if (release.exception) {
+    throw new ReleaseCaseLabError(`publish-demo refuses: the Case Lab lags ${release.tag} under the exception in ${LAG_EXCEPTION_FILE}; bump it first`);
+  }
   const local = await dependencies.readFile(FILES.workflow, 'utf8');
   const before = JSON.parse(await dependencies.gh(['api', `repos/${DEMO_REPOSITORY}/contents/${DEMO_WORKFLOW_PATH}?ref=main`]));
   const message = `chore(case-lab): pin the Action and controller to sutura ${release.tag}`;
