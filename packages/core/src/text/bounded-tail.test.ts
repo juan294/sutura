@@ -70,4 +70,36 @@ describe('boundedTailWithHeader', () => {
 
     expect(boundedTailWithHeader(log, bounds, isHeader)).toBe(boundedTail(log, bounds));
   });
+
+  describe('with a header block', () => {
+    const blockLine = (line: string) =>
+      line.startsWith('shell:') ? 'end' as const : line.startsWith('Run ') ? 'abort' as const : 'continue' as const;
+    const script = ['Run files=()', 'files=()', 'node --test "${files[@]}"', 'shell: /usr/bin/bash -e {0}'];
+    const output = Array.from({ length: 900 }, (_, index) => `${'x'.repeat(60)} ${index}`);
+
+    it('carries the whole block when the cap would drop it', () => {
+      const result = boundedTailWithHeader([...script, ...output].join('\n'), bounds, isHeader, blockLine);
+
+      expect(result.startsWith(`${script.join('\n')}\n`)).toBe(true);
+      expect(result.split('\n')).toHaveLength(200);
+      expect(result.endsWith(output.at(-1) ?? '')).toBe(true);
+      expect(result.length).toBeLessThanOrEqual(bounds.maxCharacters);
+    });
+
+    it('carries only the header when no block end follows it', () => {
+      const log = ['Run files=()', 'files=()', 'Run other', ...output].join('\n');
+
+      expect(boundedTailWithHeader(log, bounds, (line) => line === 'Run files=()', blockLine))
+        .toBe(boundedTailWithHeader(log, bounds, (line) => line === 'Run files=()'));
+    });
+
+    it('carries only the header when the block does not fit the bounds', () => {
+      const small = { maxLines: 3, maxCharacters: 20_000, maxBytes: 20_000 };
+      const log = [...script, ...output].join('\n');
+
+      expect(boundedTailWithHeader(log, small, isHeader, blockLine))
+        .toBe(boundedTailWithHeader(log, small, isHeader));
+    });
+  });
 });
+

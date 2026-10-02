@@ -8,7 +8,7 @@ async function text(path) {
   return readFile(new URL(path, root), 'utf8');
 }
 
-test('all release-bearing packages and the public API declare 0.3.6', async () => {
+test('all release-bearing packages and the public API declare 0.3.7', async () => {
   const manifests = await Promise.all([
     'package.json',
     'packages/action/package.json',
@@ -18,8 +18,8 @@ test('all release-bearing packages and the public API declare 0.3.6', async () =
     'packages/evaluation/package.json',
     'packages/placebo/package.json',
   ].map(async (path) => JSON.parse(await text(path))));
-  assert.deepEqual(manifests.map(({ version }) => version), Array(7).fill('0.3.6'));
-  assert.match(await text('packages/core/src/index.ts'), /VERSION = '0\.3\.6'/u);
+  assert.deepEqual(manifests.map(({ version }) => version), Array(7).fill('0.3.7'));
+  assert.match(await text('packages/core/src/index.ts'), /VERSION = '0\.3\.7'/u);
 });
 
 test('ordinary CI runs deterministic release contract and candidate install checks', async () => {
@@ -132,8 +132,8 @@ test('Placebo live workflow passes the optional audit voices their keys', async 
 });
 
 test('versioned release evidence requirements name every authorization gate', async () => {
-  const requirements = JSON.parse(await text('docs/demo/sutura-v0.3.6-release-evidence-requirements.json'));
-  assert.equal(requirements.releaseVersion, '0.3.6');
+  const requirements = JSON.parse(await text('docs/demo/sutura-v0.3.7-release-evidence-requirements.json'));
+  assert.equal(requirements.releaseVersion, '0.3.7');
   assert.deepEqual(requirements.requiredEvidenceIds, [
     'benchmark', 'candidate-matrix', 'demo', 'dogfood', 'devpost', 'feedback',
     'github-release', 'local-gate', 'marketplace', 'npm', 'public-matrix',

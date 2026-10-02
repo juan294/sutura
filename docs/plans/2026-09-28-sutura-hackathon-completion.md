@@ -38,19 +38,28 @@ Dates are target exit windows, not permission or a reason to weaken a gate. The 
 | [2](2026-09-28-sutura-hackathon-completion-phases/phase-2.md) | Resolve measured consumer and repair-quality blockers; freeze a testable candidate | 1 | Oct 5 |
 | [3](2026-09-28-sutura-hackathon-completion-phases/phase-3.md) | Run the integrated benchmark, matrices, Arena, Data Lab, NeMo and external-patch measurements | 2; exact capped authorization for paid work | Oct 11 |
 | [4](2026-09-28-sutura-hackathon-completion-phases/phase-4.md) | Validate a public pilot release, installs, Marketplace and Case Lab | 3; publication/deployment authority | Oct 14 |
-| [5](2026-09-28-sutura-hackathon-completion-phases/phase-5.md) | Complete three independent installs and five review sessions; repair findings | 4; participant contact and consent | Oct 20 |
+| ~~[5](2026-09-28-sutura-hackathon-completion-phases/phase-5.md)~~ | Dropped 2026-10-02: no human participants (see scope change below) | — | — |
 | [6](2026-09-28-sutura-hackathon-completion-phases/phase-6.md) | Freeze final release, record video, publish evidence index and submit | 5; separate final publication and submission authority | Oct 29 |
 | [7](2026-09-28-sutura-hackathon-completion-phases/phase-7.md) | Maintain signed-out judge access and immutable evidence | 6 | Dec 15 |
 
-The critical path is 1 → 2 → 3 → 4 → 5 → 6. Documentation drafting, privacy review, sponsor feedback drafting and media shot planning can proceed locally while a dependent phase waits; their final factual claims still depend on measured artifacts. Only explicitly marked read-only or file-disjoint preparation is `[batch-eligible]`, with one integration owner. Existing verified-repair phases 10–14 execute sequentially. Phase acceptance and verification remain sequential.
+The critical path is 1 → 2 → 3 → 4 → 6 (phase 5 dropped 2026-10-02). Documentation drafting, privacy review, sponsor feedback drafting and media shot planning can proceed locally while a dependent phase waits; their final factual claims still depend on measured artifacts. Only explicitly marked read-only or file-disjoint preparation is `[batch-eligible]`, with one integration owner. Existing verified-repair phases 10–14 execute sequentially. Phase acceptance and verification remain sequential.
 
 ## Acceptance contract
 
 1. Every configured fleet repository receives an installation/enablement state and every discoverable eligible failed or timed-out CI incident in the declared window receives one terminal attribution or `unknown` with a reason. Separate `sutura-green`, `sutura-proposed`, authenticated `agent-fallback-green`, `resolved-externally` and `unresolved`; distinguish flake, refusal, gave-up and infrastructure causes. A successful monitor job, opened PR or unauthenticated commit author alone cannot establish recovery actor. The 45-day pre-rollout comparison uses the same workflow/branch definition and reports coverage and censored incidents. No subscription-dollar saving is inferred from run counts ([#139](https://github.com/juan294/sutura/issues/139)).
 2. At least one public-safe consumer case traces failed source SHA → Sutura result/diff → independent repair CI → intended-branch integration → same-workflow green. If no such event occurs naturally, report that gap and use a separately authorized, bounded controlled trial; do not synthesize fleet success.
 3. Final quality evidence retains all attempted cases, failures, not-run probes, provider errors and actual costs. Mandatory gates are zero known false approvals, every required challenge executed, preserved legacy gates, complete candidate/public eight-case matrices, real sponsor experiments and the [program's declared empirical targets](2026-09-05-sutura-verified-repair-program.md?plain=1#L103). Misses block promotion or receive a documented disposition under the program; the benchmark cannot be edited to pass.
-4. Three validated unfamiliar public-artifact installs and five actual human review sessions include a complete ledger of failed/withdrawn attempts, help and consent. The target is at least four of five reviewers identifying verdict, rejection reason and next action within 60 seconds unaided ([study contract](../adoption/verified-repair-study.md?plain=1#L17)).
+4. Dropped 2026-10-02 (scope change below). No human study, participant install or reviewer comprehension claim is made. The original criterion was: Three validated unfamiliar public-artifact installs and five actual human review sessions include a complete ledger of failed/withdrawn attempts, help and consent. The target is at least four of five reviewers identifying verdict, rejection reason and next action within 60 seconds unaided ([study contract](../adoption/verified-repair-study.md?plain=1#L17)).
 5. One final release identity binds npm, immutable Action, package, Case Lab, benchmark, Arena, matrix, public video and Devpost claims. The existing eleven [release evidence IDs](../demo/sutura-v0.3.3-release-evidence-requirements.json#L4) and the program's added capability/access records must be complete. Signed-out desktop/mobile, install, video and link checks pass. October readiness means judging operations are prepared; actual December observations close phase 7.
+
+## Scope change 2026-10-02: no human study
+
+Juan decided not to recruit participants. Phase 5 and acceptance item 4 are dropped, and phase 6 depends on phase 4 directly. Consequences:
+
+- No public artifact may claim external users, independent installs, review sessions or a comprehension result. The video script's external-user segment is removed.
+- `adoption-study` remains in `RELEASE_EVIDENCE_IDS` (`scripts/release-evidence.mjs:30-35`) and `scripts/marketplace-evidence.mjs:192-196` requires validated study evidence. Both need a reviewed code change (TDD, worktree) to record the study as an explicit out-of-scope disposition instead of a missing or skipped ID, without weakening the other checks.
+- Marketplace publication itself is unaffected; only its verifier's study coupling changes.
+- The study materials in `docs/adoption/` stay as historical, unsent preparation.
 
 ## Stuck states and recovery
 

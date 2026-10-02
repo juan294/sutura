@@ -496,7 +496,9 @@ function base(value: unknown): CaseLabResultBase {
     createdAt: isoTimestamp(raw.createdAt, 'createdAt'),
   };
   if (validatedFile !== undefined) result.caseFile = validatedFile;
-  if (validatedFile?.recovery !== undefined && result.identity.demoSha !== undefined) parseDiagnosisRecoveryEvidence(validatedFile.recovery, { sourceSha: result.identity.demoSha });
+  // A live grant's baseline source is the materialized case commit (a child of the displayed demo
+  // commit), so the grant binds to the displayed commit through its trusted policy base.
+  if (validatedFile?.recovery !== undefined && result.identity.demoSha !== undefined) parseDiagnosisRecoveryEvidence(validatedFile.recovery, { policyBaseSha: result.identity.demoSha });
   if (verification !== undefined) {
     if (verification.identity.sourceSha !== result.identity.demoSha) {
       throw new CaseLabResultError('caseFile.verification source differs from the displayed source identity');

@@ -34,6 +34,7 @@ function caseFilePath(placeboCaseId: string): string {
 const LIVE_BUNDLE_PATH = new URL('./__fixtures__/live-34977342282-javascript-repair-gave-up.json', import.meta.url).pathname;
 const RELEASE_V030 = { version: '0.3.0', actionSha: 'c94eee2086b31450d975137a0102dda18522d0b8' };
 const LIVE_DEMO_SHA = 'f8ea06f211163a5bc233dfadf1c728d4c79b7418';
+const LIVE_RECOVERY_CASE_FILE_PATH = new URL('./__fixtures__/live-36975022285-python-repair-fixed-case-file.json', import.meta.url).pathname;
 
 describe('publishResult', () => {
   it('publishes the real v0.3.0 live bundle whose actionSha is the Action commit, not the demo commit', () => {
@@ -54,6 +55,23 @@ describe('publishResult', () => {
     })).toThrow(`replay bundle actionSha ${RELEASE_V030.actionSha} must equal the release actionSha ${LIVE_DEMO_SHA}`);
   });
 
+  it('publishes a live controller-authorized recovery whose grant names the materialized source commit', () => {
+    // Case Lab run 36975022285 (2026-10-02): the v0.3.6 python-repair smoke repaired its case, but
+    // publish refused it because the recovery baseline names the materialized case commit 28336b4
+    // (PR head, child of the demo commit), while publish bound that field to the demo commit.
+    const demoSha = 'a2888b7b5e7b97f239d04c04543c910d36759a7b';
+    const base = {
+      requestId: 'cl-1790923472117-b559752d', caseId: 'python-repair', outcome: 'fixed', controllerSha: CONTROLLER_SHA,
+      caseFilePath: LIVE_RECOVERY_CASE_FILE_PATH, links: LINKS, release: RELEASE, now: NOW,
+    };
+    const result = publishResult({ ...base, demoSha });
+    expect(result.caseFile?.recovery?.reason).toBe('controller-authorized-recovery');
+    expect(result.matchesExpectation).toBe(true);
+    expect(validateCaseLabResult(JSON.parse(JSON.stringify(result)))).toEqual(result);
+    // The grant stays bound to the displayed commit through its trusted policy base.
+    expect(() => publishResult({ ...base, demoSha: 'd'.repeat(40) })).toThrow('Invalid public diagnosis recovery evidence');
+  });
+
   it('assembles a validated live result with the case file from the released CLI', () => {
     const result = publishResult({
       requestId: REQUEST_ID, caseId: 'javascript-repair', outcome: 'fixed', demoSha: DEMO_SHA, controllerSha: CONTROLLER_SHA,
@@ -67,7 +85,7 @@ describe('publishResult', () => {
       workflowRun: LINKS.workflowRun, ciRun: LINKS.ciRun, pullRequest: LINKS.pullRequest, check: LINKS.check,
     });
     expect(result.cost.status).toBe('observed');
-    expect(result.cost.inferenceUsd).toBeCloseTo(0.035599, 6);
+    expect(result.cost.inferenceUsd).toBeCloseTo(0.035494, 6);
     expect(result.caseFile?.outcome).toBe('fixed');
   });
 

@@ -33,6 +33,26 @@ function scriptedLlm(diagnosis: Diagnosis): DiagnosisLlm {
 }
 
 describe('failure classification', () => {
+  it('carries a multi-line script when the character bound cuts its group (gh-glance 36969419519)', () => {
+    const script = [
+      'files=()',
+      'for file in test/pty/*.test.mjs; do',
+      'node --test --test-concurrency=1 "${files[@]}"',
+      'done',
+    ];
+    const log = [
+      '2026-10-02T05:33:03.1315708Z ##[group]Run files=()',
+      ...script.map((line) => `2026-10-02T05:33:03.1316002Z \x1b[36;1m${line}\x1b[0m`),
+      '2026-10-02T05:33:03.1385149Z shell: /usr/bin/bash -e {0}',
+      '2026-10-02T05:33:03.1385431Z ##[endgroup]',
+      ...Array.from({ length: 150 }, (_, index) => `2026-10-02T05:35:57.3768304Z ok ${index + 1} - ${'polling '.repeat(20)}`),
+      '2026-10-02T05:53:59.0000000Z ##[error]Process completed with exit code 1.',
+    ].join('\n');
+
+    expect(log.length).toBeGreaterThan(20_000);
+    expect(classifyMechanically(log).failingCmd).toBe(script.join('\n'));
+  });
+
   it.each(CLASSES)('classifies the %s golden log mechanically', async (failureClass) => {
     const log = await fixture(failureClass);
 

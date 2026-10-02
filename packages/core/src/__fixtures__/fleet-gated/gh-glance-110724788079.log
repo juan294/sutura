@@ -1,0 +1,43 @@
+2026-10-02T05:54:06.4000072Z Current runner version: '2.337.0'
+2026-10-02T05:54:06.4020437Z ##[group]Runner Image Provisioner
+2026-10-02T05:54:06.4021153Z Hosted Compute Agent
+2026-10-02T05:54:06.4021665Z Version: 20260901.588
+2026-10-02T05:54:06.4022161Z Commit: f88ec8081b781fac6c440065ac7ff9e710ce3d0b
+2026-10-02T05:54:06.4022890Z Build Date: 2026-09-01T19:56:44Z
+2026-10-02T05:54:06.4023435Z Worker ID: {803ef02b-6dbe-49ee-ad24-08fb10eb4013}
+2026-10-02T05:54:06.4024082Z Azure Region: eastus
+2026-10-02T05:54:06.4024552Z ##[endgroup]
+2026-10-02T05:54:06.4026033Z ##[group]Operating System
+2026-10-02T05:54:06.4026634Z Ubuntu
+2026-10-02T05:54:06.4027074Z 24.04.5
+2026-10-02T05:54:06.4027523Z LTS
+2026-10-02T05:54:06.4027986Z ##[endgroup]
+2026-10-02T05:54:06.4028440Z ##[group]Runner Image
+2026-10-02T05:54:06.4029003Z Image: ubuntu-24.04
+2026-10-02T05:54:06.4029465Z Version: 20260927.320.1
+2026-10-02T05:54:06.4030547Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260927.320/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-02T05:54:06.4031804Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260927.320
+2026-10-02T05:54:06.4032632Z ##[endgroup]
+2026-10-02T05:54:06.4033503Z ##[group]GITHUB_TOKEN Permissions
+2026-10-02T05:54:06.4035448Z Contents: read
+2026-10-02T05:54:06.4035946Z Metadata: read
+2026-10-02T05:54:06.4036695Z ##[endgroup]
+2026-10-02T05:54:06.4038385Z Secret source: Actions
+2026-10-02T05:54:06.4039268Z Cache mode: write
+2026-10-02T05:54:06.4040085Z Prepare workflow directory
+2026-10-02T05:54:06.4293876Z Prepare all required actions
+2026-10-02T05:54:06.4373315Z Complete job name: PTY
+2026-10-02T05:54:06.4965198Z ##[group]Run if [[ "$GOVERNOR_RESULT" != success || "$REST_RESULT" != success ]]; then
+2026-10-02T05:54:06.4966253Z [36;1mif [[ "$GOVERNOR_RESULT" != success || "$REST_RESULT" != success ]]; then[0m
+2026-10-02T05:54:06.4967105Z [36;1m  echo "PTY governor: $GOVERNOR_RESULT; PTY other files: $REST_RESULT" >&2[0m
+2026-10-02T05:54:06.4967847Z [36;1m  exit 1[0m
+2026-10-02T05:54:06.4968450Z [36;1mfi[0m
+2026-10-02T05:54:06.8228192Z shell: /usr/bin/bash -e {0}
+2026-10-02T05:54:06.8229184Z env:
+2026-10-02T05:54:06.8229669Z   GOVERNOR_RESULT: success
+2026-10-02T05:54:06.8230307Z   REST_RESULT: failure
+2026-10-02T05:54:06.8230828Z ##[endgroup]
+2026-10-02T05:54:06.8420519Z PTY governor: success; PTY other files: failure
+2026-10-02T05:54:06.8439292Z ##[error]Process completed with exit code 1.
+2026-10-02T05:54:06.8572720Z Cleaning up orphan processes
+
