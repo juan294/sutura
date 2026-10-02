@@ -165,7 +165,7 @@ test('dogfood gate in release mode proves main reachability, a main push CI run 
       throw new Error(`unexpected gh api: ${endpoint}`);
     },
   }, { branch: 'main', candidate: RELEASE_SHA });
-  await assert.doesNotReject(() => gateDogfood(RELEASE_SHA, dependencies, { branch: 'main', releaseVersion: '0.3.6' }));
+  await assert.doesNotReject(() => gateDogfood(RELEASE_SHA, dependencies, { branch: 'main', releaseVersion: '0.3.7' }));
   assert.equal(output.filter((line) => line.startsWith('PASS')).length, 7);
   assert.ok(output.some((line) => line.startsWith('PASS origin-main:')));
   assert.ok(output.some((line) => line.startsWith('PASS main-ci:')));
@@ -184,7 +184,7 @@ test('dogfood gate in release mode fails independently on main reachability, mai
         throw new Error(`unexpected gh api: ${endpoint}`);
       },
     }, { branch: 'main', candidate: RELEASE_SHA });
-    await assert.rejects(() => gateDogfood(RELEASE_SHA, dependencies, { branch: 'main', releaseVersion: '0.3.6' }), /gate failed/u);
+    await assert.rejects(() => gateDogfood(RELEASE_SHA, dependencies, { branch: 'main', releaseVersion: '0.3.7' }), /gate failed/u);
     assert.match(output.join(''), /origin\/main does not contain/u);
   }
 
@@ -200,7 +200,7 @@ test('dogfood gate in release mode fails independently on main reachability, mai
         throw new Error(`unexpected gh api: ${endpoint}`);
       },
     }, { branch: 'main', candidate: RELEASE_SHA });
-    await assert.rejects(() => gateDogfood(RELEASE_SHA, dependencies, { branch: 'main', releaseVersion: '0.3.6' }), /gate failed/u);
+    await assert.rejects(() => gateDogfood(RELEASE_SHA, dependencies, { branch: 'main', releaseVersion: '0.3.7' }), /gate failed/u);
     assert.match(output.join(''), /missing successful main push CI/u);
   }
 
@@ -212,8 +212,8 @@ test('dogfood gate in release mode fails independently on main reachability, mai
         throw new Error(`unexpected gh api: ${endpoint}`);
       },
     }, { branch: 'main', candidate: RELEASE_SHA });
-    await assert.rejects(() => gateDogfood(RELEASE_SHA, dependencies, { branch: 'main', releaseVersion: '0.3.7' }), /gate failed/u);
-    assert.match(output.join(''), /RELEASE_VERSION is 0\.3\.6 but the release tag names 0\.3\.7/u);
+    await assert.rejects(() => gateDogfood(RELEASE_SHA, dependencies, { branch: 'main', releaseVersion: '0.3.8' }), /gate failed/u);
+    assert.match(output.join(''), /RELEASE_VERSION is 0\.3\.7 but the release tag names 0\.3\.8/u);
   }
 });
 

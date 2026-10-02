@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-10-02
+
+### Fixed
+
+- A failed step longer than 200 log lines no longer loses its command or its only failure. Sutura kept the step's `Run` header line and the last 199 lines, but GitHub echoes a multi-line `run:` script between that header and its `shell:` line, so the failing command was read as the script's first line (`files=()` in a fleet repository). `node --test` reports TAP outside a terminal and prints no failure summary, so the only `not ok` block, with the failing test's path, sat above the retained tail and no repair source was found. The step window now keeps the script echo and up to two TAP failure blocks (skipping `# TODO`/`# SKIP` directives and parent subtest summaries) before filling the remaining lines from the tail, and the diagnosis log carries the whole script when its bound drops the header.
+
+Retired guidance: none.
+
 ## [0.3.6] - 2026-10-01
 
 ### Fixed
