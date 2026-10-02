@@ -60,15 +60,14 @@ emits an NVIDIA ATIF trajectory validated with NeMo Agent Toolkit.”
 Recording gate: show the Arena record only after its candidate-bound WS-2
 evidence is committed.
 
-On screen: open the candidate-bound Placebo report, dogfood ledger, inference
-ledger, and external-user records used by the final cut. Include the Arena
-record when the recording gate above is satisfied.
+On screen: open the candidate-bound Placebo report, dogfood ledger, and
+inference ledger used by the final cut. Include the Arena record when the
+recording gate above is satisfied.
 
 Narration: “The submission evidence is generated from one exact candidate.
 Placebo keeps unsuccessful cases in the denominator, dogfood binds the shipped
 Action executable, Arena tests plausible bad alternatives, and the ledgers
-separate inference usage from sandbox usage. External-user evidence stays bound
-to the same candidate instead of becoming a detached testimonial.”
+separate inference usage from sandbox usage.”
 
 ## 2:45-2:55 — Human review remains the release gate
 
