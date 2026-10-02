@@ -4,7 +4,7 @@ import { extractJson } from '../llm/json.js';
 import type { TierLlm } from '../llm/types.js';
 import { redactExternalMessages } from '../security/external-text.js';
 import { FAILURE_TAXONOMY, LOCAL_RELATIVE_MODULE_ERROR } from '../taxonomy.js';
-import { boundedTail, boundedTailWithHeader } from '../text/bounded-tail.js';
+import { boundedTail, boundedTailWithHeader, type HeaderBlockLine } from '../text/bounded-tail.js';
 
 const FAILURE_CLASSES = Object.freeze(
   Object.keys(FAILURE_TAXONOMY) as FailureClass[],
@@ -43,8 +43,16 @@ export function isCommandHeader(line: string): boolean {
   return matched !== null && !ACTION_REFERENCE.test(matched[1] ?? '');
 }
 
+/** Where a `Run` header's script echo ends, as `shellScriptCommand` reads it. */
+function scriptBlockLine(raw: string): HeaderBlockLine {
+  if (raw.includes('##[endgroup]') || isCommandHeader(raw)) return 'abort';
+  const line = githubLogPayload(raw).replace(ANSI_SGR, '').trim();
+  if (line.startsWith('shell:')) return 'end';
+  return line.startsWith('env:') || line.startsWith('with:') ? 'abort' : 'continue';
+}
+
 function boundedCommandLog(log: string): string {
-  return boundedTailWithHeader(log, LOG_BOUNDS, isCommandHeader);
+  return boundedTailWithHeader(log, LOG_BOUNDS, isCommandHeader, scriptBlockLine);
 }
 
 function shellScriptCommand(lines: readonly string[], headerIndex: number): string | null {

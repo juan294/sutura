@@ -8,6 +8,7 @@ import type {
   GitHubOrchestrationPort,
 } from '../orchestrate.js';
 import { REPAIR_BRANCH_PREFIX, RepairBranchRunError } from '../orchestrate.js';
+import { HEADER_BLOCK_LINES } from '../text/bounded-tail.js';
 import {
   checkAnnotations, checkConclusion, checkExternalId, checkOutput, repairCheckOutput,
   SUTURA_CHECK_NAME, SUTURA_REPAIR_CHECK_NAME,
@@ -16,7 +17,12 @@ import type { GitHubAdapterOptions, GitHubApi } from './types.js';
 
 const FAILED_CONCLUSIONS = new Set(['failure', 'timed_out']);
 const FAILED_STEP_LINES = 200;
+const FAILURE_BLOCKS = 2;
+const FAILURE_BLOCK_LINES = 40;
 const GROUP_RUN_MARKER = /^\S+Z ##\[group\]Run\s/;
+const TAP_FAILURE = /^\s*not ok \d+\b/u;
+const TAP_DIRECTIVE = /\s#\s*(?:TODO|SKIP)\b/iu;
+const TAP_PARENT_SUMMARY = /^\s*failureType: 'subtestsFailed'$/u;
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const BRANCH_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,239}$/;
@@ -94,11 +100,64 @@ function failedStepLog(
   if (matching.length === 0) {
     throw new GitHubAdapterError(`Job logs contain no lines for failed step ${step.name}`);
   }
-  const commandLine = matching[0];
-  const retained = groupIndex >= 0 && commandLine && matching.length > FAILED_STEP_LINES
-    ? [commandLine, ...matching.slice(-(FAILED_STEP_LINES - 1))]
-    : matching.slice(-FAILED_STEP_LINES);
-  return retained.map(({ line }) => line).join('\n');
+  if (matching.length <= FAILED_STEP_LINES) return matching.map(({ line }) => line).join('\n');
+  const kept = new Set<number>();
+  if (groupIndex >= 0) {
+    for (let index = 0; index <= scriptBlockEnd(matching); index += 1) kept.add(index);
+  }
+  for (const [start, end] of tapFailureBlocks(matching, kept.size)) {
+    for (let index = start; index <= end; index += 1) kept.add(index);
+  }
+  for (let index = matching.length - 1; index >= 0 && kept.size < FAILED_STEP_LINES; index -= 1) {
+    kept.add(index);
+  }
+  return [...kept].sort((left, right) => left - right).map((index) => matching[index]?.line).join('\n');
+}
+
+function logPayload(line: string): string {
+  return line.replace(/^\S+Z ?/u, '');
+}
+
+/**
+ * Last index of a `Run` group's script echo. GitHub prints a multi-line
+ * script between the header and its `shell:` line; the header alone holds
+ * only the first script line, which is not the command.
+ */
+function scriptBlockEnd(lines: readonly TimestampedLogLine[]): number {
+  const limit = Math.min(lines.length, HEADER_BLOCK_LINES + 1);
+  for (let index = 1; index < limit; index += 1) {
+    const payload = logPayload(lines[index]?.line ?? '');
+    if (payload.startsWith('##[endgroup]')) return 0;
+    if (payload.startsWith('shell:')) return index;
+  }
+  return 0;
+}
+
+/**
+ * Inclusive ranges of the first TAP failures and their YAML diagnostics.
+ * `node --test` reports TAP outside a terminal and prints no failure summary,
+ * so in a long step the only failure can sit far above the retained tail.
+ * TODO/SKIP directives and a parent's summary of its failed subtests (which
+ * follows the subtest's own block) are not failures of their own.
+ */
+function tapFailureBlocks(lines: readonly TimestampedLogLine[], from: number): Array<[number, number]> {
+  const blocks: Array<[number, number]> = [];
+  for (let index = from; index < lines.length && blocks.length < FAILURE_BLOCKS; index += 1) {
+    const payload = logPayload(lines[index]?.line ?? '');
+    if (!TAP_FAILURE.test(payload)) continue;
+    let end = index;
+    let parentSummary = false;
+    const limit = Math.min(lines.length - 1, index + FAILURE_BLOCK_LINES - 1);
+    while (end < limit) {
+      end += 1;
+      const yaml = logPayload(lines[end]?.line ?? '');
+      if (TAP_PARENT_SUMMARY.test(yaml)) parentSummary = true;
+      if (yaml.trim() === '...') break;
+    }
+    if (!TAP_DIRECTIVE.test(payload) && !parentSummary) blocks.push([index, end]);
+    index = end;
+  }
+  return blocks;
 }
 
 function apiStatus(error: unknown): number | undefined {
