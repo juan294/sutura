@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { InMemoryExecutor } from '../executor/memory.js';
-import { boundedTriage, LEGACY_TRIAGE_POLICY, triage } from './triage.js';
+import { boundedTriage, LEGACY_TRIAGE_POLICY, triage, type FocusedProbe, type TriageProbeKind } from './triage.js';
 
 function scriptedTriage(exitCodes: readonly number[]): InMemoryExecutor {
   return new InMemoryExecutor((_cmd, _parent, callIndex) => ({
@@ -115,7 +115,7 @@ describe('boundedTriage', () => {
 
     expect(executor.calls).toHaveLength(1);
     expect(run.verdict).toMatchObject({ status: 'not-run', stopReason: 'sandbox-budget', reproduced: 1, of: 1, attemptsUsed: 1, maximumAttempts: 5 });
-    expect(run.budget).toEqual({ enforced: true, budgetSec: 240, probeSec: 231.26, spentSec: 231.26, predictedSec: 1157 });
+    expect(run.budget).toEqual({ enforced: true, budgetSec: 240, probeSec: 231.26, spentSec: 231.26, predictedSec: 1157, probes: 1 });
   });
 
   it.each([
@@ -150,7 +150,7 @@ describe('boundedTriage', () => {
 
     expect(executor.calls).toHaveLength(3);
     expect(run.verdict).toMatchObject({ status: 'not-run', stopReason: 'sandbox-budget', reproduced: 2, of: 3 });
-    expect(run.budget).toEqual({ enforced: true, budgetSec: 240, probeSec: 90, spentSec: 170, predictedSec: 350 });
+    expect(run.budget).toEqual({ enforced: true, budgetSec: 240, probeSec: 90, spentSec: 170, predictedSec: 350, probes: 3 });
   });
 
   it('runs the legacy loop and reports an unenforced budget when probes report no sandbox time', async () => {
@@ -204,3 +204,116 @@ describe('boundedTriage', () => {
   });
 });
 
+
+type FocusedOutcome = 'same' | 'pass' | 'other';
+const FOCUSED = 'vitest run case.test.js';
+
+/** Full probes exit by attempt; focused probes report the same failure, pass, or another failure. */
+function focusedExecutor(fullExits: readonly number[], focused: readonly FocusedOutcome[], seconds = { full: 1, focused: 1 }) {
+  return new InMemoryExecutor((cmd) => {
+    const attempt = Number(/SUTURA_TRIAGE_ATTEMPT='?(\d+)/u.exec(cmd)?.[1]);
+    const isFocused = cmd.includes(FOCUSED);
+    const outcome = isFocused ? focused[attempt] ?? 'same' : undefined;
+    return {
+      exitCode: isFocused ? (outcome === 'pass' ? 0 : 1) : fullExits[attempt] ?? 1,
+      stdout: outcome ?? 'full', stderr: '', truncated: false,
+      metrics: { elapsedTimeSec: isFocused ? seconds.focused : seconds.full },
+    };
+  });
+}
+
+const probe: FocusedProbe = { command: FOCUSED, sameFailure: (result) => result.exitCode !== 0 && result.stdout === 'same' };
+const commands = (executor: InMemoryExecutor) =>
+  executor.calls.map((call) => call.kind === 'run' ? `${/SUTURA_TRIAGE_ATTEMPT='?(\d+)/u.exec(call.cmd)?.[1]}:${call.cmd.includes(FOCUSED) ? 'focused' : 'full'}` : '');
+
+describe('boundedTriage with a focused probe', () => {
+  const budget = { scope: 'focused', sandboxBudgetSec: 240 } as const;
+
+  it('reaches real from four focused probes that fail the same way', async () => {
+    const executor = focusedExecutor([1, 1, 1, 1, 1], ['same', 'same', 'same', 'same']);
+    const kinds: TriageProbeKind[] = [];
+
+    const run = await boundedTriage(executor, 'failure-image', 'pnpm exec vitest run', 5, (_result, _probe, kind) => kinds.push(kind), budget, probe);
+
+    expect(run.verdict).toMatchObject({ status: 'real', reproduced: 4, of: 4, stopReason: 'failure-boundary' });
+    expect(commands(executor)).toEqual(['0:focused', '1:focused', '2:focused', '3:focused']);
+    expect(kinds).toEqual(['focused-kept', 'focused-kept', 'focused-kept', 'focused-kept']);
+    expect(run.focus).toEqual({ command: FOCUSED, kept: 4, rejected: 0 });
+  });
+
+  it.each([
+    { name: 'a focused pass at probe 1', focused: ['pass'], focusedCalls: ['0:focused'] },
+    { name: 'a focused pass at probe 3', focused: ['same', 'same', 'pass'], focusedCalls: ['0:focused', '1:focused', '2:focused'] },
+    { name: 'a different failure', focused: ['other'], focusedCalls: ['0:focused'] },
+  ] as const)('restarts the full command from attempt 0 after $name', async ({ focused, focusedCalls }) => {
+    const exits = [1, 0, 1, 0, 0];
+    const executor = focusedExecutor(exits, focused);
+
+    const run = await boundedTriage(executor, 'failure-image', 'pnpm exec vitest run', 5, undefined, budget, probe);
+    const legacy = await triage(scriptedTriage(exits), 'failure-image', 'pnpm exec vitest run', 5);
+
+    expect(run.verdict).toEqual(legacy);
+    expect(commands(executor)).toEqual([...focusedCalls, '0:full', '1:full', '2:full', '3:full', '4:full']);
+    expect(run.focus).toEqual({ command: FOCUSED, kept: focusedCalls.length - 1, rejected: 1 });
+  });
+
+  it('keeps the cumulative budget across the restart', async () => {
+    const executor = focusedExecutor([1, 1, 1, 1, 1], ['same', 'same', 'pass'], { focused: 10, full: 100 });
+
+    const run = await boundedTriage(executor, 'failure-image', 'pnpm exec vitest run', 5, undefined, budget, probe);
+
+    expect(commands(executor)).toEqual(['0:focused', '1:focused', '2:focused', '0:full']);
+    expect(run.verdict).toMatchObject({ status: 'not-run', stopReason: 'sandbox-budget', reproduced: 1, of: 1 });
+    expect(run.budget).toEqual({ enforced: true, budgetSec: 240, probeSec: 100, spentSec: 130, predictedSec: 530, probes: 4 });
+  });
+
+  // Review 2026-10-03: a 41 s focused probe that passes leaves no counted
+  // attempt, and 41 + 41 x 5 > 240 stopped triage with nothing to evaluate.
+  it('stops on the budget right after a restart without a counted attempt', async () => {
+    const executor = focusedExecutor([1, 1, 1, 1, 1], ['pass'], { focused: 60, full: 60 });
+
+    const run = await boundedTriage(executor, 'failure-image', 'vitest run', 5, undefined, budget, probe);
+
+    expect(commands(executor)).toEqual(['0:focused']);
+    expect(run.verdict).toMatchObject({ status: 'not-run', stopReason: 'sandbox-budget', reproduced: 0, of: 0, attemptsUsed: 0, maximumAttempts: 5 });
+    expect(run.budget).toEqual({ enforced: true, budgetSec: 240, probeSec: 60, spentSec: 60, predictedSec: 360, probes: 1 });
+    expect(run.focus).toEqual({ command: FOCUSED, kept: 0, rejected: 1 });
+  });
+
+  it('runs focused probes without a budget', async () => {
+    const executor = focusedExecutor([1, 1, 1, 1, 1], []);
+
+    const run = await boundedTriage(executor, 'failure-image', 'vitest run', 5, undefined, { scope: 'focused' }, probe);
+
+    expect(run.verdict).toMatchObject({ status: 'real', of: 4 });
+    expect(run.budget).toBeUndefined();
+    expect(run.focus).toMatchObject({ kept: 4, rejected: 0 });
+  });
+
+  // D4: narrowing can confirm a real failure but never manufacture flaky or
+  // intermittent. Every focused outcome sequence against every full exit
+  // pattern: a non-real verdict always comes from full probes only, and then
+  // equals the legacy verdict.
+  it('never reaches flaky or intermittent from focused probes', async () => {
+    const outcomes: FocusedOutcome[] = ['same', 'pass', 'other'];
+    const sequences: FocusedOutcome[][] = [[]];
+    for (let length = 1; length <= 4; length += 1) {
+      for (let code = 0; code < 3 ** length; code += 1) {
+        sequences.push(Array.from({ length }, (_, index) => outcomes[Math.floor(code / 3 ** index) % 3]!));
+      }
+    }
+    for (let mask = 0; mask < 32; mask += 1) {
+      const exits = Array.from({ length: 5 }, (_, index) => (mask >> index) & 1);
+      const legacy = await triage(scriptedTriage(exits), 'failure-image', 'vitest run', 5);
+      for (const focused of sequences) {
+        const run = await boundedTriage(focusedExecutor(exits, focused), 'failure-image', 'vitest run', 5, undefined, { scope: 'focused', sandboxBudgetSec: 3600 }, probe);
+        const label = `exits=${exits.join('')} focused=${focused.join(',')}`;
+        if (run.focus?.rejected === 0) {
+          expect(run.verdict.status, label).toBe('real');
+        } else {
+          expect(run.verdict, label).toEqual(legacy);
+        }
+      }
+    }
+  });
+});

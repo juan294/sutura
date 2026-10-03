@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { classifyMechanically } from '../diagnose/classify.js';
+import { focusedTriage } from '../engine/focus/index.js';
 import { diagnosisLog, extractSourceReferences, rankFailedSteps } from '../orchestrate.js';
 import { githubApi } from '../replay/replay-fixtures.test-helper.js';
 import { GitHubAdapter } from './adapter.js';
@@ -170,6 +171,12 @@ describe('a long TAP step whose failure precedes the retained tail (gh-glance 36
     expect(diagnosis.failingCmd).toBe(LONG_TAP_RUN.expectedFailingCmd);
   });
 
+  it('gets no focused triage for a multi-line script', async () => {
+    const log = await gatedDiagnosisLog(LONG_TAP_RUN);
+
+    expect(focusedTriage(classifyMechanically(log).failingCmd, log)).toEqual({ reason: 'the command uses shell syntax' });
+  });
+
   it('finds the failing test file as a repair source', async () => {
     const references = extractSourceReferences((await shardStep()).log);
 
@@ -205,5 +212,13 @@ describe('a per-package vitest run in a workspace (cirujano 37018518357)', () =>
       expect(references).toContainEqual({ path: 'packages/cli/src/bundle.test.ts', line: 19 });
       expect(references.map(({ path }) => path)).not.toContain('src/bundle.test.ts');
     }
+  });
+
+  it('gets no focused triage for a package script', async () => {
+    const log = await gatedDiagnosisLog(PACKAGE_RELATIVE_RUN);
+    const command = classifyMechanically(log).failingCmd;
+
+    expect(command).toBe(PACKAGE_RELATIVE_RUN.expectedFailingCmd);
+    expect(focusedTriage(command, log)).toEqual({ reason: 'not a direct vitest, jest, node --test or pytest invocation' });
   });
 });

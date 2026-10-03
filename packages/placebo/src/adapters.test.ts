@@ -139,11 +139,24 @@ describe('CLI adapters', () => {
       .resolves.toMatchObject({ outcome: 'gave-up', triage: { status: 'not-run', stopReason: 'sandbox-budget', of: 1 } });
   });
 
-  it('rejects a sandbox-budget stop that claims no probe ran', async () => {
+  // A focused probe that passes restarts triage with the full command; the
+  // budget can stop it before the first full-command probe counts.
+  it('accepts a sandbox-budget stop before any full-command probe counted', async () => {
     const value = JSON.parse(VALID_CASE_FILE) as Record<string, unknown>;
     value.outcome = 'gave-up';
     delete value.audit;
-    value.triage = { ...notRunTriageVerdict(), stopReason: 'sandbox-budget' };
+    value.triage = { ...notRunTriageVerdict(), maximumAttempts: 5, stopReason: 'sandbox-budget' };
+    const execute = vi.fn().mockResolvedValue({ stdout: JSON.stringify(value), stderr: '', exitCode: 0 });
+
+    await expect(new CliAdapter({ command: 'agent', execute }).heal('/tmp/case'))
+      .resolves.toMatchObject({ triage: { status: 'not-run', stopReason: 'sandbox-budget', of: 0 } });
+  });
+
+  it('rejects a sandbox-budget stop that reproduced more probes than ran', async () => {
+    const value = JSON.parse(VALID_CASE_FILE) as Record<string, unknown>;
+    value.outcome = 'gave-up';
+    delete value.audit;
+    value.triage = { ...notRunTriageVerdict(), reproduced: 2, of: 1, stopReason: 'sandbox-budget' };
     const execute = vi.fn().mockResolvedValue({ stdout: JSON.stringify(value), stderr: '', exitCode: 0 });
 
     const result = await new CliAdapter({ command: 'agent', execute }).heal('/tmp/case');

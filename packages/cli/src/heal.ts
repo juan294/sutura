@@ -510,7 +510,7 @@ export function runtimeFromEnvironment(
     ...(typesafeAudit ? { typesafeAudit } : {}),
     cost: llm.ledger,
     triageN: config.triageN,
-    triagePolicy: { scope: 'full', sandboxBudgetSec: config.triageSandboxBudgetSec },
+    triagePolicy: { scope: 'focused', sandboxBudgetSec: config.triageSandboxBudgetSec },
     raceK: config.raceK,
     repairBudgets: config.repairBudgets,
     search: config.search,

@@ -111,6 +111,18 @@ attempt then ends `gave-up`, and the case file, comment and check state the
 measured and predicted sandbox seconds. The worst case is the budget plus one
 rerun, because the first rerun's duration is unknown until it finishes.
 
+When the failing step calls a test runner directly (vitest, jest,
+`node --test` or pytest) and the log names exactly one failing test file,
+Sutura first reruns only that file. A focused rerun counts only when it fails
+the same test with the same message. At the first focused rerun that passes or
+fails differently, Sutura discards the focused reruns and starts again with the
+full command, within the same budget. Focused reruns can therefore confirm a
+real failure, but a flaky or intermittent verdict always comes from the full
+command. Package scripts (`pnpm test`), compound commands (`&&`, `;`, `|`),
+unknown runner options, collection or import errors and failures in several
+files keep the full command; the case file names the reason, and the evidence
+line reports `focused=<kept>/<rejected>` when focused reruns ran.
+
 Sutura never repairs its own repair branches. The generated workflow skips a
 failed run on a `sutura/fix-*` branch, and the Action reports the outcome
 `repair-branch-skipped` without commenting, checking, or opening a pull request.
@@ -282,7 +294,10 @@ The triage line reads `sandbox-budget — not decided` and states how many
 sandbox seconds the remaining reruns would need. Either raise the
 `triage-sandbox-seconds` Action input (`SUTURA_TRIAGE_SANDBOX_SEC` for the CLI,
 up to 3600) or make the failing CI step run fewer tests, then rerun the failed
-workflow. Sutura caches nothing between
+workflow. A step that calls the test runner directly (for example
+`pnpm exec vitest run` rather than `pnpm test`) lets Sutura rerun only the
+failing test file; the case file's `Focused triage not applied:` note says why
+it did not. Sutura caches nothing between
 attempts, so the next run uses the new budget.
 
 ### An upgrade would overwrite custom settings

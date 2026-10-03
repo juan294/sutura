@@ -1,0 +1,31 @@
+FAIL src/console.test.js
+  ● Console
+
+    console.log
+      state snapshot { ready: false }
+
+      at Object.log (src/console.test.js:3:13)
+
+  ● timer boundary › observes the state after a fixed timer boundary
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+    [0m [90m 2 |[39m   test([32m'observes the state after a fixed timer boundary'[39m[33m,[39m () [33m=>[39m {
+     [90m 3 |[39m     console[33m.[39mlog([32m'state snapshot'[39m[33m,[39m { ready[33m:[39m [36mfalse[39m })[33m;[39m
+    [31m[1m>[22m[39m[90m 4 |[39m     expect(process[33m.[39menv[33m.[39m[33mMODE[39m [33m===[39m [32m'pass'[39m)[33m.[39mtoBe([36mtrue[39m)[33m;[39m
+     [90m   |[39m                                         [31m[1m^[22m[39m
+     [90m 5 |[39m   })[33m;[39m
+     [90m 6 |[39m   test([32m'second test'[39m[33m,[39m () [33m=>[39m {
+     [90m 7 |[39m     [36mif[39m (process[33m.[39menv[33m.[39m[33mMODE[39m [33m===[39m [32m'second'[39m) expect([35m1[39m)[33m.[39mtoBe([35m2[39m)[33m;[39m[0m
+
+      at Object.toBe (src/console.test.js:4:41)
+
+
+Test Suites: 1 failed, 1 passed, 2 total
+Tests:       1 failed, 2 passed, 3 total
+Snapshots:   0 total
+Time:        0.289 s, estimated 1 s
+Ran all test suites within paths "src/console.test.js", "src/pass.test.js".

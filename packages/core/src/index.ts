@@ -232,8 +232,12 @@ export type {
 } from './engine/repair-budget.js';
 export type { RepairAgentContext, RepairAgentOutcome } from './engine/repair-agent.js';
 export type { ControlledRepairAttemptContext, RepairAttemptFeedback } from './engine/repair-attempt.js';
-export { boundedTriage, LEGACY_TRIAGE_POLICY, triage } from './engine/triage.js';
-export type { TriageBudgetEvidence, TriagePolicy, TriageRun, TriageScope } from './engine/triage.js';
+export { boundedTriage, LEGACY_TRIAGE_POLICY, TRIAGE_PROBE_NOTES, triage } from './engine/triage.js';
+export type {
+  FocusedProbe, TriageBudgetEvidence, TriageFocusEvidence, TriagePolicy, TriageProbeKind, TriageRun, TriageScope,
+} from './engine/triage.js';
+export { focusedTriage, sameFailure } from './engine/focus/index.js';
+export type { FocusedTriage, FocusResult } from './engine/focus/index.js';
 export {
   AlreadyAttemptedError,
   OrchestrationError,
@@ -252,7 +256,7 @@ export { renderComment } from './report/markdown.js';
 export { renderAuditMarkdown } from './report/audit-markdown.js';
 export { renderAuditCaseFile } from './report/audit-casefile.js';
 export { AuditEvidenceError, auditOnly, validateAuditEvidence } from './audit-only.js';
-export { aggregateStageEvidence, stoppedOnTriageBudget, triageBudgetNote } from './report/format.js';
+export { aggregateStageEvidence, focusedTriageCounts, stoppedOnTriageBudget, triageBudgetNote } from './report/format.js';
 export { VerificationEvidenceError, parseVerificationEvidence, encodeVerificationEvidence, decodeVerificationEvidence } from './verification/codec.js';
 export { adaptLegacyVerification } from './verification/legacy.js';
 export { VERIFICATION_EVIDENCE_VERSION, VERIFICATION_COST_VERSION, VERIFICATION_GATES, VERIFICATION_STATUSES, VERIFICATION_REASONS } from './verification/types.js';

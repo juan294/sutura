@@ -62,6 +62,20 @@ describe('runtimeEvidence', () => {
     expect(checkOutput(value).summary).toContain(`Triage: ${note}`);
   });
 
+  it('counts kept and rejected focused triage probes', () => {
+    const probe = (attempt: number, note: string) => ({ stage: 'triage' as const, attempt, nodeId: `node-00${attempt}`, metrics: { elapsedTimeSec: 2 }, network: 'disabled' as const, note });
+    const value = caseFile({
+      stages: [
+        probe(1, 'Focused probe: same test, same failure'),
+        probe(2, 'Focused probe: not the same failure; restarting with the full command'),
+        ...[3, 4, 5, 6].map((attempt) => probe(attempt, 'Reproduction probe')),
+      ],
+    });
+
+    expect(runtimeEvidence(value).join('\n')).toContain('triage=4/4 max=5 stop=failure-boundary focused=1/1 method=');
+    expect(runtimeEvidence(caseFile()).join('\n')).not.toContain('focused=');
+  });
+
   it('does not claim Tavily runtime evidence when grounding was only configured or skipped', () => {
     expect(runtimeEvidence(caseFile()).join('\n')).not.toContain('Tavily');
   });

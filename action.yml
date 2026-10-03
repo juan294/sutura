@@ -36,7 +36,7 @@ inputs:
     required: false
     default: '5'
   triage-sandbox-seconds:
-    description: Cumulative sandbox seconds triage may spend (1-3600). Triage measures its first probe and stops before a batch that would exceed this, ending gave-up with the predicted seconds; the worst case is this budget plus one probe.
+    description: Cumulative sandbox seconds triage may spend (1-3600). Triage reruns only the failing test file when the runner is called directly, measures its first probe and stops before a probe that would exceed this, ending gave-up with the predicted seconds; the worst case is this budget plus one probe.
     required: false
     default: '240'
   routing-profile:

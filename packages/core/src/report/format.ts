@@ -1,6 +1,7 @@
 import type { CaseFile, RaceResult } from '../domain.js';
 import { findSelectedCandidate } from '../engine/candidate-identity.js';
 import { selectWinner } from '../engine/repair.js';
+import { TRIAGE_PROBE_NOTES } from '../engine/triage.js';
 
 const STAGE_BY_ROLE = {
   nano: 'Diagnosis',
@@ -91,6 +92,14 @@ export function outcomeLabel(outcome: CaseFile['outcome']): string {
 /** The recorded ledger note that explains a triage budget stop. */
 export function triageBudgetNote(caseFile: CaseFile): string | undefined {
   return caseFile.stages?.find(({ stage, note }) => stage === 'triage' && note?.startsWith('Triage stopped after'))?.note;
+}
+
+/** Kept and rejected focused triage probes; undefined when triage ran no focused probe. */
+export function focusedTriageCounts(caseFile: CaseFile): { kept: number; rejected: number } | undefined {
+  const notes = (caseFile.stages ?? []).filter(({ stage }) => stage === 'triage').map(({ note }) => note);
+  const kept = notes.filter((note) => note === TRIAGE_PROBE_NOTES['focused-kept']).length;
+  const rejected = notes.filter((note) => note === TRIAGE_PROBE_NOTES['focused-rejected']).length;
+  return kept + rejected === 0 ? undefined : { kept, rejected };
 }
 
 /** Triage stopped on its sandbox budget: no repair was attempted, so there is no procedure to show. */

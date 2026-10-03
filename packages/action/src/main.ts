@@ -94,7 +94,7 @@ export async function runAction(
       search: config.search,
       sourceReferenceOrder: 'latest',
       repairVerificationScope: 'failing-workspace',
-      triagePolicy: { scope: 'full', sandboxBudgetSec: config.triageSandboxBudgetSec },
+      triagePolicy: { scope: 'focused', sandboxBudgetSec: config.triageSandboxBudgetSec },
       ...(config.runtimeId === undefined ? {} : { runtimeId: config.runtimeId }),
     } satisfies Pick<
       OrchestrationContext,
