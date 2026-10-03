@@ -67,7 +67,7 @@ import {
   sandboxTargetCommand,
 } from './engine/sandbox-command.js';
 import { shellQuote } from './engine/shell.js';
-import { triage } from './engine/triage.js';
+import { boundedTriage, LEGACY_TRIAGE_POLICY, type TriagePolicy, type TriageRun } from './engine/triage.js';
 import { notRunTriageVerdict } from './engine/triage.js';
 import {
   SNAPSHOT_CWD,
@@ -152,6 +152,8 @@ export interface RepairFailureContext {
   traceRecorder?: TraceRecorder;
   runtime?: RuntimeAdapter;
   repairVerificationScope?: RepairVerificationScope;
+  /** Triage scope and sandbox budget; absent is the legacy policy (full command, no budget). */
+  triagePolicy?: TriagePolicy;
   /** Trusted checkout identity; sandbox initialization commits are never source provenance. */
   sourceIdentity?: Pick<Extract<ControllerBaselineBinding, { kind: 'git' }>, 'kind' | 'sourceSha' | 'policyBaseSha' | 'snapshotSha256'>
     | Pick<Extract<ControllerBaselineBinding, { kind: 'local-snapshot' }>, 'kind' | 'sourceSha' | 'policyBaseSha' | 'snapshotSha256'>;
@@ -723,6 +725,21 @@ export { sandboxExecutableCommand, sandboxTargetCommand };
 const PNPM_RECURSIVE_TEST_COMMAND = /^pnpm\s+(?:-r|--recursive)\s+test$/u;
 const PNPM_WORKSPACE_TEST_FAILURE = /\b(packages\/[A-Za-z0-9_@./-]+)\s+test:.*(?:\bFAIL\b|AssertionError|\bfailed\b)/iu;
 
+/** The ledger note that discloses a triage budget stop or an unenforced budget. */
+export function triageBudgetLedgerNote(run: TriageRun, triageN: number): string | undefined {
+  const budget = run.budget;
+  if (budget === undefined) return undefined;
+  if (!budget.enforced) {
+    return `Triage budget of ${budget.budgetSec} sandbox-seconds not enforced: the executor reported no sandbox time`;
+  }
+  if (run.verdict.stopReason !== 'sandbox-budget') return undefined;
+  const remaining = triageN - run.verdict.attemptsUsed;
+  // Stage notes are capped at 240 characters; this stays well under it.
+  return `Triage stopped after ${run.verdict.attemptsUsed} probe(s), ${budget.spentSec.toFixed(1)} sandbox-s: ` +
+    `${remaining} more at up to ${budget.probeSec.toFixed(1)} s each make about ${budget.predictedSec} s, ` +
+    `over the ${budget.budgetSec} s budget (raise triage-sandbox-seconds or SUTURA_TRIAGE_SANDBOX_SEC, or narrow the CI test command)`;
+}
+
 export function repairVerificationCommand(
   diagnosis: Diagnosis,
   failedLog = diagnosis.errorExcerpt,
@@ -991,7 +1008,7 @@ async function repairFailureWithinBudget(
     runtime,
   );
 
-  const triageVerdict = await triage(
+  const triageRun = await boundedTriage(
     charged.executor,
     ctx.failingImage,
     executableCommand,
@@ -1004,9 +1021,18 @@ async function repairFailureWithinBudget(
       parentImageId: ctx.failingImage,
       note: 'Reproduction probe',
     }),
+    ctx.triagePolicy ?? LEGACY_TRIAGE_POLICY,
   );
+  const triageVerdict = triageRun.verdict;
+  const triageBudgetNote = triageBudgetLedgerNote(triageRun, ctx.triageN);
+  if (triageBudgetNote !== undefined) {
+    ledger.record({ stage: 'triage', attempt: triageVerdict.attemptsUsed, network: 'disabled', note: triageBudgetNote });
+  }
   progress.diagnosis = diagnosis;
   progress.triage = triageVerdict;
+  if (triageVerdict.stopReason === 'sandbox-budget') {
+    return makeCaseFile(fullContext, diagnosis, triageVerdict, [], 'gave-up');
+  }
   if (triageVerdict.status !== 'real') {
     return makeCaseFile(fullContext, diagnosis, triageVerdict, [], 'flaky-no-patch');
   }
@@ -1744,6 +1770,7 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     ...(ctx.policyEvidence === undefined ? {} : { policyEvidence: ctx.policyEvidence }),
     ...(ctx.repairBudgets === undefined ? {} : { repairBudgets: ctx.repairBudgets }),
     ...(ctx.search === undefined ? {} : { search: ctx.search }),
+    ...(ctx.triagePolicy === undefined ? {} : { triagePolicy: ctx.triagePolicy }),
     stageLedger: ledger,
     traceRecorder: trace,
     runtime,

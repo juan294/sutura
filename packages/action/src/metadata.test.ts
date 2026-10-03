@@ -30,6 +30,7 @@ describe('GitHub Action metadata', () => {
       'contree-token',
       'contree-project',
       'triage-n',
+      'triage-sandbox-seconds',
       'routing-profile',
       'require-fixed',
       'capture-replay',

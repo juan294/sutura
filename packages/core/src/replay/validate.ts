@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 
+import { MAX_TRIAGE_SANDBOX_SEC } from '../config.js';
 import { DEFAULT_REPAIR_BUDGET_LIMITS, USD_BUDGET_KEYS } from '../engine/repair-budget.js';
 import { DEFAULT_SEARCH_LIMITS } from '../engine/search.js';
 import {
@@ -405,6 +406,18 @@ function validateRepairBudgets(value: unknown, path: string): void {
   }
 }
 
+function validateTriagePolicy(value: unknown, path: string): void {
+  const policy = object(value, path);
+  const unknown = Object.keys(policy).find((key) => key !== 'scope' && key !== 'sandboxBudgetSec');
+  if (unknown) throw new ReplayValidationError(`${path}.${unknown}`, 'is unknown');
+  if (policy.scope !== 'full' && policy.scope !== 'focused') throw new ReplayValidationError(`${path}.scope`, 'is unknown');
+  if (policy.sandboxBudgetSec !== undefined &&
+      (!Number.isSafeInteger(policy.sandboxBudgetSec) || Number(policy.sandboxBudgetSec) < 1 ||
+       Number(policy.sandboxBudgetSec) > MAX_TRIAGE_SANDBOX_SEC)) {
+    throw new ReplayValidationError(`${path}.sandboxBudgetSec`, `must be an integer from 1 to ${MAX_TRIAGE_SANDBOX_SEC}`);
+  }
+}
+
 function validateSearch(value: unknown, path: string): void {
   const search = object(value, path);
   const keys = ['initialBranches', 'beamWidth', 'maximumDepth', 'maximumTotalBranches'] as const;
@@ -484,6 +497,7 @@ export function parseReplayBundle(value: unknown): ReplayBundle {
   ) {
     throw new ReplayValidationError('bundle.configuration.repairVerificationScope', 'is unknown');
   }
+  if (config.triagePolicy !== undefined) validateTriagePolicy(config.triagePolicy, 'bundle.configuration.triagePolicy');
   if (config.imageRef !== undefined) string(config.imageRef, 'bundle.configuration.imageRef');
   if (config.repairBudgets !== undefined) {
     validateRepairBudgets(config.repairBudgets, 'bundle.configuration.repairBudgets');

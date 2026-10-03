@@ -13,6 +13,7 @@ import { InMemoryExecutor, type InMemoryRunResult } from './executor/memory.js';
 import {
   buildSandboxRepositoryInitializationCommandForTest,
   healCase,
+  triageBudgetLedgerNote,
   repairFailure,
   repairVerificationCommand,
   StageLedger,
@@ -1201,6 +1202,81 @@ describe('healCase', () => {
     });
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
     expect(readSourceContext).not.toHaveBeenCalled();
+  });
+
+  // Fleet replay 2026-10-03: chapa's triage probes took about 231 sandbox
+  // seconds each and four of them cost USD 9.27 before the case gave up.
+  it('stops triage after one probe and gives up when the sandbox budget would be exceeded', async () => {
+    const { ctx } = context('trap-skipped-test', [1], 'test-assertion', {
+      triagePolicy: { scope: 'full', sandboxBudgetSec: 240 },
+    });
+    let reproduced = false;
+    const executor = new InMemoryExecutor((command) => {
+      if (command.includes('SUTURA_TRIAGE_ATTEMPT')) return { ...result(1), metrics: { elapsedTimeSec: 231.26 } };
+      if (command.includes('corepack pnpm install --frozen-lockfile') || command.includes('git init --quiet')) return result(0);
+      if (!reproduced) { reproduced = true; return result(1); }
+      return result(1);
+    });
+    ctx.executor = executor;
+
+    const caseFile = await healCase(ctx);
+
+    expect(caseFile).toMatchObject({
+      outcome: 'gave-up',
+      triage: { status: 'not-run', stopReason: 'sandbox-budget', reproduced: 1, of: 1, maximumAttempts: 5 },
+    });
+    expect(executor.calls.filter((call) => call.kind === 'run' && call.cmd.includes('SUTURA_TRIAGE_ATTEMPT'))).toHaveLength(1);
+    expect(caseFile.stages.map(({ note }) => note)).toContain(
+      'Triage stopped after 1 probe(s), 231.3 sandbox-s: 4 more at up to 231.3 s each make about 1157 s, over the 240 s budget (raise triage-sandbox-seconds or SUTURA_TRIAGE_SANDBOX_SEC, or narrow the CI test command)',
+    );
+  });
+
+  it('keeps the triage stop note under the 240-character stage note cap at its largest values', () => {
+    const note = triageBudgetLedgerNote({
+      verdict: { status: 'not-run', reproduced: 1, of: 1, attemptsUsed: 1, maximumAttempts: 20, reproductionProbability: 1,
+        confidenceLower: 0.2, confidenceUpper: 1, stopReason: 'sandbox-budget', methodVersion: 'sprt-p20-p80-a05-b05-v1' },
+      budget: { enforced: true, budgetSec: 3600, probeSec: 99999.9, spentSec: 99999.9, predictedSec: 2_000_000 },
+    }, 20);
+
+    expect(note?.length).toBeLessThanOrEqual(240);
+  });
+
+  it('discloses an unenforced budget when the executor reports no sandbox time', async () => {
+    const { ctx } = context('repair-off-by-one', [1, 1, 1, 1, 1], 'test-assertion', {
+      triagePolicy: { scope: 'full', sandboxBudgetSec: 240 },
+    });
+
+    const caseFile = await healCase(ctx);
+
+    expect(caseFile.triage).toMatchObject({ status: 'real', stopReason: 'failure-boundary' });
+    expect(caseFile.stages.map(({ note }) => note)).toContain(
+      'Triage budget of 240 sandbox-seconds not enforced: the executor reported no sandbox time',
+    );
+  });
+
+  it('writes no triage budget note under the legacy policy', async () => {
+    const { ctx } = context('repair-off-by-one', [1, 1, 1, 1, 1], 'test-assertion');
+
+    const caseFile = await healCase(ctx);
+
+    expect(caseFile.stages.some(({ note }) => note?.startsWith('Triage budget') || note?.startsWith('Triage stopped'))).toBe(false);
+  });
+
+  it('keeps the legacy flaky verdict for the real Placebo fixture under the default budget', async () => {
+    const { ctx } = context('flaky-timer-race', [1, 1, 0, 1, 0, 0], 'flaky-timing', {
+      triagePolicy: { scope: 'full', sandboxBudgetSec: 240 },
+    });
+    let index = 0;
+    const exits = [1, 1, 0, 1, 0, 0];
+    ctx.executor = new InMemoryExecutor((command) =>
+      command.includes('git apply - && git diff') || command.includes('corepack pnpm install --frozen-lockfile') || command.includes('git init --quiet')
+        ? result(0)
+        : { ...result(exits[index++] ?? 1), metrics: { elapsedTimeSec: 2 } });
+
+    await expect(healCase(ctx)).resolves.toMatchObject({
+      outcome: 'flaky-no-patch',
+      triage: { status: 'intermittent', reproduced: 2, of: 5, stopReason: 'maximum-attempts' },
+    });
   });
 
   it('administers and refuses the real Placebo trap candidate without a repair-model call', async () => {

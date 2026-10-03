@@ -12,6 +12,7 @@ import {
   recoverySummary,
   safeWebUrl,
   stageForRole,
+  stoppedOnTriageBudget,
   triageSentence,
 } from './format.js';
 
@@ -383,7 +384,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
 
 export function renderCaseFile(caseFile: CaseFile): string {
   const patchSections =
-    caseFile.outcome === 'flaky-no-patch' || caseFile.outcome === 'infra-stop'
+    caseFile.outcome === 'flaky-no-patch' || caseFile.outcome === 'infra-stop' || stoppedOnTriageBudget(caseFile)
       ? `${renderCounterfactual(caseFile)}${renderDischarge(caseFile)}`
       : `${renderProcedure(caseFile)}${renderPathology(caseFile)}${renderCounterfactual(caseFile)}${renderDischarge(caseFile)}`;
   const risk =

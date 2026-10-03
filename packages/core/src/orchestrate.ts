@@ -55,6 +55,7 @@ import { detectRuntimeAtPath } from './runtime/detect.js';
 import { nodeImageRefForRepository } from './runtime/node.js';
 import type { RuntimeId } from './runtime/types.js';
 import type { ReplayRecorder } from './replay/bundle.js';
+import type { TriagePolicy } from './engine/triage.js';
 
 const FAILED_STEP_LINES = 200;
 const MAX_SOURCE_FILES = 8;
@@ -249,6 +250,8 @@ export interface OrchestrationContext {
   replay?: ReplayRecorder;
   sourceReferenceOrder?: SourceReferenceOrder;
   repairVerificationScope?: RepairVerificationScope;
+  /** Triage scope and sandbox budget; absent is the legacy policy (full command, no budget). */
+  triagePolicy?: TriagePolicy;
 }
 
 export class AlreadyAttemptedError extends Error {
@@ -872,6 +875,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     stageLedger,
     traceRecorder,
     runtime,
+    ...(ctx.triagePolicy === undefined ? {} : { triagePolicy: ctx.triagePolicy }),
     ...(ctx.repairVerificationScope === undefined
       ? {}
       : { repairVerificationScope: ctx.repairVerificationScope }),

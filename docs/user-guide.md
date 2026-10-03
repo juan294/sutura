@@ -102,6 +102,15 @@ Every attempt ends as `fixed`, `flaky-no-patch`, `refused`, `gave-up`, or
 verified repair remains neutral and requires human review; Sutura never merges
 it.
 
+Before it proposes a repair, Sutura reruns the failing command in the sandbox
+up to five times to tell a real failure from a flaky one. On a slow test suite
+those reruns dominate the cost of an attempt, so they share a sandbox-time
+budget, `triage-sandbox-seconds` (default 240). Sutura measures the first rerun
+and stops before any further rerun would take the total over the budget. The
+attempt then ends `gave-up`, and the case file, comment and check state the
+measured and predicted sandbox seconds. The worst case is the budget plus one
+rerun, because the first rerun's duration is unknown until it finishes.
+
 Sutura never repairs its own repair branches. The generated workflow skips a
 failed run on a `sutura/fix-*` branch, and the Action reports the outcome
 `repair-branch-skipped` without commenting, checking, or opening a pull request.
@@ -141,7 +150,9 @@ Common configuration:
   Action input makes every result other than `fixed` fail the Sutura job.
 - Keep branch protection and human review enabled.
 - Lower Action budgets when needed. Action inputs cannot raise the core safety
-  maxima.
+  maxima. The triage sandbox budget's default (240 seconds) sits below its
+  maximum (3600), so a repository with a slow suite can raise
+  `triage-sandbox-seconds` up to that maximum.
 
 ## Upgrade a repository
 
@@ -264,6 +275,15 @@ Open the Sutura run and follow its target-run link. GitHub can display a
 `workflow_run` monitor under the default-branch workflow identity even when the
 failed target came from another branch. The evidence comment, check, and case
 file should identify the exact target run and failing source SHA.
+
+### A run gave up because triage would exceed its sandbox budget
+
+The triage line reads `sandbox-budget — not decided` and states how many
+sandbox seconds the remaining reruns would need. Either raise the
+`triage-sandbox-seconds` Action input (`SUTURA_TRIAGE_SANDBOX_SEC` for the CLI,
+up to 3600) or make the failing CI step run fewer tests, then rerun the failed
+workflow. Sutura caches nothing between
+attempts, so the next run uses the new budget.
 
 ### An upgrade would overwrite custom settings
 

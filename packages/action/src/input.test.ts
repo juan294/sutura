@@ -25,6 +25,7 @@ describe('mapActionInputs', () => {
         CONTREE_TOKEN: 'con_test',
         CONTREE_PROJECT: 'project_test',
         SUTURA_TRIAGE_N: '5',
+        SUTURA_TRIAGE_SANDBOX_SEC: '240',
         SUTURA_ROUTING_PROFILE: 'production-baseline-v1',
         SUTURA_REPAIR_MODEL_TURNS: '8',
         SUTURA_REPAIR_TOOL_CALLS: '24',
@@ -89,6 +90,7 @@ describe('mapActionInputs', () => {
       CONTREE_TOKEN: 'con_test',
       CONTREE_PROJECT: 'project_test',
       SUTURA_TRIAGE_N: '7',
+      SUTURA_TRIAGE_SANDBOX_SEC: '240',
       SUTURA_ROUTING_PROFILE: 'production-baseline-v1',
       SUTURA_REPAIR_MODEL_TURNS: '8',
       SUTURA_REPAIR_TOOL_CALLS: '24',
@@ -174,5 +176,15 @@ describe('mapActionInputs', () => {
     expect(() => mapActionInputs((key) => values[key] ?? '')).toThrowError(
       ActionInputError,
     );
+  });
+
+  it('maps and bounds the triage sandbox budget', () => {
+    const base = { 'github-token': 'gh_test', 'run-id': '42', 'nebius-api-key': 'neb_test', 'contree-token': 'con_test', 'contree-project': 'project_test' };
+    const map = (value: string) => mapActionInputs((name) => ({ ...base, 'triage-sandbox-seconds': value } as Record<string, string>)[name] ?? '');
+
+    expect(map('600').environment.SUTURA_TRIAGE_SANDBOX_SEC).toBe('600');
+    expect(map('').environment.SUTURA_TRIAGE_SANDBOX_SEC).toBe('240');
+    expect(() => map('0')).toThrow(/triage-sandbox-seconds/u);
+    expect(() => map('3601')).toThrow(/triage-sandbox-seconds/u);
   });
 });

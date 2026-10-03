@@ -282,6 +282,23 @@ describe('parseReplayBundle', () => {
     expect(() => parseReplayBundle(value)).toThrow(/repairVerificationScope/iu);
   });
 
+  it('accepts a recorded triage policy and rejects an unknown scope, key or budget', () => {
+    const value = clone(PARTIAL);
+    value.configuration.triagePolicy = { scope: 'focused', sandboxBudgetSec: 240 };
+    expect(parseReplayBundle(value)).toEqual(value);
+
+    for (const policy of [
+      { scope: 'future' },
+      { scope: 'full', sandboxBudgetSec: 0 },
+      { scope: 'full', sandboxBudgetSec: 3601 },
+      { scope: 'full', sandboxBudgetSec: 1.5 },
+      { scope: 'full', probes: 3 },
+    ]) {
+      value.configuration.triagePolicy = policy as never;
+      expect(() => parseReplayBundle(value)).toThrow(/triagePolicy/iu);
+    }
+  });
+
   it.each([
     ['repairBudgets', 'string'],
     ['search', 42],

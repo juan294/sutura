@@ -16,6 +16,9 @@ export const DEFAULT_MODELS = {
 export const TOKEN_FACTORY_BASE_URL = 'https://api.tokenfactory.nebius.com/v1/';
 
 export const MAX_TRIAGE_RUNS = 20;
+/** Triage sandbox-second budget: 4 x 60 s focused or 5 x 48 s full probes. */
+export const DEFAULT_TRIAGE_SANDBOX_SEC = 240;
+export const MAX_TRIAGE_SANDBOX_SEC = 3600;
 export const MAX_RACE_CANDIDATES = 10;
 export const MAX_STAGE_EVIDENCE_ENTRIES = 100;
 
@@ -29,6 +32,8 @@ export interface Config {
   contreeToken?: string;
   contreeProject?: string;
   triageN: number;
+  /** Cumulative triage sandbox-second budget (SUTURA_TRIAGE_SANDBOX_SEC). */
+  triageSandboxBudgetSec: number;
   raceK: number;
   models: Record<keyof typeof DEFAULT_MODELS, string>;
   routingProfileId: string;
@@ -138,6 +143,12 @@ export function loadConfig(env: ConfigEnvironment): Config {
       'SUTURA_TRIAGE_N',
       5,
       MAX_TRIAGE_RUNS,
+    ),
+    triageSandboxBudgetSec: boundedPositiveInteger(
+      env,
+      'SUTURA_TRIAGE_SANDBOX_SEC',
+      DEFAULT_TRIAGE_SANDBOX_SEC,
+      MAX_TRIAGE_SANDBOX_SEC,
     ),
     raceK: boundedPositiveInteger(
       env,
