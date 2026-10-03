@@ -1,4 +1,4 @@
-import { aggregateStageEvidence, type CaseFile } from '@sutura/core';
+import { aggregateStageEvidence, focusedTriageCounts, triageBudgetNote, type CaseFile } from '@sutura/core';
 
 export { checkOutput } from '@sutura/core';
 
@@ -31,9 +31,13 @@ export function runtimeEvidence(
   )
     ? 'sandbox preparation failed before reproduction'
     : 'sandbox reproduction attempted';
+  const focused = focusedTriageCounts(caseFile);
+  const focusedEvidence = focused === undefined ? '' : ` focused=${focused.kept}/${focused.rejected}`;
   lines.push(
-    `ConTree runtime: ${contreeStage}; triage=${caseFile.triage.reproduced}/${caseFile.triage.of} max=${caseFile.triage.maximumAttempts} stop=${caseFile.triage.stopReason} method=${caseFile.triage.methodVersion}; search-nodes=${caseFile.search?.length ?? 0}; outcome=${caseFile.outcome}`,
+    `ConTree runtime: ${contreeStage}; triage=${caseFile.triage.reproduced}/${caseFile.triage.of} max=${caseFile.triage.maximumAttempts} stop=${caseFile.triage.stopReason}${focusedEvidence} method=${caseFile.triage.methodVersion}; search-nodes=${caseFile.search?.length ?? 0}; outcome=${caseFile.outcome}`,
   );
+  const budgetNote = triageBudgetNote(caseFile);
+  if (budgetNote !== undefined) lines.push(`Triage budget: ${budgetNote}`);
   const totals = aggregateStageEvidence(caseFile);
   lines.push(
     `Sandbox evidence: operations=${totals.operationCount}; elapsed=${totals.elapsedTimeSec.toFixed(3)}s; cpu=${totals.cpuTimeSec.toFixed(3)}s; max-rss=${totals.maxRssKb}KB; sandbox cost USD=${totals.sandboxCostUsd.toFixed(6)}`,

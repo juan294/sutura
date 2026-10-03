@@ -4,6 +4,7 @@ import { resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 
 import type { CaseFile } from '../domain.js';
+import { triageBudgetNote } from '../report/format.js';
 import type { CheckAnnotation } from './types.js';
 
 export const SUTURA_CHECK_NAME = 'Sutura repair audit';
@@ -29,6 +30,7 @@ export function checkOutput(caseFile: CaseFile): { title: string; summary: strin
       `Diagnosis: ${caseFile.diagnosis.class}`,
       `Policy SHA: ${caseFile.policy.policySha}`,
       `Inference cost: $${caseFile.cost.totalUsd().toFixed(6)}`,
+      ...(triageBudgetNote(caseFile) === undefined ? [] : [`Triage: ${triageBudgetNote(caseFile)}`]),
     ].join('\n').slice(0, 65_535),
   };
 }

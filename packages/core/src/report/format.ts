@@ -1,6 +1,7 @@
 import type { CaseFile, RaceResult } from '../domain.js';
 import { findSelectedCandidate } from '../engine/candidate-identity.js';
 import { selectWinner } from '../engine/repair.js';
+import { TRIAGE_PROBE_NOTES } from '../engine/triage.js';
 
 const STAGE_BY_ROLE = {
   nano: 'Diagnosis',
@@ -88,6 +89,24 @@ export function outcomeLabel(outcome: CaseFile['outcome']): string {
   }[outcome];
 }
 
+/** The recorded ledger note that explains a triage budget stop. */
+export function triageBudgetNote(caseFile: CaseFile): string | undefined {
+  return caseFile.stages?.find(({ stage, note }) => stage === 'triage' && note?.startsWith('Triage stopped after'))?.note;
+}
+
+/** Kept and rejected focused triage probes; undefined when triage ran no focused probe. */
+export function focusedTriageCounts(caseFile: CaseFile): { kept: number; rejected: number } | undefined {
+  const notes = (caseFile.stages ?? []).filter(({ stage }) => stage === 'triage').map(({ note }) => note);
+  const kept = notes.filter((note) => note === TRIAGE_PROBE_NOTES['focused-kept']).length;
+  const rejected = notes.filter((note) => note === TRIAGE_PROBE_NOTES['focused-rejected']).length;
+  return kept + rejected === 0 ? undefined : { kept, rejected };
+}
+
+/** Triage stopped on its sandbox budget: no repair was attempted, so there is no procedure to show. */
+export function stoppedOnTriageBudget(caseFile: CaseFile): boolean {
+  return caseFile.triage.stopReason === 'sandbox-budget';
+}
+
 export function triageSentence(caseFile: CaseFile): string {
   if (caseFile.outcome === 'infra-stop') {
     if (caseFile.diagnosis.signals.includes('sandbox-preparation:failed')) {
@@ -108,6 +127,13 @@ export function triageSentence(caseFile: CaseFile): string {
   }
   if (status === 'intermittent') {
     return `${evidence} — intermittent.`;
+  }
+  if (stopReason === 'sandbox-budget') {
+    const note = triageBudgetNote(caseFile);
+    return `${evidence} — not decided: the triage sandbox budget stopped it.${note === undefined ? '' : ` ${note}.`}`;
+  }
+  if (status === 'not-run') {
+    return `${evidence} — not run.`;
   }
   return `${evidence} — real.`;
 }
@@ -167,7 +193,9 @@ export function mergeGuidance(caseFile: CaseFile): string {
     case 'refused':
       return 'Do not merge this candidate. Restore the behavior named in the failed pathology checks.';
     case 'gave-up':
-      return 'No candidate is safe to merge. Inspect the diagnosis and start a new repair cycle with more evidence.';
+      return stoppedOnTriageBudget(caseFile)
+        ? 'No repair was attempted: triage would exceed its sandbox budget. Raise the triage-sandbox-seconds input (SUTURA_TRIAGE_SANDBOX_SEC for the CLI) or narrow the CI test command, then rerun.'
+        : 'No candidate is safe to merge. Inspect the diagnosis and start a new repair cycle with more evidence.';
     case 'flaky-no-patch':
       return 'No patch exists to merge. Investigate the timing boundary and rerun with the same commit.';
     case 'infra-stop':

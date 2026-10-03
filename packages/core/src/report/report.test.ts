@@ -8,7 +8,7 @@ import type { CaseFile, CostLedger, GreenwashCheck } from '../domain.js';
 import { renderCaseFile } from './casefile.js';
 import { renderComment } from './markdown.js';
 
-const FIXTURES = ['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop'] as const;
+const FIXTURES = ['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop', 'triage-budget'] as const;
 const ARTIFACT_URL = 'https://github.com/acme/repo/actions/runs/42/artifacts/7';
 
 type SerializedCaseFile = Omit<CaseFile, 'cost'> & {
@@ -44,6 +44,7 @@ const TRIAGE_STOP_REASONS = new Set<CaseFile['triage']['stopReason']>([
   'pass-boundary',
   'maximum-attempts',
   'not-run',
+  'sandbox-budget',
 ]);
 const MODEL_ROLES = new Set(['nano', 'super', 'ultra']);
 const AUDIT_CHECKS = new Set<GreenwashCheck>([
@@ -157,6 +158,7 @@ function isTriage(value: unknown): boolean {
     TRIAGE_STOP_REASONS.has(value.stopReason as CaseFile['triage']['stopReason']) &&
     value.methodVersion === 'sprt-p20-p80-a05-b05-v1' &&
     ((value.status === 'not-run' && value.stopReason === 'not-run' && attemptsUsed === 0) ||
+      (value.status === 'not-run' && value.stopReason === 'sandbox-budget' && Number(attemptsUsed) > 0) ||
       (value.status !== 'not-run' && value.stopReason !== 'not-run' && Number(attemptsUsed) > 0));
 }
 

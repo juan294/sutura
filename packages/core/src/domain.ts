@@ -46,7 +46,8 @@ export interface TriageVerdict {
   reproductionProbability: number;
   confidenceLower: number;
   confidenceUpper: number;
-  stopReason: 'failure-boundary' | 'pass-boundary' | 'maximum-attempts' | 'not-run';
+  /** `sandbox-budget`: triage stopped before its next batch would exceed the sandbox budget (status `not-run`). */
+  stopReason: 'failure-boundary' | 'pass-boundary' | 'maximum-attempts' | 'not-run' | 'sandbox-budget';
   methodVersion: 'sprt-p20-p80-a05-b05-v1';
 }
 

@@ -13,6 +13,7 @@ import {
   recoverySummary,
   safeWebUrl,
   stageForRole,
+  stoppedOnTriageBudget,
   triageSentence,
 } from './format.js';
 
@@ -169,7 +170,8 @@ export function renderComment(caseFile: CaseFile, artifactUrl?: string): string 
 
   if (
     caseFile.outcome !== 'flaky-no-patch' &&
-    caseFile.outcome !== 'infra-stop'
+    caseFile.outcome !== 'infra-stop' &&
+    !stoppedOnTriageBudget(caseFile)
   ) {
     sections.push(
       '',

@@ -111,7 +111,12 @@ function validTriage(value: unknown): boolean {
       typeof triage.reproductionProbability !== 'number' ||
       typeof triage.confidenceLower !== 'number' || typeof triage.confidenceUpper !== 'number' ||
       triage.methodVersion !== 'sprt-p20-p80-a05-b05-v1' ||
-      !['failure-boundary', 'pass-boundary', 'maximum-attempts', 'not-run'].includes(String(triage.stopReason))) return false;
+      !['failure-boundary', 'pass-boundary', 'maximum-attempts', 'not-run', 'sandbox-budget'].includes(String(triage.stopReason))) return false;
+  // A sandbox-budget stop keeps the probes that ran before the budget stopped triage;
+  // none when it stopped right after a focused restart.
+  if (triage.stopReason === 'sandbox-budget') {
+    return triage.status === 'not-run' && Number(triage.of) >= 0 && Number(triage.reproduced) <= Number(triage.of);
+  }
   if (triage.status === 'not-run') return triage.reproduced === 0 && triage.of === 0 && triage.stopReason === 'not-run';
   if (Number(triage.of) <= 0) return false;
   if (triage.status === 'real') return triage.reproduced === triage.of;

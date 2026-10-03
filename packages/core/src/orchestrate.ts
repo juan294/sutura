@@ -55,6 +55,7 @@ import { detectRuntimeAtPath } from './runtime/detect.js';
 import { nodeImageRefForRepository } from './runtime/node.js';
 import type { RuntimeId } from './runtime/types.js';
 import type { ReplayRecorder } from './replay/bundle.js';
+import type { TriagePolicy } from './engine/triage.js';
 
 const FAILED_STEP_LINES = 200;
 const MAX_SOURCE_FILES = 8;
@@ -64,6 +65,13 @@ const MAX_DEPENDENCY_CANDIDATE_PROBES_PER_DEPTH = 192;
 const ANSI_CSI_PATTERN = /\u001B\[[0-?]*[ -/]*[@-~]/gu;
 const SOURCE_PATH_PATTERN = /(?:^|[\s("'`])(?<path>(?:\.\/)?(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+\.(?:json|[cm]?[jt]sx?|pyi?|ini|txt|ya?ml|toml))(?![A-Za-z0-9_.-])(?:(?:\(|:)(?<line>\d+))?/g;
 const WORKSPACE_LOG_LINE_PATTERN = /(?:^|[\t\n \]])(?<workspace>(?:apps|packages)\/(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+)\s+[A-Za-z0-9_:@./-]+:\s*(?<message>[^\r\n]{0,2000})/g;
+const VITEST_RUN_LINE_PATTERN = /(?:^|\s)RUN\s+v\d[\w.+-]*\s+(?<dir>\S+)\s*$/u;
+const WORKSPACE_DIRECTORY_PATTERN = /^(?:apps|packages)\/(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+$/u;
+const PNPM_PREFIXED_LINE = /^(?:\d{4}-\d{2}-\d{2}T\S+Z\s+)?\s*(?:apps|packages)\/(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+\s+[A-Za-z0-9_:@./-]+:/u;
+// vitest prints failure details before its `Test Files` summary, so the summary ends a package.
+const PACKAGE_CONTEXT_END = /^\[[^\]]+ \/ [^\]]+\]$|##\[group\]|(?:^|\s)Test Files\s|ERR_PNPM_RECURSIVE/u;
+const VITEST_FAILURE_LINE = /(?:^|\s)(?:FAIL|❯|×)\s/u;
+const VITEST_PASS_LINE = /(?:^|\s)✓\s/u;
 const GITHUB_WORKSPACE_PREFIX_PATTERN = /(^|[\s("'`])(?:(?:file:\/\/)?\/home\/runner\/work|(?:file:\/\/)?\/__w)\/([A-Za-z0-9_.-]+)\/\2\//gm;
 const NODE_FALLBACK_SOURCE_PATHS: Readonly<Partial<Record<FailureClass, readonly string[]>>> = {
   typecheck: ['tsconfig.json', 'package.json'],
@@ -242,6 +250,8 @@ export interface OrchestrationContext {
   replay?: ReplayRecorder;
   sourceReferenceOrder?: SourceReferenceOrder;
   repairVerificationScope?: RepairVerificationScope;
+  /** Triage scope and sandbox budget; absent is the legacy policy (full command, no budget). */
+  triagePolicy?: TriagePolicy;
 }
 
 export class AlreadyAttemptedError extends Error {
@@ -371,6 +381,38 @@ function safeSourcePath(path: string): string | null {
   return normalized;
 }
 
+/**
+ * A workspace run of vitest (`pnpm -r test`, one package at a time) announces
+ * its package root on a `RUN vX <dir>` line and names failing files relative to
+ * it. Failure lines (`FAIL`, `❯`, `×`) after a package run line are qualified as
+ * that package's output, the shape `extractSourceReferences` already joins for
+ * `pnpm -r` prefixes. Lines pnpm already prefixed keep their own package, the
+ * context ends with its step, group, vitest's `Test Files` summary or pnpm's
+ * recursive-run failure, and passing (`✓`)
+ * lines inside a package are dropped: their package-relative paths are not
+ * repository paths and would only crowd out the failure. A run at the
+ * repository root, or a root outside the workspace, qualifies nothing.
+ */
+function qualifyPackageRelativeLines(log: string): string {
+  let workspace: string | undefined;
+  return log.split('\n').map((line) => {
+    if (PNPM_PREFIXED_LINE.test(line)) return line;
+    const run = VITEST_RUN_LINE_PATTERN.exec(line.trimEnd());
+    if (run) {
+      const directory = run.groups?.dir ?? '';
+      workspace = WORKSPACE_DIRECTORY_PATTERN.test(directory) ? directory : undefined;
+      return line;
+    }
+    if (PACKAGE_CONTEXT_END.test(line.trim())) {
+      workspace = undefined;
+      return line;
+    }
+    if (workspace === undefined) return line;
+    if (VITEST_PASS_LINE.test(line)) return '';
+    return VITEST_FAILURE_LINE.test(line) ? `${workspace} vitest: ${line}` : line;
+  }).join('\n');
+}
+
 export function extractSourceReferences(
   log: string,
   order: SourceReferenceOrder = 'first',
@@ -380,6 +422,7 @@ export function extractSourceReferences(
     .replaceAll('file:///workspace/', '')
     .replaceAll('/workspace/', '')
     .replace(GITHUB_WORKSPACE_PREFIX_PATTERN, '$1');
+  const contextualLog = qualifyPackageRelativeLines(normalizedLog);
   const references = new Map<string, SourceReference>();
   const workspacePaths = new Set<string>();
   const isWorkspaceQualified = (path: string): boolean => {
@@ -407,7 +450,7 @@ export function extractSourceReferences(
     }
   };
 
-  for (const match of normalizedLog.matchAll(WORKSPACE_LOG_LINE_PATTERN)) {
+  for (const match of contextualLog.matchAll(WORKSPACE_LOG_LINE_PATTERN)) {
     const workspace = safeSourcePath(match.groups?.workspace ?? '');
     if (!workspace) continue;
     for (const sourceMatch of (match.groups?.message ?? '').matchAll(SOURCE_PATH_PATTERN)) {
@@ -422,7 +465,7 @@ export function extractSourceReferences(
     }
   }
 
-  for (const match of normalizedLog.matchAll(SOURCE_PATH_PATTERN)) {
+  for (const match of contextualLog.matchAll(SOURCE_PATH_PATTERN)) {
     const path = safeSourcePath(match.groups?.path ?? '');
     if (!path) continue;
     if (isWorkspaceQualified(path)) continue;
@@ -832,6 +875,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     stageLedger,
     traceRecorder,
     runtime,
+    ...(ctx.triagePolicy === undefined ? {} : { triagePolicy: ctx.triagePolicy }),
     ...(ctx.repairVerificationScope === undefined
       ? {}
       : { repairVerificationScope: ctx.repairVerificationScope }),

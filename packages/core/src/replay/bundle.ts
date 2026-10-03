@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import type { CaseFile } from '../domain.js';
 import type { SearchLimits } from '../config.js';
 import type { RepairBudgetOverrides } from '../engine/repair-budget.js';
+import type { TriagePolicy } from '../engine/triage.js';
 import type { Executor } from '../executor/types.js';
 import type { ModelTier } from '../llm/cost.js';
 import type { RepositoryPort } from '../orchestrate.js';
@@ -130,6 +131,8 @@ export interface ReplayOrchestrationConfig {
   maxOps: number;
   sourceReferenceOrder?: SourceReferenceOrder;
   repairVerificationScope?: RepairVerificationScope;
+  /** Absent in bundles recorded before bounded triage: replay uses the legacy policy. */
+  triagePolicy?: TriagePolicy;
 }
 
 export interface ReplayBundle {

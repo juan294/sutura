@@ -1,6 +1,6 @@
 # Sutura user guide
 
-This guide covers Sutura 0.3.8 for repository owners installing the GitHub
+This guide covers Sutura 0.3.9 for repository owners installing the GitHub
 Action. Sutura is in public beta, and Nebius ConTree access remains an
 access-controlled prerequisite.
 
@@ -47,15 +47,15 @@ export TYPESAFE_API_KEY="..."
 Then generate and inspect the workflow:
 
 ```bash
-npx sutura@0.3.8 init
+npx sutura@0.3.9 init
 sed -n '1,220p' .github/workflows/sutura.yml
-npx sutura@0.3.8 doctor
+npx sutura@0.3.9 doctor
 ```
 
 If the repository has more than one workflow, select the exact workflow name:
 
 ```bash
-npx sutura@0.3.8 init --workflow "CI"
+npx sutura@0.3.9 init --workflow "CI"
 ```
 
 Use `--no-tavily` when Tavily is unavailable. For a polyglot repository, set
@@ -102,6 +102,27 @@ Every attempt ends as `fixed`, `flaky-no-patch`, `refused`, `gave-up`, or
 verified repair remains neutral and requires human review; Sutura never merges
 it.
 
+Before it proposes a repair, Sutura reruns the failing command in the sandbox
+up to five times to tell a real failure from a flaky one. On a slow test suite
+those reruns dominate the cost of an attempt, so they share a sandbox-time
+budget, `triage-sandbox-seconds` (default 240). Sutura measures the first rerun
+and stops before any further rerun would take the total over the budget. The
+attempt then ends `gave-up`, and the case file, comment and check state the
+measured and predicted sandbox seconds. The worst case is the budget plus one
+rerun, because the first rerun's duration is unknown until it finishes.
+
+When the failing step calls a test runner directly (vitest, jest,
+`node --test` or pytest) and the log names exactly one failing test file,
+Sutura first reruns only that file. A focused rerun counts only when it fails
+the same test with the same message. At the first focused rerun that passes or
+fails differently, Sutura discards the focused reruns and starts again with the
+full command, within the same budget. Focused reruns can therefore confirm a
+real failure, but a flaky or intermittent verdict always comes from the full
+command. Package scripts (`pnpm test`), compound commands (`&&`, `;`, `|`),
+unknown runner options, collection or import errors and failures in several
+files keep the full command; the case file names the reason, and the evidence
+line reports `focused=<kept>/<rejected>` when focused reruns ran.
+
 Sutura never repairs its own repair branches. The generated workflow skips a
 failed run on a `sutura/fix-*` branch, and the Action reports the outcome
 `repair-branch-skipped` without commenting, checking, or opening a pull request.
@@ -127,7 +148,7 @@ requests write. Pull requests opened with an App token trigger CI normally.
 Run `doctor` from the repository whenever setup or credentials change:
 
 ```bash
-npx sutura@0.3.8 doctor
+npx sutura@0.3.9 doctor
 ```
 
 It checks the local workflow, immutable Action pin, required permissions and
@@ -141,7 +162,9 @@ Common configuration:
   Action input makes every result other than `fixed` fail the Sutura job.
 - Keep branch protection and human review enabled.
 - Lower Action budgets when needed. Action inputs cannot raise the core safety
-  maxima.
+  maxima. The triage sandbox budget's default (240 seconds) sits below its
+  maximum (3600), so a repository with a slow suite can raise
+  `triage-sandbox-seconds` up to that maximum.
 
 ## Upgrade a repository
 
@@ -149,16 +172,16 @@ Each repository pins its own immutable Action commit. Updating a global npm
 package, or running a newer CLI elsewhere on the machine, does not update any
 installed workflow.
 
-Sutura 0.3.8 does not have an `upgrade` command. Upgrade each repository
+Sutura 0.3.9 does not have an `upgrade` command. Upgrade each repository
 deliberately after reading the target release notes.
 
 For an unmodified generated workflow, regenerate it with the target CLI and
 review the complete diff before committing:
 
 ```bash
-npx sutura@0.3.8 init --force
+npx sutura@0.3.9 init --force
 git diff -- .github/workflows/sutura.yml
-npx sutura@0.3.8 doctor
+npx sutura@0.3.9 doctor
 ```
 
 `init --force` replaces the entire workflow. Do not use it on a customized
@@ -200,7 +223,7 @@ gh secret set TAVILY_API_KEY
 gh secret set OPENAI_API_KEY
 gh secret set TYPESAFE_API_KEY
 gh variable set CONTREE_PROJECT
-npx sutura@0.3.8 doctor
+npx sutura@0.3.9 doctor
 ```
 
 Omit Tavily when the installation uses `--no-tavily`. `OPENAI_API_KEY` and
@@ -264,6 +287,18 @@ Open the Sutura run and follow its target-run link. GitHub can display a
 `workflow_run` monitor under the default-branch workflow identity even when the
 failed target came from another branch. The evidence comment, check, and case
 file should identify the exact target run and failing source SHA.
+
+### A run gave up because triage would exceed its sandbox budget
+
+The triage line reads `sandbox-budget — not decided` and states how many
+sandbox seconds the remaining reruns would need. Either raise the
+`triage-sandbox-seconds` Action input (`SUTURA_TRIAGE_SANDBOX_SEC` for the CLI,
+up to 3600) or make the failing CI step run fewer tests, then rerun the failed
+workflow. A step that calls the test runner directly (for example
+`pnpm exec vitest run` rather than `pnpm test`) lets Sutura rerun only the
+failing test file; the case file's `Focused triage not applied:` note says why
+it did not. Sutura caches nothing between
+attempts, so the next run uses the new budget.
 
 ### An upgrade would overwrite custom settings
 

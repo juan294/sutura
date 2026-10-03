@@ -1,0 +1,465 @@
+2026-10-02T14:15:35.0504112Z packages/cli build: $ node dist/bin.js --help && node dist/bin.js --version
+2026-10-02T14:15:35.1065675Z packages/cli build: Usage:
+2026-10-02T14:15:35.1066967Z packages/cli build:   cirujano optimize collect --repository <owner/name> --ref <sha> --workflow <path> --job <key> --run <id>... --output <directory>
+2026-10-02T14:15:35.1068527Z packages/cli build:   cirujano optimize diagnose --input <input.json> --config <config.json> --output <directory> [--permit <permit.json>]
+2026-10-02T14:15:35.1069773Z packages/cli build:   cirujano optimize propose --input <input.json> --diagnosis <diagnosis.json> --output <directory>
+2026-10-02T14:15:35.1071225Z packages/cli build:   cirujano optimize verify --proposal <proposal.json> --profile <profile.json> --permit <permit.json> --output <directory>
+2026-10-02T14:15:35.1072837Z packages/cli build:   cirujano optimize measure --proposal <proposal.json> --sandbox <sandbox.json> --cohort <cohort.json> --output <directory>
+2026-10-02T14:15:35.1074350Z packages/cli build:   cirujano optimize report --proposal <proposal.json> --sandbox <sandbox.json> --measurement <measurement.json> --output <directory>
+2026-10-02T14:15:35.1075435Z packages/cli build:   cirujano optimize publish --report <report.json> --permit <permit.json>
+2026-10-02T14:15:35.1076378Z packages/cli build:   cirujano optimize status --operation <directory> [--format json|text]
+2026-10-02T14:15:35.1077333Z packages/cli build:   cirujano optimize cancel --operation <directory> --permit <permit.json>
+2026-10-02T14:15:35.1078254Z packages/cli build:   cirujano estimate --jobs <github-jobs.json> [--format json|text]
+2026-10-02T14:15:35.1079120Z packages/cli build:   cirujano runner inspect --config <runner.json> [--format json|text]
+2026-10-02T14:15:35.1080056Z packages/cli build:   cirujano runner watch --config <runner.json> [--permit <permit.json>] [--dry-run]
+2026-10-02T14:15:35.1081152Z packages/cli build:   cirujano runner stop --config <runner.json> --permit <permit.json>
+2026-10-02T14:15:35.1082038Z packages/cli build:   cirujano runner cleanup --config <runner.json> --permit <permit.json>
+2026-10-02T14:15:35.1082910Z packages/cli build:   cirujano runner report --state <state.json> --format json
+2026-10-02T14:15:35.1084281Z packages/cli build:   cirujano telemetry collect --owner <login> --store <directory> [--lookback-hours 48]
+2026-10-02T14:15:35.1085621Z packages/cli build:   cirujano telemetry report --store <directory> --since <YYYY-MM-DD> [--format json|markdown] [--registry <fleet-registry.json>]
+2026-10-02T14:15:35.1087180Z packages/cli build:   cirujano fleet init --registry <file> --owner <login> [--since <YYYY-MM-DD>] [--through <YYYY-MM-DD>]
+2026-10-02T14:15:35.1088618Z packages/cli build:   cirujano fleet enroll --registry <file> --repository <owner/name> --workflow <path> --job <key> [--job-name <name>]... [--sku actions_linux] [--branch <name>]
+2026-10-02T14:15:35.1089880Z packages/cli build:   cirujano fleet cutover --registry <file> --id <P#> --commit <sha>
+2026-10-02T14:15:35.1090680Z packages/cli build:   cirujano fleet verify --registry <file>
+2026-10-02T14:15:35.1091396Z packages/cli build:   cirujano fleet show --registry <file>
+2026-10-02T14:15:35.1092402Z packages/cli build:   cirujano fleet controller-config --registry <file> --id <P#> --state-root <dir> --template <config.json> [--allowed-branch <branch>] (admission is same-repository; the branch matters for integration pushes)
+2026-10-02T14:15:35.1093700Z packages/cli build:   cirujano fleet permit-proposal --registry <file> --id <P#> --candidate-digest <sha256> --quote <quote.json>
+2026-10-02T14:15:35.1094529Z packages/cli build:   cirujano fleet publish --registry <file> --store <directory> --since <YYYY-MM-DD> --output <report.md>
+2026-10-02T14:15:35.1095013Z packages/cli build:   cirujano --help
+2026-10-02T14:15:35.1095322Z packages/cli build:   cirujano --version
+2026-10-02T14:15:35.1095849Z packages/cli build: estimate reads the JSON body of GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs
+2026-10-02T14:15:35.1096381Z packages/cli build: and reports the billable minutes GitHub charges for that run.
+2026-10-02T14:15:35.1557619Z packages/cli build: 0.0.1
+2026-10-02T14:15:35.1721913Z packages/cli build: Done
+2026-10-02T14:15:35.2021298Z ##[group]Run node scripts/verify-bundle.mjs
+2026-10-02T14:15:35.2021782Z [36;1mnode scripts/verify-bundle.mjs[0m
+2026-10-02T14:15:35.2089342Z shell: /usr/bin/bash -e {0}
+2026-10-02T14:15:35.2090110Z env:
+2026-10-02T14:15:35.2090343Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-02T14:15:35.2090608Z ##[endgroup]
+2026-10-02T14:15:35.2598027Z [PASS] packages/action/dist/index.cjs matches the current source.
+2026-10-02T14:15:35.2671866Z ##[group]Run pnpm run test:coverage
+2026-10-02T14:15:35.2672325Z [36;1mpnpm run test:coverage[0m
+2026-10-02T14:15:35.2741501Z shell: /usr/bin/bash -e {0}
+2026-10-02T14:15:35.2741738Z env:
+2026-10-02T14:15:35.2741972Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+2026-10-02T14:15:35.2742250Z ##[endgroup]
+2026-10-02T14:15:35.6425575Z $ pnpm -r --workspace-concurrency=1 test:coverage
+2026-10-02T14:15:36.0047663Z Scope: 4 of 5 workspace projects
+2026-10-02T14:15:36.0067132Z ##[group]@cirujano/core@0.0.1 : test:coverage packages/core
+2026-10-02T14:15:36.0069242Z $ vitest run --config ../../vitest.config.ts --coverage
+2026-10-02T14:15:36.3317343Z 
+2026-10-02T14:15:36.3320358Z [1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/home/runner/work/cirujano/cirujano/packages/core[39m
+2026-10-02T14:15:36.3321404Z       [2mCoverage enabled with [22m[33mv8[39m
+2026-10-02T14:15:36.3321691Z 
+2026-10-02T14:15:36.5916234Z  [32m✓[39m src/optimization/contracts.test.ts [2m([22m[2m27 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+2026-10-02T14:15:36.9335300Z  [32m✓[39m src/optimization/measurement.test.ts [2m([22m[2m73 tests[22m[2m)[22m[32m 169[2mms[22m[39m
+2026-10-02T14:15:37.2408494Z  [32m✓[39m src/optimization/report.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 153[2mms[22m[39m
+2026-10-02T14:15:38.5001374Z  [32m✓[39m src/optimization/quality-reporter.test.ts [2m([22m[2m52 tests[22m[2m)[22m[32m 41[2mms[22m[39m
+2026-10-02T14:15:39.0208294Z  [32m✓[39m src/optimization/patch.test.ts [2m([22m[2m38 tests[22m[2m)[22m[33m 342[2mms[22m[39m
+2026-10-02T14:15:39.2907557Z  [32m✓[39m src/optimization/workflow.test.ts [2m([22m[2m37 tests[22m[2m)[22m[32m 97[2mms[22m[39m
+2026-10-02T14:15:39.4292242Z  [32m✓[39m src/billing.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+2026-10-02T14:15:39.5766337Z  [32m✓[39m src/optimization/canonical.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+2026-10-02T14:15:39.7879028Z  [32m✓[39m src/optimization/shared-boundaries.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 48[2mms[22m[39m
+2026-10-02T14:15:39.9586935Z  [32m✓[39m src/index.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+2026-10-02T14:15:40.0478512Z 
+2026-10-02T14:15:40.0483349Z [2m Test Files [22m [1m[32m10 passed[39m[22m[90m (10)[39m
+2026-10-02T14:15:40.0484188Z [2m      Tests [22m [1m[32m278 passed[39m[22m[90m (278)[39m
+2026-10-02T14:15:40.0484745Z [2m   Start at [22m 14:15:36
+2026-10-02T14:15:40.0485805Z [2m   Duration [22m 3.71s[2m (transform 187ms, setup 0ms, import 1.54s, tests 892ms, environment 1ms)[22m
+2026-10-02T14:15:40.0488055Z 
+2026-10-02T14:15:40.0507380Z [34m % [39m[2mCoverage report from [22m[33mv8[39m
+2026-10-02T14:15:40.0528577Z 
+2026-10-02T14:15:40.0529124Z =============================== Coverage summary ===============================
+2026-10-02T14:15:40.0529700Z Statements   : 92.4% ( 900/974 )
+2026-10-02T14:15:40.0530138Z Branches     : 89.51% ( 888/992 )
+2026-10-02T14:15:40.0530520Z Functions    : 99.38% ( 162/163 )
+2026-10-02T14:15:40.0531076Z Lines        : 99.19% ( 491/495 )
+2026-10-02T14:15:40.0531555Z ================================================================================
+2026-10-02T14:15:40.0727851Z ##[endgroup]
+2026-10-02T14:15:40.0731102Z ##[group]@cirujano/runner@0.0.1 : test:coverage packages/runner
+2026-10-02T14:15:40.0731778Z $ vitest run --config ../../vitest.config.ts --coverage
+2026-10-02T14:15:40.3908349Z 
+2026-10-02T14:15:40.3912022Z [1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/home/runner/work/cirujano/cirujano/packages/runner[39m
+2026-10-02T14:15:40.3912895Z       [2mCoverage enabled with [22m[33mv8[39m
+2026-10-02T14:15:40.3913182Z 
+2026-10-02T14:15:44.9419591Z  [32m✓[39m src/controller.test.ts [2m([22m[2m45 tests[22m[2m)[22m[33m 4266[2mms[22m[39m
+2026-10-02T14:15:44.9421492Z      [33m[2m✓[22m[39m survives external SIGKILL for vm at after-intent-event with exactly one provider resource [33m 449[2mms[22m[39m
+2026-10-02T14:15:44.9422798Z      [33m[2m✓[22m[39m survives external SIGKILL for vm at before-provider-io with exactly one provider resource [33m 340[2mms[22m[39m
+2026-10-02T14:15:44.9423671Z      [33m[2m✓[22m[39m survives external SIGKILL for registration at before-provider-io with exactly one provider resource [33m 525[2mms[22m[39m
+2026-10-02T14:15:44.9424510Z      [33m[2m✓[22m[39m survives external SIGKILL for vm at after-readback-journal with exactly one provider resource [33m 322[2mms[22m[39m
+2026-10-02T14:15:45.1459434Z  [32m✓[39m src/lifecycle.test.ts [2m([22m[2m81 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+2026-10-02T14:15:45.4779164Z  [32m✓[39m src/adapters/github.test.ts [2m([22m[2m44 tests[22m[2m)[22m[32m 162[2mms[22m[39m
+2026-10-02T14:15:47.1000490Z existing generation cannot be extended
+2026-10-02T14:15:47.1192798Z new generation requires confirmed normal provider stop
+2026-10-02T14:15:47.2173744Z expired grant requires fresh VM creation
+2026-10-02T14:15:47.7859254Z  [32m✓[39m src/adapters/guest.test.ts [2m([22m[2m32 tests[22m[2m)[22m[33m 2163[2mms[22m[39m
+2026-10-02T14:15:47.7860564Z      [33m[2m✓[22m[39m holds the generation lock across the sudo listener boundary until drain stops it [33m 1161[2mms[22m[39m
+2026-10-02T14:15:47.9788636Z  [32m✓[39m src/adapters/nebius.test.ts [2m([22m[2m48 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+2026-10-02T14:15:49.9863376Z  [32m✓[39m src/adapters/cloud-init.test.ts [2m([22m[2m18 tests[22m[2m)[22m[33m 1856[2mms[22m[39m
+2026-10-02T14:15:49.9875014Z      [33m[2m✓[22m[39m withholds schema annotations that contain injected private host-key material [33m 1807[2mms[22m[39m
+2026-10-02T14:15:50.2230289Z  [32m✓[39m src/pilot.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 94[2mms[22m[39m
+2026-10-02T14:15:50.3736617Z  [32m✓[39m src/report.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+2026-10-02T14:15:50.5186320Z  [32m✓[39m src/operating.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+2026-10-02T14:15:50.9062897Z  [32m✓[39m src/journal.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 249[2mms[22m[39m
+2026-10-02T14:15:51.0506976Z  [32m✓[39m src/adapters/ssh.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+2026-10-02T14:15:51.1851996Z  [32m✓[39m src/config.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+2026-10-02T14:15:51.3136900Z  [32m✓[39m src/boot-harness.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+2026-10-02T14:15:51.4473728Z  [32m✓[39m src/cost.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+2026-10-02T14:15:52.6177962Z  [32m✓[39m src/adapters/process.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 1035[2mms[22m[39m
+2026-10-02T14:15:52.6178749Z      [33m[2m✓[22m[39m terminates a timed-out child and marks truncated output [33m 1004[2mms[22m[39m
+2026-10-02T14:15:52.7431713Z  [32m✓[39m src/ci-workflow.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+2026-10-02T14:15:52.9165070Z 
+2026-10-02T14:15:52.9169599Z [2m Test Files [22m [1m[32m16 passed[39m[22m[90m (16)[39m
+2026-10-02T14:15:52.9170401Z [2m      Tests [22m [1m[32m393 passed[39m[22m[90m (393)[39m
+2026-10-02T14:15:52.9171137Z [2m   Start at [22m 14:15:40
+2026-10-02T14:15:52.9172653Z [2m   Duration [22m 12.52s[2m (transform 306ms, setup 0ms, import 572ms, tests 9.92s, environment 1ms)[22m
+2026-10-02T14:15:52.9174064Z 
+2026-10-02T14:15:52.9193310Z [34m % [39m[2mCoverage report from [22m[33mv8[39m
+2026-10-02T14:15:52.9222810Z 
+2026-10-02T14:15:52.9223143Z =============================== Coverage summary ===============================
+2026-10-02T14:15:52.9224300Z Statements   : 86.25% ( 1857/2153 )
+2026-10-02T14:15:52.9224711Z Branches     : 82.49% ( 1706/2068 )
+2026-10-02T14:15:52.9224963Z Functions    : 97.1% ( 336/346 )
+2026-10-02T14:15:52.9225505Z Lines        : 95.04% ( 1574/1656 )
+2026-10-02T14:15:52.9225812Z ================================================================================
+2026-10-02T14:15:52.9822873Z ##[endgroup]
+2026-10-02T14:15:52.9825982Z ##[group]@cirujano/action@0.0.1 : test:coverage packages/action
+2026-10-02T14:15:52.9826597Z $ vitest run --config ../../vitest.config.ts --coverage
+2026-10-02T14:15:53.3018801Z 
+2026-10-02T14:15:53.3022175Z [1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/home/runner/work/cirujano/cirujano/packages/action[39m
+2026-10-02T14:15:53.3023006Z       [2mCoverage enabled with [22m[33mv8[39m
+2026-10-02T14:15:53.3023337Z 
+2026-10-02T14:15:53.6051971Z  [32m✓[39m src/main.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+2026-10-02T14:15:53.7344697Z  [32m✓[39m src/inputs.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+2026-10-02T14:15:53.7545040Z 
+2026-10-02T14:15:53.7548493Z [2m Test Files [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+2026-10-02T14:15:53.7549283Z [2m      Tests [22m [1m[32m6 passed[39m[22m[90m (6)[39m
+2026-10-02T14:15:53.7549788Z [2m   Start at [22m 14:15:53
+2026-10-02T14:15:53.7551387Z [2m   Duration [22m 446ms[2m (transform 119ms, setup 0ms, import 188ms, tests 11ms, environment 0ms)[22m
+2026-10-02T14:15:53.7552935Z 
+2026-10-02T14:15:53.7565185Z [34m % [39m[2mCoverage report from [22m[33mv8[39m
+2026-10-02T14:15:53.7578207Z 
+2026-10-02T14:15:53.7578539Z =============================== Coverage summary ===============================
+2026-10-02T14:15:53.7579380Z Statements   : 100% ( 27/27 )
+2026-10-02T14:15:53.7580078Z Branches     : 87.5% ( 14/16 )
+2026-10-02T14:15:53.7580403Z Functions    : 100% ( 3/3 )
+2026-10-02T14:15:53.7580717Z Lines        : 100% ( 26/26 )
+2026-10-02T14:15:53.7581307Z ================================================================================
+2026-10-02T14:15:53.7774756Z ##[endgroup]
+2026-10-02T14:15:53.7776157Z ##[group]cirujano@0.0.1 : test:coverage packages/cli
+2026-10-02T14:15:53.7776891Z $ vitest run --config ../../vitest.config.ts --coverage
+2026-10-02T14:15:54.0966715Z 
+2026-10-02T14:15:54.0969917Z [1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/home/runner/work/cirujano/cirujano/packages/cli[39m
+2026-10-02T14:15:54.0970740Z       [2mCoverage enabled with [22m[33mv8[39m
+2026-10-02T14:15:54.0971254Z 
+2026-10-02T14:16:55.8834183Z  [32m✓[39m src/runner-service.test.ts [2m([22m[2m49 tests[22m[2m)[22m[33m 61061[2mms[22m[39m
+2026-10-02T14:16:55.8835062Z      [33m[2m✓[22m[39m blocks an authorized start when the conservative network envelope is unbounded [33m 381[2mms[22m[39m
+2026-10-02T14:16:55.8836540Z      [33m[2m✓[22m[39m runs a registration lifecycle effect using token-on-stdin and exact SSH helper argv [33m 320[2mms[22m[39m
+2026-10-02T14:16:55.8837862Z      [33m[2m✓[22m[39m journals direct stop and cleanup before provider writes and verifies terminal readback [33m 638[2mms[22m[39m
+2026-10-02T14:16:55.8839203Z      [33m[2m✓[22m[39m does not replay a resolved stop once the provider shows the VM running again [33m 698[2mms[22m[39m
+2026-10-02T14:16:55.8840444Z      [33m[2m✓[22m[39m recovers an externally killed built direct action at direct-prepared without unsafe replay [33m 804[2mms[22m[39m
+2026-10-02T14:16:55.8841985Z      [33m[2m✓[22m[39m recovers an externally killed built direct action at direct-emitting without unsafe replay [33m 1073[2mms[22m[39m
+2026-10-02T14:16:55.8843319Z      [33m[2m✓[22m[39m recovers an externally killed built direct action at direct-provider-io without unsafe replay [33m 539[2mms[22m[39m
+2026-10-02T14:16:55.8844521Z      [33m[2m✓[22m[39m recovers an externally killed built direct action at direct-terminal without unsafe replay [33m 641[2mms[22m[39m
+2026-10-02T14:16:55.8845726Z      [33m[2m✓[22m[39m persists structured blocked evidence when an ambiguous emission has a related provider operation [33m 463[2mms[22m[39m
+2026-10-02T14:16:55.8847351Z      [33m[2m✓[22m[39m recovers an ambiguous stop when every related provider operation already finished [33m 1039[2mms[22m[39m
+2026-10-02T14:16:55.8848548Z      [33m[2m✓[22m[39m drains and emits structured resolved recovery when the built watcher receives SIGINT [33m 751[2mms[22m[39m
+2026-10-02T14:16:55.8849765Z      [33m[2m✓[22m[39m drives the built CLI through the complete stateful R11 lifecycle and exact report [33m 6612[2mms[22m[39m
+2026-10-02T14:16:55.8851146Z      [33m[2m✓[22m[39m deletes the retained disk after an idle stop even if recovery-authorized permit expires [33m 5354[2mms[22m[39m
+2026-10-02T14:16:55.8852353Z      [33m[2m✓[22m[39m does not reconcile a start until the guest reports the generation it armed [33m 1930[2mms[22m[39m
+2026-10-02T14:16:55.8853492Z      [33m[2m✓[22m[39m arms a pending start during a GitHub repository outage without admitting queued work [33m 1884[2mms[22m[39m
+2026-10-02T14:16:55.8854657Z      [33m[2m✓[22m[39m releases a registration effect before an ephemeral runner finishes its first job [33m 2171[2mms[22m[39m
+2026-10-02T14:16:55.8855863Z      [33m[2m✓[22m[39m reconciles an old registration effect only after cleanup proves VM and runner absence [33m 1058[2mms[22m[39m
+2026-10-02T14:16:55.8857205Z      [33m[2m✓[22m[39m replaces a generation that powered itself off at its immutable deadline and keeps accounting monotonic [33m 3746[2mms[22m[39m
+2026-10-02T14:16:55.8858413Z      [33m[2m✓[22m[39m replaces a start that stopped before registration after its boot window [33m 2437[2mms[22m[39m
+2026-10-02T14:16:55.8859948Z      [33m[2m✓[22m[39m keeps the stopped VM while Nebius refuses its start for public IPv4 quota, then retries only the start [33m 2880[2mms[22m[39m
+2026-10-02T14:16:55.8861410Z      [33m[2m✓[22m[39m retries a refused start of a previously booted VM as the generation its guest will accept [33m 3233[2mms[22m[39m
+2026-10-02T14:16:55.8862575Z      [33m[2m✓[22m[39m waits instead of failing when the create command itself is refused for quota [33m 696[2mms[22m[39m
+2026-10-02T14:16:55.8863684Z      [33m[2m✓[22m[39m waits for a pending provider start before retiring a stopped generation [33m 1450[2mms[22m[39m
+2026-10-02T14:16:55.8864827Z      [33m[2m✓[22m[39m still blocks a stopped guest before its journaled deadline instead of deleting it [33m 2846[2mms[22m[39m
+2026-10-02T14:16:55.8866312Z      [33m[2m✓[22m[39m retries one transient start readiness failure without another provider start: ssh: connect to host 203.0.113.4 port 22: Connection refused [33m 2009[2mms[22m[39m
+2026-10-02T14:16:55.8868049Z      [33m[2m✓[22m[39m retries one transient start readiness failure without another provider start: kex_exchange_identification: read: Connection reset by peer [33m 2133[2mms[22m[39m
+2026-10-02T14:16:55.8869481Z      [33m[2m✓[22m[39m fails a transient SSH result at the original boot deadline without another start [33m 1548[2mms[22m[39m
+2026-10-02T14:16:55.8870736Z      [33m[2m✓[22m[39m refuses to restart a guest that stopped itself, even after a direct stop finds it stopped [33m 2514[2mms[22m[39m
+2026-10-02T14:16:55.8871970Z      [33m[2m✓[22m[39m records its own emitted stop and restarts on the next demand [33m 2516[2mms[22m[39m
+2026-10-02T14:16:55.8873045Z      [33m[2m✓[22m[39m persists a bounded redacted stderr tail when a guest helper fails [33m 1916[2mms[22m[39m
+2026-10-02T14:16:55.8873961Z      [33m[2m✓[22m[39m fails closed on host-key during start reconciliation [33m 1463[2mms[22m[39m
+2026-10-02T14:16:55.8874868Z      [33m[2m✓[22m[39m fails closed on authentication during start reconciliation [33m 1433[2mms[22m[39m
+2026-10-02T14:16:56.3456972Z  [32m✓[39m src/fleet-service.test.ts [2m([22m[2m31 tests[22m[2m)[22m[32m 163[2mms[22m[39m
+2026-10-02T14:16:57.0531507Z  [32m✓[39m src/optimization/sandbox.test.ts [2m([22m[2m79 tests[22m[2m)[22m[33m 468[2mms[22m[39m
+2026-10-02T14:16:57.3082484Z  [32m✓[39m src/telemetry-service.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 44[2mms[22m[39m
+2026-10-02T14:16:57.5241355Z  [32m✓[39m src/telemetry.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+2026-10-02T14:16:57.7482162Z  [32m✓[39m src/telemetry-enrollments.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+2026-10-02T14:17:02.9864594Z  [32m✓[39m src/optimization/evaluate.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 4956[2mms[22m[39m
+2026-10-02T14:17:02.9865708Z      [33m[2m✓[22m[39m pins separate 6/8/7 denominators, real boundaries and zero live calls [33m 629[2mms[22m[39m
+2026-10-02T14:17:02.9866546Z      [33m[2m✓[22m[39m validates the entire model-to-PR chain and rejects mutated evidence [33m 4261[2mms[22m[39m
+2026-10-02T14:17:04.8293270Z  [32m✓[39m src/optimization/service.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 1598[2mms[22m[39m
+2026-10-02T14:17:04.8294561Z      [33m[2m✓[22m[39m persists inference and diagnosis with intact receipt digests and one global permit use [33m 333[2mms[22m[39m
+2026-10-02T14:17:06.4447420Z  [32m✓[39m src/optimization/harness.test.ts [2m([22m[2m24 tests[22m[2m)[22m[33m 1423[2mms[22m[39m
+2026-10-02T14:17:06.4448120Z      [33m[2m✓[22m[39m reports command timeout without accepting quality [33m 708[2mms[22m[39m
+2026-10-02T14:17:06.6492402Z  [32m✓[39m src/args.test.ts [2m([22m[2m47 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+2026-10-02T14:17:06.9255666Z  [32m✓[39m src/optimization/nebius.test.ts [2m([22m[2m31 tests[22m[2m)[22m[32m 92[2mms[22m[39m
+2026-10-02T14:17:16.6525453Z  [32m✓[39m src/optimization/verify.test.ts [2m([22m[2m18 tests[22m[2m)[22m[33m 9501[2mms[22m[39m
+2026-10-02T14:17:16.6526790Z      [33m[2m✓[22m[39m binds two real candidate/source identities and keeps all credentials out of guest payload/env [33m 626[2mms[22m[39m
+2026-10-02T14:17:16.6528064Z      [33m[2m✓[22m[39m rejects a real candidate with extra changed source before any provider request [33m 472[2mms[22m[39m
+2026-10-02T14:17:16.6529240Z      [33m[2m✓[22m[39m does not replay completed or uncertain stages or reuse exhausted authority in another output [33m 1006[2mms[22m[39m
+2026-10-02T14:17:16.6530577Z      [33m[2m✓[22m[39m retains a lost create outcome and discloses provider inspection with no additional POST [33m 657[2mms[22m[39m
+2026-10-02T14:17:16.6531972Z      [33m[2m✓[22m[39m blocks candidate quality/hash/command mutant deleted-test [33m 777[2mms[22m[39m
+2026-10-02T14:17:16.6532992Z      [33m[2m✓[22m[39m blocks candidate quality/hash/command mutant skip [33m 466[2mms[22m[39m
+2026-10-02T14:17:16.6534018Z      [33m[2m✓[22m[39m blocks candidate quality/hash/command mutant coverage [33m 375[2mms[22m[39m
+2026-10-02T14:17:16.6534998Z      [33m[2m✓[22m[39m blocks candidate quality/hash/command mutant hash [33m 448[2mms[22m[39m
+2026-10-02T14:17:16.6536001Z      [33m[2m✓[22m[39m blocks candidate quality/hash/command mutant command [33m 607[2mms[22m[39m
+2026-10-02T14:17:16.6537067Z      [33m[2m✓[22m[39m does not start candidate execution after a failed base command [33m 820[2mms[22m[39m
+2026-10-02T14:17:16.6538116Z      [33m[2m✓[22m[39m rejects altered retained profile/artifact on readback instead of trusting verified status [33m 931[2mms[22m[39m
+2026-10-02T14:17:16.6539189Z      [33m[2m✓[22m[39m never cancels an unowned operation or one authorized for another image [33m 411[2mms[22m[39m
+2026-10-02T14:17:16.6540276Z      [33m[2m✓[22m[39m executes verify and reconciles status through the installed command service [33m 328[2mms[22m[39m
+2026-10-02T14:17:16.6541494Z      [33m[2m✓[22m[39m status rejects single-file completed sandbox evidence tampering [33m 319[2mms[22m[39m
+2026-10-02T14:17:16.6542506Z      [33m[2m✓[22m[39m status rejects single-file completed image evidence tampering [33m 375[2mms[22m[39m
+2026-10-02T14:17:16.6543867Z      [33m[2m✓[22m[39m checks actual operation ownership before any cancellation DELETE [33m 359[2mms[22m[39m
+2026-10-02T14:17:16.6545169Z      [33m[2m✓[22m[39m cancels an owned known running operation and confirms terminal disposable state without a second create [33m 315[2mms[22m[39m
+2026-10-02T14:17:16.8055320Z  [32m✓[39m src/runner-scheduler.test.ts [2m([22m[2m7 tests[22m[2m | [22m[33m5 skipped[39m[2m)[22m[32m 5[2mms[22m[39m
+2026-10-02T14:17:17.0273765Z  [32m✓[39m src/fleet-registry.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+2026-10-02T14:17:17.2851183Z  [32m✓[39m src/optimization/image-context.test.ts [2m([22m[2m27 tests[22m[2m)[22m[32m 78[2mms[22m[39m
+2026-10-02T14:17:19.3201648Z $ vitest run --config vitest.config.mjs --coverage
+2026-10-02T14:17:21.6804334Z $ vitest run --config vitest.config.mjs --coverage
+2026-10-02T14:17:23.7196749Z $ vitest run --config vitest.config.mjs --coverage
+2026-10-02T14:17:25.7863106Z $ vitest run --config vitest.config.mjs --coverage
+2026-10-02T14:17:30.6156939Z $ vitest run --config vitest.config.mjs --coverage
+2026-10-02T14:17:32.5611196Z $ vitest run --config vitest.config.mjs --coverage
+2026-10-02T14:17:34.4938279Z $ vitest run --config vitest.config.mjs --coverage
+2026-10-02T14:17:36.0565493Z $ vitest run --config vitest.config.mjs --coverage
+2026-10-02T14:17:37.7059197Z $ vitest run --config vitest.config.mjs --coverage
+2026-10-02T14:17:39.6640435Z $ vitest run --config vitest.config.mjs --coverage
+2026-10-02T14:17:41.5916298Z $ vitest run --config vitest.config.mjs --coverage
+2026-10-02T14:17:43.5668414Z $ vitest run --config vitest.config.mjs --coverage
+2026-10-02T14:17:45.5205794Z $ vitest run --config vitest.config.mjs --coverage
+2026-10-02T14:17:47.4735016Z $ vitest run --config vitest.config.mjs --coverage
+2026-10-02T14:17:49.7945973Z $ vitest run --config vitest.config.mjs --coverage
+2026-10-02T14:17:51.3521257Z  [32m✓[39m src/optimization/quality-reporter-entry.test.ts [2m([22m[2m21 tests[22m[2m)[22m[33m 33835[2mms[22m[39m
+2026-10-02T14:17:51.3522725Z      [33m[2m✓[22m[39m binds actual Git source, reports, runtimes and GitHub environment with six source digests [33m 2542[2mms[22m[39m
+2026-10-02T14:17:51.3523965Z      [33m[2m✓[22m[39m accepts an actual tracked empty regular source file without accepting empty reports [33m 1999[2mms[22m[39m
+2026-10-02T14:17:51.3525241Z      [33m[2m✓[22m[39m runs the actual standalone bundled start/finish CLI without GitHub credentials [33m 2126[2mms[22m[39m
+2026-10-02T14:17:51.3526497Z      [33m[2m✓[22m[39m emits only normalized reports offline without Git or GitHub identities [33m 1977[2mms[22m[39m
+2026-10-02T14:17:51.3527533Z      [33m[2m✓[22m[39m refuses preseeded raw before checks [33m 738[2mms[22m[39m
+2026-10-02T14:17:51.3528386Z      [33m[2m✓[22m[39m refuses preseeded normalized before checks [33m 717[2mms[22m[39m
+2026-10-02T14:17:51.3529142Z      [33m[2m✓[22m[39m refuses preseeded receipt before checks [33m 714[2mms[22m[39m
+2026-10-02T14:17:51.3529876Z      [33m[2m✓[22m[39m refuses preseeded quality before checks [33m 722[2mms[22m[39m
+2026-10-02T14:17:51.3530691Z      [33m[2m✓[22m[39m rejects drift or unsafe source before normalized writes [33m 1934[2mms[22m[39m
+2026-10-02T14:17:51.3531762Z      [33m[2m✓[22m[39m rejects drift or unsafe profile before normalized writes [33m 1937[2mms[22m[39m
+2026-10-02T14:17:51.3532745Z      [33m[2m✓[22m[39m rejects drift or unsafe config before normalized writes [33m 1590[2mms[22m[39m
+2026-10-02T14:17:51.3533671Z      [33m[2m✓[22m[39m rejects drift or unsafe bundle before normalized writes [33m 1563[2mms[22m[39m
+2026-10-02T14:17:51.3534606Z      [33m[2m✓[22m[39m rejects drift or unsafe env before normalized writes [33m 1990[2mms[22m[39m
+2026-10-02T14:17:51.3535530Z      [33m[2m✓[22m[39m rejects drift or unsafe runtime before normalized writes [33m 1961[2mms[22m[39m
+2026-10-02T14:17:51.3538498Z      [33m[2m✓[22m[39m rejects drift or unsafe symlink before normalized writes [33m 1946[2mms[22m[39m
+2026-10-02T14:17:51.3539590Z      [33m[2m✓[22m[39m rejects drift or unsafe stale before normalized writes [33m 1965[2mms[22m[39m
+2026-10-02T14:17:51.3540545Z      [33m[2m✓[22m[39m rejects drift or unsafe counters before normalized writes [33m 1960[2mms[22m[39m
+2026-10-02T14:17:51.3541644Z      [33m[2m✓[22m[39m rejects drift or unsafe receipt before normalized writes [33m 1942[2mms[22m[39m
+2026-10-02T14:17:51.3542654Z      [33m[2m✓[22m[39m refuses sensitive config paths and report output symlink parents [33m 376[2mms[22m[39m
+2026-10-02T14:17:51.3543741Z      [33m[2m✓[22m[39m preflights every normalized output ancestor before the first write [33m 1944[2mms[22m[39m
+2026-10-02T14:17:51.3544663Z      [33m[2m✓[22m[39m keeps receipt and output files private [33m 1190[2mms[22m[39m
+2026-10-02T14:17:53.2881703Z  [32m✓[39m src/optimization/propose.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 1714[2mms[22m[39m
+2026-10-02T14:17:53.2882882Z      [33m[2m✓[22m[39m refuses overwrite and rejects candidate-file drift in status [33m 311[2mms[22m[39m
+2026-10-02T14:17:53.4271293Z  [32m✓[39m src/telemetry-scheduler.test.ts [2m([22m[2m7 tests[22m[2m | [22m[33m5 skipped[39m[2m)[22m[32m 5[2mms[22m[39m
+2026-10-02T14:17:53.8108033Z  [32m✓[39m src/optimization/github-read.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 207[2mms[22m[39m
+2026-10-02T14:17:54.0463722Z  [32m✓[39m src/cli.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+2026-10-02T14:17:54.4308667Z  [32m✓[39m src/optimization/execution-profile.test.ts [2m([22m[2m23 tests[22m[2m)[22m[32m 200[2mms[22m[39m
+2026-10-02T14:18:28.4358908Z  [32m✓[39m src/optimization/publish-lifecycle.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 33765[2mms[22m[39m
+2026-10-02T14:18:28.4360116Z      [33m[2m✓[22m[39m emits exactly one POST, reads back one unmerged PR and repeats with GET only [33m 1886[2mms[22m[39m
+2026-10-02T14:18:28.4360888Z      [33m[2m✓[22m[39m reconciles a successful POST whose response was lost without another POST [33m 1797[2mms[22m[39m
+2026-10-02T14:18:28.4361756Z      [33m[2m✓[22m[39m retains unknown outcome and performs read-only later recovery [33m 3432[2mms[22m[39m
+2026-10-02T14:18:28.4362413Z      [33m[2m✓[22m[39m keeps unresolved prior POST unknown when a later read-only lookup fails [33m 1970[2mms[22m[39m
+2026-10-02T14:18:28.4363076Z      [33m[2m✓[22m[39m does not emit a POST when the permit expires during source readback [33m 1418[2mms[22m[39m
+2026-10-02T14:18:28.4363753Z      [33m[2m✓[22m[39m rejects an expired permit before journaling an existing matching PR [33m 2279[2mms[22m[39m
+2026-10-02T14:18:28.4364515Z      [33m[2m✓[22m[39m uses the validated operation timestamp for an existing PR journal at the expiry boundary [33m 2074[2mms[22m[39m
+2026-10-02T14:18:28.4365107Z      [33m[2m✓[22m[39m does not emit on missing-permit [33m 2294[2mms[22m[39m
+2026-10-02T14:18:28.4365539Z      [33m[2m✓[22m[39m does not emit on ref-drift [33m 2418[2mms[22m[39m
+2026-10-02T14:18:28.4365998Z      [33m[2m✓[22m[39m does not emit on marker-conflict [33m 2469[2mms[22m[39m
+2026-10-02T14:18:28.4366451Z      [33m[2m✓[22m[39m does not emit on duplicate-marker [33m 2475[2mms[22m[39m
+2026-10-02T14:18:28.4366910Z      [33m[2m✓[22m[39m does not emit on merged [33m 3073[2mms[22m[39m
+2026-10-02T14:18:28.4367463Z      [33m[2m✓[22m[39m rejects a missing existing intent companion without a second POST [33m 3399[2mms[22m[39m
+2026-10-02T14:18:28.4368111Z      [33m[2m✓[22m[39m rejects a altered publication readback before any external read [33m 2777[2mms[22m[39m
+2026-10-02T14:18:28.6679033Z  [32m✓[39m src/optimization/diagnose.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 48[2mms[22m[39m
+2026-10-02T14:18:28.8523458Z  [32m✓[39m src/optimization/quality-run.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+2026-10-02T14:18:29.1114444Z  [32m✓[39m src/optimization/store.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 62[2mms[22m[39m
+2026-10-02T14:18:44.0632643Z  [32m✓[39m src/optimization/measure.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 14723[2mms[22m[39m
+2026-10-02T14:18:44.0633813Z      [33m[2m✓[22m[39m uses only GET and retains all six authenticated samples and rounding [33m 1459[2mms[22m[39m
+2026-10-02T14:18:44.0634733Z      [33m[2m✓[22m[39m blocks attempt evidence mutant [33m 896[2mms[22m[39m
+2026-10-02T14:18:44.0635462Z      [33m[2m✓[22m[39m blocks head evidence mutant [33m 1424[2mms[22m[39m
+2026-10-02T14:18:44.0636145Z      [33m[2m✓[22m[39m blocks runner evidence mutant [33m 1763[2mms[22m[39m
+2026-10-02T14:18:44.0653196Z      [33m[2m✓[22m[39m blocks coverage evidence mutant [33m 851[2mms[22m[39m
+2026-10-02T14:18:44.0653777Z      [33m[2m✓[22m[39m blocks check evidence mutant [33m 943[2mms[22m[39m
+2026-10-02T14:18:44.0654252Z      [33m[2m✓[22m[39m blocks archive evidence mutant [33m 1389[2mms[22m[39m
+2026-10-02T14:18:44.0654685Z      [33m[2m✓[22m[39m blocks step evidence mutant [33m 904[2mms[22m[39m
+2026-10-02T14:18:44.0655111Z      [33m[2m✓[22m[39m blocks cold evidence mutant [33m 807[2mms[22m[39m
+2026-10-02T14:18:44.0655727Z      [33m[2m✓[22m[39m accepts the benchmark template plain quality artifact name, still bound by its content [33m 890[2mms[22m[39m
+2026-10-02T14:18:44.0656448Z      [33m[2m✓[22m[39m lets gh return colored job logs and artifact bytes as captured data [33m 1245[2mms[22m[39m
+2026-10-02T14:18:44.0657385Z      [33m[2m✓[22m[39m rejects malformed cohort before any external read or output [33m 525[2mms[22m[39m
+2026-10-02T14:18:44.0658051Z      [33m[2m✓[22m[39m retains a failed sample rather than substituting another successful run [33m 902[2mms[22m[39m
+2026-10-02T14:18:44.0658659Z      [33m[2m✓[22m[39m detects schema-valid retained samples tampering [33m 723[2mms[22m[39m
+2026-10-02T14:18:44.6960096Z  [32m✓[39m src/optimization/candidate-source.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 452[2mms[22m[39m
+2026-10-02T14:18:44.9182368Z  [32m✓[39m src/optimization/publish.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+2026-10-02T14:18:45.1239358Z  [32m✓[39m src/optimization/arguments.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+2026-10-02T14:18:49.5087657Z  [32m✓[39m src/optimization/service-phase5.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 4158[2mms[22m[39m
+2026-10-02T14:18:49.5088911Z      [33m[2m✓[22m[39m dispatches actual measurement and validated local status with GET only [33m 1812[2mms[22m[39m
+2026-10-02T14:18:49.5090229Z      [33m[2m✓[22m[39m dispatches publication and status recovery without Sandbox credentials or duplicate POST [33m 2344[2mms[22m[39m
+2026-10-02T14:18:50.2121546Z  [32m✓[39m src/optimization/artifact-zip.test.ts [2m([22m[2m19 tests[22m[2m)[22m[33m 529[2mms[22m[39m
+2026-10-02T14:18:50.2122514Z      [33m[2m✓[22m[39m rejects bomb before extracting [33m 424[2mms[22m[39m
+2026-10-02T14:18:50.4309702Z  [32m✓[39m src/optimization/benchmark.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 44[2mms[22m[39m
+2026-10-02T14:18:52.7106943Z  [31m❯[39m src/bundle.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 1220[2mms[22m[39m
+2026-10-02T14:18:52.7108153Z [31m   [31m×[31m builds a standalone ESM CLI that starts without repository dependencies[39m[33m 1219[2mms[22m[39m
+2026-10-02T14:18:52.9445410Z  [32m✓[39m src/optimization/dispatch.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+2026-10-02T14:18:54.9273012Z  [32m✓[39m src/optimization/report-service.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 1762[2mms[22m[39m
+2026-10-02T14:18:54.9274479Z    [33m[2m✓[22m[39m renders a bound private report from actual product stages and rereads its entire chain [33m 1761[2mms[22m[39m
+2026-10-02T14:18:55.0658737Z  [32m✓[39m src/github-api.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+2026-10-02T14:18:55.5002673Z 
+2026-10-02T14:18:55.5003832Z [31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+2026-10-02T14:18:55.5004227Z 
+2026-10-02T14:18:55.5005809Z [41m[1m FAIL [22m[49m src/bundle.test.ts[2m > [22mbuilds a standalone ESM CLI that starts without repository dependencies
+2026-10-02T14:18:55.5011833Z [31m[1mAssertionError[22m: core build stdout:
+2026-10-02T14:18:55.5012278Z Scope: all 5 workspace projects
+2026-10-02T14:18:55.5012981Z [ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY] Aborted removal of modules directory due to no TTY
+2026-10-02T14:18:55.5013332Z 
+2026-10-02T14:18:55.5013879Z If you are running pnpm in CI, set the CI environment variable to "true", or set "confirmModulesPurge" to "false".
+2026-10-02T14:18:55.5014347Z 
+2026-10-02T14:18:55.5014627Z    ╭─────────────────────────────────────────╮
+2026-10-02T14:18:55.5015079Z    │                                         │
+2026-10-02T14:18:55.5015824Z    │   Update available! 11.22.0 → 12.8.1.   │
+2026-10-02T14:18:55.5016407Z    │   Changelog: https://pnpm.io/v/12.8.1   │
+2026-10-02T14:18:55.5017111Z    │    To update, run: pnpm add -g pnpm     │
+2026-10-02T14:18:55.5017686Z    │                                         │
+2026-10-02T14:18:55.5018367Z    ╰─────────────────────────────────────────╯
+2026-10-02T14:18:55.5018657Z 
+2026-10-02T14:18:55.5019684Z [ERROR] Command failed with exit code 1: /opt/hostedtoolcache/node/22.23.3/x64/bin/node /home/runner/setup-pnpm/node_modules/.bin/global/v11/8b9-1a0fcf7f2f4-bd8e3ac3e358ff45/node_modules/pnpm/bin/pnpm.mjs install
+2026-10-02T14:18:55.5020631Z 
+2026-10-02T14:18:55.5021503Z pnpm: Command failed with exit code 1: /opt/hostedtoolcache/node/22.23.3/x64/bin/node /home/runner/setup-pnpm/node_modules/.bin/global/v11/8b9-1a0fcf7f2f4-bd8e3ac3e358ff45/node_modules/pnpm/bin/pnpm.mjs install
+2026-10-02T14:18:55.5032009Z     at getFinalError (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:89203:14)
+2026-10-02T14:18:55.5033839Z     at makeError (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:91510:21)
+2026-10-02T14:18:55.5035183Z     at getSyncResult (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:93354:10)
+2026-10-02T14:18:55.5036356Z     at spawnSubprocessSync (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:93314:14)
+2026-10-02T14:18:55.5037514Z     at execaCoreSync (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:93244:23)
+2026-10-02T14:18:55.5038631Z     at callBoundExeca (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:95772:23)
+2026-10-02T14:18:55.5039746Z     at boundExeca (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:95749:49)
+2026-10-02T14:18:55.5040817Z     at sync2 (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:95908:10)
+2026-10-02T14:18:55.5042238Z     at runPnpmCli (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:271523:5)
+2026-10-02T14:18:55.5043647Z     at runDepsStatusCheck (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:273323:7)
+2026-10-02T14:18:55.5044317Z 
+2026-10-02T14:18:55.5044399Z stderr:
+2026-10-02T14:18:55.5044731Z : expected 1 to be +0 // Object.is equality[39m
+2026-10-02T14:18:55.5044910Z 
+2026-10-02T14:18:55.5045022Z [32m- Expected[39m
+2026-10-02T14:18:55.5045268Z [31m+ Received[39m
+2026-10-02T14:18:55.5045399Z 
+2026-10-02T14:18:55.5045495Z [32m- 0[39m
+2026-10-02T14:18:55.5045675Z [31m+ 1[39m
+2026-10-02T14:18:55.5045769Z 
+2026-10-02T14:18:55.5046671Z [90m [2m❯[22m getFinalError ../../../../../setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:[2m89203:14[22m[39m
+2026-10-02T14:18:55.5048281Z [90m [2m❯[22m makeError ../../../../../setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:[2m91510:21[22m[39m
+2026-10-02T14:18:55.5049867Z [90m [2m❯[22m getSyncResult ../../../../../setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:[2m93354:10[22m[39m
+2026-10-02T14:18:55.5051440Z [90m [2m❯[22m spawnSubprocessSync ../../../../../setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:[2m93314:14[22m[39m
+2026-10-02T14:18:55.5053008Z [90m [2m❯[22m execaCoreSync ../../../../../setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:[2m93244:23[22m[39m
+2026-10-02T14:18:55.5054790Z [90m [2m❯[22m callBoundExeca ../../../../../setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:[2m95772:23[22m[39m
+2026-10-02T14:18:55.5056163Z [90m [2m❯[22m boundExeca ../../../../../setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:[2m95749:49[22m[39m
+2026-10-02T14:18:55.5058046Z [90m [2m❯[22m sync2 ../../../../../setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:[2m95908:10[22m[39m
+2026-10-02T14:18:55.5059768Z [90m [2m❯[22m runPnpmCli ../../../../../setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:[2m271523:5[22m[39m
+2026-10-02T14:18:55.5061649Z [90m [2m❯[22m runDepsStatusCheck ../../../../../setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:[2m273323:7[22m[39m
+2026-10-02T14:18:55.5062453Z [36m [2m❯[22m src/bundle.test.ts:[2m19:130[22m[39m
+2026-10-02T14:18:55.5062755Z     [90m 17|[39m     })[33m;[39m
+2026-10-02T14:18:55.5063244Z     [90m 18|[39m     [34mexpect[39m(dependencyBuild[33m.[39merror)[33m.[39m[34mtoBeUndefined[39m()[33m;[39m
+2026-10-02T14:18:55.5063844Z     [90m 19|[39m     expect(dependencyBuild.status, `${dependency} build stdout:\n${dep…
+2026-10-02T14:18:55.5064447Z     [90m   |[39m                                                                                                                                  [31m^[39m
+2026-10-02T14:18:55.5064804Z     [90m 20|[39m   }
+2026-10-02T14:18:55.5065372Z     [90m 21|[39m   [35mconst[39m build [33m=[39m [34mspawnSync[39m(process[33m.[39mexecPath[33m,[39m [[32m'scripts/bundle.mjs'[39m][33m,[39m {
+2026-10-02T14:18:55.5065746Z 
+2026-10-02T14:18:55.5066068Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+2026-10-02T14:18:55.5066240Z 
+2026-10-02T14:18:55.5066266Z 
+2026-10-02T14:18:55.5066612Z [2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m35 passed[39m[22m[90m (36)[39m
+2026-10-02T14:18:55.5067303Z [2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m634 passed[39m[22m[2m | [22m[33m10 skipped[39m[90m (645)[39m
+2026-10-02T14:18:55.5067748Z [2m   Start at [22m 14:15:54
+2026-10-02T14:18:55.5068253Z [2m   Duration [22m 181.39s[2m (transform 1.10s, setup 0ms, import 3.32s, tests 172.23s, environment 3ms)[22m
+2026-10-02T14:18:55.5068555Z 
+2026-10-02T14:18:55.5077407Z 
+2026-10-02T14:18:55.5134191Z ##[error]AssertionError: core build stdout:
+Scope: all 5 workspace projects
+[ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY] Aborted removal of modules directory due to no TTY
+
+If you are running pnpm in CI, set the CI environment variable to "true", or set "confirmModulesPurge" to "false".
+
+   ╭─────────────────────────────────────────╮
+   │                                         │
+   │   Update available! 11.22.0 → 12.8.1.   │
+   │   Changelog: https://pnpm.io/v/12.8.1   │
+   │    To update, run: pnpm add -g pnpm     │
+   │                                         │
+   ╰─────────────────────────────────────────╯
+
+[ERROR] Command failed with exit code 1: /opt/hostedtoolcache/node/22.23.3/x64/bin/node /home/runner/setup-pnpm/node_modules/.bin/global/v11/8b9-1a0fcf7f2f4-bd8e3ac3e358ff45/node_modules/pnpm/bin/pnpm.mjs install
+
+pnpm: Command failed with exit code 1: /opt/hostedtoolcache/node/22.23.3/x64/bin/node /home/runner/setup-pnpm/node_modules/.bin/global/v11/8b9-1a0fcf7f2f4-bd8e3ac3e358ff45/node_modules/pnpm/bin/pnpm.mjs install
+    at getFinalError (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:89203:14)
+    at makeError (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:91510:21)
+    at getSyncResult (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:93354:10)
+    at spawnSubprocessSync (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:93314:14)
+    at execaCoreSync (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:93244:23)
+    at callBoundExeca (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:95772:23)
+    at boundExeca (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:95749:49)
+    at sync2 (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:95908:10)
+    at runPnpmCli (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:271523:5)
+    at runDepsStatusCheck (file:///home/runner/setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:273323:7)
+
+stderr:
+: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ getFinalError ../../../../../setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:89203:14
+ ❯ makeError ../../../../../setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:91510:21
+ ❯ getSyncResult ../../../../../setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:93354:10
+ ❯ spawnSubprocessSync ../../../../../setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3876d00d043d3555db001e2ba9d24405eb491a94744fe66d252f449eed04/node_modules/pnpm/dist/pnpm.mjs:93314:14
+ ❯ execaCoreSync ../../../../../setup-pnpm/node_modules/.bin/store/v11/links/@/pnpm/11.22.0/dc8d3
+2026-10-02T14:18:55.5739761Z /home/runner/work/cirujano/cirujano/packages/cli:
+2026-10-02T14:18:55.5740748Z [ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] cirujano@0.0.1 test:coverage: `vitest run --config ../../vitest.config.ts --coverage`
+2026-10-02T14:18:55.5741638Z Exit status 1
+2026-10-02T14:18:55.6086259Z [ELIFECYCLE] Command failed with exit code 1.
+2026-10-02T14:18:55.6296507Z ##[error]Process completed with exit code 1.
+2026-10-02T14:18:55.6380324Z Post job cleanup.
+2026-10-02T14:18:55.7562419Z Pruning is unnecessary.
+2026-10-02T14:18:55.7688135Z Post job cleanup.
+2026-10-02T14:18:55.8422468Z [command]/usr/bin/git version
+2026-10-02T14:18:55.8458884Z git version 2.55.0
+2026-10-02T14:18:55.8496145Z Temporarily overriding HOME='/home/runner/work/_temp/8a2d703d-bfc0-424f-a61e-cd2d7eed45a1' before making global git config changes
+2026-10-02T14:18:55.8498090Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-02T14:18:55.8500140Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/cirujano/cirujano
+2026-10-02T14:18:55.8534847Z Removing SSH command configuration
+2026-10-02T14:18:55.8540725Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-02T14:18:55.8576232Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-02T14:18:55.8779857Z Removing HTTP extra header
+2026-10-02T14:18:55.8785530Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-02T14:18:55.8817881Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-02T14:18:55.9012829Z Removing includeIf entries pointing to credentials config files
+2026-10-02T14:18:55.9018600Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-02T14:18:55.9042592Z includeif.gitdir:/home/runner/work/cirujano/cirujano/.git.path
+2026-10-02T14:18:55.9043382Z includeif.gitdir:/home/runner/work/cirujano/cirujano/.git/worktrees/*.path
+2026-10-02T14:18:55.9043975Z includeif.gitdir:/github/workspace/.git.path
+2026-10-02T14:18:55.9044511Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-02T14:18:55.9049712Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/cirujano/cirujano/.git.path
+2026-10-02T14:18:55.9069755Z /home/runner/work/_temp/git-credentials-002d1e18-745d-4e64-8559-5c8925925d29.config
+2026-10-02T14:18:55.9078571Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/cirujano/cirujano/.git.path \/home\/runner\/work\/_temp\/git\-credentials\-002d1e18\-745d\-4e64\-8559\-5c8925925d29\.config
+2026-10-02T14:18:55.9110596Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/cirujano/cirujano/.git/worktrees/*.path
+2026-10-02T14:18:55.9132209Z /home/runner/work/_temp/git-credentials-002d1e18-745d-4e64-8559-5c8925925d29.config
+2026-10-02T14:18:55.9146706Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/cirujano/cirujano/.git/worktrees/*.path \/home\/runner\/work\/_temp\/git\-credentials\-002d1e18\-745d\-4e64\-8559\-5c8925925d29\.config
+2026-10-02T14:18:55.9178306Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-10-02T14:18:55.9198666Z /github/runner_temp/git-credentials-002d1e18-745d-4e64-8559-5c8925925d29.config
+2026-10-02T14:18:55.9205254Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-002d1e18\-745d\-4e64\-8559\-5c8925925d29\.config
+2026-10-02T14:18:55.9234362Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-02T14:18:55.9254896Z /github/runner_temp/git-credentials-002d1e18-745d-4e64-8559-5c8925925d29.config
+2026-10-02T14:18:55.9261088Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-002d1e18\-745d\-4e64\-8559\-5c8925925d29\.config
+2026-10-02T14:18:55.9292964Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-02T14:18:55.9486281Z Removing credentials config '/home/runner/work/_temp/git-credentials-002d1e18-745d-4e64-8559-5c8925925d29.config'
+2026-10-02T14:18:55.9635858Z Cleaning up orphan processes
+

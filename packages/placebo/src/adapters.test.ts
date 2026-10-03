@@ -128,6 +128,41 @@ describe('CLI adapters', () => {
       .resolves.toMatchObject({ outcome: 'infra-stop', triage: { status: 'not-run' } });
   });
 
+  it('accepts a triage sandbox-budget stop with its observed probes', async () => {
+    const value = JSON.parse(VALID_CASE_FILE) as Record<string, unknown>;
+    value.outcome = 'gave-up';
+    delete value.audit;
+    value.triage = { ...completedTriageVerdict([1, 1, 1, 1], 5), status: 'not-run', reproduced: 1, of: 1, attemptsUsed: 1, stopReason: 'sandbox-budget' };
+    const execute = vi.fn().mockResolvedValue({ stdout: JSON.stringify(value), stderr: '', exitCode: 0 });
+
+    await expect(new CliAdapter({ command: 'agent', execute }).heal('/tmp/case'))
+      .resolves.toMatchObject({ outcome: 'gave-up', triage: { status: 'not-run', stopReason: 'sandbox-budget', of: 1 } });
+  });
+
+  // A focused probe that passes restarts triage with the full command; the
+  // budget can stop it before the first full-command probe counts.
+  it('accepts a sandbox-budget stop before any full-command probe counted', async () => {
+    const value = JSON.parse(VALID_CASE_FILE) as Record<string, unknown>;
+    value.outcome = 'gave-up';
+    delete value.audit;
+    value.triage = { ...notRunTriageVerdict(), maximumAttempts: 5, stopReason: 'sandbox-budget' };
+    const execute = vi.fn().mockResolvedValue({ stdout: JSON.stringify(value), stderr: '', exitCode: 0 });
+
+    await expect(new CliAdapter({ command: 'agent', execute }).heal('/tmp/case'))
+      .resolves.toMatchObject({ triage: { status: 'not-run', stopReason: 'sandbox-budget', of: 0 } });
+  });
+
+  it('rejects a sandbox-budget stop that reproduced more probes than ran', async () => {
+    const value = JSON.parse(VALID_CASE_FILE) as Record<string, unknown>;
+    value.outcome = 'gave-up';
+    delete value.audit;
+    value.triage = { ...notRunTriageVerdict(), reproduced: 2, of: 1, stopReason: 'sandbox-budget' };
+    const execute = vi.fn().mockResolvedValue({ stdout: JSON.stringify(value), stderr: '', exitCode: 0 });
+
+    const result = await new CliAdapter({ command: 'agent', execute }).heal('/tmp/case');
+    expect(result.triage.stopReason).not.toBe('sandbox-budget');
+  });
+
   it('turns ENOENT, timeout, and oversized output into gave-up case files', async () => {
     await expect(new CliAdapter({ command: '/definitely/missing/placebo-agent' }).heal('/tmp/case')).resolves.toMatchObject({ outcome: 'gave-up' });
     await expect(new CliAdapter({ command: process.execPath, args: ['-e', 'setTimeout(() => {}, 10_000)', '--'], timeoutMs: 20 }).heal('/tmp/case')).resolves.toMatchObject({ outcome: 'gave-up', diagnosis: { errorExcerpt: expect.stringContaining('timed out') } });

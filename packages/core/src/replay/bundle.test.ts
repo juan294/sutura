@@ -151,6 +151,7 @@ describe('ReplayRecorder', () => {
       models: { nano: 'nano', super: 'super', ultra: 'ultra' },
       routingProfileId: 'production-baseline-v1',
       maxOps: 40,
+      triagePolicy: { scope: 'full', sandboxBudgetSec: 240 },
     });
     recorder.recordExecutor({ method: 'importImage', args: ['node:22'], result: 'image-1' });
     recorder.recordRuntimeDetection({
@@ -167,6 +168,7 @@ describe('ReplayRecorder', () => {
         models: { nano: 'nano', super: 'super', ultra: 'ultra' },
         routingProfileId: 'production-baseline-v1',
         maxOps: 40,
+        triagePolicy: { scope: 'full', sandboxBudgetSec: 240 },
       },
       executor: [{ sequence: 1, method: 'importImage', args: ['node:22'], result: 'image-1' }],
       runtimeDetection: {

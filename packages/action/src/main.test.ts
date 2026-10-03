@@ -250,6 +250,30 @@ describe('runAction repair-branch refusal', () => {
   });
 });
 
+describe('runAction triage policy', () => {
+  it('triages the failing test file first under the configured sandbox budget', async () => {
+    mockOrchestrate.mockClear();
+
+    await runAction({
+      readAction: () => ({
+        githubToken: 'github-test', runId: '77', triageN: 1,
+        requireFixed: false, captureReplay: false, environment: {},
+      }),
+      loadConfiguration: () => loadConfig({
+        NEBIUS_API_KEY: 'nebius-test',
+        CONTREE_TOKEN: 'contree-test',
+        CONTREE_PROJECT: 'project-test',
+        SUTURA_TRIAGE_SANDBOX_SEC: '300',
+      }),
+      repository: () => ({ owner: 'acme', repo: 'widget' }),
+      environment: { GITHUB_RUN_ID: '88' },
+      setFailed: vi.fn(),
+    });
+
+    expect(mockOrchestrate.mock.calls[0]?.[0]).toMatchObject({ triagePolicy: { scope: 'focused', sandboxBudgetSec: 300 } });
+  });
+});
+
 describe('TypeSafe Jev calibrated audit construction', () => {
   const action = {
     githubToken: 'github-test',

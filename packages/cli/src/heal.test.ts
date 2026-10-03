@@ -356,6 +356,13 @@ describe('CLI runtime configuration and source boundaries', () => {
     });
   });
 
+  it('triages the failing test file first under the configured sandbox budget', () => {
+    const value = runtimeFromEnvironment(request('repair-off-by-one', undefined, false), {
+      NEBIUS_API_KEY: 'nebius', CONTREE_TOKEN: 'token', CONTREE_PROJECT: 'project', SUTURA_TRIAGE_SANDBOX_SEC: '300',
+    });
+    expect(value.triagePolicy).toEqual({ scope: 'focused', sandboxBudgetSec: 300 });
+  });
+
   it.each(['node', 'python'] as const)('passes explicit %s selection without accepting an image reference', (selected) => {
     const value = runtimeFromEnvironment({
       ...request('repair-off-by-one', undefined, false), runtime: selected,

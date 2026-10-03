@@ -48,6 +48,34 @@ describe('runtimeEvidence', () => {
     ]);
   });
 
+  it('explains a triage budget stop with the recorded seconds and the input', () => {
+    const note = 'Triage stopped after 1 probe(s), 231.3 sandbox-s: 4 more at up to 231.3 s each make about 1157 s, over the 240 s budget (raise triage-sandbox-seconds or SUTURA_TRIAGE_SANDBOX_SEC, or narrow the CI test command)';
+    const value = caseFile({
+      triage: { ...caseFile().triage, status: 'not-run', reproduced: 1, of: 1, attemptsUsed: 1, stopReason: 'sandbox-budget' },
+      stages: [{ stage: 'triage', attempt: 1, nodeId: 'node-002', metrics: { elapsedTimeSec: 231.26 }, network: 'disabled', note }],
+    });
+
+    const lines = runtimeEvidence(value);
+
+    expect(lines).toContain(`Triage budget: ${note}`);
+    expect(lines.join('\n')).toContain('stop=sandbox-budget');
+    expect(checkOutput(value).summary).toContain(`Triage: ${note}`);
+  });
+
+  it('counts kept and rejected focused triage probes', () => {
+    const probe = (attempt: number, note: string) => ({ stage: 'triage' as const, attempt, nodeId: `node-00${attempt}`, metrics: { elapsedTimeSec: 2 }, network: 'disabled' as const, note });
+    const value = caseFile({
+      stages: [
+        probe(1, 'Focused probe: same test, same failure'),
+        probe(2, 'Focused probe: not the same failure; restarting with the full command'),
+        ...[3, 4, 5, 6].map((attempt) => probe(attempt, 'Reproduction probe')),
+      ],
+    });
+
+    expect(runtimeEvidence(value).join('\n')).toContain('triage=4/4 max=5 stop=failure-boundary focused=1/1 method=');
+    expect(runtimeEvidence(caseFile()).join('\n')).not.toContain('focused=');
+  });
+
   it('does not claim Tavily runtime evidence when grounding was only configured or skipped', () => {
     expect(runtimeEvidence(caseFile()).join('\n')).not.toContain('Tavily');
   });

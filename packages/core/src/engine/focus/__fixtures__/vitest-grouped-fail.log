@@ -1,0 +1,32 @@
+
+ RUN  v4.1.11 /workspace
+
+ ❯ grouped.test.js (2 tests | 2 failed) 4ms
+   × case 1 3ms
+   × case 2 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  grouped.test.js > case 1
+ FAIL  grouped.test.js > case 2
+AssertionError: expected 'test' to be 'pass' // Object.is equality
+
+Expected: "pass"
+Received: "test"
+
+ ❯ check grouped.test.js:2:55
+      1| import { expect, test } from 'vitest';
+      2| function check() { expect(process.env.MODE ?? 'fail').toBe('pass'); }
+       |                                                       ^
+      3| test.each([1, 2])('case %i', () => { check(); });
+      4|
+ ❯ grouped.test.js:3:38
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+   Start at  19:14:16
+   Duration  113ms (transform 9ms, setup 0ms, import 16ms, tests 4ms, environment 0ms)
+

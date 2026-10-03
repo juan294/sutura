@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-10-03
+
+### Added
+
+- Triage has a cumulative sandbox-time budget, the `triage-sandbox-seconds` Action input (`SUTURA_TRIAGE_SANDBOX_SEC` for the CLI), default 240 seconds and at most 3600. A fleet replay measured four triage probes of a sharded vitest run at about 231 sandbox seconds each, USD 9.27 before the case gave up. Sutura measures the first probe and stops before any further probe would take the total over the budget; the attempt then ends `gave-up` with a `sandbox-budget` stop, and the case file, comment and check state the measured and predicted seconds and the setting to change. The worst case is the budget plus one probe. A budget stop is never reported as flaky.
+- When the failing CI step calls vitest, jest, `node --test` or pytest directly and the log names exactly one failing test file, triage first reruns only that file. A focused rerun counts only when it fails the same test with the same failure message; at the first focused rerun that passes or fails differently, Sutura discards the focused reruns and starts again with the full command, within the same budget. Focused reruns can confirm a real failure, but a flaky or intermittent verdict always comes from the full command. Package scripts, compound commands, unknown runner options, collection or import errors and failures in several files keep the full command, and the case file names the reason. The evidence line reports `focused=<kept>/<rejected>`.
+
+### Fixed
+
+- A failing test in a workspace package is now found as a repair source. When `pnpm -r` runs vitest one package at a time, vitest names its package on a `RUN vX <dir>` line and then prints failing files relative to that package (`src/bundle.test.ts` for `packages/cli/src/bundle.test.ts`), so Sutura looked for them at the repository root and stopped with no anchorable repair source (cirujano CI run 37018518357). Failure lines after a package run line are now resolved inside that package until its vitest summary, step or group ends; passing (`✓`) lines inside a package no longer crowd the failure out of the source slots; output pnpm already prefixed with its package keeps that package; and a long step's log window keeps the vitest run lines that give its failures their package.
+
+Retired guidance: none.
+
 ## [0.3.8] - 2026-10-03
 
 ### Fixed

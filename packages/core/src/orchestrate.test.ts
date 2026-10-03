@@ -399,6 +399,67 @@ function runCalls(executor: InMemoryExecutor): Extract<InMemoryCall, { kind: 'ru
   );
 }
 
+describe('package-relative source paths after a vitest RUN line', () => {
+  it('joins sandbox paths to the package vitest announced', () => {
+    const log = [' RUN  v4.1.11 /workspace/packages/core', ' FAIL  src/controller.test.ts > recovers', 'AssertionError: expected 1 to be 17', ' ❯ src/controller.test.ts:120:7'].join('\n');
+
+    expect(extractSourceReferences(log)).toEqual([{ path: 'packages/core/src/controller.test.ts', line: 120 }]);
+  });
+
+  it('leaves a repository-root run unchanged', () => {
+    const log = [' RUN  v4.1.11 /workspace', ' FAIL  src/controller.test.ts > recovers', ' ❯ src/controller.test.ts:120:7'].join('\n');
+
+    expect(extractSourceReferences(log)).toEqual([{ path: 'src/controller.test.ts', line: 120 }]);
+  });
+
+  it('keeps pnpm-prefixed parallel output attributed to its own package', () => {
+    const log = [
+      'packages/a test:  RUN  v4.1.11 /workspace/packages/a',
+      'packages/b test:  RUN  v4.1.11 /workspace/packages/b',
+      'packages/a test:  ❯ src/y.test.ts:12:3',
+    ].join('\n');
+
+    expect(extractSourceReferences(log)).toEqual([{ path: 'packages/a/src/y.test.ts', line: 12 }]);
+  });
+
+  it('does not carry a package past the end of its step or into root tool output', () => {
+    const log = [
+      '[test / Run pnpm test]', ' RUN  v4.1.11 /workspace/packages/a', ' FAIL  src/a.test.ts > fails',
+      '[build / Run tsc]', 'scripts/check.ts:4:1 - error TS2322',
+    ].join('\n');
+
+    expect(extractSourceReferences(log).map(({ path }) => path)).toEqual(['packages/a/src/a.test.ts', 'scripts/check.ts']);
+  });
+
+  it('ends a package at its vitest summary, not at pnpm errors inside a failure', () => {
+    const log = [
+      ' RUN  v4.1.11 /workspace/packages/cli', ' FAIL  src/bundle.test.ts > builds',
+      '[ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY] Aborted removal', ' ❯ src/bundle.test.ts:19:130',
+      ' Test Files  1 failed (1)', 'src/root.ts(3,4): error TS2322',
+    ].join('\n');
+
+    expect(extractSourceReferences(log)).toEqual([
+      { path: 'packages/cli/src/bundle.test.ts', line: 19 },
+      { path: 'src/root.ts', line: 3 },
+    ]);
+  });
+
+  it('drops passing files inside a package so they cannot displace the failure', () => {
+    const log = [' RUN  v4.1.11 /workspace/packages/a', ' ✓ src/ok.test.ts (3 tests)', ' FAIL  src/bad.test.ts > fails'].join('\n');
+
+    expect(extractSourceReferences(log).map(({ path }) => path)).toEqual(['packages/a/src/bad.test.ts']);
+  });
+
+  it('switches package when the next vitest run starts', () => {
+    const log = [
+      ' RUN  v4.1.11 /home/runner/work/acme/acme/packages/core', ' FAIL  src/a.test.ts > fails',
+      ' RUN  v4.1.11 /home/runner/work/acme/acme/apps/web', ' FAIL  src/b.test.ts > fails',
+    ].join('\n');
+
+    expect(extractSourceReferences(log).map(({ path }) => path)).toEqual(['packages/core/src/a.test.ts', 'apps/web/src/b.test.ts']);
+  });
+});
+
 describe('orchestrate', () => {
   it('replays live crash B4', async () => {
     const captured = await capturedFailingRun('A3', '33239848825');

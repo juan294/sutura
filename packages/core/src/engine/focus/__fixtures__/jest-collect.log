@@ -1,0 +1,18 @@
+FAIL src/broken.test.js
+  ● Test suite failed to run
+
+    Cannot find module './missing.js' from 'src/broken.test.js'
+
+    [0m[31m[1m>[22m[39m[90m 1 |[39m require([32m'./missing.js'[39m)[33m;[39m
+     [90m   |[39m [31m[1m^[22m[39m
+     [90m 2 |[39m test([32m'never runs'[39m[33m,[39m () [33m=>[39m {})[33m;[39m
+     [90m 3 |[39m[0m
+
+      at Resolver._throwModNotFoundError (node_modules/jest-resolve/build/index.js:1031:11)
+      at Object.require (src/broken.test.js:1:1)
+
+Test Suites: 1 failed, 1 total
+Tests:       0 total
+Snapshots:   0 total
+Time:        0.161 s
+Ran all test suites matching src/broken.test.js.

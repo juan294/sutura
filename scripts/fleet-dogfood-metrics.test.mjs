@@ -31,8 +31,17 @@ test('case-file parser extracts the terminal outcome, costs, operations, and ela
     sandboxElapsedTimeSec: 45.5,
     providerInvoked: null,
     searchStarted: true,
+    triageStopReason: null,
   });
   assert.throws(() => parseCaseFileHtml('<body>missing evidence</body>'), /outcome/u);
+});
+
+test('case-file parser records a triage sandbox-budget stop so the fleet can count it', () => {
+  const html = FIXED_HTML.replace('outcome-fixed', 'outcome-gave-up').replace('</body>',
+    '<p>Reproduced 1/1 (maximum 5); probability 100.0% (95% Wilson 20.7–100.0%); sprt-p20-p80-a05-b05-v1; sandbox-budget — not decided: the triage sandbox budget stopped it.</p></body>');
+
+  assert.equal(parseCaseFileHtml(html).triageStopReason, 'sandbox-budget');
+  assert.equal(parseCaseFileHtml(html).outcome, 'gave-up');
 });
 
 test('terminal failure parser preserves an infrastructure stop without inventing cost', () => {

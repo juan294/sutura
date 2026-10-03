@@ -91,6 +91,7 @@ export function parseCaseFileHtml(html) {
     sandboxElapsedTimeSec: exactNumber(/operations · ([0-9,.]+) s elapsed ·/u, html, 'sandbox elapsed time'),
     providerInvoked: null,
     searchStarted: outcome === 'fixed' ? true : null,
+    triageStopReason: /sprt-[a-z0-9-]+; (failure-boundary|pass-boundary|maximum-attempts|not-run|sandbox-budget) —/u.exec(html)?.[1] ?? null,
   };
 }
 
@@ -285,7 +286,7 @@ export function mergeMonitorEvents(previous, current) {
       (value.costStatus === 'measured' ? 10 : 0) +
       ['replayComplete', 'replayEvidenceError', 'providerInvocations', 'runtime',
         'runtimeEvidenceSource', 'runtimeEvidenceCount', 'runtimeVisitedEntries',
-        'claimState', 'searchStarted'].filter((field) =>
+        'claimState', 'searchStarted', 'triageStopReason'].filter((field) =>
         Object.hasOwn(value, field) && value[field] !== null).length;
     if (!prior || quality(event) >= quality(prior)) events.set(key, event);
   }

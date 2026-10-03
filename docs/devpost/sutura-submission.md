@@ -2,13 +2,14 @@
 
 > AI agents make CI pass. Sutura verifies the fix, filters flaky failures, rejects unsafe shortcuts, and opens an evidence-backed PR for human review.
 
-Canonical package identity for this source: `sutura@0.3.8`.
+Canonical package identity for this source: `sutura@0.3.9`.
 
 ## Try it out
 
-- [Sutura Case Lab](https://sutura-case-lab.vercel.app/): five fixed CI cases
-  with labeled deterministic results and no account required. The hosted demo
-  currently shows the historical public `sutura@0.2.0` release evidence.
+- [Sutura Case Lab](https://sutura-case-lab.vercel.app/): five fixed CI cases,
+  no account required. Each shows the recorded result from the latest release
+  benchmark, and a visitor can start a rate-limited live run of the current
+  release against a public demo repository.
 - [Repository](https://github.com/juan294/sutura): current source, GitHub
   Action, CLI, tests, and evaluation documentation.
 - [npm package](https://www.npmjs.com/package/sutura): public installer CLI.
@@ -152,8 +153,9 @@ requests are in the [feedback report](../feedback/2026-10-sutura-nebius-feedback
 
 ## What's next
 
-Before release acceptance, we will improve async-preservation repairs, add a
-named regression for the one deception case that ended as `gave-up`, rerun the
-affected development gates, and keep the held-out set sealed until its
-authorized final evaluation. Public maintainer trials, the final release,
-video, and judging-access checks also remain separate evidence gates.
+Sutura now runs on its author's own fleet of more than fifteen active
+repositories, and their real CI failures are the evidence that matters next.
+We measure every incident through a published collector from failed run to
+repair pull request, independent CI and same-workflow green, or to the reason
+it stopped, and we fix the stops that recur. We do not run a recruited user
+study; usage evidence comes from that fleet.

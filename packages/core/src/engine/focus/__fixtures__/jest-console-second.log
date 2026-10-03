@@ -1,0 +1,31 @@
+FAIL src/console.test.js
+  ● Console
+
+    console.log
+      state snapshot { ready: false }
+
+      at Object.log (src/console.test.js:3:13)
+
+  ● timer boundary › second test
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 2
+    Received: 1
+
+    [0m [90m  5 |[39m   })[33m;[39m
+     [90m  6 |[39m   test([32m'second test'[39m[33m,[39m () [33m=>[39m {
+    [31m[1m>[22m[39m[90m  7 |[39m     [36mif[39m (process[33m.[39menv[33m.[39m[33mMODE[39m [33m===[39m [32m'second'[39m) expect([35m1[39m)[33m.[39mtoBe([35m2[39m)[33m;[39m
+     [90m    |[39m                                                  [31m[1m^[22m[39m
+     [90m  8 |[39m   })[33m;[39m
+     [90m  9 |[39m })[33m;[39m
+     [90m 10 |[39m[0m
+
+      at Object.toBe (src/console.test.js:7:50)
+
+
+Test Suites: 1 failed, 1 passed, 2 total
+Tests:       1 failed, 2 passed, 3 total
+Snapshots:   0 total
+Time:        0.238 s, estimated 1 s
+Ran all test suites within paths "src/console.test.js", "src/pass.test.js".

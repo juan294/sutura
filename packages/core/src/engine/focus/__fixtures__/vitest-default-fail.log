@@ -1,0 +1,33 @@
+
+ RUN  v4.1.11 /workspace
+
+ ❯ case.test.js (1 test | 1 failed) 16ms
+   × observes the state after a fixed timer boundary 16ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  case.test.js > observes the state after a fixed timer boundary
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ case.test.js:12:17
+     10|   void delay(losesRace ? 30 : 0).then(() => { ready = true; });
+     11|   await delay(10);
+     12|   expect(ready).toBe(true);
+       |                 ^
+     13| });
+     14|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  18:32:36
+   Duration  119ms (transform 9ms, setup 0ms, import 16ms, tests 16ms, environment 0ms)
+

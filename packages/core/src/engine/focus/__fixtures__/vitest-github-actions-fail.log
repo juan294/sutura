@@ -1,0 +1,2 @@
+
+::error file=/home/runner/work/acme/acme/case.test.js,title=case.test.js > observes the state after a fixed timer boundary,line=12,column=17::AssertionError: expected false to be true // Object.is equality%0A%0A- Expected%0A+ Received%0A%0A- true%0A+ false%0A%0A ❯ case.test.js:12:17%0A%0A

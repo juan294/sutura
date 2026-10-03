@@ -16,6 +16,7 @@ describe('loadConfig', () => {
     const config = loadConfig(REQUIRED_ENV);
 
     expect(config.triageN).toBe(5);
+    expect(config.triageSandboxBudgetSec).toBe(240);
     expect(config.raceK).toBe(3);
     expect(config.maxOps).toBe(40);
     expect(config.routingProfileId).toBe('production-baseline-v1');
@@ -57,6 +58,7 @@ describe('loadConfig', () => {
       SUTURA_SECOND_OPINION_USD: '0.15',
       SUTURA_TYPESAFE_AUDIT_USD: '0.01',
       SUTURA_REPAIR_DIFF_BYTES: '32768',
+      SUTURA_TRIAGE_SANDBOX_SEC: '300',
       SUTURA_SEARCH_INITIAL_BRANCHES: '2',
       SUTURA_SEARCH_BEAM_WIDTH: '1',
       SUTURA_SEARCH_MAX_DEPTH: '3',
@@ -73,6 +75,7 @@ describe('loadConfig', () => {
       contreeToken: 'contree-secret',
       contreeProject: 'project-id',
       triageN: 7,
+      triageSandboxBudgetSec: 300,
       raceK: 4,
       models: {
         nano: 'nano-override',
@@ -139,4 +142,11 @@ describe('loadConfig', () => {
 it('permits the explicit development adaptive profile', () => {
   expect(loadConfig({ ...REQUIRED_ENV, SUTURA_ROUTING_PROFILE: 'development-adaptive-v1' }).routingProfileId)
     .toBe('development-adaptive-v1');
+});
+
+describe('triage sandbox budget', () => {
+  it('rejects a budget outside 1 to 3600 seconds', () => {
+    expect(() => loadConfig({ ...REQUIRED_ENV, SUTURA_TRIAGE_SANDBOX_SEC: '0' })).toThrowError(/SUTURA_TRIAGE_SANDBOX_SEC/u);
+    expect(() => loadConfig({ ...REQUIRED_ENV, SUTURA_TRIAGE_SANDBOX_SEC: '3601' })).toThrowError(/SUTURA_TRIAGE_SANDBOX_SEC/u);
+  });
 });

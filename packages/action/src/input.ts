@@ -2,7 +2,9 @@ import {
   DEFAULT_ROUTING_PROFILE_ID,
   DEFAULT_REPAIR_BUDGET_LIMITS,
   DEFAULT_SEARCH_LIMITS,
+  DEFAULT_TRIAGE_SANDBOX_SEC,
   MAX_TRIAGE_RUNS,
+  MAX_TRIAGE_SANDBOX_SEC,
 } from '@sutura/core';
 
 export type InputReader = (name: string) => string;
@@ -95,6 +97,7 @@ export function mapActionInputs(read: InputReader): ActionConfiguration {
     CONTREE_TOKEN: required(read, 'contree-token'),
     CONTREE_PROJECT: required(read, 'contree-project'),
     SUTURA_TRIAGE_N: String(triageN),
+    SUTURA_TRIAGE_SANDBOX_SEC: String(boundedInteger(read('triage-sandbox-seconds'), DEFAULT_TRIAGE_SANDBOX_SEC, MAX_TRIAGE_SANDBOX_SEC, 'triage-sandbox-seconds')),
     SUTURA_ROUTING_PROFILE: read('routing-profile').trim() || DEFAULT_ROUTING_PROFILE_ID,
     SUTURA_REPAIR_MODEL_TURNS: String(boundedInteger(read('repair-model-turns'), DEFAULT_REPAIR_BUDGET_LIMITS.modelTurns, DEFAULT_REPAIR_BUDGET_LIMITS.modelTurns, 'repair-model-turns')),
     SUTURA_REPAIR_TOOL_CALLS: String(boundedInteger(read('repair-tool-calls'), DEFAULT_REPAIR_BUDGET_LIMITS.toolCalls, DEFAULT_REPAIR_BUDGET_LIMITS.toolCalls, 'repair-tool-calls')),

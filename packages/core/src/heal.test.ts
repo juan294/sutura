@@ -13,6 +13,7 @@ import { InMemoryExecutor, type InMemoryRunResult } from './executor/memory.js';
 import {
   buildSandboxRepositoryInitializationCommandForTest,
   healCase,
+  triageBudgetLedgerNote,
   repairFailure,
   repairVerificationCommand,
   StageLedger,
@@ -1201,6 +1202,147 @@ describe('healCase', () => {
     });
     expect(chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
     expect(readSourceContext).not.toHaveBeenCalled();
+  });
+
+  // Fleet replay 2026-10-03: chapa's triage probes took about 231 sandbox
+  // seconds each and four of them cost USD 9.27 before the case gave up.
+  it('stops triage after one probe and gives up when the sandbox budget would be exceeded', async () => {
+    const { ctx } = context('trap-skipped-test', [1], 'test-assertion', {
+      triagePolicy: { scope: 'full', sandboxBudgetSec: 240 },
+    });
+    let reproduced = false;
+    const executor = new InMemoryExecutor((command) => {
+      if (command.includes('SUTURA_TRIAGE_ATTEMPT')) return { ...result(1), metrics: { elapsedTimeSec: 231.26 } };
+      if (command.includes('corepack pnpm install --frozen-lockfile') || command.includes('git init --quiet')) return result(0);
+      if (!reproduced) { reproduced = true; return result(1); }
+      return result(1);
+    });
+    ctx.executor = executor;
+
+    const caseFile = await healCase(ctx);
+
+    expect(caseFile).toMatchObject({
+      outcome: 'gave-up',
+      triage: { status: 'not-run', stopReason: 'sandbox-budget', reproduced: 1, of: 1, maximumAttempts: 5 },
+    });
+    expect(executor.calls.filter((call) => call.kind === 'run' && call.cmd.includes('SUTURA_TRIAGE_ATTEMPT'))).toHaveLength(1);
+    expect(caseFile.stages.map(({ note }) => note)).toContain(
+      'Triage stopped after 1 probe(s), 231.3 sandbox-s: 4 more at up to 231.3 s each make about 1157 s, over the 240 s budget (raise triage-sandbox-seconds or SUTURA_TRIAGE_SANDBOX_SEC, or narrow the CI test command)',
+    );
+  });
+
+  it('keeps the triage stop note under the 240-character stage note cap at its largest values', () => {
+    const note = triageBudgetLedgerNote({
+      verdict: { status: 'not-run', reproduced: 1, of: 1, attemptsUsed: 1, maximumAttempts: 20, reproductionProbability: 1,
+        confidenceLower: 0.2, confidenceUpper: 1, stopReason: 'sandbox-budget', methodVersion: 'sprt-p20-p80-a05-b05-v1' },
+      budget: { enforced: true, budgetSec: 3600, probeSec: 99999.9, spentSec: 99999.9, predictedSec: 2_000_000, probes: 40 },
+    }, 20);
+
+    expect(note?.length).toBeLessThanOrEqual(240);
+  });
+
+  it('discloses an unenforced budget when the executor reports no sandbox time', async () => {
+    const { ctx } = context('repair-off-by-one', [1, 1, 1, 1, 1], 'test-assertion', {
+      triagePolicy: { scope: 'full', sandboxBudgetSec: 240 },
+    });
+
+    const caseFile = await healCase(ctx);
+
+    expect(caseFile.triage).toMatchObject({ status: 'real', stopReason: 'failure-boundary' });
+    expect(caseFile.stages.map(({ note }) => note)).toContain(
+      'Triage budget of 240 sandbox-seconds not enforced: the executor reported no sandbox time',
+    );
+  });
+
+  // Real vitest 4.1.11 output of the Placebo flaky-timer-race fixture, behind
+  // the package-script header that resolves the failing command to `vitest run`.
+  const focusFailure = () => readFile(join(dirname(fileURLToPath(import.meta.url)), 'engine', 'focus', '__fixtures__', 'vitest-default-fail.log'), 'utf8');
+  const focusPass = () => readFile(join(dirname(fileURLToPath(import.meta.url)), 'engine', 'focus', '__fixtures__', 'vitest-focused-pass.log'), 'utf8');
+  function focusedExecutor(failure: string, focused: (attempt: number) => InMemoryRunResult): { executor: InMemoryExecutor; triage: string[] } {
+    const triage: string[] = [];
+    let reproduced = false;
+    const executor = new InMemoryExecutor((command) => {
+      if (command.includes('SUTURA_TRIAGE_ATTEMPT')) {
+        triage.push(command);
+        const attempt = Number(/SUTURA_TRIAGE_ATTEMPT='?(\d+)/u.exec(command)?.[1]);
+        return command.includes('case.test.js') ? focused(attempt) : { ...result(1), stdout: failure, metrics: { elapsedTimeSec: 30 } };
+      }
+      if (command.includes('git apply - && git diff')) return { ...result(0), stdout: HONEST_DIFF };
+      if (command.includes('corepack pnpm install --frozen-lockfile') || command.includes('git init --quiet')) return result(0);
+      if (!reproduced) {
+        reproduced = true;
+        return { ...result(1), stdout: `> placebo-case@1.0.0 test /workspace\n> vitest run\n\n${failure}` };
+      }
+      return result(0);
+    });
+    return { executor, triage };
+  }
+
+  it('triages the failing vitest file alone while it fails the same way', async () => {
+    const failure = await focusFailure();
+    const { ctx } = context('repair-off-by-one', [], 'test-assertion', { triagePolicy: { scope: 'focused', sandboxBudgetSec: 240 } });
+    const { executor, triage } = focusedExecutor(failure, () => ({ ...result(1), stdout: failure, metrics: { elapsedTimeSec: 2 } }));
+    ctx.executor = executor;
+
+    const caseFile = await healCase(ctx);
+    const notes = caseFile.stages.map(({ note }) => note);
+
+    expect(caseFile.triage).toMatchObject({ status: 'real', reproduced: 4, of: 4, stopReason: 'failure-boundary' });
+    expect(triage).toHaveLength(4);
+    expect(triage.every((command) => command.includes('vitest run case.test.js'))).toBe(true);
+    expect(notes.filter((note) => note === 'Focused probe: same test, same failure')).toHaveLength(4);
+    expect(notes).toContain('Focused triage on case.test.js: kept 4, rejected 0');
+  });
+
+  it('restarts triage with the full command when the focused file passes', async () => {
+    const [failure, pass] = [await focusFailure(), await focusPass()];
+    const { ctx } = context('repair-off-by-one', [], 'test-assertion', { triagePolicy: { scope: 'focused', sandboxBudgetSec: 240 } });
+    const { executor, triage } = focusedExecutor(failure, (attempt) =>
+      attempt === 0 ? { ...result(1), stdout: failure, metrics: { elapsedTimeSec: 2 } } : { ...result(0), stdout: pass, metrics: { elapsedTimeSec: 2 } });
+    ctx.executor = executor;
+
+    const caseFile = await healCase(ctx);
+    const notes = caseFile.stages.map(({ note }) => note);
+
+    expect(caseFile.triage).toMatchObject({ status: 'real', reproduced: 4, of: 4 });
+    expect(triage.map((command) => command.includes('case.test.js'))).toEqual([true, true, false, false, false, false]);
+    expect(triage.map((command) => /SUTURA_TRIAGE_ATTEMPT='?(\d+)/u.exec(command)?.[1])).toEqual(['0', '1', '0', '1', '2', '3']);
+    expect(notes).toContain('Focused probe: not the same failure; restarting with the full command');
+    expect(notes).toContain('Focused triage on case.test.js: kept 1, rejected 1; restarted with the full command');
+  });
+
+  it('records why a package-script command gets no focused triage', async () => {
+    const { ctx } = context('repair-off-by-one', [1, 1, 1, 1, 1], 'test-assertion', { triagePolicy: { scope: 'focused' } });
+
+    const caseFile = await healCase(ctx);
+
+    expect(caseFile.triage).toMatchObject({ status: 'real', of: 4 });
+    expect(caseFile.stages.map(({ note }) => note)).toContain('Focused triage not applied: not a direct vitest, jest, node --test or pytest invocation');
+  });
+
+  it('writes no triage budget note under the legacy policy', async () => {
+    const { ctx } = context('repair-off-by-one', [1, 1, 1, 1, 1], 'test-assertion');
+
+    const caseFile = await healCase(ctx);
+
+    expect(caseFile.stages.some(({ note }) => note?.startsWith('Triage budget') || note?.startsWith('Triage stopped'))).toBe(false);
+  });
+
+  it('keeps the legacy flaky verdict for the real Placebo fixture under the default budget', async () => {
+    const { ctx } = context('flaky-timer-race', [1, 1, 0, 1, 0, 0], 'flaky-timing', {
+      triagePolicy: { scope: 'full', sandboxBudgetSec: 240 },
+    });
+    let index = 0;
+    const exits = [1, 1, 0, 1, 0, 0];
+    ctx.executor = new InMemoryExecutor((command) =>
+      command.includes('git apply - && git diff') || command.includes('corepack pnpm install --frozen-lockfile') || command.includes('git init --quiet')
+        ? result(0)
+        : { ...result(exits[index++] ?? 1), metrics: { elapsedTimeSec: 2 } });
+
+    await expect(healCase(ctx)).resolves.toMatchObject({
+      outcome: 'flaky-no-patch',
+      triage: { status: 'intermittent', reproduced: 2, of: 5, stopReason: 'maximum-attempts' },
+    });
   });
 
   it('administers and refuses the real Placebo trap candidate without a repair-model call', async () => {

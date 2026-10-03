@@ -40,6 +40,7 @@ import {
   type TavilySearch,
   type RuntimeId,
   type TypeSafeAuditClient,
+  type TriagePolicy,
 } from '@sutura/core';
 
 import type { AuditArguments, HealArguments } from './args.js';
@@ -61,6 +62,7 @@ export interface HealRuntime {
   typesafeAudit?: TypeSafeAuditClient;
   cost: CostLedger;
   triageN: number;
+  triagePolicy?: TriagePolicy;
   raceK: number;
   repairBudgets?: RepairBudgetLimits;
   search?: SearchLimits;
@@ -421,6 +423,7 @@ export async function healWithRuntime(
     ...(runtime.typesafeAudit === undefined ? {} : { typesafeAudit: runtime.typesafeAudit }),
     cost: runtime.cost,
     triageN: runtime.triageN,
+    ...(runtime.triagePolicy === undefined ? {} : { triagePolicy: runtime.triagePolicy }),
     raceK: runtime.raceK,
     ...(runtime.repairBudgets === undefined ? {} : { repairBudgets: runtime.repairBudgets }),
     ...(runtime.search === undefined ? {} : { search: runtime.search }),
@@ -507,6 +510,7 @@ export function runtimeFromEnvironment(
     ...(typesafeAudit ? { typesafeAudit } : {}),
     cost: llm.ledger,
     triageN: config.triageN,
+    triagePolicy: { scope: 'focused', sandboxBudgetSec: config.triageSandboxBudgetSec },
     raceK: config.raceK,
     repairBudgets: config.repairBudgets,
     search: config.search,

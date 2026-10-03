@@ -35,6 +35,10 @@ inputs:
     description: Maximum independent failure reproductions; progressive confidence can stop earlier.
     required: false
     default: '5'
+  triage-sandbox-seconds:
+    description: Cumulative sandbox seconds triage may spend (1-3600). Triage reruns only the failing test file when the runner is called directly, measures its first probe and stops before a probe that would exceed this, ending gave-up with the predicted seconds; the worst case is this budget plus one probe.
+    required: false
+    default: '240'
   routing-profile:
     description: Price-verified model-selection profile. Incomplete profiles cannot change defaults.
     required: false

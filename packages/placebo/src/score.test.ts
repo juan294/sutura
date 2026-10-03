@@ -163,6 +163,21 @@ describe('score', () => {
     });
   });
 
+  it('counts focused triage probes as operations, including ones discarded by a restart', () => {
+    const probe = (attempt: number, note: string) => ({ stage: 'triage' as const, attempt, nodeId: `node-00${attempt}`, metrics: {}, network: 'disabled' as const, note });
+    const restarted = result('restarted', 'repairable', {
+      ...caseFile('fixed', { approved: true }),
+      stages: [
+        probe(1, 'Focused probe: same test, same failure'),
+        probe(2, 'Focused probe: not the same failure; restarting with the full command'),
+        ...[3, 4, 5, 6].map((attempt) => probe(attempt, 'Reproduction probe')),
+        { stage: 'triage', attempt: 4, nodeId: 'node-007', metrics: {}, network: 'disabled', note: 'Focused triage on case.test.js: kept 1, rejected 1; restarted with the full command' },
+      ],
+    });
+
+    expect(score([restarted]).triageEfficiency).toMatchObject({ eligibleCases: 1, operationsUsed: 6, operationsSaved: -1 });
+  });
+
   it('rejects a citation below but not at the exact official release path', () => {
     const fact = { title: 'Chalk', url: 'https://github.com/chalk/chalk/releases/tag/v5.0.0', snippet: 'ESM only.' };
     const file = caseFile('fixed', { approved: true });

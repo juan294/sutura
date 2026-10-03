@@ -7,6 +7,7 @@ import type { Executor } from '../executor/types.js';
 import { GitHubAdapter } from '../github/adapter.js';
 import type { TextArtifactPort } from '../github/types.js';
 import { orchestrate } from '../orchestrate.js';
+import { LEGACY_TRIAGE_POLICY } from '../engine/triage.js';
 import type { RuntimeId } from '../runtime/types.js';
 import type { RecordedHttpBoundary, RecordedHttpExchange, ReplayBundle } from './bundle.js';
 import { describeMethodCall, RecordedCallCursor, rethrowEarliestMismatch } from './recorded-call-cursor.js';
@@ -171,6 +172,7 @@ export async function replayBundle(
           : { sourceReferenceOrder: validated.configuration.sourceReferenceOrder }),
         repairVerificationScope:
           validated.configuration.repairVerificationScope ?? 'full',
+        triagePolicy: validated.configuration.triagePolicy ?? LEGACY_TRIAGE_POLICY,
       });
       rethrowEarliestMismatch(cursors);
       for (const cursor of cursors) cursor.assertConsumed();

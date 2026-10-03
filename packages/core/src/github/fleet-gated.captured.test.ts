@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { classifyMechanically } from '../diagnose/classify.js';
+import { focusedTriage } from '../engine/focus/index.js';
 import { diagnosisLog, extractSourceReferences, rankFailedSteps } from '../orchestrate.js';
 import { githubApi } from '../replay/replay-fixtures.test-helper.js';
 import { GitHubAdapter } from './adapter.js';
@@ -170,9 +171,54 @@ describe('a long TAP step whose failure precedes the retained tail (gh-glance 36
     expect(diagnosis.failingCmd).toBe(LONG_TAP_RUN.expectedFailingCmd);
   });
 
+  it('gets no focused triage for a multi-line script', async () => {
+    const log = await gatedDiagnosisLog(LONG_TAP_RUN);
+
+    expect(focusedTriage(classifyMechanically(log).failingCmd, log)).toEqual({ reason: 'the command uses shell syntax' });
+  });
+
   it('finds the failing test file as a repair source', async () => {
     const references = extractSourceReferences((await shardStep()).log);
 
     expect(references.map(({ path }) => path)).toContain('test/pty/adaptive-polling.test.mjs');
+  });
+});
+
+// cirujano CI run 37018518357 (2026-10-02): `pnpm -r --workspace-concurrency=1
+// test:coverage` runs vitest once per package. Each run announces its package
+// on a `RUN v4.1.11 /home/runner/work/cirujano/cirujano/packages/<name>` line
+// and then names files relative to that package, so the only failure appears
+// as `src/bundle.test.ts`, a path that does not exist at the repository root.
+const PACKAGE_RELATIVE_RUN: GatedRun = {
+  repository: 'juan294/cirujano',
+  expectedFailingCmd: 'pnpm run test:coverage',
+  monitorRunId: '37020000000',
+  ciRunId: '37018518357',
+  jobs: [{
+    id: 110875289871,
+    name: 'checks',
+    log: 'cirujano-110875289871.log',
+    step: { name: 'Run pnpm run test:coverage', startedAt: '2026-10-02T14:15:35Z', completedAt: '2026-10-02T14:18:55Z' },
+  }],
+};
+
+describe('a per-package vitest run in a workspace (cirujano 37018518357)', () => {
+  it('resolves the failing test file inside the package vitest announced', async () => {
+    const [step] = await gatedFailedSteps(PACKAGE_RELATIVE_RUN);
+    // The Action reads references latest-first (packages/action/src/main.ts); the
+    // local CLI reads them first-first. Both must reach the failing file.
+    for (const order of ['latest', 'first'] as const) {
+      const references = extractSourceReferences(step?.log ?? '', order);
+      expect(references).toContainEqual({ path: 'packages/cli/src/bundle.test.ts', line: 19 });
+      expect(references.map(({ path }) => path)).not.toContain('src/bundle.test.ts');
+    }
+  });
+
+  it('gets no focused triage for a package script', async () => {
+    const log = await gatedDiagnosisLog(PACKAGE_RELATIVE_RUN);
+    const command = classifyMechanically(log).failingCmd;
+
+    expect(command).toBe(PACKAGE_RELATIVE_RUN.expectedFailingCmd);
+    expect(focusedTriage(command, log)).toEqual({ reason: 'not a direct vitest, jest, node --test or pytest invocation' });
   });
 });

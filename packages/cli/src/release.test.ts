@@ -7,44 +7,44 @@ const TAG_OBJECT = 'b'.repeat(40);
 
 describe('resolveActionCommit', () => {
   it('resolves a lightweight release tag to one exact commit', async () => {
-    const run = vi.fn().mockResolvedValue(`${COMMIT}\trefs/tags/v0.3.8\n`);
+    const run = vi.fn().mockResolvedValue(`${COMMIT}\trefs/tags/v0.3.9\n`);
 
-    await expect(resolveActionCommit({ version: '0.3.8', cwd: '/tmp/repo', run }))
+    await expect(resolveActionCommit({ version: '0.3.9', cwd: '/tmp/repo', run }))
       .resolves.toBe(COMMIT);
     expect(run).toHaveBeenCalledWith('git', [
       'ls-remote', 'https://github.com/juan294/sutura.git',
-      'refs/tags/v0.3.8', 'refs/tags/v0.3.8^{}',
+      'refs/tags/v0.3.9', 'refs/tags/v0.3.9^{}',
     ], { cwd: '/tmp/repo' });
   });
 
   it('uses the peeled commit for an annotated release tag', async () => {
     const run = vi.fn().mockResolvedValue([
-      `${TAG_OBJECT}\trefs/tags/v0.3.8`,
-      `${COMMIT}\trefs/tags/v0.3.8^{}`,
+      `${TAG_OBJECT}\trefs/tags/v0.3.9`,
+      `${COMMIT}\trefs/tags/v0.3.9^{}`,
       '',
     ].join('\n'));
 
-    await expect(resolveActionCommit({ version: '0.3.8', cwd: '/tmp/repo', run }))
+    await expect(resolveActionCommit({ version: '0.3.9', cwd: '/tmp/repo', run }))
       .resolves.toBe(COMMIT);
   });
 
   it('accepts only an exact explicit candidate commit without a network command', async () => {
     const run = vi.fn();
     await expect(resolveActionCommit({
-      version: '0.3.8', cwd: '/tmp/repo', run, explicitCommit: COMMIT.toUpperCase(),
+      version: '0.3.9', cwd: '/tmp/repo', run, explicitCommit: COMMIT.toUpperCase(),
     })).resolves.toBe(COMMIT);
     expect(run).not.toHaveBeenCalled();
 
     await expect(resolveActionCommit({
-      version: '0.3.8', cwd: '/tmp/repo', run, explicitCommit: 'main',
+      version: '0.3.9', cwd: '/tmp/repo', run, explicitCommit: 'main',
     })).rejects.toBeInstanceOf(ReleaseResolutionError);
   });
 
-  it.each(['', `${COMMIT}\trefs/tags/v0.3.8\n${TAG_OBJECT}\trefs/tags/v0.3.8\n`, 'not-a-sha\trefs/tags/v0.3.8\n'])(
+  it.each(['', `${COMMIT}\trefs/tags/v0.3.9\n${TAG_OBJECT}\trefs/tags/v0.3.9\n`, 'not-a-sha\trefs/tags/v0.3.9\n'])(
     'fails closed for missing, ambiguous, or malformed tag output',
     async (output) => {
       await expect(resolveActionCommit({
-        version: '0.3.8', cwd: '/tmp/repo', run: vi.fn().mockResolvedValue(output),
+        version: '0.3.9', cwd: '/tmp/repo', run: vi.fn().mockResolvedValue(output),
       })).rejects.toBeInstanceOf(ReleaseResolutionError);
     },
   );

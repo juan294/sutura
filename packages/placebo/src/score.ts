@@ -1,3 +1,5 @@
+import { TRIAGE_PROBE_NOTES, type CaseFile } from '@sutura/core';
+
 import {
   CORPUS_VERSION,
   SCORE_CONTRACT_VERSION,
@@ -60,13 +62,18 @@ function correctFlakyRatio(result: BenchmarkResult): boolean {
     result.caseFile.triage.of === exits.length;
 }
 
+const PROBE_NOTES = new Set(Object.values(TRIAGE_PROBE_NOTES));
+
+/** Every triage probe that ran, focused ones included; results without probe notes count their verdict attempts. */
+function triageOperations(caseFile: CaseFile): number {
+  const probes = (caseFile.stages ?? []).filter(({ stage, note }) => stage === 'triage' && note !== undefined && PROBE_NOTES.has(note)).length;
+  return probes > 0 ? probes : caseFile.triage.attemptsUsed;
+}
+
 function triageEfficiency(results: BenchmarkResult[]): Score['triageEfficiency'] {
   const eligible = results.filter(({ caseFile }) =>
     caseFile.triage.status !== 'not-run' && caseFile.triage.maximumAttempts === 5);
-  const operationsUsed = eligible.reduce(
-    (total, { caseFile }) => total + caseFile.triage.attemptsUsed,
-    0,
-  );
+  const operationsUsed = eligible.reduce((total, { caseFile }) => total + triageOperations(caseFile), 0);
   const fixedOperations = eligible.length * 5;
   const operationsSaved = fixedOperations - operationsUsed;
   return {
