@@ -224,3 +224,47 @@ case-lab 227, cli 168, placebo 241, evaluation 132, guards 683/683).
   `Triage budget:` line. Some tests (evidence line, replay validation) were
   written after their code and passed on first run.
 - **Next.** Phase 2 (focused probes) from `develop` after acceptance.
+
+## Phase 2 handoff (2026-10-03)
+
+Status: implemented and locally verified; awaiting Juan's acceptance. Branch
+`feat/bounded-triage-phase2` from `develop` `2a51387`; implementation commit
+`6103209`. `pnpm run ci:local` passed on `6103209` (core 2053, action 168,
+case-lab 227, cli 169, placebo 245, evaluation 132, guards 683/683).
+
+- **Runners.** `engine/focus/` parses vitest, jest, `node --test` (TAP and the
+  default spec reporter) and pytest. Every parser is tested against real output
+  captured this session: vitest 4.1.11 (default, grouped and github-actions
+  reporters), jest 30.5.2, Node 24.21.0 and pytest 9.1.1, with paths rewritten
+  to `/workspace` or the runner workspace; gitleaks clean.
+- **Real Placebo evidence.** For all 10 JavaScript flaky fixtures, `vitest run
+  case.test.js` at `SUTURA_TRIAGE_ATTEMPT` 0-4 produced the same exit sequence
+  as `vitest run` and as each fixture's `triageExitCodes`, and every failing
+  focused run passed the same-failure check against the fixture's first failing
+  full run. Across the benchmark, focus applies only to the single-command
+  `vitest run` cases; compound commands, `pnpm --filter` and Python `unittest`
+  keep the full command (`placebo/src/focused-triage.test.ts`).
+- **Fleet logs.** gh-glance job `110720064182` (multi-line script) and
+  cirujano job `110875289871` get no focus. The plan expected cirujano's
+  command to be `pnpm -r`; the observed failing command is the package script
+  `pnpm run test:coverage`, rejected as not a direct runner invocation.
+- **Review findings, all resolved.** A budget stop right after a focused
+  restart threw (no counted attempt to evaluate); it now returns a `not-run`
+  `sandbox-budget` verdict of 0/0, which Placebo `validTriage` accepts (it
+  rejected 0/0 in phase 1). Fixed with real-output fixtures: jest `● Console`
+  blocks taken for a test; vitest grouped failures fingerprinting the next
+  header; file-only github-actions annotations (load errors) ignored. Also
+  fixed: a node script before `--test` was dropped; environment values needing
+  quotes; adjacent quoting and `#` comments; log paths starting with `-`; node
+  test ids now include the test location; focus reads the policy-filtered log.
+- **Deviations.** Focus is computed in `heal.ts` from the raw
+  `diagnosis.failingCmd` and wrapped by `sandboxExecutableCommand`, like the
+  full command, and passed to `boundedTriage` as a `FocusedProbe`; the plan's
+  pseudocode computed it inside `boundedTriage`. The focused command for jest
+  uses `--runTestsByPath <file>`. The budget note counts every probe
+  (`budget.probes`), focused ones included. Residual: an unquoted glob in a
+  kept option's separate value (`--ignore x/*`) is quoted in the focused
+  command, so the focused probe may be rejected and triage restarts; the
+  verdict is unaffected.
+- **Next.** Phase 3 (release v0.3.9, benchmark, Case Lab, fleet re-pin)
+  needs separate authorization.
