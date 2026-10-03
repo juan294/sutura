@@ -44,7 +44,41 @@ export const ACTION_EXECUTABLE_PATHS = Object.freeze([
   'packages/action/action.yml',
   'packages/action/dist/index.cjs',
 ]);
-const STATUSES = new Set(['passed', 'failed', 'skipped', 'pending']);
+const STATUSES = new Set(['passed', 'failed', 'skipped', 'pending', 'out-of-scope']);
+const DISPOSITION_FIELDS = Object.freeze(['decision', 'decidedBy', 'decidedAt', 'reference']);
+/**
+ * Checks an owner may decide do not apply. Every other check must pass for a
+ * ready release; adding one here is an explicit, reviewed change.
+ */
+export const OUT_OF_SCOPE_ELIGIBLE_IDS = Object.freeze(['adoption-study']);
+
+function calendarDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/u.test(value) &&
+    !Number.isNaN(Date.parse(value)) &&
+    new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+}
+
+/**
+ * An owner decision that a required check does not apply to this release, such
+ * as a study the owner chose not to run. It names who decided, when, and where
+ * the decision is recorded; the check is reported, never counted as passed.
+ */
+function outOfScopeDisposition(check) {
+  if (check.status !== 'out-of-scope') {
+    if (check.disposition !== undefined) throw new Error(`${check.id} disposition is only valid for an out-of-scope check`);
+    return undefined;
+  }
+  if (!OUT_OF_SCOPE_ELIGIBLE_IDS.includes(check.id)) throw new Error(`${check.id} cannot be out of scope`);
+  if (check.evidence.length > 0) throw new Error(`${check.id} out-of-scope check cannot carry evidence`);
+  const disposition = check.disposition;
+  if (typeof disposition !== 'object' || disposition === null || Array.isArray(disposition) ||
+      Object.keys(disposition).length !== DISPOSITION_FIELDS.length ||
+      DISPOSITION_FIELDS.some((field) => typeof disposition[field] !== 'string' || disposition[field].trim().length === 0) ||
+      !calendarDate(disposition.decidedAt)) {
+    throw new Error(`${check.id} out-of-scope disposition requires decision, decidedBy, decidedAt (YYYY-MM-DD), and reference`);
+  }
+  return Object.fromEntries(DISPOSITION_FIELDS.map((field) => [field, disposition[field]]));
+}
 const MAX_PHASE_5_SPEND_MICRO_USD = MAX_PHASE_5_SPEND_USD * 1_000_000;
 
 function githubApiDefault(endpoint, binary = false) {
@@ -212,7 +246,11 @@ export function analyzeReleaseEvidence(input, options = {}) {
         (typeof check.authorizationGate !== 'string' || check.authorizationGate.trim().length === 0)) {
       throw new Error(`Pending check ${check.id} requires an authorization gate`);
     }
+    if (check.status === 'out-of-scope' && check.authorizationGate !== undefined) {
+      throw new Error(`${check.id} authorization gate is only valid for a pending check`);
+    }
     const equivalence = normalizedDogfoodEquivalence(check.equivalence, check, releaseCommit);
+    const disposition = outOfScopeDisposition(check);
     return {
       id: check.id,
       required: true,
@@ -221,9 +259,12 @@ export function analyzeReleaseEvidence(input, options = {}) {
       evidence,
       ...(equivalence === undefined ? {} : { equivalence }),
       ...(check.authorizationGate === undefined ? {} : { authorizationGate: check.authorizationGate }),
+      ...(disposition === undefined ? {} : { disposition }),
     };
   });
-  const requiredMisses = checks.filter(({ status }) => status !== 'passed').map(({ id }) => id);
+  const requiredMisses = checks
+    .filter(({ status }) => status !== 'passed' && status !== 'out-of-scope')
+    .map(({ id }) => id);
   const base = {
     schemaVersion: 'sutura-release-evidence-v1',
     releaseCommit,

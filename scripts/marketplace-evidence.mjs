@@ -168,11 +168,13 @@ export async function verifyMarketplaceEvidence(request, dependencies = {}) {
   exactReleaseVersion(request.release.slice(1));
   if (request.listing !== LISTING) throw new Error(`Marketplace listing must be ${LISTING}`);
   const run = { ...defaultVerifyDependencies, ...dependencies };
+  // The participant study is optional: the owner may verify the listing with
+  // their own Marketplace install alone, and the result then says so.
   const [releaseCommit, releaseResponse, listingResponse, installBytes, marketplaceInstallBytes] = await Promise.all([
     run.resolveRelease(request.release),
     run.fetchRelease(request.release),
     run.fetchListing(request.listing),
-    readFile(request.installEvidence),
+    request.installEvidence === undefined ? undefined : readFile(request.installEvidence),
     readFile(request.marketplaceInstallEvidence),
   ]);
   if (releaseCommit !== candidate) throw new Error('Marketplace release commit differs from candidate');
@@ -181,20 +183,22 @@ export async function verifyMarketplaceEvidence(request, dependencies = {}) {
   if (listingResponse.status !== 200 || !listingResponse.body.includes(NAME)) {
     throw new Error('Marketplace listing is not publicly available with the expected Action name');
   }
-  if (installBytes.byteLength > 1024 * 1024) throw new Error('Marketplace install evidence exceeds 1048576 bytes');
+  if (installBytes !== undefined && installBytes.byteLength > 1024 * 1024) throw new Error('Marketplace install evidence exceeds 1048576 bytes');
   if (marketplaceInstallBytes.byteLength > 128 * 1024) throw new Error('Marketplace verification record exceeds 131072 bytes');
-  let install;
-  try {
-    install = JSON.parse(installBytes.toString('utf8'));
-  } catch (error) {
-    throw new Error('Marketplace install evidence must be valid JSON', { cause: error });
+  if (installBytes !== undefined) {
+    let install;
+    try {
+      install = JSON.parse(installBytes.toString('utf8'));
+    } catch (error) {
+      throw new Error('Marketplace install evidence must be valid JSON', { cause: error });
+    }
+    try {
+      validateStudyEvidence(install);
+    } catch (error) {
+      throw new Error('Marketplace adoption evidence is incomplete or invalid', { cause: error });
+    }
+    if (install.candidateCommit !== candidate) throw new Error('Marketplace adoption evidence has different identity');
   }
-  try {
-    validateStudyEvidence(install);
-  } catch (error) {
-    throw new Error('Marketplace adoption evidence is incomplete or invalid', { cause: error });
-  }
-  if (install.candidateCommit !== candidate) throw new Error('Marketplace adoption evidence has different identity');
   let marketplaceInstall;
   try {
     marketplaceInstall = validateMarketplaceInstallEvidence(
@@ -209,8 +213,12 @@ export async function verifyMarketplaceEvidence(request, dependencies = {}) {
     candidate,
     release: request.release,
     listing: request.listing,
-    installEvidence: request.installEvidence,
-    installEvidenceHash: createHash('sha256').update(installBytes).digest('hex'),
+    ...(installBytes === undefined
+      ? { adoptionStudy: 'out-of-scope' }
+      : {
+          installEvidence: request.installEvidence,
+          installEvidenceHash: createHash('sha256').update(installBytes).digest('hex'),
+        }),
     marketplaceInstallEvidence: request.marketplaceInstallEvidence,
     marketplaceInstallEvidenceHash: createHash('sha256').update(marketplaceInstallBytes).digest('hex'),
     verifiedAt: run.now(),
@@ -268,12 +276,13 @@ export async function main(args = process.argv.slice(2)) {
     await writeFile(options.get('--output'), `${canonicalJson(result)}\n`, { encoding: 'utf8', flag: 'wx' });
     return result;
   }
-  if (operation === 'verify' && options.size === 6 && [
-    '--candidate', '--release', '--listing', '--install-evidence', '--marketplace-install-evidence', '--output',
-  ].every((flag) => options.has(flag))) {
+  const verifyFlags = ['--candidate', '--release', '--listing', '--marketplace-install-evidence', '--output'];
+  if (operation === 'verify' && verifyFlags.every((flag) => options.has(flag)) &&
+      options.size === verifyFlags.length + (options.has('--install-evidence') ? 1 : 0)) {
     const result = await verifyMarketplaceEvidence({
       candidate: options.get('--candidate'), release: options.get('--release'),
-      listing: options.get('--listing'), installEvidence: options.get('--install-evidence'),
+      listing: options.get('--listing'),
+      ...(options.has('--install-evidence') ? { installEvidence: options.get('--install-evidence') } : {}),
       marketplaceInstallEvidence: options.get('--marketplace-install-evidence'),
     });
     await writeFile(options.get('--output'), `${canonicalJson(result)}\n`, {

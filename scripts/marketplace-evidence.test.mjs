@@ -165,6 +165,34 @@ test('post-publication evidence binds listing, release commit, and adoption evid
   }
 });
 
+test('post-publication evidence can verify the listing without a participant study', async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'sutura-marketplace-'));
+  try {
+    const marketplaceInstall = join(temporary, 'marketplace-install.json');
+    await writeFile(marketplaceInstall, JSON.stringify(marketplaceInstallEvidence()));
+    const result = await verifyMarketplaceEvidence({
+      candidate: SHA,
+      release: 'v0.3.8',
+      listing: 'https://github.com/marketplace/actions/sutura-verified-self-healing-ci',
+      marketplaceInstallEvidence: marketplaceInstall,
+    }, {
+      resolveRelease: async () => SHA,
+      fetchRelease: PUBLIC_RELEASE,
+      fetchListing: async () => ({ status: 200, body: '<title>Sutura Verified Self-Healing CI · Actions</title>' }),
+      now: () => '2026-10-03T12:00:00.000Z',
+      verifyMarketplaceInstall: async () => undefined,
+    });
+
+    assert.equal(result.ready, true);
+    assert.equal(result.adoptionStudy, 'out-of-scope');
+    assert.equal(Object.hasOwn(result, 'installEvidence'), false);
+    assert.equal(Object.hasOwn(result, 'installEvidenceHash'), false);
+    assert.match(result.marketplaceInstallEvidenceHash, /^[a-f0-9]{64}$/u);
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
+
 test('post-publication evidence rejects missing listings and candidate drift', async () => {
   const temporary = await mkdtemp(join(tmpdir(), 'sutura-marketplace-invalid-'));
   try {

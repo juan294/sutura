@@ -42,14 +42,16 @@ node scripts/marketplace-evidence.mjs record-install --candidate "$(git rev-list
 
 ## Terminal evidence
 
-After the external adoption record is complete:
+No participant study is run for this release (decided 2026-10-02), so the
+verifier binds the listing to the owner's own Marketplace install:
 
 ```bash
-node scripts/marketplace-evidence.mjs verify --candidate "$(git rev-list -n 1 v0.3.8)" --release v0.3.8 --listing https://github.com/marketplace/actions/sutura-verified-self-healing-ci --install-evidence docs/adoption/sutura-external-adoption-evidence-v1.json --marketplace-install-evidence docs/adoption/sutura-marketplace-install-evidence-v1.json --output docs/adoption/sutura-marketplace-evidence-v1.json
+node scripts/marketplace-evidence.mjs verify --candidate "$(git rev-list -n 1 v0.3.8)" --release v0.3.8 --listing https://github.com/marketplace/actions/sutura-verified-self-healing-ci --marketplace-install-evidence docs/adoption/sutura-marketplace-install-evidence-v1.json --output docs/adoption/sutura-marketplace-evidence-v1.json
 ```
 
 The verifier binds the public listing, remote immutable tag and GitHub release,
-complete external evidence, and a public run installed through Marketplace into
-one hashed record. It creates the output exclusively
-and refuses an incomplete study, candidate drift, a missing listing, or a mutable
-release identity.
+and a public run installed through Marketplace into one hashed record, which
+states `adoptionStudy: out-of-scope`. It creates the output exclusively and
+refuses candidate drift, a missing listing, or a mutable release identity. If a
+study record is supplied with `--install-evidence`, it must be complete and bound
+to the same candidate.

@@ -57,7 +57,7 @@ The critical path is 1 → 2 → 3 → 4 → 6 (phase 5 dropped 2026-10-02). Doc
 Juan decided not to recruit participants. Phase 5 and acceptance item 4 are dropped, and phase 6 depends on phase 4 directly. Consequences:
 
 - No public artifact may claim external users, independent installs, review sessions or a comprehension result. The video script's external-user segment is removed.
-- `adoption-study` remains in `RELEASE_EVIDENCE_IDS` (`scripts/release-evidence.mjs:30-35`) and `scripts/marketplace-evidence.mjs:192-196` requires validated study evidence. Both need a reviewed code change (TDD, worktree) to record the study as an explicit out-of-scope disposition instead of a missing or skipped ID, without weakening the other checks.
+- Done 2026-10-03: `scripts/release-evidence.mjs` accepts an `out-of-scope` status that requires an owner disposition (decision, decidedBy, decidedAt, reference) and is never counted as passed or as a miss; `scripts/marketplace-evidence.mjs` verifies the listing without study evidence and records `adoptionStudy: out-of-scope`, while still validating study evidence when supplied.
 - Marketplace publication itself is unaffected; only its verifier's study coupling changes.
 - The study materials in `docs/adoption/` stay as historical, unsent preparation.
 

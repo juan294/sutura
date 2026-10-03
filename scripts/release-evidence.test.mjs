@@ -96,6 +96,84 @@ test('records real authorization gates as pending and cannot declare release rea
   assert.throws(() => assertReleaseReady(report), /not ready/u);
 });
 
+const STUDY_DISPOSITION = Object.freeze({
+  decision: 'No human participants are recruited; evidence comes from fleet usage.',
+  decidedBy: 'Juan Gonzalez',
+  decidedAt: '2026-10-02',
+  reference: 'docs/plans/2026-09-28-sutura-hackathon-completion.md',
+});
+
+function withStudy(study) {
+  const base = evidence();
+  return { ...base, checks: base.checks.map((check) => check.id === 'adoption-study' ? { ...study, id: 'adoption-study', required: true, candidate: SHA } : check) };
+}
+
+test('an owner-dispositioned out-of-scope check is recorded but is not a miss', () => {
+  const report = analyze(withStudy({ status: 'out-of-scope', evidence: [], disposition: STUDY_DISPOSITION }));
+
+  assert.equal(report.requiredMisses.includes('adoption-study'), false);
+  assert.equal(report.passedCount, 4);
+  assert.deepEqual(report.checks.find(({ id }) => id === 'adoption-study'), {
+    id: 'adoption-study', required: true, status: 'out-of-scope', candidate: SHA, evidence: [], disposition: STUDY_DISPOSITION,
+  });
+});
+
+test('an out-of-scope check requires a complete disposition', () => {
+  for (const disposition of [
+    undefined,
+    { ...STUDY_DISPOSITION, decidedBy: ' ' },
+    { ...STUDY_DISPOSITION, decidedAt: 'yesterday' },
+    { ...STUDY_DISPOSITION, reference: '' },
+    { ...STUDY_DISPOSITION, decision: undefined },
+  ]) {
+    assert.throws(
+      () => analyze(withStudy({ status: 'out-of-scope', evidence: [], ...(disposition === undefined ? {} : { disposition }) })),
+      /adoption-study out-of-scope disposition/u,
+    );
+  }
+});
+
+test('only owner-decidable checks may be out of scope', () => {
+  const base = evidence();
+  const dodged = { ...base, checks: base.checks.map((check) => check.id === 'local-gate'
+    ? { id: 'local-gate', required: true, status: 'out-of-scope', candidate: SHA, evidence: [], disposition: STUDY_DISPOSITION }
+    : check) };
+  assert.throws(() => analyze(dodged), /local-gate cannot be out of scope/u);
+});
+
+test('an out-of-scope disposition rejects impossible dates, extra keys, and non-objects', () => {
+  for (const disposition of [
+    { ...STUDY_DISPOSITION, decidedAt: '2026-02-31' },
+    { ...STUDY_DISPOSITION, approvedBy: 'someone' },
+    null,
+    [],
+  ]) {
+    assert.throws(
+      () => analyze(withStudy({ status: 'out-of-scope', evidence: [], disposition })),
+      /adoption-study out-of-scope disposition/u,
+    );
+  }
+});
+
+test('an out-of-scope check carries no evidence and no authorization gate', () => {
+  assert.throws(
+    () => analyze(withStudy({ status: 'out-of-scope', evidence: [], authorizationGate: 'participant sessions', disposition: STUDY_DISPOSITION })),
+    /adoption-study authorization gate is only valid for a pending check/u,
+  );
+  const withEvidence = evidence().checks.find(({ id }) => id === 'local-gate').evidence;
+  assert.throws(
+    () => analyze(withStudy({ status: 'out-of-scope', evidence: withEvidence, disposition: STUDY_DISPOSITION })),
+    /adoption-study out-of-scope check cannot carry evidence/u,
+  );
+});
+
+test('only an out-of-scope check may carry a disposition', () => {
+  assert.throws(
+    () => analyze(withStudy({ status: 'pending', evidence: [], authorizationGate: 'participant sessions', disposition: STUDY_DISPOSITION })),
+    /adoption-study disposition/u,
+  );
+});
+
 test('dogfood evidence requires 10 trailing fixed entries and exact Action executable equivalence', async () => {
   const tree = 'b'.repeat(40);
   const entry = (index, overrides = {}) => ({
