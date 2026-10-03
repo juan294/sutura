@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A failing test in a workspace package is now found as a repair source. When `pnpm -r` runs vitest one package at a time, vitest names its package on a `RUN vX <dir>` line and then prints failing files relative to that package (`src/bundle.test.ts` for `packages/cli/src/bundle.test.ts`), so Sutura looked for them at the repository root and stopped with no anchorable repair source (cirujano CI run 37018518357). Failure lines after a package run line are now resolved inside that package until its vitest summary, step or group ends; passing (`✓`) lines inside a package no longer crowd the failure out of the source slots; output pnpm already prefixed with its package keeps that package; and a long step's log window keeps the vitest run lines that give its failures their package.
+
 ## [0.3.8] - 2026-10-03
 
 ### Fixed

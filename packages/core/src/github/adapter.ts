@@ -23,6 +23,8 @@ const GROUP_RUN_MARKER = /^\S+Z ##\[group\]Run\s/;
 const TAP_FAILURE = /^\s*not ok \d+\b/u;
 const TAP_DIRECTIVE = /\s#\s*(?:TODO|SKIP)\b/iu;
 const TAP_PARENT_SUMMARY = /^\s*failureType: 'subtestsFailed'$/u;
+const VITEST_RUN_LINE = /(?:^|\s)RUN\s+v\d[\w.+-]*\s+\S+\s*$/u;
+const RUN_CONTEXT_LINES = 8;
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const BRANCH_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,239}$/;
@@ -108,10 +110,17 @@ function failedStepLog(
   for (const [start, end] of tapFailureBlocks(matching, kept.size)) {
     for (let index = start; index <= end; index += 1) kept.add(index);
   }
+  // Each vitest run line names the package its later file paths are relative to.
+  for (const index of runContextLines(matching)) kept.add(index);
   for (let index = matching.length - 1; index >= 0 && kept.size < FAILED_STEP_LINES; index -= 1) {
     kept.add(index);
   }
   return [...kept].sort((left, right) => left - right).map((index) => matching[index]?.line).join('\n');
+}
+
+function runContextLines(lines: readonly TimestampedLogLine[]): number[] {
+  const indexes = lines.flatMap(({ line }, index) => VITEST_RUN_LINE.test(logPayload(line).replace(/\x1b\[[0-9;]*m/gu, '').trimEnd()) ? [index] : []);
+  return indexes.slice(-RUN_CONTEXT_LINES);
 }
 
 function logPayload(line: string): string {
