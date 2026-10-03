@@ -195,3 +195,32 @@ repair, simplify, then sequential `pnpm run typecheck`, `pnpm run lint`,
   runs the same triage code (INFERRED, not measured in a fleet run). chapa is
   private: its logs and commands are not committed; tests use its stage shape
   and probe times only.
+
+## Phase 1 handoff (2026-10-03)
+
+Status: implemented and locally verified; awaiting Juan's acceptance. Branch
+`feat/bounded-triage-phase1` from `develop` `f8a1a0b`; implementation commit
+`643dc75`. `pnpm run ci:local` passed on `643dc75` (core 1978, action 166,
+case-lab 227, cli 168, placebo 241, evaluation 132, guards 683/683).
+
+- **Review findings, all resolved.** An independent review confirmed verdict
+  equivalence for every exit pattern with N = 1, 2, 3, 5, 7 and that bundles
+  without a policy replay unchanged. It found: the gate ran per batch, so probes
+  of 1, 1, 500, 500 s could spend 1002 s against 240 (fixed: one probe at a
+  time, gated before each; evaluation still only at legacy batch ends); the
+  Action check summary omitted the stop (fixed); the note's numbers did not add
+  up and named only the Action input (fixed: one decimal, both settings); a
+  user-guide wording error (fixed).
+- **Note length.** Stage notes are capped at 240 characters (`heal.ts`
+  `StageLedger`); the first note was 248 and lost its remedy. It is now 210 with
+  a test at extreme values.
+- **Deviations.** `prepareRepair` (`engine/repair.ts:599`) also calls `triage`
+  but has no runtime caller (public export and tests), so it keeps the legacy
+  policy. `scripts/fleet-recovery-ledger.mjs` is unchanged: the collector's
+  per-attempt events now carry `triageStopReason`, which is enough to count
+  stops. Case Lab `render.ts`/`result.ts` need no change (they print and
+  length-check the stop reason) and got no new test. The `ConTree runtime:`
+  line keeps `stop=sandbox-budget`; the seconds are on a separate
+  `Triage budget:` line. Some tests (evidence line, replay validation) were
+  written after their code and passed on first run.
+- **Next.** Phase 2 (focused probes) from `develop` after acceptance.
