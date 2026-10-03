@@ -311,7 +311,7 @@ export {
   redactExternalText,
 } from './security/external-text.js';
 
-export const VERSION = '0.3.7';
+export const VERSION = '0.3.8';
 
 export type {
   HealCaseContext,

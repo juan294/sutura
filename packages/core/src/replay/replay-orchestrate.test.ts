@@ -235,7 +235,9 @@ describe('replayBundle', () => {
     const second = bundle.executor[1]!;
     [first.sequence, second.sequence] = [second.sequence, first.sequence];
 
-    await expect(replayBundle(bundle)).resolves.toMatchObject({
+    // Swapping two serial calls is an order the replay cannot follow, so the
+    // first result waits out the deadline before it is released.
+    await expect(replayBundle(bundle, { executorOrdering: { deadlineMs: 50 } })).resolves.toMatchObject({
       caseFile: { outcome: bundle.outcome },
     });
   });

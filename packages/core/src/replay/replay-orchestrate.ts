@@ -9,8 +9,8 @@ import type { TextArtifactPort } from '../github/types.js';
 import { orchestrate } from '../orchestrate.js';
 import type { RuntimeId } from '../runtime/types.js';
 import type { RecordedHttpBoundary, RecordedHttpExchange, ReplayBundle } from './bundle.js';
-import { describeMethodCall, RecordedCallCursor } from './recorded-call-cursor.js';
-import { EXECUTOR_CURSOR_OPTIONS, RecordedExecutor } from './replay-executor.js';
+import { describeMethodCall, RecordedCallCursor, rethrowEarliestMismatch } from './recorded-call-cursor.js';
+import { EXECUTOR_CURSOR_OPTIONS, RecordedExecutor, type RecordedExecutorOrdering } from './replay-executor.js';
 import { replayFetch } from './replay-fetch.js';
 import {
   describePortCall,
@@ -23,6 +23,8 @@ import { parseReplayBundle, ReplayValidationError } from './validate.js';
 
 export interface ReplayBundleOptions {
   executor?: Executor;
+  /** Timing of the recorded executor's in-order release; the defaults suit real replays. */
+  executorOrdering?: RecordedExecutorOrdering;
   artifact?: TextArtifactPort;
   runtimeId?: RuntimeId;
 }
@@ -33,6 +35,7 @@ export interface ReplayBundleResult {
 }
 
 interface ReplayCursor {
+  readonly firstMismatchOrder: number;
   assertConsumed(): void;
   rethrowMismatch(): void;
 }
@@ -99,11 +102,10 @@ export async function replayBundle(
     portCursor,
     validated.runtimeDetection?.evidencePaths,
   );
-  const executor = options.executor ?? new RecordedExecutor(
-    validated.executor,
-    (args) => repository.normalizeArgs(args),
-    executorCursor,
-  );
+  const recordedExecutor = options.executor === undefined
+    ? new RecordedExecutor(validated.executor, (args) => repository.normalizeArgs(args), executorCursor, options.executorOrdering)
+    : undefined;
+  const executor = options.executor ?? recordedExecutor!;
   const github = new GitHubAdapter(githubReplay.api, {
     owner,
     repo,
@@ -170,13 +172,15 @@ export async function replayBundle(
         repairVerificationScope:
           validated.configuration.repairVerificationScope ?? 'full',
       });
+      rethrowEarliestMismatch(cursors);
       for (const cursor of cursors) cursor.assertConsumed();
       return { caseFile, mutations: githubReplay.mutations };
     } catch (error) {
-      for (const cursor of cursors) cursor.rethrowMismatch();
+      rethrowEarliestMismatch(cursors);
       throw error;
     }
   } finally {
+    recordedExecutor?.dispose();
     await repository.cleanup();
   }
 }
