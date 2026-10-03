@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `sutura replay` now reproduces a live run whose adaptive search had more than one passing branch. Live, the first branch result to arrive takes the recovery audit; served from memory, results resolved in microtask order, so a replay could audit a different branch and diverge (Case Lab run 37099476028: `search-003` instead of `search-002`). Recorded sandbox results are now released in recorded order, and each released branch reaches its next sandbox call before the next result is released. A replay that diverges now reports the first mismatch in any boundary instead of a later symptom, such as the port mismatch that hid this one.
+
 ## [0.3.7] - 2026-10-02
 
 ### Fixed

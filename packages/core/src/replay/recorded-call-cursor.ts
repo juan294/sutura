@@ -34,11 +34,15 @@ export interface RecordedCallCursorOptions {
   readonly optional?: (description: RecordedCallDescription) => boolean;
 }
 
+/** Orders first mismatches across cursors, so a replay reports the earliest. */
+let mismatchClock = 0;
+
 export class RecordedCallCursor<T extends SequencedRecord> {
   private readonly records: T[];
   private readonly consumed = new Set<number>();
   private index = 0;
   private mismatch: ReplayMismatchError | undefined;
+  private mismatchOrder = Number.POSITIVE_INFINITY;
 
   constructor(
     records: readonly T[],
@@ -129,8 +133,16 @@ export class RecordedCallCursor<T extends SequencedRecord> {
 
   /** Record a mismatch found after a record was served, so `rethrowMismatch` can surface it. */
   fail(error: ReplayMismatchError): never {
-    this.mismatch ??= error;
+    if (this.mismatch === undefined) {
+      this.mismatch = error;
+      this.mismatchOrder = ++mismatchClock;
+    }
     throw error;
+  }
+
+  /** When this cursor recorded its first mismatch, relative to every other cursor. */
+  get firstMismatchOrder(): number {
+    return this.mismatchOrder;
   }
 
   rethrowMismatch(): void {
@@ -151,4 +163,17 @@ export class RecordedCallCursor<T extends SequencedRecord> {
       );
     }
   }
+}
+
+/**
+ * Rethrow the first mismatch any cursor recorded. A mismatch the pipeline
+ * absorbed (a failed branch, a refused provider turn) changes what it does
+ * next, so later mismatches in other domains are its symptoms.
+ */
+export function rethrowEarliestMismatch(cursors: ReadonlyArray<Pick<RecordedCallCursor<SequencedRecord>, 'firstMismatchOrder' | 'rethrowMismatch'>>): void {
+  const earliest = cursors.reduce<typeof cursors[number] | undefined>(
+    (best, cursor) => (best === undefined || cursor.firstMismatchOrder < best.firstMismatchOrder ? cursor : best),
+    undefined,
+  );
+  earliest?.rethrowMismatch();
 }
