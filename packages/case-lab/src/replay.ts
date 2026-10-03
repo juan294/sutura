@@ -26,7 +26,7 @@ export const PACKAGE_DIR = resolve(import.meta.dirname, '..');
 export const REPOSITORY_ROOT = resolve(PACKAGE_DIR, '../..');
 export const REPLAY_DIR = resolve(PACKAGE_DIR, 'replay');
 const MAX_BUNDLE_BYTES = 16 * 1_024 * 1_024;
-const EVIDENCE_URL = 'https://github.com/juan294/sutura/blob/develop/docs/demo/placebo-v0.3.7-live-2026-10-02.json';
+const EVIDENCE_URL = 'https://github.com/juan294/sutura/blob/develop/docs/demo/placebo-v0.3.8-live-2026-10-03.json';
 
 export class CaseLabReplayError extends Error {
   constructor(message: string) {
