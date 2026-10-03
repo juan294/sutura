@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
@@ -11,6 +12,7 @@ import {
   validateRunEvidence,
   validateRunManifest,
 } from './verified-program-evidence.mjs';
+import { canonicalJson } from './evidence-contract.mjs';
 
 const SHA = 'a'.repeat(64);
 const COMMIT = 'b'.repeat(40);
@@ -343,6 +345,19 @@ test('the v0.3.8 release manifest validates and prices at most USD 15', () => {
   assert.equal(m.subjects.length, 51);
   assert.equal(valid.manifestHash, m.manifestHash);
   assert.ok(manifestMaximumUsd(m) <= 15);
+});
+
+test('the v0.3.9 release manifest validates, prices at most USD 15 and binds the triage policy', () => {
+  const m = JSON.parse(readFileSync('docs/demo/run-manifests/release-v0.3.9-benchmark.json', 'utf8'));
+  const config = JSON.parse(readFileSync('docs/demo/run-manifests/release-v0.3.9-benchmark-config.json', 'utf8'));
+  const valid = validateRunManifest(m);
+
+  assert.equal(m.identity.candidateCommit, 'cc3281485b4364d7c8fcb2e820e03ffbaf893c2a');
+  assert.equal(m.subjects.length, 51);
+  assert.equal(valid.manifestHash, m.manifestHash);
+  assert.ok(manifestMaximumUsd(m) <= 15);
+  assert.deepEqual(config.triagePolicy, { scope: 'focused', sandboxBudgetSec: 240 });
+  assert.equal(m.identity.configHash, createHash('sha256').update(canonicalJson(config)).digest('hex'));
 });
 
 test('a run that spent past its own cap is refused', () => {
