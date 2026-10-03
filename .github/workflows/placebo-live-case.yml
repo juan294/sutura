@@ -9,7 +9,7 @@ on:
         required: true
         type: string
       subject-sha:
-        description: Exact v0.3.8 candidate commit
+        description: Exact v0.3.9 candidate commit
         required: true
         type: string
       case-id:

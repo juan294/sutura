@@ -1,6 +1,6 @@
 # Sutura user guide
 
-This guide covers Sutura 0.3.8 for repository owners installing the GitHub
+This guide covers Sutura 0.3.9 for repository owners installing the GitHub
 Action. Sutura is in public beta, and Nebius ConTree access remains an
 access-controlled prerequisite.
 
@@ -47,15 +47,15 @@ export TYPESAFE_API_KEY="..."
 Then generate and inspect the workflow:
 
 ```bash
-npx sutura@0.3.8 init
+npx sutura@0.3.9 init
 sed -n '1,220p' .github/workflows/sutura.yml
-npx sutura@0.3.8 doctor
+npx sutura@0.3.9 doctor
 ```
 
 If the repository has more than one workflow, select the exact workflow name:
 
 ```bash
-npx sutura@0.3.8 init --workflow "CI"
+npx sutura@0.3.9 init --workflow "CI"
 ```
 
 Use `--no-tavily` when Tavily is unavailable. For a polyglot repository, set
@@ -148,7 +148,7 @@ requests write. Pull requests opened with an App token trigger CI normally.
 Run `doctor` from the repository whenever setup or credentials change:
 
 ```bash
-npx sutura@0.3.8 doctor
+npx sutura@0.3.9 doctor
 ```
 
 It checks the local workflow, immutable Action pin, required permissions and
@@ -172,16 +172,16 @@ Each repository pins its own immutable Action commit. Updating a global npm
 package, or running a newer CLI elsewhere on the machine, does not update any
 installed workflow.
 
-Sutura 0.3.8 does not have an `upgrade` command. Upgrade each repository
+Sutura 0.3.9 does not have an `upgrade` command. Upgrade each repository
 deliberately after reading the target release notes.
 
 For an unmodified generated workflow, regenerate it with the target CLI and
 review the complete diff before committing:
 
 ```bash
-npx sutura@0.3.8 init --force
+npx sutura@0.3.9 init --force
 git diff -- .github/workflows/sutura.yml
-npx sutura@0.3.8 doctor
+npx sutura@0.3.9 doctor
 ```
 
 `init --force` replaces the entire workflow. Do not use it on a customized
@@ -223,7 +223,7 @@ gh secret set TAVILY_API_KEY
 gh secret set OPENAI_API_KEY
 gh secret set TYPESAFE_API_KEY
 gh variable set CONTREE_PROJECT
-npx sutura@0.3.8 doctor
+npx sutura@0.3.9 doctor
 ```
 
 Omit Tavily when the installation uses `--no-tavily`. `OPENAI_API_KEY` and
