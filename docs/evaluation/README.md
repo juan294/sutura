@@ -49,7 +49,7 @@ The [architecture cards](architecture.md) connect each claim to code and tests.
 The [CLI](../../packages/cli/src/verify.ts) and [read-only Action](../../packages/action/src/verify-execution.ts) retain canonical evidence and artifact bytes. The Action authenticates the exact same-repository failed run and source SHA; fork sources are refused. [Evidence v2](../../packages/core/src/verification/types.ts) records the actual executor baseline image ID separately from an unavailable OCI digest, with observed model, operation and cost records. This implementation shipped in v0.3.0 and later releases (see the [changelog](../../CHANGELOG.md)). Its measured quality is only what the benchmark and development results below report.
 
 Remaining work includes remediation of the development misses, a separately
-authorized held-out measurement, a real Data Lab upload and batch run, and
+authorized held-out measurement, a Data Lab batch run (the upload is done, the dispatch was rejected), and
 [December judging-access evidence](../runbooks/judging-access.md). No
 participant study is planned (decided 2026-10-02), so this guide makes no
 claim about external users or reviewer comprehension. Historical reports below
@@ -80,7 +80,7 @@ these four criteria.
 | TypeSafe Jev (optional calibrated audit)     | Veto-only calibrated audit voice with typed probabilities; can only reject, never approve, so it cannot dilute the Nebius/Nemotron runtime gate   | [`TypeSafeClient`](../../packages/core/src/llm/typesafe.ts), [`typesafeAudit`](../../packages/core/src/audit/typesafe-audit.ts): implemented, gated on `TYPESAFE_API_KEY`; absent, failed, uncertain, or over its own USD 0.02 budget records the row and the run proceeds on the other gates. |
 | Nebius ConTree                               | Share prepared dependencies while isolating execution branches                                                                                    | [`prepareSandbox`](../../packages/core/src/heal.ts#L614): runtime implementation; image availability and dependency support constrain execution.                                                                                                                                               |
 | Tavily                                       | Ground dependency failures in release sources                                                                                                     | [`ground`](../../packages/core/src/diagnose/tavily.ts#L500): runtime Search/Extract with validation; [versioned ablations](architecture.md#grounded-dependencies) retain failed arms.                                                                                                          |
-| Nebius Data Lab                              | Execute a finite, manifest-bound quality experiment with recoverable submissions and exact output joins                                           | [Runner](../../scripts/datalab-quality-experiment.mjs) and [dataset and request](../datalab/README.md): locally implemented and fixture tested; actual upload and batch inference remain pending.                                                                                              |
+| Nebius Data Lab                              | Execute a finite, manifest-bound quality experiment with recoverable submissions and exact output joins                                           | [Runner](../../scripts/datalab-quality-experiment.mjs) and [dataset and request](../datalab/README.md): locally implemented and fixture tested; the reviewed dataset was uploaded on 2026-10-07, but its one batch dispatch was rejected (HTTP 403), so no batch result exists ([record](../demo/nebius-data-lab-upload-2026-10-07.md)).                                                                                              |
 | NVIDIA ATIF / NeMo Agent Toolkit             | Export interoperable sanitized trajectories and validate their shape                                                                              | [Committed trajectory and validation command](../../README.md?plain=1#L441): offline validation; NeMo is not the live repair orchestrator.                                                                                                                                                     |
 
 ## Follow a Case Lab result
@@ -131,7 +131,7 @@ matrix Actions, and demo pins remain separate identities.
 Source inspection establishes implemented behavior; linked tests establish
 existence, not a fresh pass. Live outcomes describe their measured subject.
 Offline fixtures omit provider behavior; controls validate a harness; Data Lab
-upload, batch inference, and final submission evidence remain separate work.
+batch inference and final submission evidence remain separate work.
 Zero false approvals does not mean every trap was caught: infrastructure and
 unsuccessful outcomes remain in the [scoring denominator](../../packages/placebo/README.md?plain=1#L231).
 

@@ -13,7 +13,7 @@ state of the service.
 | Token Factory, Nemotron 3 Super 120B | Proposes bounded repairs for a source excerpt the controller selects | same |
 | Token Factory, Nemotron 3 Ultra 550B | Audits the cleanly rerun candidate for shortcuts that static checks miss | same |
 | Nebius ConTree sandboxes | Prepares dependencies once, snapshots the filesystem, and branches isolated triage, search, and audit sandboxes with the network off | [v0.3.9 benchmark evidence](../demo/sutura-v0.3.9-release-benchmark-evidence.md) |
-| Nebius Data Lab | Prepared only: a sanitized 110-row dataset and an upload request exist, but we have not uploaded or run a batch, so we have no service feedback beyond the documentation request below | [Data Lab evidence](../datalab/README.md) |
+| Nebius Data Lab | Uploaded a sanitized 110-row dataset (READY, read back). The one batch dispatch was rejected with HTTP 403, so no batch result exists | [Data Lab upload record](../demo/nebius-data-lab-upload-2026-10-07.md) |
 | NVIDIA ATIF and NeMo Agent Toolkit | Sutura exports sanitized agent trajectories in the ATIF shape and validates them offline with the toolkit; it is not the live orchestrator | [ATIF report](../evaluation/nemo-atif-report.json) |
 
 ## What worked well
@@ -114,6 +114,15 @@ claims about current service behavior.
   proposals, as documented in the
   [branch-local completion record](../plans/2026-09-04-sutura-completion-limit-branch-local.md).
 
+- Data Lab, 2026-10-07 ([evidence](../demo/nebius-data-lab-upload-2026-10-07.md)). Dataset
+  creation answered HTTP 400 for rows where a `double` column held the integer-looking
+  value `0`; the message was `Error validating column "inferenceCostUsd"`, with no row
+  and no statement of the expected format. Writing `0.0` fixed it. The upload then
+  succeeded and read back READY. Creating the one batch-inference operation with the
+  same key answered HTTP 403 `You don't have access to the resource or it does not
+  exist`, with no operation created. The request follows the published OpenAPI schema,
+  so we cannot tell a missing permission from an unavailable model or a hidden resource.
+
 ## Requested features
 
 - Publish versioned JavaScript SDK and OpenAPI schemas for ConTree operations,
@@ -130,6 +139,11 @@ claims about current service behavior.
   `response_format: json_schema` treats string escapes, and announce changes to it.
 - Document GitHub OIDC or another short-lived credential flow if supported.
 - Document Data Lab redaction, upload, retention, and Zero Data Retention behavior.
+- Data Lab validation errors should name the row and the expected JSON number format, and
+  the docs should say that a `double` column rejects whole numbers written without a
+  decimal point.
+- Say in the 403 body, and in the Data Lab docs, which permission or model eligibility
+  batch inference needs, and how to check it before dispatch.
 - Provide a versioned public compatibility matrix for ConTree image references,
   including registry, tag, OCI index digest, and platform manifest behavior.
 
