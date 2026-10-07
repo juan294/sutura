@@ -68,7 +68,9 @@ claims about current service behavior.
   page listed no incident. Until we moved to `json_object` with local validation, every
   live repair on Nemotron produced corrupted replacements. Raw request and response
   bodies are in the [drift record](../demo/nebius-json-schema-drift-2026-09-16.md). We
-  have not rechecked it since 2026-09-16.
+  rechecked on 2026-10-07 with the same request: it still reproduces, with the
+  `json_schema` output on one line and `json_object` correct (one sample each, request
+  IDs in the record).
 - ConTree import of a pinned `ghcr.io/astral-sh/uv` image digest returned HTTP
   404. The affected Python cases stopped as infrastructure outcomes
   before source execution. Follow-up probes showed that ConTree accepted a
