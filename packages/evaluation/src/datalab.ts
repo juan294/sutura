@@ -765,7 +765,11 @@ export class DataLabClient {
         ...init.headers,
       },
     });
-    if (!response.ok) throw new Error(`Nebius Data Lab request failed with HTTP ${response.status}`);
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      const detail = body.replace(/\s+/gu, ' ').trim().slice(0, 500);
+      throw new Error(`Nebius Data Lab request failed with HTTP ${response.status}${detail === '' ? '' : `: ${detail}`}`);
+    }
     try {
       return await response.json();
     } catch {

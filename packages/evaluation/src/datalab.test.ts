@@ -351,6 +351,9 @@ describe('Data Lab official API client', () => {
       apiKey: 'key', fetch: vi.fn(async () => response({ detail: 'denied' }, 403)),
     }).createDataset(request)).rejects.toThrow(/403/u);
     await expect(new DataLabClient({
+      apiKey: 'key', fetch: vi.fn(async () => response({ detail: 'folder not found' }, 400)),
+    }).createDataset(request)).rejects.toThrow(/HTTP 400: .*folder not found/u);
+    await expect(new DataLabClient({
       apiKey: 'key', fetch: vi.fn(async () => response({
         id: 'dataset-1', name: 'different', status: 'READY', current_version: 'v1',
       })),
