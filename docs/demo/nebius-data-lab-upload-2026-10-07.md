@@ -51,6 +51,9 @@ console setting that explains the 403.
   the key lacks Data Lab batch permission, the model is unavailable for batch, or the
   resource is hidden. This is recorded in the
   [feedback document](../feedback/2026-10-sutura-nebius-feedback.md).
+- Decision 2026-10-07: we do not pursue the batch further and keep the uploaded dataset in
+  Data Lab for reviewers. The failed dispatch left no operation, and its local recovery
+  file was removed.
 - The uploaded dataset remains in Data Lab until deleted. The
   [data-boundaries guide](../security/data-boundaries.md) asks the owner to delete datasets
   and outputs when the experiment ends.
