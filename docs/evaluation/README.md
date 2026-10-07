@@ -1,8 +1,8 @@
 # Sutura technical evaluation guide
 
-Reviewed source: `095bfc08dc0294d6a43dee235b7dc712429f2faa` plus the local implementation changes inspected on 2026-09-08. Scope: repository source, test definitions, and retained evidence. This is not a fresh deployment or live-provider validation; the final integrated candidate requires its own verification and manifest.
+Reviewed source: `cc3281485b4364d7c8fcb2e820e03ffbaf893c2a` (release v0.3.9), re-reviewed 2026-10-07. Scope: repository source, test definitions, and retained evidence. The [architecture cards](architecture.md) were re-read claim by claim against this source, and the test files they cite were run locally and passed. This is not a fresh deployment or live-provider validation.
 
-Refreshed 2026-10-07 at integration commit `f87c7ea86dd641669421a0d26f4a2cc1a913fbe9`: the evidence status, demo identity and source anchors below. Product source changed after the reviewed source (releases v0.3.0 through v0.3.9). Anchors now point at current symbol locations, but the architecture cards' behavior reviews were not repeated.
+Refreshed 2026-10-07 at integration commit `f87c7ea86dd641669421a0d26f4a2cc1a913fbe9`: the evidence status, demo identity and source anchors below.
 
 ## The project in one minute
 
