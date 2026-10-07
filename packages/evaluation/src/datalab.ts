@@ -745,6 +745,27 @@ function validateOperation(value: unknown): DataLabOperation {
   };
 }
 
+const DOUBLE_SENTINEL = '__sutura_double__:';
+
+/**
+ * Data Lab rejects an integer-looking JSON number in a `double` column (HTTP 400, observed 2026-10-07
+ * on `inferenceCostUsd` = 0), and JSON.stringify writes 0.0 as 0. Write whole numbers in double
+ * columns with an explicit `.0`; the dataset content and its hashes are unchanged.
+ */
+export function serializeDatasetRequest(request: DataLabCreateDatasetRequest): string {
+  const doubles = request.schema.filter((column) => column.type.name === 'double').map((column) => column.name);
+  const rows = request.rows.map((row) => {
+    const copy = { ...row };
+    for (const name of doubles) {
+      const value = copy[name];
+      if (typeof value === 'number' && Number.isInteger(value)) copy[name] = `${DOUBLE_SENTINEL}${value}`;
+    }
+    return copy;
+  });
+  return JSON.stringify({ ...request, rows })
+    .replace(new RegExp(`"${DOUBLE_SENTINEL}(-?\\d+)"`, 'gu'), '$1.0');
+}
+
 export class DataLabClient {
   readonly #apiKey: string;
   readonly #fetch: Fetch;
@@ -779,7 +800,7 @@ export class DataLabClient {
 
   async createDataset(request: DataLabCreateDatasetRequest): Promise<DataLabDatasetIdentity> {
     const response = record(await this.#request('/v1/datasets', {
-      method: 'POST', body: JSON.stringify(request),
+      method: 'POST', body: serializeDatasetRequest(request),
     }), 'Data Lab dataset response');
     const name = nonEmpty(response.name, 'dataset.name');
     if (name !== request.name) throw new Error('Data Lab dataset response identity does not match request');
