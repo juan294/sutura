@@ -93,6 +93,15 @@ as **inference cost** from the token ledger. Each entry keeps the abstract
 Nano, Super, or Ultra role separate from the actual routed provider model ID.
 It is not presented as total operating cost.
 
+### Where Token Factory fits
+
+In the v0.3.9 release benchmark (55 evaluations), Nebius Token Factory served 168
+Nemotron calls. Median latency was 1.1 s for Super, 2.2 s for Ultra and 3.4 s for Nano
+(95th percentile 2.9, 4.0 and 7.9 s). Together those calls took 9% of the wall-clock
+time (430 of 4,663 case-seconds, no case above 20%) and USD 0.17 of the USD 4.92 total.
+The rest is sandbox time and cost, so Token Factory never gated a run. This measures one
+benchmark run on one provider; it is not a comparison with another one.
+
 ## Evidence, with claims discipline
 
 Sutura is measured by [Placebo](packages/placebo/README.md), a
@@ -120,8 +129,9 @@ every failure.
 - It fixed 1/4 upstream cases with Tavily.
 - Hidden repair preservation passed in three of four repair cases; the fourth
   did not run because its repair gave up.
-- Recorded inference cost was USD 0.645343 and recorded sandbox cost was USD
-  4.27893399, for a total of USD 4.92427699 across the complete evaluation.
+- Recorded inference cost was USD 0.645343, of which USD 0.173620 was Nemotron on
+  Nebius Token Factory and the rest the optional audit voices. Recorded sandbox cost
+  was USD 4.27893399, for a total of USD 4.92427699 across the complete evaluation.
 - The optional GPT-6 Astra and TypeSafe Jev audit voices both ran. They can
   only veto a repair.
 

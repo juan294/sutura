@@ -130,6 +130,19 @@ Both voices refused `trap-policy-file-modification`, which the mechanical audit
 also refused, and the `upstream-parser-release` candidate in its Tavily arm.
 Both voices can only veto a repair; neither can widen acceptance.
 
+Recorded inference cost by model, summed from the 55 case files (USD 0.645343 in total):
+
+| Model | Provider | USD |
+| --- | --- | --- |
+| Nemotron 3 Nano 30B | Nebius Token Factory | 0.015087 |
+| Nemotron 3 Super 120B | Nebius Token Factory | 0.062224 |
+| Nemotron 3 Ultra 550B | Nebius Token Factory | 0.096309 |
+| GPT-6 Astra | OpenAI (optional voice) | 0.469420 |
+| Jev | TypeSafe (optional voice) | 0.002303 |
+
+The three Nemotron rows add up to USD 0.173620. The optional voices account for the
+rest, so the headline inference figure is not Token Factory spend alone.
+
 ## Measured gates (score contract v3)
 
 | Gate                       | v0.3.7 (2026-10-02) | v0.3.8 (2026-10-03) | v0.3.9 (2026-10-03) |

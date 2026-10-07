@@ -14,7 +14,7 @@
 - [User guide](user-guide.md): prerequisites, repository setup, activation,
   upgrades, disabling, removal, and troubleshooting.
 - [CLI](../packages/cli/README.md): installation, audit, and replay commands.
-- [Contributor setup](../README.md?plain=1#L313): prerequisites, build, and local checks.
+- [Contributor setup](../README.md?plain=1#L323): prerequisites, build, and local checks.
 - [Case Lab](../packages/case-lab/README.md): fixed cases, result modes, and dispatch boundaries.
 - [Placebo](../packages/placebo/README.md): benchmark corpus, scoring, and execution.
 - [Fleet dogfood metrics](adoption/fleet-dogfood-metrics.md): rebuild daily usage,

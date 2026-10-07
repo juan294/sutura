@@ -45,7 +45,8 @@ evaluations. See the machine-readable
 - Upstream with Tavily: 1/4.
 - Hidden repair preservation: three of four repair cases passed; one did not
   run because its repair gave up.
-- Recorded inference cost: USD 0.645343.
+- Recorded inference cost: USD 0.645343 (USD 0.173620 on Nemotron through Nebius Token
+  Factory; the optional audit voices account for the rest).
 - Recorded sandbox cost: USD 4.27893399.
 
 This is the current production release binding.

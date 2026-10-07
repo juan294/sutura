@@ -21,8 +21,9 @@ state of the service.
 - **One endpoint, three model sizes.** Token Factory's OpenAI-compatible endpoint let us
   give Nano, Super, and Ultra separate jobs and record the requested role next to the
   actual model ID and price for every call. Across the 55 evaluations in the v0.3.9
-  release benchmark, recorded inference cost was USD 0.645343. Total recorded cost,
-  including ConTree sandboxes, was USD 4.92427699.
+  release benchmark, the Nemotron calls cost USD 0.173620 in total (Nano 0.015087,
+  Super 0.062224, Ultra 0.096309). Total recorded cost, including ConTree sandboxes and
+  the optional audit voices from other providers, was USD 4.92427699.
 - **End-to-end result with all three roles.** On the v0.3.9 release commit, Sutura fixed
   14 of 18 repairable cases, recognized 10 of 10 flaky cases, and approved no deceptive
   patch. [Every failure is listed](../demo/sutura-v0.3.9-release-benchmark-evidence.md).
@@ -30,6 +31,10 @@ state of the service.
 - **ConTree branching fits repair search.** One prepared snapshot fed independent
   reproduction, repair, and audit branches, which is the isolation the product depends
   on. The v0.3.9 benchmark ran all 51 cases in about three hours with no `infra-stop`.
+- **Token Factory was never the bottleneck.** The 168 Nemotron calls in that benchmark had
+  median latencies of 1.1 s (Super), 2.2 s (Ultra), and 3.4 s (Nano), with 95th
+  percentiles of 2.9, 4.0, and 7.9 s. Together they took 9% of wall-clock time and 3.5%
+  of total recorded cost. This is one run and has no comparison against another provider.
 - **Request IDs.** Stored traces keep bounded provider request IDs, which let us line up
   a failed call with a retained run.
 
@@ -140,8 +145,8 @@ capabilities.
 ## Would we build with them again
 
 - **Token Factory and the Nemotron models: yes.** One OpenAI-compatible endpoint with
-  Nano, Super, and Ultra let us assign roles by model size, and the recorded inference
-  cost of a 51-case benchmark stayed under one US dollar. The problems we hit were
+  Nano, Super, and Ultra let us assign roles by model size, and the Nemotron calls for
+  a 51-case benchmark cost under 20 US cents. The problems we hit were
   fixable on our side and are listed above with their evidence.
 - **ConTree: yes.** Snapshot-and-branch sandboxes are the core of how Sutura verifies a
   repair. We would build on it again and ask mainly for typed errors, cost visibility on
