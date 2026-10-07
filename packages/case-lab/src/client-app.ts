@@ -67,7 +67,7 @@ export async function enableLiveButtons(apiBase: string): Promise<void> {
     const enabled = health.status === 200 && typeof health.body === 'object' && health.body !== null
       && (health.body as { enabled?: unknown }).enabled === true;
     if (!enabled) {
-      setStatus('Live runs are disabled right now. Every case has a deterministic result you can open.');
+      setStatus('Live runs are disabled right now. Every case has a recorded result you can open.');
       return;
     }
     for (const button of document.querySelectorAll<HTMLButtonElement>('button.button-live')) {
@@ -78,7 +78,7 @@ export async function enableLiveButtons(apiBase: string): Promise<void> {
     }
     setStatus('Live runs are enabled. Each start dispatches one real Sutura run in the public demo repository.');
   } catch {
-    setStatus('Live runs are unavailable right now. Every case has a deterministic result you can open.');
+    setStatus('Live runs are unavailable right now. Every case has a recorded result you can open.');
   }
 }
 
@@ -99,9 +99,9 @@ export async function startLiveRun(apiBase: string, caseId: string, button: HTML
     }
     const reason = typeof response.error === 'string' ? response.error : `HTTP ${status}`;
     const retry = typeof response.retryAfterSeconds === 'number' ? ` Try again in about ${Math.ceil(response.retryAfterSeconds / 60)} minutes.` : '';
-    setStatus(`Live run refused: ${reason}.${retry} The deterministic result stays available.`);
+    setStatus(`Live run refused: ${reason}.${retry} The recorded result stays available.`);
   } catch {
-    setStatus('Live run could not be started. The deterministic result stays available.');
+    setStatus('Live run could not be started. The recorded result stays available.');
   } finally {
     button.disabled = false;
   }
@@ -247,7 +247,7 @@ export function main(): void {
   const apiBase = root.dataset.apiBase;
   if (page === 'index') {
     if (apiBase === undefined) {
-      setStatus('Live runs are not configured for this build. Every case has a deterministic result you can open.');
+      setStatus('Live runs are not configured for this build. Every case has a recorded result you can open.');
       return;
     }
     void enableLiveButtons(apiBase);
