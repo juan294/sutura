@@ -122,6 +122,8 @@ claims about current service behavior.
   same key answered HTTP 403 `You don't have access to the resource or it does not
   exist`, with no operation created. The request follows the published OpenAPI schema,
   so we cannot tell a missing permission from an unavailable model or a hidden resource.
+  The console has no batch-inference entry point and the documentation index has no
+  batch-inference page, while the OpenAPI schema defines the operation.
 
 ## Requested features
 

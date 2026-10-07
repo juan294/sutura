@@ -32,6 +32,17 @@ Spend: USD 0. The upload has no inference cost, and the batch never started.
 The dataset content and both hashes were unchanged by the fix; only the wire format of
 whole numbers differs.
 
+## Console check, 2026-10-07
+
+Juan's `default-project` console shows the uploaded dataset under Data Lab. Its
+"Dataset operations" view lists no operations, which agrees with the API. The dataset
+menu offers Fine-tuning, Dataset operations, Download, Rename and Delete; no menu in the
+console offers batch inference (Inference lists Model endpoints, Playground, Prompt
+presets and Observability). The documentation index at
+`https://docs.tokenfactory.nebius.com/llms.txt` has no page that mentions batch inference,
+while the published OpenAPI schema defines a `batch_inference` operation. We found no
+console setting that explains the 403.
+
 ## Open items
 
 - The batch needs access we have not identified. The request matches the published
