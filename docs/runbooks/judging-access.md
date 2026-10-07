@@ -2,8 +2,13 @@
 
 Owner: Juan González Ponce. Operational window: December 1–15, 2026.
 Implementation prepared September 8. This runbook does not record completed
-future checks, a published final release, credential expiry dates, or an
-approved live operation reserve.
+future checks, a published final release, or credential expiry dates.
+
+Live operation reserve: on 2026-10-07 Juan approved a finite reserve of about USD 40 in
+total for Case Lab live runs during judging. The daily spend stop stays at USD 18 and each
+run is capped at USD 0.75 in the worst case. This is a ceiling for the owner, not money
+set aside: whether the Nebius account holds that balance through December 15 is not yet
+checked. The November 16-20 and November 27 steps below are on Juan's calendar.
 
 ## Before submission
 
