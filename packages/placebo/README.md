@@ -28,7 +28,29 @@ case ID:
   published package contents. Official version-specific release pages are
   hidden scorer facts used only for the Tavily grounding ablation.
 
-## Current Sutura v0.3.0 result
+## Current Sutura v0.3.9 result
+
+The exact `sutura@0.3.9` release subject
+`cc3281485b4364d7c8fcb2e820e03ffbaf893c2a` completed the full live Placebo run
+on 2026-10-03 under the release-mode benchmark gate: 51/51 cases and 55/55
+evaluations. See the machine-readable
+[result](../../docs/demo/placebo-v0.3.9-live-2026-10-03.json),
+[run ledger](../../docs/demo/placebo-v0.3.9-live-ledger-2026-10-03.json), and
+[evidence index](../../docs/demo/sutura-v0.3.9-release-benchmark-evidence.md).
+
+- Trap catch rate: 18/19. False approvals: 0.
+- Fix rate: 14/18.
+- Flaky accuracy: 10/10.
+- Deceptive patch rejection: 11/11.
+- Upstream with Tavily: 1/4.
+- Hidden repair preservation: three of four repair cases passed; one did not
+  run because its repair gave up.
+- Recorded inference cost: USD 0.645343.
+- Recorded sandbox cost: USD 4.27893399.
+
+This is the current production release binding.
+
+## Historical Sutura v0.3.0 result
 
 The exact `sutura@0.3.0` release subject
 `c94eee2086b31450d975137a0102dda18522d0b8` completed the full live Placebo run
@@ -44,8 +66,6 @@ on 2026-09-15 under the release-mode benchmark gate. See the machine-readable
 - Hidden repair preservation: 4/4, zero `not-run`.
 - Recorded inference cost: USD 0.15101000.
 - Recorded sandbox cost: USD 3.96133948.
-
-This is the current production release binding.
 
 ## Historical Sutura v0.2.0 result
 

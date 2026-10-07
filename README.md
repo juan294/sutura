@@ -8,8 +8,6 @@
 
 Try it: [Sutura Case Lab](https://sutura-case-lab.vercel.app/) — five CI repair, refusal, and no-patch cases with labeled evidence, no account needed.
 
-Launching on [Product Hunt](https://www.producthunt.com/products/sutura?launch=sutura) on 2026-09-18 as a GPT-6 Astra Challenge entry.
-
 AI agents make CI pass. Sutura verifies the fix, filters flaky failures,
 rejects unsafe shortcuts, and opens an evidence-backed PR for human review.
 
@@ -18,9 +16,11 @@ repair checkpoints before the independent audit. It never auto-merges.
 
 The public [Sutura Case Lab](https://sutura-case-lab.vercel.app/) lets a
 signed-out visitor select one of five fixed cases and read a stable, labeled
-result. Its source lives in [`packages/case-lab`](packages/case-lab/README.md).
-Live runs stay disabled until the public-demo gate is authorized against one
-exact release commit; every case has a labeled deterministic result today.
+result. Each case shows the recorded result from the latest release benchmark.
+A visitor can also start a rate-limited live run of the pinned release against
+a public demo repository. Its source lives in
+[`packages/case-lab`](packages/case-lab/README.md). The Case Lab is pinned to
+the exact v0.3.9 release commit `cc3281485b4364d7c8fcb2e820e03ffbaf893c2a`.
 Sutura is built for the Nebius x NVIDIA Global AI Hackathon.
 
 ## Technical review
@@ -98,6 +98,36 @@ placebo-controlled benchmark for CI-repair agents. Results are versioned and
 dated. Catch-rate claims use the form “refused X/X placebos in Placebo vN.”
 Fix rate includes every failed case ID, and flaky accuracy states the corpus
 sample size. The internal ship gate is zero false approvals.
+
+On 2026-10-03, the exact v0.3.9 subject
+`cc3281485b4364d7c8fcb2e820e03ffbaf893c2a` completed 51/51 Placebo cases and
+55/55 evaluations under the release-mode benchmark gate, with no infrastructure
+stops. The [machine-readable result](docs/demo/placebo-v0.3.9-live-2026-10-03.json),
+[run ledger](docs/demo/placebo-v0.3.9-live-ledger-2026-10-03.json), and
+[evidence index](docs/demo/sutura-v0.3.9-release-benchmark-evidence.md) retain
+every failure.
+
+- Sutura's trap catch rate was 18/19 with zero false approvals. The miss,
+  `trap-workflow-check-removal`, is a `gave-up` coverage gap, not a false
+  approval.
+- It fixed 14/18 repairable cases. Four repairs gave up:
+  `python-repair-missing-await`, `repair-esm-extension-nested`,
+  `repair-hard-cache-invalidation`, and `repair-tsconfig-drift`.
+- It identified 10/10 flaky cases without patching them and rejected 11/11
+  deceptive patches.
+- It fixed 1/4 upstream cases with Tavily.
+- Hidden repair preservation passed in three of four repair cases; the fourth
+  did not run because its repair gave up.
+- Recorded inference cost was USD 0.645343 and recorded sandbox cost was USD
+  4.27893399, for a total of USD 4.92427699 across the complete evaluation.
+- The optional GPT-6 Astra and TypeSafe Jev audit voices both ran. They can
+  only veto a repair.
+
+Fix rates for v0.3.6 through v0.3.9 were 14/18, 17/18, 13/18 and 14/18. Each
+release has one live evaluation per case, so treat that spread as run-to-run
+variance, not a measured improvement or regression.
+
+### Historical v0.3.0 result
 
 On 2026-09-15, the exact v0.3.0 subject
 `c94eee2086b31450d975137a0102dda18522d0b8` completed all 51 Placebo cases and
@@ -370,8 +400,9 @@ The versioned [release evidence requirements](docs/demo/sutura-v0.3.9-release-ev
 define the eleven required records, including dogfood plus separate candidate and public
 matrices. Canaries, the live benchmark, both matrices, publication, public demo,
 and Devpost evidence use separate authorization gates. The v0.2.0 benchmark and
-matrices remain immutable failed baselines. v0.3.9 evidence stays pending until
-each required gate is authorized and passed.
+matrices remain immutable failed baselines. The v0.3.9 release, npm package and
+benchmark are complete. Its remaining records stay pending until each required
+gate is authorized and passed.
 
 ### Evaluation Lab
 

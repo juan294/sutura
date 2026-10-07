@@ -2,11 +2,13 @@
 
 Reviewed source: `095bfc08dc0294d6a43dee235b7dc712429f2faa` plus the local implementation changes inspected on 2026-09-08. Scope: repository source, test definitions, and retained evidence. This is not a fresh deployment or live-provider validation; the final integrated candidate requires its own verification and manifest.
 
+Refreshed 2026-10-07 at integration commit `f87c7ea86dd641669421a0d26f4a2cc1a913fbe9`: the evidence status, demo identity and source anchors below. Product source changed after the reviewed source (releases v0.3.0 through v0.3.9). Anchors now point at current symbol locations, but the architecture cards' behavior reviews were not repeated.
+
 ## The project in one minute
 
 A green CI command can hide a deleted test, weakened assertion, or repair to the
 wrong cause. Sutura investigates failing GitHub Actions and proposes an audited
-repair for human review. Its [product workflow](../devpost/sutura-submission.md?plain=1#L40)
+repair for human review. Its [product workflow](../devpost/sutura-submission.md?plain=1#L46)
 retains failure evidence and never merges the generated repair.
 
 - **Controller authority:** the model proposes a bounded replacement; the
@@ -17,31 +19,41 @@ retains failure evidence and never merges the generated repair.
 - **Layered audit:** mechanical checks, a fresh rerun, and semantic review can
   refuse a previously green candidate. [Audit evidence](architecture.md#layered-audit).
 
-The current candidate has a clean completed development/validation measurement.
-Candidate `042af3aada158347db6006e30a4a0e6e7c65e420` completed all 80 cases for USD
-6.431018 in recorded inference and sandbox cost. It repaired 33 of 42
-repairable cases (78.6%) with zero false approvals. Hidden repair-preservation
-checks passed 4 of 8, with 4 not run, so that gate did not pass. The held-out
-20 remain sealed. Read the [sanitized Stage 3 v8 evidence](../demo/run-manifests/development-validation-v8-evidence.md),
+The current release is v0.3.9, at exact commit
+`cc3281485b4364d7c8fcb2e820e03ffbaf893c2a`. Its release benchmark completed
+51/51 cases and 55/55 evaluations for USD 4.92427699 in recorded inference and
+sandbox cost, with zero false approvals and no infrastructure stops. Sutura
+refused or classified correctly in 18/19 trap cases, 10/10 flaky cases and
+11/11 deceptive patches, and fixed 14/18 repairable cases. Hidden repair
+preservation passed in three of four repair cases; the fourth did not run
+because its repair gave up. Read the [v0.3.9 release benchmark evidence](../demo/sutura-v0.3.9-release-benchmark-evidence.md)
+for every failure, including the one trap that gave up.
+
+A separate, earlier development/validation measurement used a different corpus
+and candidate. Candidate `042af3aada158347db6006e30a4a0e6e7c65e420` completed all
+80 cases for USD 6.431018 in recorded inference and sandbox cost. It repaired 33
+of 42 repairable cases (78.6%) with zero false approvals. Hidden repair-preservation
+checks passed 4 of 8, with 4 not run, so that gate did not pass. The held-out 20
+remain sealed. Read the [sanitized Stage 3 v8 evidence](../demo/run-manifests/development-validation-v8-evidence.md),
 [evidence status](#evidence-status) and [limitations](#limitations) before
-treating this development result as release proof. The earlier
+treating either result as more than its stated scope. The earlier
 [Stage 3 v1 record](../demo/run-manifests/development-validation-v1-evidence.md)
 remains unchanged as historical evidence of the false approval and defective
 cumulative accounting.
 The [architecture cards](architecture.md) connect each claim to code and tests.
 
-## Current local verification implementation
+## Verification implementation
 
 [Generated repairs](../../packages/core/src/heal.ts), [supplied patches](../../packages/core/src/verification/external.ts) and counterfactuals share production verification gates. A separate baseline-only challenge-generation call freezes a bounded set before candidate work. The controller qualifies baseline observations, checks each candidate with repeated probes, then applies policy, mechanical audit, clean rerun and adjudication before search admission. Required contracts bind a frozen source manifest. Default healing remains optional; external verification requires assurance.
 
-The [CLI](../../packages/cli/src/verify.ts) and [read-only Action](../../packages/action/src/verify-execution.ts) retain canonical evidence and artifact bytes. The Action authenticates the exact same-repository failed run and source SHA; fork sources are refused. [Evidence v2](../../packages/core/src/verification/types.ts) records the actual executor baseline image ID separately from an unavailable OCI digest, with observed model, operation and cost records. These are local implementation claims, not a published release or new live quality result.
+The [CLI](../../packages/cli/src/verify.ts) and [read-only Action](../../packages/action/src/verify-execution.ts) retain canonical evidence and artifact bytes. The Action authenticates the exact same-repository failed run and source SHA; fork sources are refused. [Evidence v2](../../packages/core/src/verification/types.ts) records the actual executor baseline image ID separately from an unavailable OCI digest, with observed model, operation and cost records. This implementation shipped in v0.3.0 and later releases (see the [changelog](../../CHANGELOG.md)). Its measured quality is only what the benchmark and development results below report.
 
-Remaining external work includes remediation of the development misses, a
-separately authorized held-out measurement, authorized publication, consented
-participants, the [independent human record walkthrough](record-walkthrough.md),
-and [December judging-access evidence](../runbooks/judging-access.md).
-Historical reports below retain the source and limitations of the runs they
-describe.
+Remaining work includes remediation of the development misses, a separately
+authorized held-out measurement, a real Data Lab upload and batch run, and
+[December judging-access evidence](../runbooks/judging-access.md). No
+participant study is planned (decided 2026-10-02), so this guide makes no
+claim about external users or reviewer comprehension. Historical reports below
+retain the source and limitations of the runs they describe.
 
 See [evaluation recovery](run-recovery.md) for durable job recovery, cumulative spend reservations, offline failure tests, and terminal notification setup.
 
@@ -55,8 +67,8 @@ these four criteria.
 | Criterion                    | Supported behavior                                                                | Evidence and limit                                                                                                                                                                                                   |
 | ---------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Technological Implementation | Bounded proposals, isolated execution, independent audit                          | [Controller and audit cards](architecture.md#controller-authority); source and fixture tests do not establish live judgment quality.                                                                                 |
-| Design                       | Case selection leads to an explained outcome, provenance, and rejected candidates | [Result renderer `renderResultBody`](../../packages/case-lab/src/render.ts#L347); this review did not test the hosted experience.                                                                                    |
-| Potential Impact             | Maintainers receive a diff and verification evidence before deciding to merge     | [Audience](../devpost/sutura-submission.md?plain=1#L23) and [dogfood record](../demo/sutura-v0.2.0-phase-0-evidence.md?plain=1#L28); seeded cases and dogfooding do not establish adoption or measured time savings. |
+| Design                       | Case selection leads to an explained outcome, provenance, and rejected candidates | [Result renderer `renderResultBody`](../../packages/case-lab/src/render.ts#L408); this review did not test the hosted experience.                                                                                    |
+| Potential Impact             | Maintainers receive a diff and verification evidence before deciding to merge     | [Audience](../devpost/sutura-submission.md?plain=1#L26) and [dogfood record](../demo/sutura-v0.2.0-phase-0-evidence.md?plain=1#L28); seeded cases and dogfooding do not establish adoption or measured time savings. |
 | Quality of the Idea          | Making CI green is tested against alternative patches and rejecting gates         | [Counterfactual card](architecture.md#counterfactual-verification); the offline survivor and control-only Arena prevent a claim of complete safety or competitive superiority.                                       |
 
 ## NVIDIA, Nebius, and Tavily roles
@@ -66,10 +78,10 @@ these four criteria.
 | NVIDIA Nemotron through Nebius Token Factory | Separate diagnosis, proposal, and audit roles                                                                                                     | [`DEFAULT_MODELS`](../../packages/core/src/config.ts#L10), [`createTokenFactoryClient`](../../packages/core/src/llm/token-factory.ts#L25): implemented runtime client; measured subjects remain in the reports below. Requested role and actual provider model are distinct.                   |
 | OpenAI GPT-6 Astra (optional second opinion) | Veto-only adversarial cross-check from a different provider; can only reject, never approve, so it cannot dilute the Nebius/Nemotron runtime gate | [`OpenAiClient`](../../packages/core/src/llm/openai.ts), [`secondOpinion`](../../packages/core/src/audit/adjudicate.ts): implemented, gated on `OPENAI_API_KEY`; absent, failed, or over its own USD 0.30 budget records `skipped` and the run proceeds on Nemotron alone.                     |
 | TypeSafe Jev (optional calibrated audit)     | Veto-only calibrated audit voice with typed probabilities; can only reject, never approve, so it cannot dilute the Nebius/Nemotron runtime gate   | [`TypeSafeClient`](../../packages/core/src/llm/typesafe.ts), [`typesafeAudit`](../../packages/core/src/audit/typesafe-audit.ts): implemented, gated on `TYPESAFE_API_KEY`; absent, failed, uncertain, or over its own USD 0.02 budget records the row and the run proceeds on the other gates. |
-| Nebius ConTree                               | Share prepared dependencies while isolating execution branches                                                                                    | [`prepareSandbox`](../../packages/core/src/heal.ts#L483): runtime implementation; image availability and dependency support constrain execution.                                                                                                                                               |
+| Nebius ConTree                               | Share prepared dependencies while isolating execution branches                                                                                    | [`prepareSandbox`](../../packages/core/src/heal.ts#L614): runtime implementation; image availability and dependency support constrain execution.                                                                                                                                               |
 | Tavily                                       | Ground dependency failures in release sources                                                                                                     | [`ground`](../../packages/core/src/diagnose/tavily.ts#L500): runtime Search/Extract with validation; [versioned ablations](architecture.md#grounded-dependencies) retain failed arms.                                                                                                          |
 | Nebius Data Lab                              | Execute a finite, manifest-bound quality experiment with recoverable submissions and exact output joins                                           | [Runner](../../scripts/datalab-quality-experiment.mjs) and [dataset and request](../datalab/README.md): locally implemented and fixture tested; actual upload and batch inference remain pending.                                                                                              |
-| NVIDIA ATIF / NeMo Agent Toolkit             | Export interoperable sanitized trajectories and validate their shape                                                                              | [Committed trajectory and validation command](../../README.md?plain=1#L350): offline validation; NeMo is not the live repair orchestrator.                                                                                                                                                     |
+| NVIDIA ATIF / NeMo Agent Toolkit             | Export interoperable sanitized trajectories and validate their shape                                                                              | [Committed trajectory and validation command](../../README.md?plain=1#L429): offline validation; NeMo is not the live repair orchestrator.                                                                                                                                                     |
 
 ## Follow a Case Lab result
 
@@ -80,11 +92,11 @@ distinguishes deterministic bundles from recorded-result fallback. The catalog's
 
 | Visible section                                            | Renderer to inspect                                                                                                          |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Mode badge and failed commit / CI evidence                 | [`renderHeader`](../../packages/case-lab/src/render.ts#L164), [`renderEvidence`](../../packages/case-lab/src/render.ts#L185) |
-| ConTree search tree and branch status                      | [`renderSearch`](../../packages/case-lab/src/render.ts#L214)                                                                 |
-| Rejected patches and rejection reasons                     | [`renderRejections`](../../packages/case-lab/src/render.ts#L252)                                                             |
-| Clean audit branch and Ultra verdict                       | [`renderAudit`](../../packages/case-lab/src/render.ts#L273)                                                                  |
-| Accepted patch beside rejected alternatives, when attached | [`renderCounterfactual`](../../packages/case-lab/src/render.ts#L120)                                                         |
+| Mode badge and failed commit / CI evidence                 | [`renderHeader`](../../packages/case-lab/src/render.ts#L172), [`renderEvidence`](../../packages/case-lab/src/render.ts#L196) |
+| ConTree search tree and branch status                      | [`renderSearch`](../../packages/case-lab/src/render.ts#L230)                                                                 |
+| Rejected patches and rejection reasons                     | [`renderRejections`](../../packages/case-lab/src/render.ts#L268)                                                             |
+| Clean audit branch and Ultra verdict                       | [`renderAudit`](../../packages/case-lab/src/render.ts#L289)                                                                  |
+| Accepted patch beside rejected alternatives, when attached | [`renderCounterfactual`](../../packages/case-lab/src/render.ts#L112)                                                         |
 
 Empty search and “Not run” audit states describe that run's path. Text readers
 can inspect the renderer and committed artifacts without the site or video.
@@ -94,21 +106,23 @@ can inspect the renderer and committed artifacts without the site or video.
 ## Evidence status
 
 Canonical reports retain dates, corpus, denominators, outcomes, and identities.
-Evidence was refreshed from integration snapshot
-`61093a817dacf456b902f20c233436d6da27a604`; product source bytes are unchanged
-from the reviewed source. Benchmark subjects, matrix Actions, and demo pins
-remain separate identities.
+The rows below were refreshed on 2026-10-07 at integration commit
+`f87c7ea86dd641669421a0d26f4a2cc1a913fbe9`. Product source has changed since
+the reviewed source recorded at the top of this guide. Benchmark subjects,
+matrix Actions, and demo pins remain separate identities.
 
 | Evidence                                                                                                            | Status and interpretation                                                                                                                                                                                                                                                 |
 | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Stage 3 v8 development/validation result, 2026-09-09](../demo/run-manifests/development-validation-v8-evidence.md) | Current clean measurement on exact candidate `042af3aada158347db6006e30a4a0e6e7c65e420`: 80/80 cases completed for USD 6.431018; 33/42 repairs (78.6%); zero false approvals. Hidden repair preservation passed 4/8 with four not run. The held-out split remains sealed. |
-| [Latest repair-quality rerun, 2026-09-05](../demo/sutura-v0.2.1-repair-quality-evidence.md?plain=1#L13)             | Live Placebo v0.2 corpus, 51 cases / 55 evaluations, subject `f5c3056acc96597f1ae11f411a3b9cfe03ba990f`: repair and Tavily gates fail; hidden verification retains three `not-run` cases. Zero observed false approvals does not make it release-ready.                   |
+| [v0.3.9 release benchmark, 2026-10-03](../demo/sutura-v0.3.9-release-benchmark-evidence.md) | Current release measurement on exact subject `cc3281485b4364d7c8fcb2e820e03ffbaf893c2a` (tag v0.3.9): 51/51 cases and 55/55 evaluations for USD 4.92427699; zero false approvals; no infrastructure stops. Trap catch 18/19, fix rate 14/18, flaky accuracy 10/10, deceptive rejection 11/11, Tavily upstream fixes 1/4. Hidden repair preservation passed three of four repair cases; one did not run. Fix rates for v0.3.6 to v0.3.9 were 14/18, 17/18, 13/18 and 14/18, which is run-to-run variance for one live evaluation per case, not a measured trend. |
+| [Stage 3 v8 development/validation result, 2026-09-09](../demo/run-manifests/development-validation-v8-evidence.md) | Clean development/validation measurement (not the release result) on exact candidate `042af3aada158347db6006e30a4a0e6e7c65e420`: 80/80 cases completed for USD 6.431018; 33/42 repairs (78.6%); zero false approvals. Hidden repair preservation passed 4/8 with four not run. The held-out split remains sealed. |
+| [v0.2.1 repair-quality rerun, 2026-09-05](../demo/sutura-v0.2.1-repair-quality-evidence.md?plain=1#L13)             | Live Placebo v0.2 corpus, 51 cases / 55 evaluations, subject `f5c3056acc96597f1ae11f411a3b9cfe03ba990f`: repair and Tavily gates fail; hidden verification retains three `not-run` cases. Zero observed false approvals does not make it release-ready.                   |
 | [Candidate external matrix](../demo/sutura-v0.2.1-candidate-matrix.json#L1)                                         | Live candidate-mode evidence on Action `ce3502d86a32883eac8c7a2adcc9df2c07e12e85`: `repository-policy-refusal` and `python-repair` fail; `ready` is false. This is not a public-release matrix or hosted-demo acceptance.                                                 |
 | [Earlier v0.2.1 candidate](../demo/sutura-v0.2.1-phase-0-evidence.md?plain=1#L13)                                   | Failed quality gates on `f8195e8a82ffe1527d755ae7ecb8a047484af9fa`; preserved as historical evidence.                                                                                                                                                                     |
 | [Historical v0.2.0 baseline and matrices](../demo/sutura-v0.2.0-phase-0-evidence.md?plain=1#L9)                     | Failed benchmark and both external matrices on release subject `a943ded4c734aed75c5c63f2b2dd63a2f44556c2`; includes unavailable Python-image failures.                                                                                                                    |
 | [Counterfactual report](../demo/sutura-counterfactual-v0.2.json#L1)                                                 | Offline deterministic experiment; a visible-green, hidden-failing alternative survives. See [gate omissions](architecture.md#counterfactual-verification).                                                                                                                |
 | [Arena report](../demo/sutura-arena-v0.2.json#L1)                                                                   | Scripted dummy/refuse-all controls exercise scoring; not a measured Sutura comparison.                                                                                                                                                                                    |
-| [Demo identity](../../packages/case-lab/release.json#L1)                                                            | Action is v0.3.0 at `c94eee2086b31450d975137a0102dda18522d0b8`, equal to the current release; recorded evidence `placebo-v0.3.0-live-2026-09-15.json`.                                                                                                                    |
+| [Fleet recovery observation, 2026-09-28](../demo/fleet-recovery-observation-2026-09-28.md) | Read-only aggregate over 24 configured repositories and 159 failed or timed-out attempts: 0 verified repair pull requests, and 102 of the 141 linked monitor outcomes were infrastructure stops. It predates v0.3.4 through v0.3.9 and is descriptive only; it supports no recovery or savings claim. A v0.3.9 fleet report waits for the observation window that ends no earlier than 2026-10-09. |
+| [Demo identity](../../packages/case-lab/release.json#L1) | Pinned to Action v0.3.9 at `cc3281485b4364d7c8fcb2e820e03ffbaf893c2a`, equal to the current release. The Case Lab `/api/health` reported that release with live runs enabled on 2026-10-07, and the deploy and live smoke are recorded in the [v0.3.9 Case Lab record](../release/v0.3.9-case-lab-record.md). Recorded results come from `placebo-v0.3.9-live-2026-10-03.json`. |
 
 <a id="limitations"></a>
 
@@ -119,10 +133,10 @@ existence, not a fresh pass. Live outcomes describe their measured subject.
 Offline fixtures omit provider behavior; controls validate a harness; Data Lab
 upload, batch inference, and final submission evidence remain separate work.
 Zero false approvals does not mean every trap was caught: infrastructure and
-unsuccessful outcomes remain in the [scoring denominator](../../packages/placebo/README.md?plain=1#L202).
+unsuccessful outcomes remain in the [scoring denominator](../../packages/placebo/README.md?plain=1#L231).
 
-Follow [contributor setup](../../README.md?plain=1#L235) and the existing
-[offline replay commands](../../README.md?plain=1#L262). The documentation check
+Follow [contributor setup](../../README.md?plain=1#L311) and the existing
+[offline replay commands](../../README.md?plain=1#L339). The documentation check
 is `node --test scripts/submission-contract.test.mjs`; run project typecheck,
 lint, tests, and build sequentially. These local checks do not measure live
 repair quality. Final acceptance follows the [release evidence contract](../demo/sutura-v0.3.9-release-evidence-requirements.json#L1).

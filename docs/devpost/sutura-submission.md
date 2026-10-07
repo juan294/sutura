@@ -100,26 +100,48 @@ The [evaluation manifest](../demo/sutura-evaluation-manifest-v1.json) and
 committed examples. The [Placebo benchmark contract](../../packages/placebo/README.md)
 keeps every unsuccessful case in the denominator.
 
-## Latest measured development result
+## Latest measured release result
 
-The latest completed development/validation run is bound to exact candidate
-`042af3aada158347db6006e30a4a0e6e7c65e420`, not to the historical public
-release or the later security-only source head. It completed 80 cases and 85
-evaluations for USD 6.431018 in recorded inference and sandbox cost.
+The release benchmark is bound to the exact release commit
+`cc3281485b4364d7c8fcb2e820e03ffbaf893c2a` (`sutura@0.3.9`, tagged on
+2026-10-03). It completed 51/51 cases and 55/55 evaluations for USD 4.92427699 in
+recorded inference and sandbox cost, with no infrastructure stops.
 
 - Zero false approvals were observed.
-- Sutura rejected 15 of 15 deceptive patches and classified 10 of 10 flakes.
-- It repaired 33 of 42 repairable cases, or 78.6%, just below the 80% internal
-  target.
-- It refused 22 of 23 deception cases, or 95.7%.
+- Sutura caught 18 of 19 trap cases. The miss,
+  `trap-workflow-check-removal`, gave up and approved nothing.
+- It rejected 11 of 11 deceptive patches and classified 10 of 10 flaky cases
+  without patching them.
+- It fixed 14 of 18 repairable cases. Four repairs gave up.
+- Hidden repair-preservation checks passed in three of four repair cases; the
+  fourth did not run because its repair gave up.
+- Tavily-grounded upstream cases fixed 1 of 4.
+- Two optional audit voices from other providers also ran. They can reject a
+  repair but never approve one, so they cannot widen what Sutura accepts.
+
+Fix rates for the last four releases were 14/18, 17/18, 13/18 and 14/18. Each
+release has one live evaluation per case, so we read that spread as run-to-run
+variance, not as an improvement or a regression. The full denominator, every
+failure and the exact identities are in the
+[release benchmark evidence](../demo/sutura-v0.3.9-release-benchmark-evidence.md).
+
+## Earlier development measurement
+
+A separate development/validation run used a different 80-case corpus and exact
+candidate `042af3aada158347db6006e30a4a0e6e7c65e420`, not this release. It
+completed 80 cases and 85 evaluations for USD 6.431018.
+
+- It repaired 33 of 42 repairable cases (78.6%), just below the 80% internal
+  target, and observed zero false approvals.
+- It rejected 15 of 15 deceptive patches, classified 10 of 10 flakes and
+  refused 22 of 23 deception cases (95.7%).
 - Hidden repair-preservation checks passed in 4 of 8 cases; 4 were not run, so
   this gate did not pass.
 - The small Tavily ablation repaired 1 of 5 cases with Tavily and 2 of 5
-  without it. We therefore make no quality-uplift claim from that result.
+  without it. We make no quality-uplift claim from that result.
 
-These results show the safety behavior we care about and expose the remaining
-repair weaknesses, especially async-preservation cases. The held-out 20 cases
-remain unopened, and this development measurement is not release acceptance.
+The held-out 20 cases remain unopened. This measurement is not release
+acceptance and does not transfer to the release above.
 
 ## What we learned
 
@@ -131,9 +153,9 @@ later commit cannot inherit an earlier score, and a check that did not run must
 remain visible as `not-run` rather than becoming a pass.
 
 Tavily remains useful as a source of current upstream release facts, but the
-latest five-pair ablation does not show a repair advantage. We report that
-result directly instead of turning integration presence into a performance
-claim.
+five-pair development ablation does not show a repair advantage, and the release
+benchmark fixed only 1 of 4 grounded upstream cases. We report those results
+directly instead of turning integration presence into a performance claim.
 
 ## Significant work since the submission period opened
 
@@ -145,11 +167,14 @@ patches, independent regression challenges, deterministic replay, selectable
 adaptive Nemotron routing, sanitized ATIF export, local Data Lab tooling, and
 candidate-bound evaluation controllers.
 
-The current source also includes four CodeQL regex hardening fixes and refreshed
-development dependencies. Those maintenance changes do not inherit the
-development candidate's quality score. The repository [changelog](../../CHANGELOG.md)
-records release history. Nebius and NVIDIA integration observations and
-requests are in the [feedback report](../feedback/2026-10-sutura-nebius-feedback.md).
+The release benchmarked above adds bounded, focused triage: a cumulative
+sandbox-time budget, and a rerun of only the failing test file before any
+full-command probe. Every score in this document binds to that release commit.
+Later commits on `develop` record evidence, bind the Case Lab to the release and
+update one dependency; they carry no benchmark score of their own. The
+repository [changelog](../../CHANGELOG.md) records release history. Nebius and
+NVIDIA integration observations and requests are in the
+[feedback report](../feedback/2026-10-sutura-nebius-feedback.md).
 
 ## What's next
 
