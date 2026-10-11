@@ -257,6 +257,45 @@ test('collector accepts mixed-owner repositories and rejects duplicate identitie
   }, client, new Date('2026-09-13T12:00:00.000Z')), /unique/u);
 });
 
+test('collector scopes cached evidence and deduplicates owner-qualified aliases without losing proof', async () => {
+  const config = { schemaVersion: 'sutura-fleet-config-v1', owner: 'owner',
+    repositories: ['alpha', 'owner/beta', 'other/alpha'],
+    startedAt: '2026-09-13T00:00:00.000Z', actionCommit: 'a'.repeat(40) };
+  const fixed = { repository: 'OWNER/Alpha', runId: 11, runAttempt: 1,
+    startedAt: '2026-09-13T09:00:00Z', attempted: true, outcome: 'fixed',
+    costStatus: 'measured', inferenceCostUsd: 0.125, sandboxCostUsd: 0.375,
+    sourceRunId: '41', actionSha: 'a'.repeat(40), durationSec: 60 };
+  const unknown = { ...fixed, repository: 'alpha', outcome: 'unknown',
+    costStatus: 'unavailable', sourceRunId: null, actionSha: null };
+  const skipped = { repository: 'beta', runId: 12, runAttempt: 1,
+    startedAt: fixed.startedAt, attempted: false, outcome: 'not-triggered',
+    costStatus: 'not-incurred' };
+  const previousEvents = [fixed, unknown, skipped,
+    { ...skipped, repository: 'other/alpha', runId: 11 },
+    { ...unknown, runAttempt: 2 },
+    { ...fixed, repository: 'removed-project', runId: 13 },
+    { ...fixed, repository: 'alpha', runId: 14, startedAt: '2026-09-12T23:00:00Z' }];
+  const client = {
+    async listWorkflowRuns(repository) {
+      return repository === 'alpha' ? [{ id: 11, run_attempt: 1,
+        conclusion: 'success', run_started_at: fixed.startedAt,
+        updated_at: '2026-09-13T09:01:00Z' }] : [];
+    },
+    async listArtifacts() { return []; },
+  };
+  const result = await collectFleetMetrics(config, client,
+    new Date('2026-09-14T00:00:00.000Z'), { previousEvents });
+  assert.equal(result.summary.monitorRuns, 4);
+  assert.equal(result.summary.repairAttempts, 2);
+  assert.equal(result.summary.outcomes.fixed, 1);
+  assert.equal(result.summary.totalCostUsd, 0.5);
+  assert.deepEqual(result.events.map(({ repository, runId, runAttempt }) =>
+    [repository, runId, runAttempt]).sort(), [
+    ['alpha', 11, 1], ['alpha', 11, 2], ['other/alpha', 11, 1], ['owner/beta', 12, 1],
+  ]);
+  assert.equal(previousEvents[0].repository, 'OWNER/Alpha');
+});
+
 test('public summary removes repository identities and daily snapshots are idempotent', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'sutura-fleet-metrics-'));
   try {

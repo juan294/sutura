@@ -58,6 +58,17 @@ function repositoryIdentity(defaultOwner, repository) {
   return repository.includes('/') ? repository : `${defaultOwner}/${repository}`;
 }
 
+function scopeMonitorEvents(config, events) {
+  const repositories = new Map(config.repositories.map((repository) =>
+    [repositoryIdentity(config.owner, repository).toLowerCase(), repository]));
+  const startedAt = Date.parse(config.startedAt);
+  return events.flatMap((event) => {
+    const repository = repositories.get(repositoryIdentity(config.owner, event.repository).toLowerCase());
+    return repository && Date.parse(event.startedAt ?? '') >= startedAt
+      ? [{ ...event, repository }] : [];
+  });
+}
+
 function completePages(pages, field, capped = false) {
   if (!Array.isArray(pages) || pages.length === 0 ||
       pages.some((page) => !Array.isArray(page?.[field]) || !Number.isSafeInteger(page.total_count))) {
@@ -433,7 +444,7 @@ export async function collectFleetMetrics(configInput, client, now = new Date(),
       });
     }
   }
-  const mergedEvents = mergeMonitorEvents(options.previousEvents ?? [], events);
+  const mergedEvents = mergeMonitorEvents(scopeMonitorEvents(config, options.previousEvents ?? []), events);
   mergedEvents.sort((left, right) => String(left.startedAt).localeCompare(String(right.startedAt)) || left.repository.localeCompare(right.repository));
   const outcomes = emptyOutcomes();
   let inferenceCostUsd = 0;
@@ -714,6 +725,7 @@ export async function main(arguments_ = process.argv.slice(2)) {
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
+  priorEvents = mergeMonitorEvents([], scopeMonitorEvents(config, priorEvents));
   let monitorEvents;
   let legacySummary = null;
   let monitorCollectionComplete = true;
@@ -725,7 +737,8 @@ export async function main(arguments_ = process.argv.slice(2)) {
     legacySummary = publicFleetSummary(result.summary);
   } catch {
     monitorCollectionComplete = false;
-    monitorEvents = mergeMonitorEvents(priorEvents, await readMonitorEvidence(evidenceDirectory));
+    monitorEvents = mergeMonitorEvents(priorEvents,
+      scopeMonitorEvents(config, await readMonitorEvidence(evidenceDirectory)));
   }
   const recovery = await collectRecoveryLedger(config, client, monitorEvents);
   recovery.coverage.monitorCollectionComplete = monitorCollectionComplete;

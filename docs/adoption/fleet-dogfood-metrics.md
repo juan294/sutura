@@ -81,6 +81,13 @@ fixed counts remain separate in that historical view. Measured cost totals inclu
 inference and sandbox charges reported by the case file; unknown cost is never
 treated as zero.
 
+Cached monitor observations are scoped to the configured repositories and window.
+Short names and `owner/name` aliases for the same repository share one run/attempt
+identity, including when GitHub names differ only in case. Removing a repository
+from the config excludes it from current totals while preserving its immutable
+evidence files. Each snapshot records its collection window and expected Action
+SHA; older Action SHA cohorts remain historical evidence, not current-version repairs.
+
 The aggregate summary contains no repository names. Review it before publishing
 because it is operational evidence, not a controlled benchmark. A verified
 repair count in the historical view is a proxy, not independent proof of a PR.
