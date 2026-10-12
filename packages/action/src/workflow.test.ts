@@ -19,7 +19,16 @@ describe('trusted Sutura workflow', () => {
     expect(workflow).toContain('checks: write');
     expect(workflow).toContain('contents: write');
     expect(workflow).toContain('pull-requests: write');
-    expect(workflow).toContain('github-token: ${{ github.token }}');
+    expect(workflow).toContain('actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1');
+    expect(workflow).toContain('client-id: ${{ vars.SUTURA_APP_CLIENT_ID }}');
+    expect(workflow).toContain('private-key: ${{ secrets.SUTURA_APP_PRIVATE_KEY }}');
+    expect(workflow).toContain('permission-actions: read');
+    expect(workflow).toContain('permission-checks: write');
+    expect(workflow).toContain('permission-contents: write');
+    expect(workflow).toContain('permission-pull-requests: write');
+    expect(workflow).not.toMatch(/^\s+(?:owner|repositories|skip-token-revoke):/mu);
+    expect(workflow).toContain('github-token: ${{ steps.sutura-app-token.outputs.token }}');
+    expect(workflow).not.toContain('github-token: ${{ github.token }}');
     expect(workflow).toContain('group: sutura-${{ github.event.workflow_run.id }}');
     expect(workflow).toContain('name: Sutura repair monitor');
     expect(workflow).toContain('run-name: "${{ format(');
