@@ -6,7 +6,7 @@ Canonical package identity for this source: `sutura@0.3.9`.
 
 ## Try it out
 
-- [Sutura Case Lab](https://sutura-case-lab.vercel.app/): five fixed CI cases,
+- [Sutura Case Lab](https://sutura-case-lab.vercel.app/): five CI scenarios,
   no account required. Each shows the recorded result from the latest release
   benchmark, and a visitor can start a rate-limited live run of the current
   release against a public demo repository.
@@ -104,9 +104,8 @@ keeps every unsuccessful case in the denominator.
 
 In the release benchmark above (55 evaluations), Nebius Token Factory served 168 Nemotron
 calls. Median latency was 1.1 seconds for Super, 2.2 for Ultra and 3.4 for Nano, with
-95th percentiles of 2.9, 4.0 and 7.9 seconds. Those calls took 9% of the wall-clock time
-(430 of 4,663 case-seconds, no case above 20%) and USD 0.17 of the USD 4.92 total. The rest
-is sandbox time and cost, so Token Factory never gated a run. This measures one benchmark
+95th percentiles of 2.9, 4.0 and 7.9 seconds. Those calls took 9% of summed case elapsed time
+(430 of 4,663 case-seconds, no case above 20%) and USD 0.17 of the USD 4.92 total. Sandbox work dominated aggregate time and cost. This measures one benchmark
 run and is not a comparison with another provider.
 
 ## Latest measured release result

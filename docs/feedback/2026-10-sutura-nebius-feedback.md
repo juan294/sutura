@@ -31,9 +31,9 @@ state of the service.
 - **ConTree branching fits repair search.** One prepared snapshot fed independent
   reproduction, repair, and audit branches, which is the isolation the product depends
   on. The v0.3.9 benchmark ran all 51 cases in about three hours with no `infra-stop`.
-- **Token Factory was never the bottleneck.** The 168 Nemotron calls in that benchmark had
+- **Sandbox work dominated aggregate time and cost.** The 168 Nemotron calls in that benchmark had
   median latencies of 1.1 s (Super), 2.2 s (Ultra), and 3.4 s (Nano), with 95th
-  percentiles of 2.9, 4.0, and 7.9 s. Together they took 9% of wall-clock time and 3.5%
+  percentiles of 2.9, 4.0, and 7.9 s. Together they took 9% of summed case elapsed time and 3.5%
   of total recorded cost. This is one run and has no comparison against another provider.
 - **Request IDs.** Stored traces keep bounded provider request IDs, which let us line up
   a failed call with a retained run.
