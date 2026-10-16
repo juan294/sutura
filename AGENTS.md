@@ -1,5 +1,16 @@
 # Project: Sutura
 
+## CI routing coordination
+
+Owner decision, 2026-10-16: Sutura coordinates automatic CI routing across the
+workspace. Project sessions report repository, commit and workflow evidence
+here instead of recommending or changing lean/legacy modes independently.
+Use the versioned contract in [automatic CI routing](docs/ci-routing.md).
+Verification amount is selected automatically; credentials, release admission
+and publication retain their independent controls. Do not use repository mode
+variables as routine recovery. Preserve installed and pending rollout states
+honestly; local candidates do not establish hosted activation.
+
 ## Repository evaluation
 
 The [technical evaluation guide](docs/evaluation/README.md) maps implementation,
