@@ -1,347 +1,208 @@
 # Sutura demo video: recording script
 
-Refreshed 2026-10-17. Record this version for the hackathon. Target **2:55**;
-export below **3:00**, including the end card. Lead with the future, demonstrate
-the product, then close on developer time and money. Track: Coding and Agentic
-Engineering.
+Final version, 2026-10-17. Record this for the hackathon. Target **2:50**, export below **3:00** including the end card. Track: Coding and Agentic Engineering.
 
-The [qualitative source script](sutura-video-script.md) remains a separate,
-historical, number-free contract artifact. Read only the timed **Say** blocks
-for the submission. Everything afterward is preparation or optional material.
+This merges the two October 17 drafts: the concrete origin story, same-bug progress and modular Cirujano clip from one, and the precise screen cues, rehearsal method and evidence limits from the other. The [qualitative source script](sutura-video-script.md) remains a separate, number-free contract artifact. Read only the timed **Say** blocks for the submission.
 
 ## The pitch to remember
 
-**Give developers their focus back. Make every automated repair earn trust.
-Use Nebius intelligence and isolated execution to make that practical.**
+**Every developer gets a CI surgeon on call. Every repair has to prove itself. Nebius makes it practical.**
 
-Start with possibility, then make it tangible: one broken function, one real
-repair, one shortcut rejected. Be ambitious about impact and precise about
-evidence. This is promising early benchmark data; developer-scale reliability
-is the opportunity ahead.
+Open big, then make it tangible: one real repair, one shortcut refused, one flaky failure left alone. Be ambitious about the future and exact about the numbers. Close on what a verified answer costs today, and on what we measure next.
 
-The [official rules](https://nebiusglobalaihackathon.devpost.com/rules) and
-[organizer video guidance](https://nebiusglobalaihackathon.devpost.com/updates/46205-how-to-build-a-winning-project)
-were rechecked on October 17: show functioning software, use public YouTube,
-stay under three minutes, and explain the Nebius and NVIDIA contribution.
-Use plain-text service names and your own visuals; include third-party marks
-or music only with permission.
+The [official rules](https://nebiusglobalaihackathon.devpost.com/rules) and [organizer video guidance](https://nebiusglobalaihackathon.devpost.com/updates/46205-how-to-build-a-winning-project) ask for functioning software, public YouTube, under three minutes, a pitch and not a tutorial, and audible Nebius and NVIDIA callouts. Use plain-text sponsor names and your own visuals. No other third-party marks, no copyrighted music.
 
 ## Set up before rehearsing
 
-Open these tabs in capture order, without signing in. **Start live run**
-dispatches paid work; use **Open recorded live result** for this recording.
-No new live run is needed for this cut. Hide bookmarks, notifications and
-unrelated tabs. Capture each shot first, then assemble it under the narration;
-you can also practice speaking while switching prepositioned tabs.
+Open these tabs in capture order, signed out, in a clean browser profile (no bookmarks bar, no extensions, notifications off, 1920x1080, zoom 110%). On Case Lab pages use **Open recorded live result**; **Start live run** dispatches paid work and is not needed for this cut.
 
 | Tab | Open | Prepare |
 | --- | --- | --- |
 | A | [Case Lab home](https://sutura-case-lab.vercel.app/) | Title and five case cards. |
-| B | [JavaScript repair](https://sutura-case-lab.vercel.app/replay/javascript-repair/) | Capture verdict and **Recorded live result** label. Expand **Execution and cost detail** to find the search tree and selected patch. Capture **Clean audit branch and Ultra verdict** separately. |
-| C | [Greenwash trap](https://sutura-case-lab.vercel.app/replay/greenwash-trap/) | **Refused**, policy reason and **weakened-assertion** failure. Expand execution details for the supplied patch. |
-| D | [Flaky failure](https://sutura-case-lab.vercel.app/replay/flaky-failure/) | **Flaky, no patch** and recorded-result label. |
-| E | [Upstream incident](https://sutura-case-lab.vercel.app/replay/upstream-incident/) | Tavily citations in the diagnosis. Establish the **Gave up** outcome; this demonstrates grounding, not a successful upstream repair. |
+| B | [JavaScript repair](https://sutura-case-lab.vercel.app/replay/javascript-repair/) | **Failed commit and CI evidence** (`expected 3 to be 2`), **Recorded live result** label, **Nano diagnosis and confidence**, expanded **Execution and cost detail** (ConTree search tree, Super proposals, selected patch), **Clean audit branch and Ultra verdict**, **Fixed**. |
+| C | [Greenwash trap](https://sutura-case-lab.vercel.app/replay/greenwash-trap/) | Supplied patch removing `expect(statusFor(503)).toBe('retry')`, policy refusal, failed **weakened-assertion** check, **Refused**. |
+| D | [Flaky failure](https://sutura-case-lab.vercel.app/replay/flaky-failure/) | **Flaky, no patch** with its recorded-result label. |
+| E | [Upstream incident](https://sutura-case-lab.vercel.app/replay/upstream-incident/) | Tavily citations in the diagnosis. Its outcome is **Gave up**: show grounding, do not linger on the verdict. |
 | F | [How Sutura verifies](https://sutura-case-lab.vercel.app/about/) | **Runtime roles** table. |
-| G | [Release benchmark evidence](https://github.com/juan294/sutura/blob/develop/docs/demo/sutura-v0.3.9-release-benchmark-evidence.md) | **Benchmark evidence**, outcome counts and model-cost table. October 3 measurement, not today's source commit. |
-| H | [Cirujano public proof](https://github.com/juan294/cirujano/blob/develop/docs/research/2026-10-09-skip-validated-push-live-proof.md) | **Measured runs**: baseline 3, candidate 1, control 4. |
+| G | [Dogfood ledger](https://github.com/juan294/sutura/blob/develop/docs/demo/dogfood-ledger.md) | The table: early gave-up and refused rows, then ten **fixed** rows. |
+| H | [Release benchmark evidence](https://github.com/juan294/sutura/blob/develop/docs/demo/sutura-v0.3.9-release-benchmark-evidence.md) | Headline counts, outcome table with the four unfixed repairs, model-cost table. |
+| I | [Cirujano public proof](https://github.com/juan294/cirujano/blob/develop/docs/research/2026-10-09-skip-validated-push-live-proof.md) | **Measured runs**: baseline 3, candidate 1, control 4. |
+
+Prepare three editor cards: **Illustration: how a fake fix can pass** (a one-line diff deleting an assertion, then a green check), **Vision** (many repositories feeding one verification loop) and the end card (**sutura-case-lab.vercel.app · npx sutura@0.3.9 init**).
+
+Before final capture, check `https://sutura-case-lab.vercel.app/api/health` reports version 0.3.9 with `"enabled":true`. It did on October 17.
 
 ## Script
 
-The narration is 356 words, about 128 words per minute with eight seconds
-reserved for pauses. Timestamps are editing targets; a spoken rehearsal decides
-the final pace. Captions below are editor-added text, not product features.
+The narration is 354 words: 2:22 at 150 words per minute, 2:43 at 130. That leaves the repair and refusal shots time to register. Timestamps are editing targets; your spoken rehearsal sets the final pace.
 
-### 0:00-0:16 | The future developers deserve
+### 1. The future | 0:00-0:15
 
-**Show:** Tab A, title and case cards. Caption: **More time building. Verified
-repairs. Human control.** At “scale”, optionally cut to a simple illustration
-of many repositories feeding the verification process, labeled **Vision**.
-Return immediately to the product.
+**Show:** Tab A, title and case cards. Brief cut to the **Vision** card on "every developer", then back to the product.
 
 **Say:**
 
-> Imagine a million developers spending more time building, while AI investigates
-> broken CI and brings back repairs they can inspect. That is Sutura's ambition:
-> verified self-healing CI at developer scale, powered by Nebius.
+> Imagine every developer with a CI surgeon on call. A build breaks at three in the morning; by breakfast it is reproduced, repaired and proven, waiting for a human to approve. That is Sutura, built on Nebius.
 
-### 0:16-0:33 | Why I built it
+### 2. Why I built it | 0:15-0:30
 
-**Show:** Tab B, **Failed commit and CI evidence**, error **expected 3 to be 2**.
-Move toward the audit section. Use this public fixture; keep private fleet
-screens and billing pages out of the capture.
+**Show:** Tab B, **Failed commit and CI evidence**, error `expected 3 to be 2`. Then the **Illustration** card.
 
 **Say:**
 
-> I built it around a familiar pain: stop coding, read logs, rerun tests, lose
-> focus. An agent creates another problem: it can make CI green by weakening a
-> test. Maintainers need a repair they can trust.
+> It started with my own pain: a full working day lost bouncing between failed runs and agent fixes. And an agent can make CI green by deleting the failing test, while the bug stays.
 
-### 0:33-1:08 | Watch the repair earn its verdict
+### 3. A real repair | 0:30-1:05
 
-**Show, in order:**
+**Show, in order (cut between positions, do not scroll the whole page):**
 
-1. Tab B, **Recorded live result**, release subject and **Fixed**.
-2. **Nano diagnosis and confidence**. Keep its actual confidence readable;
-   controller evidence also contributes to the classification.
-3. Expanded **Execution and cost detail**, **ConTree search tree and branch
-   status**, then **Super proposals and candidate patches**. Hold the selected
-   diff for four seconds: `Math.floor(items / size) + 1` becomes the guarded
-   `Math.ceil(items / size)` expression.
-4. **Clean audit branch and Ultra verdict**, then **Final outcome** and the
-   human-review sentence. Edit between positions instead of scrolling the
-   entire page during narration.
+1. Tab B, **Recorded live result** label and release subject, two seconds.
+2. **Nano diagnosis and confidence**.
+3. Expanded **Execution and cost detail**: ConTree search tree, then Super proposals. Hold the selected diff four seconds: `Math.floor(items / size) + 1` becomes the guarded `Math.ceil(items / size)` expression.
+4. **Clean audit branch and Ultra verdict**, then **Fixed** and the human-review sentence.
 
 **Say:**
 
-> Here is the working Case Lab. This recorded release result repairs an
-> off-by-one bug. NVIDIA Nemotron Nano diagnoses through Nebius Token Factory.
-> Nebius ConTree prepares dependencies once and branches isolated sandboxes.
-> Nemotron Super proposes repairs; the controller applies them and runs the
-> tests with networking disabled. The selected patch gets a clean rerun and
-> Nemotron Ultra audit. The code changes, the assertion stays. Sutura can open
-> an evidence-backed pull request. A human decides whether to merge. Sutura
-> never merges.
+> Here is the public Case Lab, with a recorded release result: a real off-by-one bug. NVIDIA Nemotron Nano, served by Nebius Token Factory, diagnoses it. Nebius ConTree prepares dependencies once and branches isolated sandboxes. Nemotron Super proposes repairs; the controller applies each one and runs the real tests, network off. The winner gets a clean rerun and a Nemotron Ultra audit. The code changes, the assertion stays. A human decides whether to merge.
 
-### 1:08-1:30 | The difference that matters
+### 4. The shortcut, refused | 1:05-1:22
 
-**Show:** Tab C, supplied patch, policy refusal and failed
-**weakened-assertion** check. Cut to Tab D for the last sentence.
+**Show:** Tab C, supplied patch, policy refusal, failed **weakened-assertion**, **Refused**. Cut to Tab D for the last sentence.
 
 **Say:**
 
-> Now the benchmark supplies a fake fix: delete the failing assertion. Sutura
-> refuses the test edit and flags the weakened assertion. A green check alone
-> cannot authorize a repair. Here, a flaky failure gets classified without
-> inventing a patch.
+> Now the benchmark offers a fake fix: delete the failing assertion. Sutura refuses it and flags the weakened assertion. And a flaky failure is recognized as flaky, with no invented patch.
 
-### 1:30-1:58 | Why the Nebius platform matters
+### 5. Why Nebius | 1:22-1:37
 
-**Show:** Tab F, **Runtime roles**, then Tab E's Tavily citations. Cut to a
-plain-text integration card: **Astra + Jev: optional vetoes**;
-**ATIF + NeMo: offline evaluation**; **Data Lab: dataset uploaded, batch denied**;
-**Nebius: inference + isolated execution**. No provider-console tour is needed.
+**Show:** Tab F, **Runtime roles**. Then Tab E, Tavily citations.
 
 **Say:**
 
-> Nebius brings managed model intelligence and isolated execution into one
-> developer workflow, without us operating GPU infrastructure. Tavily grounds
-> upstream diagnoses. Optional GPT-6 Astra and TypeSafe Jev add vetoes. NVIDIA
-> ATIF and NeMo Agent Toolkit support offline evaluation. We also uploaded our
-> sanitized dataset to Nebius Data Lab; its batch request was denied.
+> Nebius gives one developer workflow managed intelligence and isolated execution, with no GPU fleet to operate. When a dependency release breaks the build, Tavily searches the release notes live and cites them.
 
-### 1:58-2:17 | Early evidence worth building on
+### 6. Early data | 1:37-2:02
 
-**Show:** Tab G, **51 cases / 55 evaluations**, then large captions over the
-real evidence: **14/18 repairs fixed**, **10/10 flaky classified**,
-**0 observed false approvals**, **4 repairs gave up**. Keep
-**v0.3.9 · October 3 benchmark** visible. These measures overlap; do not add
-them together as separate groups.
+**Show:** Tab G, the ledger rows turning from gave-up to ten fixed. Then Tab H: **51 cases / 55 evaluations**, captions **14/18 repairs fixed**, **10/10 flaky recognized**, **0 observed false approvals**, then the four unfixed rows. Keep **v0.3.9 · October 3** visible.
 
 **Say:**
 
-> The early data is encouraging: fifty-one benchmark cases, fourteen of eighteen
-> repairs fixed, all ten flaky cases recognized, and zero false approvals
-> observed. Four repairs gave up. These are controlled benchmark results, with
-> failures published alongside successes.
+> The early data is encouraging. In August, Sutura fixed one of twenty-two attempts on a seeded bug. Within two days, it fixed that same bug ten times in a row. On the v0.3.9 release benchmark: fifty-one cases, fourteen of eighteen repairs fixed, ten of ten flaky failures recognized, zero false approvals observed, and the four misses published.
 
-### 2:17-2:33 | A bigger benefit with Cirujano
+### 7. Sutura and Cirujano | 2:02-2:17 (record as a separate clip)
 
-**Show:** Tab H's measured table. Caption: **Separate Cirujano proof: 3 → 1
-billed runner minutes per eligible push** and **Public benchmark: $0 GitHub
-charge saving**. Then show **Sutura verifies repairs → human review → Cirujano
-reduces repeated work**, labeled **Proposed joint workflow**.
+**Show:** Tab I, **Measured runs**. Caption: **Separate Cirujano proof: 3 → 1 billed runner minutes per eligible push**. Then a card: **Sutura heals red CI → human review → Cirujano trims green CI**, labeled **Proposed joint workflow**.
 
 **Say:**
 
-> Cirujano complements Sutura with leaner workflows and on-demand Nebius AI Cloud
-> runners. Its separate public proof cut eligible push checks from three billed
-> minutes to one. An automatic handoff is the next opportunity.
+> Sutura heals CI when it breaks. Its sibling, Cirujano, cuts the cost of CI that works, with leaner workflows and on-demand Nebius runners. In its public proof, eligible push checks fell from three billed minutes to one.
 
-### 2:33-2:55 | Time and money, then the invitation
+### 8. Cost and invitation | 2:17-2:50
 
-**Show:** Tab G's cost table: **Nemotron $0.173620**, **all recorded inference
-and sandboxes $4.92427699**. End on Tab A with a clean overlay:
-**Give developers their focus back.**
-**sutura-case-lab.vercel.app · npx sutura@0.3.9 init**
-Small caption: **Developer hours and net dollar savings: not yet measured**.
-Hold through 2:55; no extra spoken sentence afterward.
+**Show:** Tab H, model-cost table: **Nemotron $0.17**, **total $4.92 for 55 evaluations**. End on Tab A with the end card. Hold through 2:50 in silence.
 
 **Say:**
 
-> What can I put a number on today? Fourteen benchmark repairs, seventeen cents
-> of Nemotron calls, under five dollars including sandboxes and optional audits.
-> My hours saved and net savings are still unmeasured. The ambition is hours
-> back, lower bills, and more developers building. Try Sutura.
+> And the cost of a verified answer? About eighty-five seconds and nine cents per benchmark evaluation, with seventeen cents of Nemotron for the whole run. Next, we measure the hours and dollars that gives back, on my repositories, then for every developer. Sutura proposes. A human decides. Try it in the Case Lab.
 
-## Longer pitch for conversations and practice
+## Rehearse three times, then capture
 
-Use this separately from the submission cut, or as answers after showing it.
+1. **Voice only.** Read the eight Say blocks with a stopwatch. Aim for 2:30-2:45. Pause after "the assertion stays" and "ten times in a row". If long, cut "with a recorded release result" in beat 3 and "with no GPU fleet to operate" in beat 5; keep the repair and the refusal intact.
+2. **Screen only.** Practice A → B → C → D → F → E → G → H → I → H → A. Pre-expand B and C. Hold key details three to five seconds, point once, then stop moving the pointer. Keep recorded-result labels visible.
+3. **Full practice.** Speak while switching prepared views. Watch it back once: can a stranger see the repaired line, see the refused shortcut, name Nebius's role, and tell measured cost from future savings? Re-record the weak beat, not the whole video.
+4. **Final capture.** Record clean narration separately and assemble footage under it. Do not speed up speech to fit. Record beat 7 as its own clip so you can replace it later. Export at 1080p or higher, upload public on YouTube with captions that match the final take, and keep the exact transcript.
 
-> The next leap in developer productivity could come from protecting focus.
-> Imagine every maintainer having a repair team that investigates broken CI,
-> tests alternatives, and brings back a small patch with evidence. Across
-> thousands of teams, that could return an enormous amount of attention to
-> building software.
+Sound excited about the future, calm during the proof, precise on numbers. Say **Nebius Token Factory**, **NVIDIA Nemotron**, **Nebius ConTree** and **Tavily** clearly, and keep one pronunciation of Sutura and Cirujano.
+
+## Longer pitch for conversations
+
+Use this outside the submission cut, or for judge questions.
+
+> The next leap in developer productivity is protecting focus. Imagine every maintainer with a repair team that investigates broken CI, tests alternatives in isolation, and brings back a small patch with evidence. Across thousands of teams, that returns an enormous amount of attention to building software.
 >
-> That is the problem behind Sutura. A failed pipeline pulls me out of the work
-> I wanted to do. Handing it to an AI agent is useful only if I can trust the
-> result. An agent can delete an assertion and deliver a green check with the
-> bug still present. Sutura makes the repair earn its verdict through real
-> execution, repository policy, a clean rerun and an independent audit.
+> Sutura came from my own work. While building it, I lost a working day bouncing between failed runs and agent fixes. Handing CI to an AI agent only helps if I can trust the result, and an agent can delete an assertion and deliver a green check with the bug still there. Sutura makes every repair earn its verdict: real execution, repository policy, a clean rerun and an independent audit.
 >
-> Nebius is central to making this practical. Token Factory serves NVIDIA
-> Nemotron Nano for diagnosis, Super for bounded repairs and Ultra for audit.
-> ConTree turns one prepared snapshot into isolated reproduction, repair and
-> audit branches. Managed inference plus branching execution lets me
-> concentrate on the product rather than operating GPU infrastructure. Tavily
-> brings current upstream facts into diagnoses. Optional Astra and Jev checks
-> add vetoes; ATIF and NeMo Agent Toolkit support offline evaluation. We also
-> uploaded a sanitized dataset to Data Lab. Its batch request was denied, so
-> we claim no batch result.
+> Nebius makes this practical. Token Factory serves NVIDIA Nemotron Nano for diagnosis, Super for bounded repairs and Ultra for audit. ConTree turns one prepared snapshot into isolated reproduction, repair and audit branches. I build the product instead of operating GPU infrastructure. Tavily brings current upstream facts into diagnoses.
 >
-> The early result gives us something concrete to build on. The released
-> v0.3.9 system fixed fourteen of eighteen repair cases and recognized all ten
-> flaky cases. We observed no false approvals in the benchmark. We publish
-> the four repairs that gave up. This demonstrates working behavior in
-> controlled cases; developer-scale reliability is the opportunity ahead.
+> The early data gives us something concrete. On one seeded bug, Sutura went from one fix in twenty-two attempts to ten fixes in a row within two days. The v0.3.9 release fixed fourteen of eighteen benchmark repairs, recognized all ten flaky cases and had no observed false approvals, and we publish the four that gave up.
 >
-> Cirujano extends the opportunity to CI cost. After a human accepts Sutura's
-> repair, Cirujano can examine repeated work and propose cheaper execution
-> while preserving the checks. Its on-demand Nebius AI Cloud CPU runners start
-> for eligible queued jobs and stop when idle. Its separate public push proof
-> reduced sampled eligible checks from three billed runner minutes to one.
-> That public benchmark saves zero GitHub dollars; it proves a mechanism we
-> can measure on paid workloads. Each product works independently today. The
-> direct automatic handoff is a future integration.
+> Cirujano extends this to CI cost. It trims repeated work and moves heavy jobs to on-demand Nebius AI Cloud runners that stop when idle. Its public proof cut eligible push checks from three billed minutes to one. Each product works on its own today; an automatic handoff is the next integration.
 >
-> My measured starting point was about $386 a month in GitHub Actions bills.
-> An early Cirujano model targets about $120 a month, or $1,440 a year, using
-> four concurrent slots that are not yet built. That is a projection. For
-> Sutura, the full recorded release benchmark cost $4.92, with just $0.17 spent
-> on Nemotron. I have not measured my recovered hours or realized net savings
-> yet. Even fifteen minutes of net developer time recovered per successful
-> repair would make the economics compelling. That is the future I want to
-> build: more focus, credible repairs, and less money spent repeating work.
+> Today a verified benchmark answer costs about nine cents and eighty-five seconds of machine time. The next measurement is the one that matters most: the hours and dollars that gives back to developers.
 
 ## Everything we used
 
-This is the relevant product, evaluation, delivery and development inventory.
-Use it for the platform shot and longer answers; keep package names on screen
-rather than reading the entire list aloud.
+Say the first four out loud. The rest can sit in the Devpost text.
 
-| Component | Actual role and evidence to show |
+| Component | Role |
 | --- | --- |
-| Nebius Token Factory | Managed inference for the three Nemotron roles. Show the [release model-cost table](../demo/sutura-v0.3.9-release-benchmark-evidence.md). |
-| NVIDIA Nemotron 3 Nano 30B, Super 120B, Ultra 550B | Diagnosis, bounded proposals and independent audit. [Model configuration](../../packages/core/src/config.ts#L10); Tabs F and B. |
-| Nebius ConTree | Prepared dependencies, snapshots and isolated reproduction, triage, search and clean verification branches. Tab B's expanded detail; network off during untrusted execution. |
-| Tavily Search / Extract | Grounding in upstream release and migration sources. Tab E's citations; recorded outcome **gave-up**; release upstream fixes **1/4**. |
-| OpenAI GPT-6 Astra | Optional veto-only second opinion. [Audit evidence](../demo/sutura-v0.3.9-release-benchmark-evidence.md). It was skipped on this JavaScript result because its budget was exhausted. |
-| TypeSafe Jev | Optional calibrated veto-only audit. Tab B, **typesafe-audit**. Both optional voices ran in the overall benchmark. |
-| NVIDIA ATIF | Sanitized interoperable trajectory format. [Committed trajectory](../demo/sutura-trajectory-v1.atif.json). |
-| NVIDIA NeMo Agent Toolkit | Offline validation and evaluation, not live orchestration. [Report](../evaluation/nemo-atif-report.json). |
-| Nebius Data Lab | Sanitized 110-row dataset uploaded and read back READY on October 7. [Record](../demo/nebius-data-lab-upload-2026-10-07.md); batch denied HTTP 403, no batch result. |
-| TypeScript, Node.js 22, Python | Implementation and runtime / evaluation paths. [Contributor setup](../../README.md); JavaScript, TypeScript and Python repair support. |
-| pnpm, Vitest, ESLint | Workspace tooling, tests and static checks. [Scripts](../../package.json). |
-| GitHub Actions, GitHub App, CLI / npm / Marketplace | CI entry point, scoped repair-PR access and distribution. [Install instructions](../../README.md); the recorded fixture does not demonstrate a new PR. |
-| Vercel | Hosted Case Lab UI; repair intelligence and sandbox execution use Nebius. Tab A. |
-| Placebo | Controlled benchmark, traps, flaky cases and retained failures. [Benchmark contract](../../packages/placebo/README.md). |
-| Codex and Claude Code | Development assistance, distinct from running repair models. [Form disclosure](sutura-devpost-form.md). |
-| Cirujano: Token Factory, Sandboxes and AI Cloud CPU VMs | Separate product's NVIDIA workflow diagnosis, isolated optimization verification and on-demand runners. [Public proof](https://github.com/juan294/cirujano/blob/develop/docs/research/2026-10-09-skip-validated-push-live-proof.md). No GPU-runner claim. |
+| Nebius Token Factory | Managed inference for all Nemotron calls: 168 in the v0.3.9 benchmark, median latency 1.1 s Super, 2.2 s Ultra, 3.4 s Nano. |
+| NVIDIA Nemotron 3 Nano 30B, Super 120B, Ultra 550B | Diagnose, propose, audit. [Model configuration](../../packages/core/src/config.ts#L10). |
+| Nebius ConTree | Dependencies prepared once, snapshots, isolated reproduction, triage, search and clean verification branches; network off for untrusted stages. |
+| Tavily Search / Extract | Runtime grounding in upstream release notes, cited in the diagnosis. Upstream fixes were 1/4 in the release. |
+| NVIDIA ATIF and NeMo Agent Toolkit | Sanitized trajectory export and offline evaluation. [Trajectory](../demo/sutura-trajectory-v1.atif.json), [report](../evaluation/nemo-atif-report.json). |
+| Optional veto-only auditors | Two third-party second opinions can reject a repair, never approve one. Do not name or show them in the video. |
+| Nebius Data Lab | Sanitized dataset uploaded and read back on October 7; the batch was denied with HTTP 403. Feedback form only, not the video. [Record](../demo/nebius-data-lab-upload-2026-10-07.md). |
+| GitHub Actions, GitHub App, npm, Marketplace | CI entry point, scoped repair-PR access and distribution. |
+| Vercel | Hosts the Case Lab UI; repair intelligence and sandboxes run on Nebius. |
+| Placebo | Controlled benchmark with traps, flaky cases and retained failures. [Contract](../../packages/placebo/README.md). |
+| TypeScript, Node.js 22, Python, pnpm, Vitest, ESLint | Implementation and tooling; JavaScript, TypeScript and Python repair support. |
+| Codex and Claude Code | Development assistance, separate from the runtime repair models. |
+| Cirujano: Token Factory, Sandboxes, Nebius AI Cloud CPU VMs | Separate product: workflow diagnosis, isolated optimization verification and on-demand runners. |
 
-## Savings: a truthful, concrete close
+## Time and money: what is measured
 
-| Status | Number | Meaning and limit |
+| Status | Number | Limit |
 | --- | --- | --- |
-| Measured Sutura cost | **$4.92427699 total** = **$0.173620 Nemotron** + **$0.471723 other inference** + **$4.27893399 sandboxes** | October 3 release, 51 cases / 55 evaluations. Benchmark spend, not money saved against manual work or total development spend. |
-| Measured repair work | **14/18 repairs fixed** | Controlled cases; no measurement of recovered developer hours. |
-| Measured Cirujano mechanism | **3 → 1 billed runner minutes**, a **66.7%** reduction | Three sampled eligible candidate pushes, two runner minutes avoided each. Direct-push control used **4** minutes including overhead. PR checks still ran. Public repository: **$0 GitHub dollar saving**; provider costs not netted. |
-| Historical personal billing baseline | **$370.64** and **$401.78**, average **$386.21/month** | July and August 2026, [anonymized baseline](https://github.com/juan294/cirujano/blob/develop/docs/research/2026-09-08-github-actions-cost-baseline.md). Not an October bill. |
-| Cirujano projection | About **$120/month**, **$1,440/year** | Historical model assumes **four concurrent runner slots**; implemented runners have one slot per enrollment. [Case study](https://github.com/juan294/cirujano/blob/develop/docs/cirujano-savings-case-study.md). Fleet net savings pending. |
-| Illustrative developer-time value | **3.5 hours**, **$262.50 gross value** | Assume each of 14 benchmark fixes replaces **15 minutes of net hands-on work after review**, at **$75/hour**. Subtracting the whole $4.92427699 benchmark gives **$257.58 illustrative net value**. Assumptions, not recovered hours or realized cash savings. |
-| Actual personal time and combined net savings | **Unmeasured** | Do not convert benchmark duration or runner minutes into developer time. |
+| Measured Sutura cost | **$4.92** for 55 evaluations = **$0.17 Nemotron** + $0.47 other inference + $4.28 sandboxes | October 3 release benchmark. Benchmark spend, not money saved. |
+| Measured per evaluation | About **85 seconds** and **9 cents** (4,663 case-seconds and $4.92 over 55) | Averages include refusals, flakes and unsuccessful outcomes. Not a production price or completion-time promise. |
+| Measured repair work | **14/18 repairs fixed**; same seeded bug went **1/22 → 10 in a row** | Controlled cases. No measurement of recovered developer hours. |
+| Measured Cirujano mechanism | **3 → 1 billed runner minutes** per eligible merge push (66.7%) | Three sampled pushes on a public repository: **$0** GitHub saving; provider cost not netted. Direct-push control billed 4. |
+| Cirujano private fleet, 2026-09-13 to 2026-10-17 | **$18.84** hosted list cost avoided vs **$19.87** controller-accounted Nebius cost | Incomplete accounting; neither positive net savings nor a definitive loss. The 45-day window closes 2026-10-28; closing it does not guarantee a complete net result. |
+| GitHub Actions bill | Net **$401.78** August, **$81.16** September, **$93.50** October 1-17 | Gross fell 31.7% while discounts doubled. Cause not established; do not attribute to Sutura or Cirujano. |
+| Cirujano projection | About **$120/month** | Model assumes four concurrent runner slots; implemented runners have one slot per enrollment. |
+| Personal hours and net dollars saved | **Unmeasured** | The next measurement. |
 
-If asked “How much has it saved you?”, answer directly:
+If a judge asks "How much has it saved you?":
 
-> I can measure the automated work and its cost: fourteen successful benchmark
-> repairs, and $4.92 for the entire release benchmark. I have not measured my
-> personal hours saved or net dollars saved yet. Cirujano separately demonstrated
-> two billed runner minutes avoided per eligible sampled push; the $120 monthly
-> target remains a projection. Those are the starting points for the next
-> before-and-after measurement.
-
-For a scale illustration outside the submission cut: **1,000 developers
-recovering 15 minutes each week = 250 developer-hours per week**. The developer
-count and recovered minutes are assumptions, not adoption or an observed effect.
+> I can measure the automated work and its cost: fourteen benchmark repairs, about nine cents and eighty-five seconds per evaluation, and seventeen cents of Nemotron for the whole release benchmark. Cirujano separately cut eligible push checks from three billed minutes to one. My personal hours and net dollars saved are the next before-and-after measurement.
 
 ## How the products work together
 
-**Sutura verifies repairs. Cirujano reduces repeated CI work and compute cost.
-A developer keeps approval.** Keep Cirujano to its single short beat in this
-Sutura submission; the projects remain distinct products and submissions.
+**Sutura heals red CI. Cirujano trims green CI. A developer keeps approval.** Keep Cirujano to its one beat; they are distinct products and separate submissions.
 
-The proposed loop is: failed run → Sutura evidence and repair → human review
-and merge → Cirujano measures CI cost and proposes verified optimization or an
-eligible runner migration → human approval → measure reliability, developer
-effort and total spend. Count verification cost as well as avoided work.
+- **Two failure modes.** A pipeline can break, or it can keep working while it wastes money. Sutura answers red CI with a verified repair, a flaky verdict or a refusal. Cirujano measures green CI, removes verified waste and moves heavy jobs to on-demand Nebius VMs that stop when idle.
+- **One loop (proposed).** A run fails → Sutura reproduces and repairs it → human review and merge → Cirujano measures the pipeline and proposes a verified optimization or runner move → human approval → measure reliability, developer effort and total spend, counting verification cost.
+- **One evidence standard.** Neither trusts a green check. Sutura rejects fixes that delete tests; Cirujano rejects savings that delete coverage. Both open evidence-backed pull requests and never merge.
+- **Not built yet.** There is no automatic handoff, and Sutura does not provision Cirujano runners. Each works independently today.
 
-There is no implemented direct automatic handoff. Sutura does not automatically
-provision Cirujano runners. Workflow optimization does not remove Sutura's
-workspace CI-routing authority; prepared local routing is not hosted activation.
-Full checks, policy and publication retain their independent controls.
+## Lines you must not say
 
-## Three rehearsals, then capture
+| Tempting line | Why not |
+| --- | --- |
+| "This repo went red 29 times in three days." | 21 of the 29 were deliberately injected dogfood failures. Use the working-day story. |
+| "My bill fell from $401 to $81 thanks to Cirujano." | Cirujano's own accounting shows about $19 avoided against about $20 of Nebius cost; the drop is mostly unexplained discounts. |
+| "It saved me N hours" or "$X a month." | Not measured. |
+| "Sutura has fixed real failures across my fleet." | The fleet report of 2026-10-11 records zero verified repair PRs and Sutura-to-green recoveries; not rechecked since. Seeded dogfood and benchmark fixes are separate evidence. |
+| "Ninety seconds and ten cents per repair." | The averages are 85 seconds and 9 cents per benchmark evaluation, across all outcomes. |
+| "Sutura keeps improving release after release." | Release fix rates were 14, 17, 13 and 14 of 18. Only the same-bug 1/22 → 10-in-a-row comparison is like for like. |
+| "Nemotron generated the fake fix" or "Ultra caught it." | The benchmark supplies the trap, and policy refuses it before Ultra runs. |
+| "Token Factory is faster than X." | No comparison was run. |
+| Naming the optional auditors or the Data Lab denial. | Third-party marks; the Data Lab result belongs in the feedback form. |
 
-1. **Voice only.** Read the eight Say blocks with a stopwatch. Aim for 2:45–2:50
-   spoken delivery, leaving a few seconds for pauses and the final card.
-   Pause after “the assertion stays” and “zero false approvals observed”.
-   If long, shorten the platform beat; preserve the repair and refusal.
-2. **Screen only.** Practice A → B → C → D → F → E → G → H → G → A. Record at
-   1080p or higher with readable code. Pre-expand B and C. Hold key details
-   three to five seconds; point once, then stop moving the pointer. Keep
-   recorded-mode labels visible.
-3. **Full practice.** Speak while switching prepared views. Watch back once:
-   can a stranger see the repaired line, see the refused shortcut, name
-   Nebius's role, and distinguish measured costs from future savings?
-   Re-record the weak beat rather than the whole demonstration.
-4. **Final capture.** Record clean narration separately and assemble footage
-   under it. Do not accelerate speech to fit. Keep the complete export below
-   three minutes. Add captions matching the final take and retain its exact
-   transcript for the archive. Voice recording is a user-performed step.
+## Evidence
 
-Sound excited about the future, calm during proof, and precise on figures.
-Pronounce **Nebius Token Factory**, **NVIDIA Nemotron**, **Nebius ConTree** and
-**Tavily** clearly. Use a consistent pronunciation of Sutura. The final feeling
-should be “I want my focus back. I can try this now.”
+| Claim | Source | Status |
+| --- | --- | --- |
+| Lost working day of failed runs and agent fixes | [CI failure retrospective](../research/2026-08-29-ci-failure-retrospective.md): 16 CI and 16 Sutura runs on 08-29, 06:36Z-18:49Z | VERIFIED |
+| 1 of 22 on a seeded bug | Same retrospective, section C | VERIFIED |
+| Same bug fixed ten times in a row within two days | [Dogfood ledger](../demo/dogfood-ledger.md) and [executable equivalence](../demo/dogfood-v0.2.0-executable-equivalence.md); CI runs 33328936605 (2026-08-30) to 33361548920 (2026-08-31). The streak commit and the 08-29 injection both add `dogfood-add.ts` returning `left - right` against `expect(add(2, 3)).toBe(5)` | VERIFIED 2026-10-17 |
+| Off-by-one repair fixed; trap refused with weakened-assertion; 10/10 flaky; 14/18; zero false approvals; four misses | [Release JSON](../demo/placebo-v0.3.9-live-2026-10-03.json), subject `cc3281485b4364d7c8fcb2e820e03ffbaf893c2a` | VERIFIED 2026-10-15 |
+| 85 seconds and 9 cents per evaluation; $0.17 Nemotron | 4,663.210 case-seconds and $4.92427699 over 55 evaluations; $0.173620 across 168 Nemotron responses ([readiness record](sutura-submission-readiness-2026-10-15.md)) | VERIFIED arithmetic |
+| Tavily citations | `upstream-formatter-release` case file, `diagnosis.grounding.citations` | VERIFIED 2026-10-15 |
+| Cirujano 3 → 1 | [Cirujano live proof](https://github.com/juan294/cirujano/blob/develop/docs/research/2026-10-09-skip-validated-push-live-proof.md) | VERIFIED by Cirujano readback 2026-10-17 |
+| Cirujano fleet $18.84 vs $19.87 | Cirujano `docs/demo/recording-script.md`, private fleet report window ending 2026-10-17 | Read 2026-10-17 |
+| Bill $401.78 / $81.16 / $93.50 | GitHub billing API `/users/juan294/settings/billing/usage/summary` | VERIFIED 2026-10-17 |
+| Case Lab public, v0.3.9, live enabled | `/api/health`, anonymous | VERIFIED 2026-10-17 |
 
-## Evidence checks and recording limits
-
-Checked October 17: anonymous health reported **v0.3.9**, Action
-`cc3281485b4364d7c8fcb2e820e03ffbaf893c2a`, live enabled, one concurrent run,
-four per hour and 24 per day. Browser inspection confirmed the JavaScript
-recorded verdict, selected diff, expanded cost detail and public architecture
-page. Health and displayed recordings do not establish a new live repair.
-
-The [release JSON](../demo/placebo-v0.3.9-live-2026-10-03.json) retains the exact
-subject above, 51 cases / 55 evaluations, 14/18 repair fixes, 18/19 trap
-refusals (one gave up), 10/10 flaky classifications, 11/11 deceptive patches
-rejected and zero observed false approvals. Hidden repair checks passed 3/4;
-one did not run. Tavily-grounded upstream fixes were 1/4. Optional audits
-contributed to the measured system. These results do not establish universal
-safety, competitive superiority or steady improvement.
-
-The trap is **benchmark-supplied**, not generated by Nemotron on camera. Policy
-refuses it before Ultra adjudication; do not attribute it to an audit that did
-not run. The JavaScript fixture's exact failing/policy commits are unavailable;
-its CLI examples do not prove those identities or establish a repair PR.
-
-The [September 28 fleet observation](../demo/fleet-recovery-observation-2026-09-28.md)
-recorded zero verified repair PRs in that window. It supports no fleet-recovery,
-personal-time or realized-savings claim. Earlier dogfood proof and later
-release benchmark results are separate evidence.
-
-Recheck home, health and recorded routes before final capture. If access fails,
-use retained [real gallery captures](gallery-2026-10-07/README.md) with their
-original dates, or resolve access before filming. Never label a recording as a
-new live run. Preparation does not authorize provider dispatch, upload,
-publication, portal updates or submission. Remaining closeout items are in
-the [readiness record](sutura-submission-readiness-2026-10-15.md).
+Health and recorded pages do not prove a new live repair. Never label a recording as a new live run. An optional fresh live run (up to $0.75, capped at 4 per hour) needs separate authorization and a "live, sped up" label. Preparation does not authorize provider dispatch, upload, publication, portal updates or submission. Remaining closeout items are in the [readiness record](sutura-submission-readiness-2026-10-15.md).
