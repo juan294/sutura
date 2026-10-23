@@ -1283,6 +1283,33 @@ describe('orchestrate', () => {
     expect(calls.slice(2).every(({ opts }) => opts?.network === 'disabled')).toBe(true);
   });
 
+  it.each([false, true])('stops on a new missing sandbox prerequisite with unrelated native marker=%s', async (unrelatedMarker) => {
+    const run = { ...RUN, failedSteps: [{ jobName: 'boot', stepName: 'Boot guest',
+      log: 'Run pnpm run verify:cloud-init-boot\nprovisioning did not complete within the armed window' },
+      ...(unrelatedMarker ? [{ jobName: 'unrelated', stepName: 'Other check',
+        log: 'Run echo check\nmissing required tool: qemu-img' }] : [])] };
+    const { ctx, github, repository, chat } = context([], true, run);
+    const executor = new InMemoryExecutor((command) =>
+      command.includes('corepack pnpm install --frozen-lockfile') || command.includes('git init --quiet')
+        ? runResult(0) : { ...runResult(1), stdout: '[ELIFECYCLE] Command failed with exit code 1.\n',
+          stderr: '$ bash scripts/test-runner-cloud-init-boot.sh\nmissing required tool: qemu-img\n' });
+    ctx.executor = executor;
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(caseFile).toMatchObject({ runId: RUN.runId, outcome: 'infra-stop',
+      diagnosis: { class: 'infra', failingCmd: 'pnpm run verify:cloud-init-boot',
+        signals: ['sandbox-reproduction:prerequisite-missing'] },
+      triage: { status: 'not-run', reproduced: 0, of: 0 }, race: [] });
+    expect(caseFile.diagnosis.errorExcerpt).toContain('missing required tool: qemu-img');
+    expect(caseFile.stages.filter(({ stage }) => stage === 'reproduction')).toMatchObject([{ exitCode: 1 }]);
+    expect(runCalls(executor)).toHaveLength(3);
+    expect(chat).not.toHaveBeenCalled();
+    expect(repository.fixes).toEqual([]);
+    expect(github.pullRequests).toEqual([]);
+    expect(github.comments[0]?.body).toContain('Sandbox reproduction was blocked by a missing prerequisite.');
+  });
+
   it('reports preparation failure before reproduction or paid inference', async () => {
     const { ctx, github, chat } = context([]);
     const executor = new InMemoryExecutor(() => runResult(1));

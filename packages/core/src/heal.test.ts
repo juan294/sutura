@@ -13,6 +13,8 @@ import { InMemoryExecutor, type InMemoryRunResult } from './executor/memory.js';
 import {
   buildSandboxRepositoryInitializationCommandForTest,
   healCase,
+  missingSandboxPrerequisite,
+  missingPrerequisiteCaseFile,
   triageBudgetLedgerNote,
   repairFailure,
   repairVerificationCommand,
@@ -163,6 +165,44 @@ function context(
     },
   };
 }
+
+describe('captured missing sandbox prerequisite boundary', () => {
+  it('normalizes the exact preflight line and distinguishes the same native prerequisite', () => {
+    const execution = result(1, '\u001b[31mmissing required tool: qemu-img\u001b[0m\r\n');
+    expect(missingSandboxPrerequisite(execution)).toBe('qemu-img');
+    expect(missingSandboxPrerequisite(execution, '2026-10-23T11:12:08Z missing required tool: qemu-img')).toBeUndefined();
+    expect(missingSandboxPrerequisite(execution, 'missing required tool: another-tool')).toBe('qemu-img');
+  });
+
+  it.each([
+    'AssertionError: expected 3 to be 2',
+    'Cannot find module "missing-package"',
+    'command not found: qemu-img',
+    'expected "missing required tool: qemu-img" in output',
+    'missing required tool: qemu-img and install it',
+    `missing required tool: ${'a'.repeat(81)}`,
+  ])('does not guess a sandbox prerequisite from %s', (stderr) => {
+    expect(missingSandboxPrerequisite(result(1, stderr))).toBeUndefined();
+  });
+
+  it('does not turn a clipped prose suffix into an anchored preflight line', () => {
+    const marker = 'missing required tool: qemu-img\n';
+    const suffix = marker + 'x'.repeat(20_000 - marker.length);
+    expect(missingSandboxPrerequisite(result(1, 'quoted prose: ' + suffix))).toBeUndefined();
+  });
+
+  it('does not classify a passing execution as a prerequisite failure', () => {
+    expect(missingSandboxPrerequisite(result(0, 'missing required tool: qemu-img'))).toBeUndefined();
+  });
+
+  it('redacts and bounds prerequisite diagnostics before rendering the case file', () => {
+    const caseFile = missingPrerequisiteCaseFile({ runId: '77', repo: 'acme/project', cost: ledger() },
+      'pnpm test', result(1, 'x'.repeat(10_000) + '\nTOKEN=private-value\nmissing required tool: qemu-img\n'));
+    expect(caseFile.diagnosis.errorExcerpt).toContain('missing required tool: qemu-img');
+    expect(caseFile.diagnosis.errorExcerpt).not.toContain('private-value');
+    expect(caseFile.diagnosis.errorExcerpt.length).toBeLessThanOrEqual(2000);
+  });
+});
 
 describe('healCase', () => {
   it('prioritizes an authorized recovery when only one repair fits and probes the original command', async () => {
@@ -1455,6 +1495,23 @@ describe('healCase', () => {
       runtime: 'python',
       triage: { status: 'not-run', reproduced: 0, of: 0 },
     });
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  it('stops local healing when baseline execution reports a missing prerequisite', async () => {
+    const { ctx, chat } = context('repair-off-by-one', [], 'test-assertion');
+    const executor = new InMemoryExecutor((command) =>
+      command.includes('corepack pnpm install --frozen-lockfile') || command.includes('git init --quiet')
+        ? result(0) : result(1, '$ bash scripts/test-runner-cloud-init-boot.sh\nmissing required tool: qemu-img\n'));
+    ctx.executor = executor;
+
+    const caseFile = await healCase(ctx);
+
+    expect(caseFile).toMatchObject({ outcome: 'infra-stop',
+      diagnosis: { class: 'infra', signals: ['sandbox-reproduction:prerequisite-missing'] },
+      triage: { status: 'not-run', reproduced: 0, of: 0 }, race: [] });
+    expect(executor.calls.filter(({ kind }) => kind === 'run')).toHaveLength(3);
+    expect(caseFile.stages.filter(({ stage }) => stage === 'reproduction')).toMatchObject([{ exitCode: 1 }]);
     expect(chat).not.toHaveBeenCalled();
   });
 

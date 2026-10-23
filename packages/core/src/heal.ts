@@ -510,6 +510,18 @@ export function noReproductionCaseFile(
   );
 }
 
+function sandboxFailureExcerpt(result: Pick<RunResult, 'stdout' | 'stderr'>): string {
+  // Redact a wider window before the final cut, so a credential split by the
+  // character bound is never published as an unrecognisable fragment.
+  return boundedTail(
+    redactExternalText(boundedTail(
+      [result.stdout, result.stderr].filter(Boolean).join('\n'),
+      { maxLines: 20, maxCharacters: 8_000, maxBytes: 8_000 },
+    )).text,
+    { maxLines: 20, maxCharacters: 2_000, maxBytes: 2_000 },
+  ).trim();
+}
+
 export function preparationFailureCaseFile(
   ctx: Pick<
     HealCaseContext,
@@ -518,15 +530,7 @@ export function preparationFailureCaseFile(
   command: string,
   result: RunResult,
 ): CaseFile {
-  // Redact a wider window before the final cut, so a credential split by the
-  // character bound is never published as an unrecognisable fragment.
-  const excerpt = boundedTail(
-    redactExternalText(boundedTail(
-      [result.stdout, result.stderr].filter(Boolean).join('\n'),
-      { maxLines: 20, maxCharacters: 8_000, maxBytes: 8_000 },
-    )).text,
-    { maxLines: 20, maxCharacters: 2_000, maxBytes: 2_000 },
-  ).trim();
+  const excerpt = sandboxFailureExcerpt(result);
   return makeCaseFile(
     ctx,
     {
@@ -540,6 +544,40 @@ export function preparationFailureCaseFile(
     [],
     'infra-stop',
   );
+}
+
+/** Exact baseline preflight markers only; arbitrary failed commands are not prerequisites. */
+function missingPrerequisiteTools(output: string): string[] {
+  const bounded = boundedTail(output, { maxLines: 200, maxCharacters: 20_000, maxBytes: 20_000 });
+  const start = output.length - bounded.length;
+  const firstNewline = bounded.indexOf('\n');
+  const completeLines = start > 0 && output[start - 1] !== '\n'
+    ? (firstNewline < 0 ? '' : bounded.slice(firstNewline + 1)) : bounded;
+  return completeLines.split(/\r?\n/u).flatMap((line) => {
+    const normalized = line.replace(/\x1b\[[0-9;]*m/gu, '').trim()
+      .replace(/^\d{4}-\d{2}-\d{2}T\S+Z[ \t]+/u, '');
+    const match = /^missing required tool: ([A-Za-z0-9][A-Za-z0-9._+-]{0,79})$/u.exec(normalized);
+    return match?.[1] === undefined ? [] : [match[1]];
+  });
+}
+
+export function missingSandboxPrerequisite(result: Pick<RunResult, 'exitCode' | 'stdout' | 'stderr'>, nativeLog?: string): string | undefined {
+  if (result.exitCode === 0) return undefined;
+  const native = new Set(nativeLog === undefined ? [] : missingPrerequisiteTools(nativeLog));
+  return missingPrerequisiteTools([result.stdout, result.stderr].join('\n')).find((tool) => !native.has(tool));
+}
+
+export function missingPrerequisiteCaseFile(
+  ctx: Parameters<typeof preparationFailureCaseFile>[0],
+  command: string,
+  result: Pick<RunResult, 'stdout' | 'stderr'>,
+): CaseFile {
+  return makeCaseFile(ctx, {
+    class: 'infra', confidence: 1,
+    signals: ['sandbox-reproduction:prerequisite-missing'],
+    failingCmd: command,
+    errorExcerpt: sandboxFailureExcerpt(result),
+  }, notRunTriageVerdict(), [], 'infra-stop');
 }
 
 export function sandboxPreparationCommand(): string {
@@ -1761,6 +1799,10 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
   if (reproduction.exitCode === 0) {
     const mechanical = classifyMechanically(failedLog);
     return noReproductionCaseFile(fullContext, mechanical);
+  }
+
+  if (missingSandboxPrerequisite(reproduction) !== undefined) {
+    return missingPrerequisiteCaseFile(fullContext, command, reproduction);
   }
 
   return await repairFailure({

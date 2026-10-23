@@ -33,6 +33,8 @@ import {
   noReproductionCaseFile,
   prepareSandbox,
   preparationFailureCaseFile,
+  missingSandboxPrerequisite,
+  missingPrerequisiteCaseFile,
   repairFailure,
   sandboxTargetCommand,
   type HealLlm,
@@ -699,7 +701,8 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
   // header carried past truncation would come from a different step.
   const candidates = rankedSteps.flatMap((step, index) =>
     classifyMechanically(collectFailedLogs([step])).failingCmd === 'unknown' ? [] : [index]);
-  let failedLog = diagnosisLog(rankedSteps, candidates[0] ?? 0);
+  let chosenStep = candidates[0] ?? 0;
+  let failedLog = diagnosisLog(rankedSteps, chosenStep);
   let mechanical = candidates.length === 0
     ? { ...classifyMechanically(failedLog), failingCmd: 'unknown' }
     : classifyMechanically(failedLog);
@@ -822,11 +825,14 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     // observed command differs, for a chosen step that was flaky or only
     // reflected another job's failure.
     const next = candidates.slice(1)
-      .map((index) => diagnosisLog(rankedSteps, index))
-      .map((log) => ({ log, diagnosis: classifyMechanically(log) }))
+      .map((index) => {
+        const log = diagnosisLog(rankedSteps, index);
+        return { index, log, diagnosis: classifyMechanically(log) };
+      })
       .find(({ diagnosis }) =>
         diagnosis.failingCmd !== 'unknown' && diagnosis.failingCmd !== mechanical.failingCmd);
     if (next !== undefined) {
+      chosenStep = next.index;
       failedLog = next.log;
       mechanical = next.diagnosis;
       reproduction = await reproduce(2);
@@ -846,6 +852,15 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       },
       mechanical,
     );
+    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir, ctx.replay);
+    return caseFile;
+  }
+
+  if (missingSandboxPrerequisite(reproduction, rankedSteps[chosenStep]?.log ?? '') !== undefined) {
+    const caseFile = missingPrerequisiteCaseFile({
+      runId: run.runId, repo: run.repo, cost: ctx.cost,
+      policyEvidence, stageLedger, traceRecorder, runtime,
+    }, mechanical.failingCmd, reproduction);
     await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir, ctx.replay);
     return caseFile;
   }
