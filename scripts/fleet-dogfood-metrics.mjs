@@ -493,6 +493,9 @@ export async function collectFleetMetrics(configInput, client, now = new Date(),
       unavailable: attempts.filter(({ actionSha }) => actionSha === null || actionSha === undefined).length,
     },
     outcomes,
+    monitorConclusions: Object.fromEntries(['success', 'failure', 'timed_out', 'cancelled', 'skipped', 'unavailable']
+      .map(conclusion => [conclusion, mergedEvents.filter(event => (event.workflowConclusion ?? 'unavailable') === conclusion).length])),
+    // Historical compatibility proxy, never independent proof of PR creation.
     repairPrsOpened: attempts.filter(({ outcome, workflowConclusion }) => outcome === 'fixed' && workflowConclusion === 'success').length,
     inferenceCostUsd: rounded(inferenceCostUsd),
     sandboxCostUsd: rounded(sandboxCostUsd),
@@ -506,16 +509,47 @@ export function publicFleetSummary(summary) {
   return structuredClone(summary);
 }
 
-function markdown(summary) {
-  const completed = summary.outcomes.fixed + summary.outcomes['flaky-no-patch'] + summary.outcomes.refused + summary.outcomes['gave-up'];
-  const repairRate = completed === 0 ? 'n/a' : `${((summary.outcomes.fixed / completed) * 100).toFixed(1)}%`;
-  return `# Sutura fleet dogfood metrics\n\nCollected ${summary.collectedAt}. Window starts ${summary.startedAt}.\n\n| Metric | Value |\n| --- | ---: |\n| Repositories configured | ${summary.installedRepositories}/${summary.fleetRepositories} |\n| CI completions observed | ${summary.monitorRuns} |\n| Green CI, no repair needed | ${summary.noRepairNeeded} |\n| Other CI conclusions, no repair attempted | ${summary.notTriggered} |\n| Repair attempts | ${summary.attemptStages.attempted} |\n| Attempts claimed | ${summary.attemptStages.claimed} |\n| Provider invoked | ${summary.attemptStages.providerInvoked} |\n| Repair search started | ${summary.attemptStages.searchStarted} |\n| Verified repairs and PRs | ${summary.repairPrsOpened} |\n| Recovered CI | ${summary.attemptStages.recovered === null ? 'not measured' : summary.attemptStages.recovered} |\n| Flakes classified without patching | ${summary.outcomes['flaky-no-patch']} |\n| Unsafe repairs refused | ${summary.outcomes.refused} |\n| Gave up safely | ${summary.outcomes['gave-up']} |\n| Infrastructure stops | ${summary.outcomes['infra-stop']} |\n| Unknown or missing evidence | ${summary.outcomes.unknown} |\n| Repair rate among terminal repair searches | ${repairRate} |\n| Measured inference cost | $${summary.inferenceCostUsd.toFixed(6)} |\n| Measured sandbox cost | $${summary.sandboxCostUsd.toFixed(6)} |\n| Measured total cost | $${summary.totalCostUsd.toFixed(6)} |\n| Median attempt duration | ${summary.medianAttemptDurationSec === null ? 'n/a' : `${summary.medianAttemptDurationSec.toFixed(1)} s`} |\n`;
+function freshness(observedAt, now, maxAgeSec) {
+  const at = typeof observedAt === 'string' ? Date.parse(observedAt) : Number.NaN;
+  const ageSec = (now.getTime() - at) / 1000;
+  if (!Number.isFinite(ageSec) || ageSec < 0) return { observedAt: null, ageSec: null, status: 'unavailable' };
+  return { observedAt, ageSec, status: ageSec > maxAgeSec ? 'stale' : 'current' };
 }
 
-export async function writeFleetMetrics(result, outputDirectory) {
+function reportSummary(summary, { recoverySummary = null, now = new Date(), maxAgeSec = 36 * 60 * 60 } = {}) {
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime()) || !Number.isFinite(maxAgeSec) || maxAgeSec < 0) {
+    throw new Error('Fleet report requires a valid observation clock and nonnegative freshness threshold');
+  }
+  const coverage = recoverySummary?.coverage;
+  return { ...summary,
+    delivery: {
+      typedFixedOutcomes: summary.outcomes.fixed,
+      verifiedRepairPrs: recoverySummary?.verifiedRepairPrs ?? null,
+      integratedRecoveries: recoverySummary?.states?.['sutura-green'] ?? null,
+      observedAt: recoverySummary?.observedAt ?? null,
+    },
+    evidence: {
+      collection: coverage ? (coverage.complete ? 'complete' : 'incomplete') : 'unavailable',
+      baseline: coverage ? (coverage.baselineComplete ? 'complete' : 'incomplete') : 'unavailable',
+      actorProvenance: coverage?.actorProvenanceAvailable ? 'available' : 'unavailable',
+      freshness: { assessedAt: now.toISOString(), maxAgeSec,
+        monitor: freshness(summary.collectedAt, now, maxAgeSec),
+        recovery: freshness(recoverySummary?.observedAt, now, maxAgeSec) },
+    },
+  };
+}
+
+function markdown(summary) {
+  const fixedRate = summary.repairAttempts === 0 ? 'n/a' : `${((summary.outcomes.fixed / summary.repairAttempts) * 100).toFixed(1)}%`;
+  const known = value => value === null || value === undefined ? 'unavailable' : value;
+  return `# Sutura fleet dogfood metrics\n\nCollected ${summary.collectedAt}. Window starts ${summary.startedAt}.\n\nWrapper completion, sandbox-fixed outcomes, native-CI-verified PRs and integrated recovery are separate stages. Freshness alone does not establish health.\n\n| Metric | Value |\n| --- | ---: |\n| Repositories with monitor installed | ${summary.installedRepositories}/${summary.fleetRepositories} |\n| Monitor runs observed | ${summary.monitorRuns} |\n| Successful monitor wrappers | ${known(summary.monitorConclusions?.success)} |\n| Green CI, no repair needed | ${summary.noRepairNeeded} |\n| Other skipped monitors (reason not independently verified) | ${summary.notTriggered} |\n| Monitor attempts (may stop before repair starts) | ${summary.attemptStages.attempted} |\n| Attempts claimed | ${summary.attemptStages.claimed} |\n| Provider invoked | ${summary.attemptStages.providerInvoked} |\n| Repair search started | ${summary.attemptStages.searchStarted} |\n| Typed fixed outcomes (sandbox verification) | ${summary.delivery.typedFixedOutcomes} |\n| Verified repair PRs (native CI) | ${known(summary.delivery.verifiedRepairPrs)} |\n| Integrated recoveries (exact branch proof) | ${known(summary.delivery.integratedRecoveries)} |\n| Recovery evidence collected at | ${known(summary.delivery.observedAt)} |\n| Collection evidence | ${summary.evidence.collection} |\n| Baseline evidence | ${summary.evidence.baseline} |\n| Actor provenance | ${summary.evidence.actorProvenance} |\n| Freshness assessed at | ${summary.evidence.freshness.assessedAt} |\n| Monitor evidence age | ${known(summary.evidence.freshness.monitor.ageSec)} s |\n| Recovery evidence age | ${known(summary.evidence.freshness.recovery.ageSec)} s |\n| Monitor evidence freshness | ${summary.evidence.freshness.monitor.status} |\n| Recovery evidence freshness | ${summary.evidence.freshness.recovery.status} |\n| Freshness threshold | ${summary.evidence.freshness.maxAgeSec} s |\n| Flakes classified without patching | ${summary.outcomes['flaky-no-patch']} |\n| Unsafe repairs refused | ${summary.outcomes.refused} |\n| Gave up safely | ${summary.outcomes['gave-up']} |\n| Infrastructure stops | ${summary.outcomes['infra-stop']} |\n| Unknown or missing evidence | ${summary.outcomes.unknown} |\n| Fixed outcomes among all monitor attempts | ${fixedRate} |\n| Measured inference cost | $${summary.inferenceCostUsd.toFixed(6)} |\n| Measured sandbox cost | $${summary.sandboxCostUsd.toFixed(6)} |\n| Measured total cost | $${summary.totalCostUsd.toFixed(6)} |\n| Median attempt duration | ${summary.medianAttemptDurationSec === null ? 'n/a' : `${summary.medianAttemptDurationSec.toFixed(1)} s`} |\n`;
+}
+
+export async function writeFleetMetrics(result, outputDirectory, options = {}) {
+  const summary = reportSummary(result.summary, options);
   await mkdir(outputDirectory, { recursive: true });
-  await writeFile(join(outputDirectory, 'summary.json'), `${JSON.stringify(result.summary, null, 2)}\n`);
-  await writeFile(join(outputDirectory, 'summary.md'), markdown(result.summary));
+  await writeFile(join(outputDirectory, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
+  await writeFile(join(outputDirectory, 'summary.md'), markdown(summary));
   await writeFile(join(outputDirectory, 'events.jsonl'), result.events.map((event) => JSON.stringify(event)).join('\n') + (result.events.length ? '\n' : ''));
   await writeFile(join(outputDirectory, 'installations.json'), `${JSON.stringify(result.installations, null, 2)}\n`);
   const snapshotsPath = join(outputDirectory, 'snapshots.jsonl');
@@ -525,7 +559,7 @@ export async function writeFleetMetrics(result, outputDirectory) {
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
-  const publicSummary = publicFleetSummary(result.summary);
+  const publicSummary = publicFleetSummary(summary);
   const day = publicSummary.collectedAt.slice(0, 10);
   snapshots = snapshots.filter(({ collectedAt }) => String(collectedAt).slice(0, 10) !== day);
   snapshots.push(publicSummary);
@@ -728,10 +762,12 @@ export async function main(arguments_ = process.argv.slice(2)) {
   priorEvents = mergeMonitorEvents([], scopeMonitorEvents(config, priorEvents));
   let monitorEvents;
   let legacySummary = null;
+  let fleetResult = null;
   let monitorCollectionComplete = true;
   try {
     const result = await collectFleetMetrics(config, client, new Date(),
       { previousEvents: priorEvents, evidenceDirectory });
+    fleetResult = result;
     await writeFleetMetrics(result, paths.output);
     monitorEvents = result.events;
     legacySummary = publicFleetSummary(result.summary);
@@ -744,6 +780,7 @@ export async function main(arguments_ = process.argv.slice(2)) {
   recovery.coverage.monitorCollectionComplete = monitorCollectionComplete;
   recovery.coverage.complete &&= monitorCollectionComplete;
   const recoverySummary = await writeRecoveryLedger(recovery, paths.output);
+  if (fleetResult) await writeFleetMetrics(fleetResult, paths.output, { recoverySummary });
   process.stdout.write(`${JSON.stringify({ legacySummary, recoverySummary })}\n`);
   if (!recoverySummary.coverage.complete) process.exitCode = 1;
 }

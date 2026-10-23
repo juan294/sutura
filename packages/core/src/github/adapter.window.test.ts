@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { classifyMechanically } from '../diagnose/classify.js';
 import { githubApi, RUN_ID } from '../replay/replay-fixtures.test-helper.js';
 import { GitHubAdapter } from './adapter.js';
 
@@ -29,6 +30,22 @@ function tapBlock(header: string, yaml: readonly string[] = []): string[] {
 }
 
 describe('failed-step window over 200 lines', () => {
+  it('retains a captured multi-line coverage wrapper as execution evidence', async () => {
+    // Captured native runner script; repository names and test output omitted.
+    const script = [
+      'set -o pipefail',
+      'pnpm run test:coverage 2>&1 | tee "$RUNNER_TEMP/coverage-output.txt"',
+      `printf 'completed_at=%s\\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"`,
+    ];
+    const retained = await retainedLog([
+      ...filler(400), '##[error]Error: expect(element).toHaveStyle()',
+      '##[error]Process completed with exit code 1.',
+    ], script);
+
+    expect(retained).toHaveLength(200);
+    expect(classifyMechanically(stamped(retained).join('\n')).failingCmd).toBe(script.join('\n'));
+  });
+
   it('does not spend failure slots on TAP directives', async () => {
     const retained = await retainedLog([
       ...tapBlock('not ok 1 - pending feature # TODO later'),

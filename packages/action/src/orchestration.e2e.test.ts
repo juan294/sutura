@@ -141,7 +141,13 @@ async function loadFixtures(): Promise<RecordedFixtures> {
       'utf8',
     ),
   ]);
-  return { workflowRun, pullRequest, jobs, jobLog };
+  // This synthetic fixture put a shorthand command after its output. Model
+  // the native execution group before output; saved fixture bytes stay unchanged.
+  const nativeLog = jobLog.replace('2026-08-27T10:00:19Z Run pnpm test\n', '').replace(
+    '2026-08-27T10:00:12Z failure-000',
+    '2026-08-27T10:00:11Z ##[group]Run pnpm test\n2026-08-27T10:00:11Z ##[endgroup]\n2026-08-27T10:00:12Z failure-000',
+  );
+  return { workflowRun, pullRequest, jobs, jobLog: nativeLog };
 }
 
 class RecordedGitHubApi implements GitHubApi {
@@ -620,7 +626,7 @@ describe('recorded GitHub API orchestration E2E', () => {
       pull_requests: [],
     };
     fixtures.jobLog = [
-      '2026-08-27T10:00:12Z Run pnpm --filter @sutura/core test',
+      '2026-08-27T10:00:12Z ##[group]Run pnpm --filter @sutura/core test',
       '2026-08-27T10:00:13Z packages/core test: \u001b[31m❯\u001b[39m src/dogfood-add.test.ts:7: expected -1 to be 5',
     ].join('\n');
     const api = new RecordedGitHubApi(fixtures);

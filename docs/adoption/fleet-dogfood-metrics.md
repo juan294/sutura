@@ -44,9 +44,35 @@ It also writes a versioned recovery ledger in the same ignored output directory:
   separately as censored. Review the summary before publication.
 
 The v1/v2 monitor output keeps its original semantics. In particular, its
-`repairPrsOpened` field is a historical fixed-outcome proxy and its `recovered`
-field remains `null`. Use the recovery ledger for exact PR and target-branch
-attribution. A `sutura-green` row requires a linked failed CI attempt, fixed
+`repairPrsOpened` field is a historical successful-wrapper/fixed-outcome proxy;
+it does **not** independently prove that a PR was opened. The `recovered` field
+remains `null`. Neither proxy is presented as verified delivery in the Markdown
+report. `monitorConclusions` counts workflow wrapper conclusions separately.
+A green advisory wrapper can contain a non-fixed outcome.
+
+The report's `delivery` object distinguishes `typedFixedOutcomes` (sandbox
+verification) from `verifiedRepairPrs` (a linked PR with successful native repair
+CI) and `integratedRecoveries` (exact integration and target-branch green proof).
+The latter two are populated only from the strict recovery ledger collected in
+the same invocation; without that ledger they remain `null`, not zero. A partial
+ledger retains known proof while its independent collection dimension remains
+incomplete. These aggregate counters reveal no private repository identities.
+
+The `evidence` object reports collection, baseline and actor-provenance coverage
+separately. Collection completeness is API evidence coverage, not operational
+health. Missing activation maps leave baseline evidence incomplete even when all
+API pages were collected. `evidence.freshness` retains each monitor/recovery
+collection timestamp, age in seconds, assessment timestamp and a documented
+36-hour threshold for daily collection. Older evidence is `stale`; missing,
+invalid or future timestamps are `unavailable`. The `writeFleetMetrics` helper
+accepts an observation clock and `maxAgeSec` for deterministic callers. Freshness
+alone never establishes repair success or fleet health. A retained previous
+summary is dated evidence until a new collection completes.
+
+The fixed-outcome percentage uses **all monitor attempts**, including infrastructure
+stops and missing terminal evidence. It is not a search-only repair rate.
+Use the recovery ledger for exact PR and target-branch attribution. A
+`sutura-green` row requires a linked failed CI attempt, fixed
 monitor, source-marked repair PR and diff, passing repair-branch CI, integration
 commit, and same-workflow green run on the intended branch. A verified PR with
 integration pending is `sutura-proposed`. A later green without those links is

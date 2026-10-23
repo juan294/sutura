@@ -468,11 +468,11 @@ describe('orchestrate', () => {
       .split(/\r?\n/u)
       .slice(1)
       .join('\n');
-    // Fleet repair-path recovery, phase 2: the live B4 log still carries the
-    // step's own `$ pnpm -r test` echo, which the 20 KB byte cap used to drop.
-    // It is now carried past truncation, so the fail-closed premise is kept by
-    // removing every command header rather than only the first line.
-    expect(classifyMechanically(preFixLog).failingCmd).toBe('pnpm -r test');
+    // The native Run group proves the executed package script. Its timestamped
+    // `$ pnpm -r test` output cannot replace that proof or establish execution
+    // after the native header is removed.
+    expect(classifyMechanically(currentLog).failingCmd).toBe('pnpm run test');
+    expect(classifyMechanically(preFixLog).failingCmd).toBe('unknown');
     const headerlessLog = preFixLog
       .split('\n')
       .filter((line) => !isCommandHeader(line))
@@ -1180,6 +1180,29 @@ describe('orchestrate', () => {
 
     expect(reproductionCommands(executor)[0]).toContain('pnpm test');
     expect(caseFile.diagnosis.failingCmd).not.toMatch(/^echo /u);
+  });
+
+  it.each(['gitleaks/gitleaks-action@v3', 'actions/cache/restore@v4', 'actions/cache/restore@refs/heads/main', `actions/cache@refs/heads/${'branch'.repeat(40)}`])('identifies unsupported external action %s without shell execution evidence', async (action) => {
+    const { ctx, executor, github, chat } = context([], true, {
+      ...RUN,
+      failedSteps: [{
+        jobName: 'CI Fast', stepName: 'Scan introduced commits for secrets',
+        log: [
+          `2026-10-23T06:17:24.2583496Z ##[group]Run ${action}`,
+          '2026-10-23T06:17:24.2585810Z env:',
+          '2026-10-23T06:17:24.2587220Z ##[endgroup]',
+          '2026-10-23T06:17:29.0000000Z Scan failed',
+        ].join('\n'),
+      }],
+    });
+
+    await expect(orchestrate(ctx)).rejects.toMatchObject({
+      code: 'failing-command-not-observed',
+      message: `Failed-step logs do not contain an observed failing command; unsupported external action steps: ${action.slice(0, 160)}`,
+    });
+    expect(executor.calls).toEqual([]);
+    expect(github.comments).toEqual([]);
+    expect(chat).not.toHaveBeenCalled();
   });
 
   it('still fails closed when no failed step shows a command', async () => {

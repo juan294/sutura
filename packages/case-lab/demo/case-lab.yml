@@ -190,12 +190,23 @@ jobs:
           echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
           echo "run-url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${run_id}" >> "$GITHUB_OUTPUT"
 
+      - name: Create the repository-scoped repair token
+        id: repair-app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.SUTURA_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SUTURA_APP_PRIVATE_KEY }}
+          permission-actions: read
+          permission-checks: write
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Run Sutura at the exact release
         id: sutura
         continue-on-error: true
         uses: juan294/sutura/packages/action@cc3281485b4364d7c8fcb2e820e03ffbaf893c2a
         with:
-          github-token: ${{ github.token }}
+          github-token: ${{ steps.repair-app-token.outputs.token }}
           run-id: ${{ steps.failed-ci.outputs.run-id }}
           nebius-api-key: ${{ secrets.NEBIUS_API_KEY }}
           tavily-api-key: ${{ secrets.TAVILY_API_KEY }}
@@ -206,6 +217,150 @@ jobs:
           capture-replay: 'true'
           runtime: ${{ steps.materialize.outputs.runtime }}
 
+      - name: Observe native repair CI and authenticated evidence
+        id: native-ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPAIR_APP_SLUG: ${{ steps.repair-app-token.outputs.app-slug }}
+          CI_RUN_ID: ${{ steps.failed-ci.outputs.run-id }}
+          FIXTURE_SHA: ${{ steps.fixture.outputs.sha }}
+          CASE_BRANCH: ${{ steps.fixture.outputs.branch }}
+          PR_URL: ${{ steps.fixture.outputs.pr-url }}
+          OUTCOME: ${{ steps.sutura.outputs.outcome }}
+          RUNTIME: ${{ steps.materialize.outputs.runtime }}
+        run: |
+          # Preserve read-only native evidence before the existing PR cleanup.
+          status=0
+          timeout 300s node --input-type=module <<'SUTURA_NATIVE' || status=$?
+          import { execFileSync } from 'node:child_process';
+          import { appendFileSync, writeFileSync } from 'node:fs';
+          import { setTimeout } from 'node:timers/promises';
+          // BEGIN NATIVE OBSERVER
+          async function observeNativeRepair(ctx) {
+            const evidence = { schemaVersion: 'sutura-native-ci-v1', sourceRunId: ctx.runId,
+              fixtureSha: ctx.fixtureSha, checkUrl: '', commentUrl: '', native: { status: 'unavailable' } };
+            const finish = (status, reason) => {
+              evidence.native = { ...evidence.native, status, ...(reason ? { reason } : {}) };
+              ctx.record(evidence);
+              return evidence;
+            };
+            const safeUrl = value => {
+              try {
+                const url = new URL(value);
+                return url.origin === 'https://github.com' && url.pathname.startsWith('/' + ctx.repository + '/') && !/[\r\n]/u.test(value) ? url.href : '';
+              } catch { return ''; }
+            };
+            try {
+              if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(ctx.repository) ||
+                  !/^[1-9][0-9]*$/u.test(ctx.runId) || !/^[a-f0-9]{40}$/u.test(ctx.fixtureSha) ||
+                  !/^[A-Za-z0-9-]+$/u.test(ctx.appSlug) || !Number.isSafeInteger(ctx.fixturePrNumber) || ctx.fixturePrNumber < 1) {
+                return finish('unavailable', 'invalid-source-or-app-identity');
+              }
+              const marker = '<!-- sutura-run:' + Buffer.from(ctx.runId).toString('base64url') + ' -->';
+              const bot = ctx.appSlug + '[bot]';
+              const externalId = 'sutura:' + ctx.repository + ':workflow-run:' + ctx.runId;
+              const checks = (await ctx.api('repos/' + ctx.repository + '/commits/' + ctx.fixtureSha + '/check-runs?per_page=100'))
+                .flatMap(page => page.check_runs).filter(check => check.external_id === externalId &&
+                  check.head_sha === ctx.fixtureSha && check.app?.slug === ctx.appSlug);
+              if (checks.length > 1) return finish('unavailable', 'ambiguous-source-audit');
+              if (checks.length === 1) {
+                evidence.checkUrl = safeUrl(checks[0].html_url);
+                const comments = (await ctx.api('repos/' + ctx.repository + '/issues/' + ctx.fixturePrNumber + '/comments?per_page=100'))
+                  .flat().filter(comment => comment.user?.type === 'Bot' && comment.user.login === bot &&
+                    typeof comment.body === 'string' && comment.body.startsWith(marker + '\n'));
+                if (comments.length > 1) return finish('unavailable', 'ambiguous-source-comment');
+                evidence.commentUrl = comments.length === 1 ? safeUrl(comments[0].html_url) : '';
+              }
+              if (ctx.outcome !== 'fixed') return finish('not-applicable', 'no-fixed-repair');
+              if (checks.length !== 1) return finish('unavailable', 'source-audit-unavailable');
+              const branch = 'sutura/fix-' + ctx.runId;
+              const owner = ctx.repository.split('/')[0];
+              const pulls = (await ctx.api('repos/' + ctx.repository + '/pulls?state=all&head=' + encodeURIComponent(owner + ':' + branch) + '&per_page=100'))
+                .flat().filter(pr => pr.head?.ref === branch && pr.head?.repo?.full_name === ctx.repository &&
+                  pr.base?.ref === ctx.caseBranch && /^[a-f0-9]{40}$/u.test(pr.head?.sha ?? '') &&
+                  pr.user?.type === 'Bot' && pr.user.login === bot && typeof pr.body === 'string' && pr.body.startsWith(marker + '\n'));
+              if (pulls.length !== 1) return finish('unavailable', 'repair-pr-missing-or-ambiguous');
+              const pr = pulls[0];
+              const commit = (await ctx.api('repos/' + ctx.repository + '/commits/' + pr.head.sha))[0];
+              if (!commit?.parents?.some(parent => parent.sha === ctx.fixtureSha)) return finish('unavailable', 'repair-head-source-parent-mismatch');
+              evidence.repairPrUrl = safeUrl(pr.html_url);
+              evidence.repairHeadSha = pr.head.sha;
+              // The Python fixture workflow is dispatch-only; generic JS CI cannot verify it.
+              if (ctx.runtime !== 'node') return finish('unavailable', 'python-fixture-has-no-pr-ci-contract');
+              const deadline = ctx.now() + 290000;
+              while (ctx.now() < deadline) {
+                const runs = (await ctx.api('repos/' + ctx.repository + '/actions/workflows/ci.yml/runs?event=pull_request&head_sha=' + pr.head.sha + '&per_page=100'))
+                  .flatMap(page => page.workflow_runs).filter(run => run.head_sha === pr.head.sha && run.head_branch === branch &&
+                    run.path === '.github/workflows/ci.yml' && run.event === 'pull_request');
+                if (runs.length > 1) return finish('unavailable', 'ambiguous-native-runs');
+                if (runs.length === 1) {
+                  const run = runs[0];
+                  if (!Array.isArray(run.pull_requests) || !run.pull_requests.some(association =>
+                      association.number === pr.number && association.head?.sha === pr.head.sha &&
+                      association.head?.ref === branch && association.base?.ref === ctx.caseBranch &&
+                      association.base?.sha === ctx.fixtureSha)) {
+                    return finish('unavailable', 'native-run-repair-pr-association-mismatch');
+                  }
+                  if (!Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) return finish('unavailable', 'native-run-attempt-unavailable');
+                  evidence.native = { status: 'pending', runId: run.id, runAttempt: run.run_attempt, headSha: run.head_sha,
+                    workflow: run.path, event: run.event, url: safeUrl(run.html_url), conclusion: run.conclusion };
+                  ctx.record(evidence);
+                  if (run.status === 'action_required' || run.conclusion === 'action_required') return finish('approval_required');
+                  if (run.status === 'completed') {
+                    const jobs = (await ctx.api('repos/' + ctx.repository + '/actions/runs/' + run.id + '/attempts/' + run.run_attempt + '/jobs?per_page=100'))
+                      .flatMap(page => page.jobs);
+                    evidence.native.jobs = jobs.map(job => ({ id: job.id, name: job.name, status: job.status, conclusion: job.conclusion }));
+                    if (run.conclusion !== 'success') return finish(run.conclusion === 'failure' ? 'failure' : 'unavailable', 'native-run-not-successful');
+                    if (!jobs.some(job => job.name === 'test') || jobs.some(job => job.status !== 'completed' || job.conclusion !== 'success')) {
+                      return finish('unavailable', 'native-job-proof-incomplete');
+                    }
+                    return finish('success');
+                  }
+                }
+                await ctx.pause(5000);
+              }
+              return finish('timeout', 'native-ci-not-completed-before-deadline');
+            } catch { return finish('unavailable', 'github-evidence-read-failed'); }
+          }
+          // END NATIVE OBSERVER
+          const env = process.env;
+          const path = env.RUNNER_TEMP + '/native-ci.json';
+          const evidence = await observeNativeRepair({
+            repository: env.GITHUB_REPOSITORY, runId: env.CI_RUN_ID, fixtureSha: env.FIXTURE_SHA,
+            fixturePrNumber: Number(env.PR_URL?.split('/').at(-1)), caseBranch: env.CASE_BRANCH,
+            appSlug: env.REPAIR_APP_SLUG, outcome: env.OUTCOME, runtime: env.RUNTIME,
+            api: async path => JSON.parse(execFileSync('gh', ['api', '--paginate', '--slurp', path], { encoding: 'utf8', timeout: 15000, maxBuffer: 8 * 1024 * 1024 })),
+            now: Date.now, pause: setTimeout,
+            record: value => writeFileSync(path, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 }),
+          });
+          appendFileSync(env.GITHUB_OUTPUT, 'check-url=' + evidence.checkUrl + '\ncomment-url=' + evidence.commentUrl + '\nnative-status=' + evidence.native.status + '\n');
+          appendFileSync(env.GITHUB_STEP_SUMMARY, 'Native repair CI: **' + evidence.native.status + '**. A fixed outcome is sandbox proof; native CI is a separate gate.\n\n' + (evidence.native.url ?? '') + '\n');
+          if (evidence.native.status !== 'success' && evidence.native.status !== 'not-applicable') console.log('::warning::Native repair CI is ' + evidence.native.status + '; end-to-end verification remains unmet.');
+          SUTURA_NATIVE
+          if [ "$status" -ne 0 ]; then
+            NATIVE_EXIT="$status" node --input-type=module <<'SUTURA_NATIVE_STOP'
+          import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+          const path = process.env.RUNNER_TEMP + '/native-ci.json';
+          let evidence = {};
+          try { evidence = JSON.parse(readFileSync(path, 'utf8')); } catch {}
+          evidence.schemaVersion = 'sutura-native-ci-v1';
+          evidence.sourceRunId = process.env.CI_RUN_ID;
+          evidence.fixtureSha = process.env.FIXTURE_SHA;
+          evidence.native = { ...evidence.native, status: process.env.NATIVE_EXIT === '124' ? 'timeout' : 'unavailable', reason: 'bounded-native-observer-stopped' };
+          writeFileSync(path, JSON.stringify(evidence, null, 2) + '\n', { mode: 0o600 });
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, 'Native repair CI: **' + evidence.native.status + '**. Bounded observation stopped; end-to-end verification remains unmet.\n');
+          console.log('::warning::Native repair CI observation stopped without verified success.');
+          SUTURA_NATIVE_STOP
+          fi
+
+      - name: Preserve the native CI evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: sutura-native-ci-${{ steps.failed-ci.outputs.run-id }}
+          path: ${{ runner.temp }}/native-ci.json
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Collect the public evidence links and the replay bundle
         id: collect
         env:
@@ -213,6 +368,8 @@ jobs:
           CI_RUN_ID: ${{ steps.failed-ci.outputs.run-id }}
           FIXTURE_SHA: ${{ steps.fixture.outputs.sha }}
           PR_URL: ${{ steps.fixture.outputs.pr-url }}
+          AUTHENTICATED_CHECK_URL: ${{ steps.native-ci.outputs.check-url }}
+          AUTHENTICATED_COMMENT_URL: ${{ steps.native-ci.outputs.comment-url }}
         run: |
           mkdir -p "$RUNNER_TEMP/replay"
           for _ in $(seq 1 12); do
@@ -223,9 +380,8 @@ jobs:
           repair_pr="$(gh pr list --head "sutura/fix-${CI_RUN_ID}" --state all --json url --jq '.[0].url // ""')"
           repair_paths=""
           if [ -n "$repair_pr" ]; then repair_paths="$(gh pr diff "$repair_pr" --name-only)"; fi
-          check_url="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${FIXTURE_SHA}/check-runs" --jq ".check_runs[] | select(.external_id == \"sutura:${GITHUB_REPOSITORY}:workflow-run:${CI_RUN_ID}\") | .html_url" | head -n 1)"
-          pr_number="${PR_URL##*/}"
-          comment_url="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments" --jq '[.[] | select(.user.login == "github-actions[bot]")] | last | .html_url // ""')"
+          check_url="$AUTHENTICATED_CHECK_URL"
+          comment_url="$AUTHENTICATED_COMMENT_URL"
           case_artifact_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?per_page=100" --jq ".artifacts[] | select(.name == \"sutura-case-file-${CI_RUN_ID}.html\") | .id" | head -n 1)"
           replay_artifact_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?per_page=100" --jq ".artifacts[] | select(.name == \"sutura-replay-${CI_RUN_ID}.json\") | .id" | head -n 1)"
           {
@@ -312,6 +468,16 @@ jobs:
           path: ${{ runner.temp }}/result.json
           if-no-files-found: error
           retention-days: 90
+
+      - name: Require native CI for a fixed repair
+        env:
+          OUTCOME: ${{ steps.sutura.outputs.outcome }}
+          NATIVE_STATUS: ${{ steps.native-ci.outputs.native-status }}
+        run: |
+          if [ "$OUTCOME" = "fixed" ] && [ "$NATIVE_STATUS" != "success" ]; then
+            echo "::error::Sandbox repair is fixed but native CI is ${NATIVE_STATUS:-unavailable}; end-to-end verification is unmet."
+            exit 1
+          fi
 
       - name: Close the reported pull requests and discard their held CI runs
         if: ${{ always() && steps.fixture.outputs.branch != '' }}

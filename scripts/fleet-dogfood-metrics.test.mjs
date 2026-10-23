@@ -491,3 +491,60 @@ test('repair PR lookup proves the source marker, parent commit and real diff dig
   await assert.rejects(() => client.findRepairPr('alpha', { id: 41, branch: 'develop', headSha: sourceSha }),
     /parent|source/u);
 });
+
+test('fleet report distinguishes captured fixed outcomes from verified delivery and stale evidence', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sutura-delivery-report-'));
+  try {
+    // Oct21 fleet audit: fixed monitor outcomes existed without any verified repair CI.
+    const result = await collectFleetMetrics({
+      schemaVersion: 'sutura-fleet-config-v1', owner: 'owner', repositories: ['alpha'],
+      startedAt: '2026-09-13T00:00:00.000Z', actionCommit: 'a'.repeat(40),
+    }, {
+      async listWorkflowRuns() { return [{ id: 11, conclusion: 'success',
+        run_started_at: '2026-10-21T07:00:00Z', updated_at: '2026-10-21T07:04:00Z' }]; },
+      async listArtifacts() { return [{ name: 'sutura-case-file-11.html', expired: false }]; },
+      async downloadArtifact() { return FIXED_HTML; },
+    }, new Date('2026-10-21T07:10:00.000Z'));
+    await writeFleetMetrics(result, directory, {
+      now: new Date('2026-10-23T07:10:00.000Z'),
+      recoverySummary: { observedAt: '2026-10-21T07:43:00.000Z', verifiedRepairPrs: 0,
+        states: { 'sutura-green': 0 },
+        coverage: { complete: true, baselineComplete: false, actorProvenanceAvailable: false } },
+    });
+    const report = JSON.parse(await readFile(join(directory, 'summary.json'), 'utf8'));
+    assert.equal(report.monitorConclusions.success, 1);
+    assert.equal(report.delivery.typedFixedOutcomes, 1);
+    assert.equal(report.delivery.verifiedRepairPrs, 0);
+    assert.equal(report.delivery.integratedRecoveries, 0);
+    assert.equal(report.evidence.collection, 'complete');
+    assert.equal(report.evidence.baseline, 'incomplete');
+    assert.equal(report.evidence.actorProvenance, 'unavailable');
+    assert.equal(report.evidence.freshness.monitor.status, 'stale');
+    assert.equal(report.evidence.freshness.monitor.ageSec, 172800);
+    const markdown = await readFile(join(directory, 'summary.md'), 'utf8');
+    assert.doesNotMatch(markdown, /Verified repairs and PRs|Repair rate among terminal repair searches/u);
+    assert.match(markdown, /Typed fixed outcomes \(sandbox verification\) \| 1/u);
+    assert.match(markdown, /Verified repair PRs \(native CI\) \| 0/u);
+    assert.match(markdown, /Integrated recoveries \(exact branch proof\) \| 0/u);
+    assert.match(markdown, /Baseline evidence \| incomplete/u);
+    assert.match(markdown, /stale/u);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('fleet report with no current recovery ledger leaves delivery unavailable', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sutura-unverified-report-'));
+  try {
+    const result = await collectFleetMetrics({
+      schemaVersion: 'sutura-fleet-config-v1', owner: 'owner', repositories: ['alpha'],
+      startedAt: '2026-09-13T00:00:00.000Z', actionCommit: 'a'.repeat(40),
+    }, { async listWorkflowRuns() { return []; } }, new Date('2026-10-23T07:10:00.000Z'));
+    await writeFleetMetrics(result, directory, { now: new Date('2026-10-23T08:10:00.000Z') });
+    const report = JSON.parse(await readFile(join(directory, 'summary.json'), 'utf8'));
+    assert.equal(report.delivery.verifiedRepairPrs, null);
+    assert.equal(report.delivery.integratedRecoveries, null);
+    assert.equal(report.evidence.collection, 'unavailable');
+    assert.equal(report.evidence.freshness.monitor.status, 'current');
+    assert.equal(report.evidence.freshness.recovery.status, 'unavailable');
+    assert.match(await readFile(join(directory, 'summary.md'), 'utf8'), /Verified repair PRs \(native CI\) \| unavailable/u);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});

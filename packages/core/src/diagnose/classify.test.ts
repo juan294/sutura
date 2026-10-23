@@ -32,6 +32,51 @@ function scriptedLlm(diagnosis: Diagnosis): DiagnosisLlm {
   };
 }
 
+describe('captured command provenance', () => {
+  it('keeps the executed script when its output prints a build instruction', async () => {
+    // Captured runner layout; project-owned paths are replaced with neutral names.
+    const log = await readFile(new URL('__fixtures__/captured-command/instruction-output.log', import.meta.url), 'utf8');
+
+    expect(classifyMechanically(log).failingCmd).toBe('node scripts/verify-output.mjs');
+  });
+
+  it('does not promote timestamped remediation prose to an observed command', () => {
+    expect(classifyMechanically([
+      '2026-10-19T20:37:31.5496081Z [FAIL] The committed bundle is stale.',
+      '2026-10-19T20:37:31.5497888Z Run `pnpm run build` and commit the generated file.',
+    ].join('\n')).failingCmd).toBe('unknown');
+  });
+
+  it('does not let timestamped prompt-like output replace an executed script', () => {
+    expect(classifyMechanically([
+      '2026-10-19T20:37:31.4703719Z ##[group]Run node scripts/verify-output.mjs',
+      '2026-10-19T20:37:31.4754264Z shell: /usr/bin/bash -e {0}',
+      '2026-10-19T20:37:31.4755331Z ##[endgroup]',
+      '2026-10-19T20:37:31.5497888Z $ pnpm run build',
+    ].join('\n')).failingCmd).toBe('node scripts/verify-output.mjs');
+  });
+
+  it('keeps an external action failure unsupported without guessing its shell command', () => {
+    // Captured uses-step layout, with source diagnostics removed.
+    expect(classifyMechanically([
+      '2026-10-23T06:17:24.2583496Z ##[group]Run gitleaks/gitleaks-action@v3',
+      '2026-10-23T06:17:24.2585810Z env:',
+      '2026-10-23T06:17:24.2587220Z ##[endgroup]',
+      '2026-10-23T06:17:29.0000000Z Scan failed',
+    ].join('\n')).failingCmd).toBe('unknown');
+  });
+
+  it.each(['actions/cache/restore@v4', 'actions/cache/restore@refs/heads/main', 'actions/cache@feature/cache-v2'])('keeps nested or slash-ref external action %s unsupported as a shell command', (action) => {
+    expect(classifyMechanically([
+      `2026-10-23T06:17:24.2583496Z ##[group]Run ${action}`,
+      '2026-10-23T06:17:24.2585810Z with:',
+      '2026-10-23T06:17:24.2586220Z   path: cache',
+      '2026-10-23T06:17:24.2587220Z ##[endgroup]',
+      '2026-10-23T06:17:29.0000000Z Cache restoration failed',
+    ].join('\n')).failingCmd).toBe('unknown');
+  });
+});
+
 describe('failure classification', () => {
   it('carries a multi-line script when the character bound cuts its group (gh-glance 36969419519)', () => {
     const script = [

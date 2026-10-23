@@ -567,7 +567,6 @@ const DEFAULT_REPOSITORY_INITIALIZATION_PATHS = {
 
 function sandboxRepositoryInitializationCommand(
   paths: SandboxRepositoryInitializationPaths = DEFAULT_REPOSITORY_INITIALIZATION_PATHS,
-  runtime: RuntimeAdapter = NODE_RUNTIME,
 ): string {
   const commands = [
     `mkdir -p ${shellQuote(paths.templatePath)}`,
@@ -579,7 +578,9 @@ function sandboxRepositoryInitializationCommand(
     // repository tracks under its own .gitignore rules (#152).
     `git --literal-pathspecs add --force --pathspec-from-file=${shellQuote(paths.manifestPath)} --pathspec-file-nul`,
     'git -c core.hooksPath=/dev/null commit --quiet --no-verify -m "chore: initialize Sutura sandbox baseline"',
-    ...(runtime.id === 'node' ? ['if [ -f pnpm-lock.yaml ]; then corepack pnpm rebuild; elif [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm rebuild; elif [ -f yarn.lock ]; then sutura_yarn_version="$(corepack yarn --version)"; case "$sutura_yarn_version" in 0.*|1.*) npm rebuild ;; 2.*|3.*|4.*) corepack yarn rebuild ;; *) echo "unsupported Yarn version: $sutura_yarn_version" >&2; exit 69 ;; esac; else true; fi'] : []),
+    // Source overlay must not turn a hook-disabled dependency installation
+    // into unrestricted repository/dependency lifecycle execution. Native
+    // addons requiring build hooks need a separately reviewed preparation path.
   ];
   return `sh -lc ${shellQuote(commands.join(' && '))}`;
 }
@@ -704,9 +705,7 @@ async function prepareSandboxFromSource(
   });
   const initialized = await executor.run(
     sourceImage,
-    runtime.id === 'node'
-      ? INITIALIZE_REPOSITORY_COMMAND
-      : sandboxRepositoryInitializationCommand(DEFAULT_REPOSITORY_INITIALIZATION_PATHS, runtime),
+    INITIALIZE_REPOSITORY_COMMAND,
     { cwd: SNAPSHOT_CWD },
   );
   stages?.record({

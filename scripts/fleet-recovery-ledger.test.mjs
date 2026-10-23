@@ -370,3 +370,13 @@ test('new scope excludes old incidents from the aggregate while retaining journa
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('delivery stages require native proposal and integration proof independently of fixed outcome', () => {
+  const fixedOnly = classifyFleetIncident({ source, monitor });
+  const proposed = classifyFleetIncident({ ...complete, repairPr: { ...repairPr, merged: false }, nextGreen: null });
+  const integrated = classifyFleetIncident(complete);
+  const result = publicRecoverySummary(summarizeRecovery([fixedOnly, proposed, integrated]));
+  assert.deepEqual(result.delivery, {
+    typedFixedOutcomes: 3, verifiedRepairPrs: 2, integratedRecoveries: 1,
+  });
+});

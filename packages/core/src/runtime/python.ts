@@ -90,11 +90,39 @@ function rejectUnsafePyproject(content: string): void {
   }
 }
 
-function rejectUnsafeUvLock(content: string): void {
+function staticPackageName(content: string): string | undefined {
+  // Only admit an unambiguous literal in the current TOML table. Other TOML
+  // forms remain unsupported rather than guessing the identity to exempt.
+  const table = content.split(/^\s*\[/mu)[0] ?? '';
+  const names = [...table.matchAll(/^\s*name\s*=\s*(["'])([A-Za-z0-9_.-]+)\1\s*(?:#.*)?$/gmu)];
+  return names.length === 1 ? names[0]?.[2]?.toLowerCase().replace(/[-_.]+/gu, '-') : undefined;
+}
+
+function skippedProjectRoot(content: string, pyproject: string): string {
+  const projects = pyproject.split(/^\s*\[project\]\s*(?:#.*)?$/gmu);
+  const projectName = projects.length === 2 ? staticPackageName(projects[1] ?? '') : undefined;
+  if (!projectName) return content;
+  let rootCount = 0;
+  const checked = content.split(/(?=^\s*\[\[package\]\]\s*$)/gmu).map((record) => {
+    if (!/^\s*\[\[package\]\]/u.test(record)) return record;
+    const body = record.replace(/^\s*\[\[package\]\]\s*/u, '');
+    if (staticPackageName(body) !== projectName) return record;
+    return record.replace(/^\s*source\s*=\s*\{\s*editable\s*=\s*(["'])\.\1\s*\}\s*(?:#.*)?$/gmu, () => {
+      rootCount += 1;
+      return '';
+    });
+  }).join('');
+  // The root is excluded by --no-install-project; no local dependency gets
+  // this exception. Ambiguous duplicate roots still fail the ordinary guard.
+  return rootCount === 1 ? checked : content;
+}
+
+function rejectUnsafeUvLock(content: string, pyproject: string): void {
+  const dependencies = skippedProjectRoot(content, pyproject);
   if (
-    /\b(?:editable|path|git)\s*=/iu.test(content) ||
-    /source\s*=\s*\{[^}\n]*(?:editable|path|git|url)\s*=/iu.test(content) ||
-    /\b(?:file|git\+[^\s"']+):/iu.test(content)
+    /\b(?:editable|path|git)\s*=/iu.test(dependencies) ||
+    /source\s*=\s*\{[^}\n]*(?:editable|path|git|url)\s*=/iu.test(dependencies) ||
+    /\b(?:file|git\+[^\s"']+):/iu.test(dependencies)
   ) {
     throw new PythonDependencyError('uv.lock contains a local, VCS, URL, editable, or source-build dependency');
   }
@@ -137,7 +165,7 @@ export async function validatePythonDependencyInputs(
   if (poetryLock !== null) throw new PythonDependencyError('poetry.lock preparation is unsupported; use uv.lock');
   if (uvLock !== null) {
     if (pyproject === null) throw new PythonDependencyError('uv.lock requires pyproject.toml');
-    rejectUnsafeUvLock(uvLock);
+    rejectUnsafeUvLock(uvLock, pyproject);
     return {
       paths: ['pyproject.toml', 'uv.lock'],
       command: 'uv sync --frozen --no-install-project --no-build',

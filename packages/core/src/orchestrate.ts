@@ -4,7 +4,7 @@ import { VerificationExecutionRecorder } from './verification/execution-record.j
 import type { VerificationMode } from './verification/types.js';
 import { Buffer } from 'node:buffer';
 
-import { classifyMechanically } from './diagnose/classify.js';
+import { classifyMechanically, externalActionReference } from './diagnose/classify.js';
 import type { TavilySearch } from './diagnose/tavily.js';
 import type { RepairBudgetOverrides } from './engine/repair-budget.js';
 import type { AuditLlm } from './audit/audit.js';
@@ -704,8 +704,15 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     ? { ...classifyMechanically(failedLog), failingCmd: 'unknown' }
     : classifyMechanically(failedLog);
   if (mechanical.failingCmd === 'unknown') {
+    const externalActions = [...new Set(rankedSteps.flatMap(({ log }) =>
+      log.split(/\r?\n/u).flatMap((line) => {
+        const reference = externalActionReference(line);
+        return reference === undefined ? [] : [redactExternalText(reference).text.slice(0, 160)];
+      })))].slice(0, 3);
+    const context = externalActions.length === 0 ? ''
+      : `; unsupported external action steps: ${externalActions.join(', ')}`;
     throw new OrchestrationError(
-      'Failed-step logs do not contain an observed failing command',
+      `Failed-step logs do not contain an observed failing command${context}`,
       'failing-command-not-observed',
       'diagnosis',
     );

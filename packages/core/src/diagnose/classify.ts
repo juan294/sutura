@@ -35,12 +35,24 @@ function githubLogPayload(line: string): string {
 }
 
 const COMMAND_HEADER = /^(?:Run|\$)\s+(\S.*)$/;
-const ACTION_REFERENCE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+$/u;
+const ACTION_REFERENCE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*@\S+$/u;
 const ANSI_SGR = /\x1b\[[0-9;]*m/gu;
 
+/** An Action identity is context for refusal, never a shell execution command. */
+export function externalActionReference(line: string): string | undefined {
+  const command = COMMAND_HEADER.exec(githubLogPayload(line))?.[1];
+  return command !== undefined && ACTION_REFERENCE.test(command) ? command : undefined;
+}
+
 export function isCommandHeader(line: string): boolean {
+  const field = line.slice(line.lastIndexOf('\t') + 1).trim();
+  const unstamped = field.replace(/^\d{4}-\d{2}-\d{2}T\S+Z\s+/, '');
+  // In native runner logs only its Run group identifies the executed script.
+  // A timestamped "Run <build command> and commit ..." is remediation prose,
+  // even when it resembles the shorthand headers used by plain-text fixtures.
+  if (unstamped !== field && !unstamped.startsWith('##[group]Run ')) return false;
   const matched = COMMAND_HEADER.exec(githubLogPayload(line));
-  return matched !== null && !ACTION_REFERENCE.test(matched[1] ?? '');
+  return matched !== null && externalActionReference(line) === undefined;
 }
 
 /** Where a `Run` header's script echo ends, as `shellScriptCommand` reads it. */
@@ -76,7 +88,7 @@ function failingCommand(log: string): string {
   for (let index = 0; index < lines.length; index += 1) {
     const line = githubLogPayload(lines[index] ?? '');
     const runMatch = COMMAND_HEADER.exec(line);
-    if (runMatch?.[1] && !ACTION_REFERENCE.test(runMatch[1])) {
+    if (runMatch?.[1] && isCommandHeader(lines[index] ?? '')) {
       const header = runMatch[1].trim();
       command = shellScriptCommand(lines, index) ??
         (header.startsWith('#') ? '' : header);
