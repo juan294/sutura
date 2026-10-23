@@ -81,7 +81,7 @@ these four criteria.
 | Nebius ConTree                               | Share prepared dependencies while isolating execution branches                                                                                    | [`prepareSandbox`](../../packages/core/src/heal.ts#L653): runtime implementation; image availability and dependency support constrain execution.                                                                                                                                               |
 | Tavily                                       | Ground dependency failures in release sources                                                                                                     | [`ground`](../../packages/core/src/diagnose/tavily.ts#L500): runtime Search/Extract with validation; [versioned ablations](architecture.md#grounded-dependencies) retain failed arms.                                                                                                          |
 | Nebius Data Lab                              | Execute a finite, manifest-bound quality experiment with recoverable submissions and exact output joins                                           | [Runner](../../scripts/datalab-quality-experiment.mjs) and [dataset and request](../datalab/README.md): locally implemented and fixture tested; the reviewed dataset was uploaded on 2026-10-07, but its one batch dispatch was rejected (HTTP 403), so no batch result exists ([record](../demo/nebius-data-lab-upload-2026-10-07.md)).                                                                                              |
-| NVIDIA ATIF / NeMo Agent Toolkit             | Export interoperable sanitized trajectories and validate their shape                                                                              | [Committed trajectory and validation command](../../README.md?plain=1#L441): offline validation; NeMo is not the live repair orchestrator.                                                                                                                                                     |
+| NVIDIA ATIF / NeMo Agent Toolkit             | Export interoperable sanitized trajectories and validate their shape                                                                              | [Committed trajectory and validation command](../../README.md?plain=1#L455): offline validation; NeMo is not the live repair orchestrator.                                                                                                                                                     |
 
 ## Follow a Case Lab result
 
@@ -133,10 +133,10 @@ existence, not a fresh pass. Live outcomes describe their measured subject.
 Offline fixtures omit provider behavior; controls validate a harness; Data Lab
 batch inference and final submission evidence remain separate work.
 Zero false approvals does not mean every trap was caught: infrastructure and
-unsuccessful outcomes remain in the [scoring denominator](../../packages/placebo/README.md?plain=1#L231).
+unsuccessful outcomes remain in the [scoring denominator](../../packages/placebo/README.md?plain=1#L245).
 
-Follow [contributor setup](../../README.md?plain=1#L323) and the existing
-[offline replay commands](../../README.md?plain=1#L351). The documentation check
+Follow [contributor setup](../../README.md?plain=1#L337) and the existing
+[offline replay commands](../../README.md?plain=1#L365). The documentation check
 is `node --test scripts/submission-contract.test.mjs`; run project typecheck,
 lint, tests, and build sequentially. These local checks do not measure live
 repair quality. Final acceptance follows the [release evidence contract](../demo/sutura-v0.3.9-release-evidence-requirements.json#L1).

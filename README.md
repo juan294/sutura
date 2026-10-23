@@ -1,10 +1,24 @@
 # Sutura: Verified Self-Healing CI
 
-[![CI](https://github.com/juan294/sutura/actions/workflows/ci.yml/badge.svg)](https://github.com/juan294/sutura/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6)
-![Node](https://img.shields.io/badge/Node-22%2B-339933)
-![Python](https://img.shields.io/badge/Python-3.13-3776AB)
+[![CI](https://github.com/juan294/sutura/actions/workflows/ci.yml/badge.svg?branch=develop&event=push)](https://github.com/juan294/sutura/actions/workflows/ci.yml?query=branch%3Adevelop+event%3Apush)
+[![CodeQL](https://github.com/juan294/sutura/actions/workflows/codeql.yml/badge.svg?branch=develop&event=push)](https://github.com/juan294/sutura/actions/workflows/codeql.yml?query=branch%3Adevelop+event%3Apush)
+[![npm](https://img.shields.io/npm/v/sutura?logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/sutura)
+![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178C6?logo=typescript&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-22-43853D?logo=node.js&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
+![pnpm](https://img.shields.io/badge/pnpm-11.22.0-F69220?logo=pnpm&logoColor=white)
+![Vitest](https://img.shields.io/badge/Vitest-4.1.11-6E9F18?logo=vitest&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Nebius Token Factory](https://img.shields.io/badge/Nebius-Token_Factory-6C5CE7)](https://tokenfactory.nebius.com/)
+[![NVIDIA Nemotron](https://img.shields.io/badge/NVIDIA-Nemotron_3-76B900?logo=nvidia&logoColor=white)](https://www.nvidia.com/en-us/ai-data-science/foundation-models/nemotron/)
+[![Nebius ConTree](https://img.shields.io/badge/Nebius-ConTree_Sandboxes-6C5CE7)](https://nebius.com/)
+[![Tavily](https://img.shields.io/badge/Tavily-Search-0EA5E9)](https://tavily.com/)
+[![GitHub Actions](https://img.shields.io/badge/GitHub-Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/marketplace/actions/sutura-verified-self-healing-ci)
+[![Vercel](https://img.shields.io/badge/Vercel-Case_Lab-000000?logo=vercel&logoColor=white)](https://sutura-case-lab.vercel.app/)
+
+<a href="https://chapa.thecreativetoken.com/u/juan294">
+  <img src="https://chapa.thecreativetoken.com/u/juan294/badge.svg" alt="juan294's Chapa Impact Badge" width="100%" />
+</a>
 
 Try it: [Sutura Case Lab](https://sutura-case-lab.vercel.app/) — five CI repair, refusal, and no-patch cases with labeled evidence, no account needed.
 

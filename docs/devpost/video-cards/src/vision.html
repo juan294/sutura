@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Vision</title>
+<link rel="stylesheet" href="base.css">
+<style>
+  svg.scene { position: absolute; top: 150px; left: 0; width: 1920px; height: 800px; }
+  .title { position: absolute; left: 120px; bottom: 80px; font-size: 54px; font-weight: 700; }
+  .title em { font-style: normal; color: var(--accent); }
+</style></head>
+<body>
+  <div class="tag">Vision</div>
+  <svg class="scene" viewBox="0 0 1920 800" font-family="system-ui, -apple-system, sans-serif">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#a3acb8"/></marker>
+    </defs>
+    <!-- repositories -->
+    <g id="repos" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="22" fill="#a3acb8">
+      <!-- 3 columns x 5 rows -->
+    </g>
+    <script>
+      const g = document.getElementById('repos');
+      const ns = 'http://www.w3.org/2000/svg';
+      const cols = [120, 290, 460], rows = [70, 200, 330, 460, 590];
+      const red = new Set(['2-0','2-1','2-3']);
+      cols.forEach((x, ci) => rows.forEach((y, ri) => {
+        const r = document.createElementNS(ns, 'rect');
+        Object.entries({x, y, width: 130, height: 90, rx: 14, fill: '#1a1d22', stroke: '#2e343c', 'stroke-width': 3}).forEach(([k, v]) => r.setAttribute(k, v));
+        g.appendChild(r);
+        const d = document.createElementNS(ns, 'circle');
+        Object.entries({cx: x + 26, cy: y + 45, r: 10, fill: red.has(ci + '-' + ri) ? '#ff6b61' : '#4cc38a'}).forEach(([k, v]) => d.setAttribute(k, v));
+        g.appendChild(d);
+        const t = document.createElementNS(ns, 'text');
+        t.setAttribute('x', x + 46); t.setAttribute('y', y + 53); t.textContent = 'repo';
+        g.appendChild(t);
+        if (red.has(ci + '-' + ri)) {
+          const l = document.createElementNS(ns, 'path');
+          l.setAttribute('d', `M${x + 130} ${y + 45} C ${720} ${y + 45}, ${720} 400, ${830} 400`);
+          Object.entries({fill: 'none', stroke: '#ff6b61', 'stroke-width': 3, 'stroke-opacity': .55}).forEach(([k, v]) => l.setAttribute(k, v));
+          g.insertBefore(l, g.firstChild);
+        }
+      }));
+    </script>
+    <!-- Sutura hub -->
+    <g transform="translate(830 330)">
+      <rect width="140" height="140" rx="26" fill="#1b1f24" stroke="#2e343c" stroke-width="3"/>
+      <g transform="scale(2.1875)">
+        <path d="M14 40 L50 24" stroke="#ff6b61" stroke-width="3" stroke-linecap="round"/>
+        <g stroke="#fbfbf9" stroke-width="4" stroke-linecap="round"><path d="M20 26 L26 44"/><path d="M29 24 L35 42"/><path d="M38 22 L44 40"/></g>
+      </g>
+      <text x="70" y="190" text-anchor="middle" font-size="36" font-weight="700" fill="#e7e9ec">Sutura</text>
+    </g>
+    <path d="M990 400 L1080 400" stroke="#a3acb8" stroke-width="3" marker-end="url(#arr)"/>
+    <!-- loop -->
+    <g font-size="34" font-weight="600" fill="#e7e9ec" text-anchor="middle">
+      <g transform="translate(1100 140)"><rect width="300" height="100" rx="18" fill="#1a1d22" stroke="#2e343c" stroke-width="3"/><text x="150" y="62">Reproduce</text></g>
+      <g transform="translate(1500 140)"><rect width="300" height="100" rx="18" fill="#1a1d22" stroke="#2e343c" stroke-width="3"/><text x="150" y="62">Repair</text></g>
+      <g transform="translate(1500 560)"><rect width="300" height="100" rx="18" fill="#1a1d22" stroke="#2e343c" stroke-width="3"/><text x="150" y="62">Prove</text></g>
+      <g transform="translate(1100 560)"><rect width="300" height="100" rx="18" fill="#1a1d22" stroke="#4cc38a" stroke-width="4"/><text x="150" y="62" fill="#4cc38a">Human approves</text></g>
+    </g>
+    <g stroke="#a3acb8" stroke-width="3" fill="none" marker-end="url(#arr)">
+      <path d="M1405 190 L1490 190"/>
+      <path d="M1650 245 L1650 550"/>
+      <path d="M1495 610 L1410 610"/>
+    </g>
+    <path d="M1250 555 L1250 250" stroke="#a3acb8" stroke-width="3" stroke-dasharray="10 10" fill="none" marker-end="url(#arr)"/>
+    <text x="1268" y="410" font-size="26" fill="#a3acb8" text-anchor="start" font-family="system-ui, sans-serif">next failure</text>
+  </svg>
+  <div class="title">Every developer, a CI nurse on call. <em>Every repair, proven.</em></div>
+</body></html>
