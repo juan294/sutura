@@ -122,23 +122,17 @@ describe('deterministic results', () => {
       .rejects.toThrow('replay fixture must be a sutura-case-lab-replay-fixture-v1 document');
   });
 
-  it('fails closed when current log parsing diverges from the recorded gave-up run', { timeout: 120_000 }, async () => {
+  it('fails closed when current initialization diverges from the recorded gave-up run', { timeout: 120_000 }, async () => {
     // Captured from the sutura-demo workflow artifact sutura-replay-34977415599.json (2026-09-15),
     // recorded before the Phase 2 fix (docs/plans/2026-09-15-launch-readiness-v0.3.1-phases/phase-2.md)
     // to the 16KB trusted-test-output refusal. The current GitHub adapter also retains
     // untimestamped continuation lines in multiline errors. This historical bundle captured
-    // the old, shorter failed-step log. The current taxonomy prompt now diverges first at
-    // the provider request; keep the recorded bundle untouched.
+    // the old, shorter failed-step log. Removing the unsafe blanket rebuild now
+    // causes an earlier initialization mismatch; keep the recorded bundle untouched.
     const bytes = readFileSync(LIVE_BUNDLE_FIXTURE);
     const bundle = JSON.parse(bytes.toString('utf8')) as Record<string, unknown> & {
       actionSha: string; outcome: string; executor: Array<{ sequence: number; args: unknown[] }>;
     };
-    // The sandbox Git baseline later gained `add --force` (#152), which would stop this replay
-    // at sequence 5. Apply that one known change to the in-memory copy so the replay still
-    // reaches the search divergence this test exists for. The fixture file is not edited.
-    const baseline = bundle.executor.find(({ sequence }) => sequence === 5);
-    expect(baseline?.args[1]).toEqual(expect.stringContaining('add --pathspec-from-file='));
-    baseline!.args[1] = String(baseline!.args[1]).replace('add --pathspec-from-file=', 'add --force --pathspec-from-file=');
     expect(bundle.actionSha).toBe(RELEASE_V030.actionSha);
     expect(bundle.actionSha).not.toBe(LIVE_DEMO_SHA);
     const fixture = {
@@ -153,12 +147,13 @@ describe('deterministic results', () => {
     );
     expect(error).toBeInstanceOf(ReplayMismatchError);
     const mismatch = error as ReplayMismatchError;
-    expect(mismatch.sequence).toBe(44);
-    expect(mismatch.path).toBe('$.messages[0].content');
+    expect(mismatch.sequence).toBe(5);
+    expect(mismatch.path).toBe('$[1]');
     expect(typeof mismatch.expected).toBe('string');
     expect(typeof mismatch.actual).toBe('string');
-    expect(mismatch.expected as string).toContain('Compilation or packaging failures outside type checking.');
-    expect(mismatch.actual as string).toContain('missing relative source imports.');
+    expect(mismatch.expected as string).toContain('corepack pnpm rebuild');
+    expect(mismatch.actual as string).toContain('add --force --pathspec-from-file=');
+    expect(mismatch.actual as string).not.toContain('rebuild');
     expect(mismatch.expected).not.toBe(mismatch.actual);
     // The pre-fix binding (bundle actionSha === demoSha) refused this real bundle.
     await expect(replayedResult(caseLabCase('javascript-repair'), fixture, {
