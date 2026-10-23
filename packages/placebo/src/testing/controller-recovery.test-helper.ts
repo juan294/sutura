@@ -76,7 +76,9 @@ export async function runRecoveryControllerCase(caseId: string, options: { rewri
         }
         if (tier === 'nano') {
           inferenceCalls.push('diagnosis');
-          return { text: JSON.stringify({ class: initialClass, confidence: 0.49, signals: ['local-real-reproduction'], failingCmd: observedCommand, errorExcerpt: (before.stderr || before.stdout).slice(-2000) }), usd: 0.000001 };
+          // Keep the scripted diagnosis within the 20k-character input ceiling.
+          // A shorter tail can cut a real Python warning out of its traceback.
+          return { text: JSON.stringify({ class: initialClass, confidence: 0.49, signals: ['local-real-reproduction'], failingCmd: observedCommand, errorExcerpt: (before.stderr || before.stdout).slice(-20_000) }), usd: 0.000001 };
         }
         // Keyed on the controller-owned purpose, not the response format: the
         // hypotheses request sends json_object since 2026-09-16 (Token Factory
