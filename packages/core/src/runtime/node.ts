@@ -1,5 +1,6 @@
 import { lstat, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { intersects, validRange } from 'semver';
 import { shellQuote } from '../engine/shell.js';
 import type { DependencyPreparation, RuntimeAdapter, RuntimeEvidence } from './types.js';
 
@@ -8,6 +9,7 @@ export const NODE_IMAGE_REF = 'node:22';
 /** Choose a supported sandbox major from the repository's declared Node version. */
 export async function nodeImageRefForRepository(dir: string): Promise<string> {
   let nvmMajor: number | undefined;
+  let nvmVersion: string | undefined;
   try {
     const path = join(dir, '.nvmrc');
     const metadata = await lstat(path);
@@ -16,11 +18,13 @@ export async function nodeImageRefForRepository(dir: string): Promise<string> {
     const match = /^v?(\d+)(?:\.\d+(?:\.\d+)?)?$/u.exec(version);
     if (!match) throw new Error('Unsupported .nvmrc Node version');
     nvmMajor = Number(match[1]);
+    nvmVersion = validRange(version) ?? undefined;
+    if (nvmVersion === undefined) throw new Error('Invalid .nvmrc Node version');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
 
-  let engineMajor: number | undefined;
+  let engineRange: string | undefined;
   try {
     const path = join(dir, 'package.json');
     const metadata = await lstat(path);
@@ -29,18 +33,24 @@ export async function nodeImageRefForRepository(dir: string): Promise<string> {
     if (typeof parsed === 'object' && parsed !== null && 'engines' in parsed) {
       const engines = parsed.engines;
       if (typeof engines === 'object' && engines !== null && 'node' in engines && typeof engines.node === 'string') {
-        const match = /^(?:>=|\^|~)?\s*(22|24)(?:\.\d+)?(?:\.\d+)?(?:\s|$)/u.exec(engines.node);
-        if (match) engineMajor = Number(match[1]);
+        engineRange = validRange(engines.node) ?? undefined;
+        if (engineRange === undefined) throw new Error('Invalid package.json engines.node range');
       }
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
-  if (nvmMajor !== undefined && engineMajor !== undefined && nvmMajor !== engineMajor) {
+  if (nvmMajor !== undefined && nvmMajor !== 22 && nvmMajor !== 24) {
+    throw new Error(`Unsupported sandbox Node major: ${nvmMajor}`);
+  }
+  if (nvmVersion !== undefined && engineRange !== undefined && !intersects(nvmVersion, engineRange)) {
     throw new Error('Node version declarations conflict between .nvmrc and package.json');
   }
-  const major = nvmMajor ?? engineMajor ?? 22;
-  if (major !== 22 && major !== 24) throw new Error(`Unsupported sandbox Node major: ${major}`);
+  // Image selection is major-only; partial .nvmrc versions are ranges, while
+  // exact versions must satisfy the engine's minor/patch bounds as declared.
+  const major = nvmMajor ?? [22, 24].find((candidate) =>
+    engineRange === undefined || intersects(String(candidate), engineRange));
+  if (major === undefined) throw new Error('Unsupported sandbox Node range in package.json engines.node');
   return `node:${major}`;
 }
 
