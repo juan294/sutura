@@ -65,7 +65,9 @@ function request(caseId: string, candidateDiff?: string, tavilyEnabled = true): 
   };
 }
 
-function runResult(exitCode: number, error = 'case.test.js: assertion failed'): InMemoryRunResult {
+const ASSERTION_DIAGNOSTIC = 'FAIL case.test.js > preserves the expected value\nAssertionError: expected 2 to be 1\n at case.test.js:3:5';
+
+function runResult(exitCode: number, error = ASSERTION_DIAGNOSTIC): InMemoryRunResult {
   return { exitCode, stdout: exitCode === 0 ? 'passed' : '', stderr: exitCode === 0 ? '' : error, truncated: false, metrics: {} };
 }
 
@@ -81,7 +83,7 @@ function runtime(
   failureClass: Diagnosis['class'],
   candidate: Candidate = { id: 'repair', rationale: 'repair the source', diff: REPAIR_DIFF },
   tavily?: TavilySearch,
-  reproductionError = 'case.test.js: assertion failed',
+  reproductionError = ASSERTION_DIAGNOSTIC,
 ): {
   executor: InMemoryExecutor;
   chat: ReturnType<typeof vi.fn>;
@@ -97,7 +99,7 @@ function runtime(
       command.includes('git init --quiet')
     ) return runResult(0);
     const index = scenarioIndex++;
-    return runResult(exits[index] ?? 1, index === 0 ? reproductionError : 'case.test.js: assertion failed');
+    return runResult(exits[index] ?? 1, reproductionError);
   });
   const chat = vi.fn(async (tier: ModelTier) => {
     if (tier === 'nano') {
@@ -141,12 +143,13 @@ describe('healWithRuntime Placebo integration', () => {
         join(directory, 'page-count.js'),
         'export function pageCount(items, size) { return Math.floor(items / size) + 1; }\n',
       );
+      await writeFile(join(directory, 'package.json'), JSON.stringify({ scripts: { test: 'vitest run' } }));
       const scripted = runtime(
         [1, 1, 1, 1, 1, 0, 0],
         'test-assertion',
         undefined,
         undefined,
-        'page-count.js:1: assertion failed',
+        'FAIL case.test.js > rounds the page count\nAssertionError: expected 2 to be 1\n at page-count.js:1:1',
       );
 
       const result = await healWithRuntime(
@@ -198,7 +201,7 @@ describe('healWithRuntime Placebo integration', () => {
       'dep-upstream-breaking',
       { id: 'esm', rationale: 'load ESM dynamically', diff: UPSTREAM_DIFF },
       { search },
-      'app.cjs:1: Error [ERR_REQUIRE_ESM]: require() of ES Module node-fetch',
+      'FAIL case.test.js > loads node-fetch\nError [ERR_REQUIRE_ESM]: require() of ES Module node-fetch\nnode-fetch v3 is an ESM-only breaking release.\n at app.cjs:1:1',
     );
     const result = await healWithRuntime(request('upstream-parser-release'), scripted.value);
     expect(result).toMatchObject({ outcome: 'fixed', diagnosis: { grounding: { skipped: false } } });
