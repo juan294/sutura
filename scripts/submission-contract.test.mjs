@@ -46,9 +46,10 @@ function assertVersionConsistency(document, currentVersion) {
 }
 
 test('submission source carries the qualitative judge story and one architecture diagram', async () => {
-  const [submission, packageJson] = await Promise.all([
+  const [submission, packageJson, publicRelease] = await Promise.all([
     text(submissionUrl),
     text(new URL('package.json', root)).then(JSON.parse),
+    text(new URL('packages/case-lab/release.json', root)).then(JSON.parse),
   ]);
 
   assert.match(submission, /^# Sutura: Verified Self-Healing CI$/mu);
@@ -79,7 +80,9 @@ test('submission source carries the qualitative judge story and one architecture
   assert.equal(count(submission, /^```mermaid\n[\s\S]*?^```$/gmu), 1);
   assert.match(submission, /2026-08-26/u);
 
-  assertVersionConsistency(submission, packageJson.version);
+  // Submission evidence describes the recorded public subject, independently of a newer local candidate.
+  assertVersionConsistency(submission, publicRelease.version);
+  assert.match(submission, /Historical public release evidence/iu);
 });
 
 test('submission, video, and feedback links resolve to repository files', async () => {
