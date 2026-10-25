@@ -1,0 +1,43 @@
+# Phase 1 — Known fixes and minimal baseline
+
+Parent: [fleet incident recovery](../2026-10-25-fleet-incident-recovery.md). Entry: owner accepts this plan and authorizes phase 1; revalidate the integration baseline; each consumer implementation reads its own instructions and uses an isolated worktree. Sutura owns coordination. This phase prepares local source fixes and reviewable operational actions; it does not activate them remotely.
+
+## First delivery boundary
+
+Start with a thin private inventory of the selected affected consumers: current/default branches, immutable Action pins, required native checks, configuration presence and rollback bytes. Use existing reports/ledger; no new journal, classifier, descriptor system or onboarding flow is a prerequisite. Revalidate the two already-implemented fixture/runtime corrections and prepare their delivery; add the two confirmed action-update grouping changes and the scoped missing-App repair packet. Keep the deliberately unsupported large-snapshot consumer diagnostic-only, with automatic repair excluded by an explicit protected disposition. Its identity and exact settings belong only in the private annex.
+
+Phase 1 acceptance covers those evidenced changes and concrete administration packets, with local regressions and existing native obligations. Phase 2 ships this compatibility subset. The investigations below are a retained work register: a missing updater log, provider telemetry or unrelated probe fix MUST NOT block that subset. Mark each remaining package with evidence, next action and phase 3 ownership. Do not turn this fast lane into an all-fleet audit before delivery. Prepare the phase 5 README positioning correction with the first applicable release: selected supported Node/Python job shapes and current ConTree access before credential setup. Do not advertise the proposed assess command until it ships.
+
+## Defect work packages
+
+| Package | Required evidence and concrete change | Acceptance |
+| --- | --- | --- |
+| Multi-step action version mismatch | Compare all actual workflow `uses` entries with current Dependabot config. For confirmed independent bumps, group `github/codeql-action*` in the GitHub Actions ecosystem and align any still-mismatched pins to a reviewed version. Preserve integration target, update policy and action permissions. | Parsed fixture simulates init/analyze/upload references moving together; inconsistent pairs fail validator; actionlint and consumer gates pass. Do not promise a historical count of failures eliminated. |
+| Stale generated bundle | Reproduce exact manifest/lock/bundle mismatch locally. Generate the bundle with the consumer's canonical build in the same dependency-update change; retain byte-coherence check. Provide a local update recipe that batches dependency and derived artifacts. | Stale fixture fails; regenerated bundle passes with no verification bypass. Autonomous bot writeback is out of scope; until a safe adapter exists, admission escalates this case. |
+| Secret-dependent PR verification | Identify actual event, credential boundary and protected check contract. Separate credential-free application verification from trusted provider obligations using existing consumer patterns. Never copy secrets into untrusted PR execution or treat skipped required checks as green. | Trusted/untrusted/fork/Dependabot event matrix has complete applicable checks; withheld credentials stay withheld; protected publication remains separately gated. |
+| Dependabot updater failures | Capture one recent representative failing updater job's full available log, actual package-manager version, effective age policy, manifest/lock shape and package timestamps. Compare current pnpm/GitHub primary docs. Apply only the minimal demonstrated local config/package compatibility fix. | Replay the concrete install/update failure with captured inputs, then the proposed corrected inputs. Missing/expired logs give an evidence-unavailable incident and next capture instruction; no speculative fleet cooldown edit. One failure class does not generalize to every updater. |
+| Persistent scheduled probes | For each named recurring probe, identify target, expected assertion, environment, evidence freshness and owner. Fix a confirmed source/target/configuration defect; preserve useful health detection. Intentional retired targets require explicit exclusion decision with reason. | Probe failure fixture remains detectable; corrected target/config passes. A real production problem remains an urgent incident, not an automatic skip or weakened assertion. |
+| App/setup wiring | Use read-only installation membership, permission and secret-name metadata; prepare exact repository-scoped administrative commands with no secret values in artifacts. Preserve existing provider bindings. | Local missing/malformed configuration produces a typed setup incident and visible remedy. Actual readiness requires authorized administration plus successful scoped token/readback; metadata alone is insufficient. |
+| Resource/native environment | Preserve archive cleanup and disabled untrusted networking. Diagnose own sandbox stage capacity, inodes and peak footprint from available evidence; prepare a measured resource change only if justified. Missing native/service/scanner recipes stay explicitly unsupported with concrete requirements. | Bounded fixture reproduces resource failure/disclosure; authorized later validation must reach the intended failure without preparation failure. No shared-image deletion, global network enablement or blind timeout/storage increase. |
+
+## Decision rules
+
+Source anchor for current Sutura Dependabot entry is `.github/dependabot.yml:36`; the generic report is not a substitute for each consumer's current file. Fix already-aligned action references only if a current diff is needed; prevention grouping can remain independently necessary. Previously verified application changes are retained, not repeated to inflate repair counts.
+
+If evidence identifies a different source defect, record the cause and a narrowly scoped amendment before dependent changes. A materially new architecture/provider decision returns to the owner; a routine local fix under a demonstrated defect does not require another planning cycle. Do not claim `fixed` for a prepared command, unsupported disposition or diagnostic improvement.
+
+Current documentation: [Dependabot grouping/cooldown](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference#groups) and [pnpm release-age settings](https://pnpm.io/settings/dependency-resolution#minimumreleaseagestrict). Defaults do not prove the settings of a captured updater process.
+
+## Automated acceptance
+
+Each consumer patch has a RED reproducer, green source correction, workflow/event assertions where relevant, actionlint, and the consumer's documented local verification/build/preflight. No required check is removed to fix its symptom. Keep exact source/patch identity in the private register. Capture realistic Dependabot grouped-update behavior; a YAML key-exists assertion alone is insufficient.
+
+Parent Sutura full gates apply to any Sutura code/workflow changes. Consumer checks run sequentially on the shared host. Independent consumer repositories are `[batch-eligible]` for editing in separate worktrees, with one integration owner, no branch publication and coordinated test slots. Shared canonical routing changes are not batch eligible.
+
+## Manual acceptance, recovery and handoff
+
+The owner receives concrete administrative/resource/publication packets only after local preparation is complete. They identify repository, exact diff, setting names, expected effects, bounded cost if any, rollback and verification. Execution remains the agent's responsibility once authorized.
+
+Every original finding receives one of: already delivered with linked evidence; locally repaired awaiting activation; observed recovered with equivalent native proof; explicitly unsupported; evidence unavailable with next collection; external action awaiting authority. Unsupported/evidence-unavailable is not completion of the underlying defect. Known unresolved defects remain in the final queue and prevent an unqualified fleet-health claim.
+
+Recovery tests prove missing configuration becomes ready after correction, restored evidence can drive a later valid event, and unsupported states display usable next steps. Stop after local acceptance; phase 2 owns early authorized activation, phase 7 owns later release/waves. Unresolved investigation packages resume in phase 3 and remain visible through phase 8.

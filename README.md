@@ -39,6 +39,20 @@ a public demo repository. Its source lives in
 the exact v0.3.9 release commit `cc3281485b4364d7c8fcb2e820e03ffbaf893c2a`.
 Sutura is built for the Nebius x NVIDIA Global AI Hackathon.
 
+## Repository fit and access
+
+Sutura targets self-contained Node and Python verification jobs with locked public
+dependencies. The selected job must not need application secrets, services or
+unsupported native build preparation. Other jobs in the same repository can use
+those capabilities; they do not establish that Sutura can reproduce them.
+
+Live repair requires access to Nebius ConTree as well as inference credentials.
+ConTree access is a prerequisite, not something the installer provisions. Confirm
+that access before configuring a repair workflow. Current runtime limits include
+Node 22/24, bounded workspace layouts, frozen Python dependencies and disabled
+lifecycle scripts. Static repository fit does not prove preparation or repair.
+The recorded Case Lab remains available without provider accounts.
+
 ## Technical review
 
 The [technical evaluation guide](docs/evaluation/README.md) maps controller-owned
