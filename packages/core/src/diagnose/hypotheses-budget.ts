@@ -36,6 +36,7 @@ export async function withinRecoveryDeadline<T>(
   signal: AbortSignal | undefined,
   work: (signal: AbortSignal) => Promise<T>,
   cancel?: () => Promise<unknown>,
+  timeoutError?: BudgetExceededError,
 ): Promise<T> {
   if (signal?.aborted) throw new Error('Recovery was cancelled');
   if (seconds <= 0) throw new BudgetExceededError('elapsedTimeSec');
@@ -49,7 +50,7 @@ export async function withinRecoveryDeadline<T>(
         // Cancellation identifies the exact submitted operation. Retain the spent
         // reservation even when remote terminal confirmation is unavailable.
         if (cancel) void Promise.resolve().then(cancel).catch(() => {});
-        reject(timeoutController.signal.aborted ? new BudgetExceededError('elapsedTimeSec') : new Error('Recovery was cancelled'));
+        reject(timeoutController.signal.aborted ? timeoutError ?? new BudgetExceededError('elapsedTimeSec') : new Error('Recovery was cancelled'));
       };
       removeListener = () => combined.removeEventListener('abort', onAbort);
       combined.addEventListener('abort', onAbort, { once: true });
@@ -74,10 +75,18 @@ function ports(input: BudgetedPortsInput, reservation?: RepairCapacityReservatio
       if (input.signal?.aborted) throw new Error('Recovery was cancelled');
       input.budget.reserveSandboxOperation(reservation);
       const operationId = options?.operationId ?? `${operationIdPrefix}-op-${String(++operationIndex).padStart(3, '0')}`;
-      const seconds = Math.min(options?.timeoutSec ?? 120, input.budget.remainingElapsedTimeSec(reservation));
+      const remaining = input.budget.remainingElapsedTimeSec(reservation);
+      const operationLimit = options?.timeoutSec ?? 120;
+      const seconds = Math.min(operationLimit, remaining);
+      // Preserve the same catch/stop path while naming the limit that fired.
+      const timeoutError = operationLimit < remaining
+        ? Object.assign(new BudgetExceededError('elapsedTimeSec'), {
+          message: `Sandbox operation ${operationId} exceeded its per-operation deadline of ${seconds} seconds`,
+          operationId, timeoutSec: seconds,
+        }) : undefined;
       return withinRecoveryDeadline(seconds, input.signal, () => input.executor.run(parent, command, {
         ...options, operationId, network: 'disabled', timeoutSec: seconds,
-      }), () => input.executor.cancel(operationId));
+      }), () => input.executor.cancel(operationId), timeoutError);
     },
     async runMany(parent, commands, options) {
       const results = [];

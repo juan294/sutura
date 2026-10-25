@@ -11,6 +11,7 @@ import {
   PYTHON_RUNTIME,
   PythonDependencyError,
   validatePythonDependencyInputs,
+  validatePythonDependencyContents,
 } from './python.js';
 
 const roots: string[] = [];
@@ -143,6 +144,42 @@ describe('PYTHON_RUNTIME', () => {
     });
   });
 
+  // Captured uv.lock failure shape: the project's own editable root was
+  // rejected even though --no-install-project never installs that package.
+  it('accepts the identity-bound editable project root without installing its build hooks', async () => {
+    const root = await fixture({
+      'pyproject.toml': '[build-system]\nrequires=["untrusted-backend"]\nbuild-backend="untrusted_backend"\n[project]\nname="runtime_fixture"\nversion="1.0.0"\n',
+      'uv.lock': 'version=1\n[[package]]\nname="runtime-fixture"\nversion="1.0.0"\nsource = { editable = "." }\n[[package]]\nname="attrs"\nversion="25.3.0"\nsource = { registry = "https://pypi.org/simple" }\n',
+    });
+    await expect(validatePythonDependencyInputs(root)).resolves.toEqual({
+      paths: ['pyproject.toml', 'uv.lock'],
+      command: 'uv sync --frozen --no-install-project --no-build',
+    });
+  });
+
+  it.each([
+    ['different package', 'other-package', '.', ''],
+    ['external editable path', 'runtime-fixture', '../external', ''],
+    ['editable subdirectory', 'runtime-fixture', 'packages/local', ''],
+    ['additional local dependency', 'runtime-fixture', '.', '\n[[package]]\nname="external"\nsource = { editable = "../external" }\n'],
+    ['additional VCS dependency', 'runtime-fixture', '.', '\n[[package]]\nname="external"\nsource = { git = "https://example.invalid/repo" }\n'],
+    ['duplicate project roots', 'runtime-fixture', '.', '\n[[package]]\nname="runtime-fixture"\nsource = { editable = "." }\n'],
+  ])('refuses %s while admitting only the skipped project root', async (_label, name, path, extra) => {
+    const root = await fixture({
+      'pyproject.toml': '[project]\nname="runtime-fixture"\nversion="1.0.0"\n',
+      'uv.lock': `version=1\n[[package]]\nname="${name}"\nversion="1.0.0"\nsource = { editable = "${path}" }\n${extra}`,
+    });
+    await expect(validatePythonDependencyInputs(root)).rejects.toBeInstanceOf(PythonDependencyError);
+  });
+
+  it('does not bind an editable exemption to a name from another TOML table', async () => {
+    const root = await fixture({
+      'pyproject.toml': '[project]\nversion="1.0.0"\n[tool.fixture]\nname="runtime-fixture"\n',
+      'uv.lock': 'version=1\n[[package]]\nname="runtime-fixture"\nsource = { editable = "." }\n',
+    });
+    await expect(validatePythonDependencyInputs(root)).rejects.toBeInstanceOf(PythonDependencyError);
+  });
+
   it.each([
     ['missing lock', { 'pyproject.toml': '[project]\nname="unsafe"\n' }],
     ['editable', { 'requirements.txt': '-e .\n' }],
@@ -190,5 +227,14 @@ describe('PYTHON_RUNTIME', () => {
   it('rejects a Python repository without a dependency lock input', async () => {
     const root = await fixture({});
     await expect(validatePythonDependencyInputs(root)).rejects.toThrow(/lock input is missing/u);
+  });
+});
+
+describe('pure Python dependency validation', () => {
+  it('preserves root-editable exemption and refusal without filesystem reads', () => {
+    const pyproject = '[project]\nname="fixture"\n';
+    expect(validatePythonDependencyContents({ pyproject, uvLock: 'version=1\n[[package]]\nname="fixture"\nsource={editable="."}\n' }).command)
+      .toBe('uv sync --frozen --no-install-project --no-build');
+    expect(() => validatePythonDependencyContents({ pyproject, uvLock: 'version=1\n[[package]]\nname="other"\nsource={editable="../other"}\n' })).toThrow(PythonDependencyError);
   });
 });

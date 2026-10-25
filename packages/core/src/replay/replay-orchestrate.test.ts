@@ -71,15 +71,20 @@ async function captureReplayMismatch(bundle: ReplayBundle): Promise<ReplayMismat
   throw new Error('Current replay unexpectedly accepted a historical runtime contract');
 }
 
-// The sandbox Git baseline later gained `add --force` (#152), which would stop
-// these replays at sequence 5. Apply that one known change to the in-memory
-// copy so each replay still reaches the drift its test exists for. The recorded
-// bundle files are historical evidence and are not edited.
-function withGitBaselineForce(bundle: ReplayBundle): ReplayBundle {
+// The sandbox Git baseline gained `add --force` (#152) and removed the
+// unsafe blanket lifecycle rebuild. Normalize those known historical command
+// differences only in a private copy so these tests still reach command-provenance drift.
+// Recorded bundles remain immutable; current initialization has separate tests.
+function withCurrentGitBaseline(recorded: ReplayBundle): ReplayBundle {
+  const bundle = structuredClone(recorded);
   const baseline = bundle.executor.find(({ sequence }) => sequence === 5);
   expect(baseline?.args[1]).toEqual(expect.stringContaining('add --pathspec-from-file='));
-  baseline!.args[1] = String(baseline!.args[1])
-    .replace('add --pathspec-from-file=', 'add --force --pathspec-from-file=');
+  const command = String(baseline!.args[1]);
+  expect(command).toContain(' && if [ -f pnpm-lock.yaml ]; then corepack pnpm rebuild;');
+  expect(command).toMatch(/; else true; fi'$/u);
+  baseline!.args[1] = command
+    .replace('add --pathspec-from-file=', 'add --force --pathspec-from-file=')
+    .replace(/ && if \[ -f pnpm-lock\.yaml \]; then corepack pnpm rebuild;.*; else true; fi'$/u, "'");
   return bundle;
 }
 
@@ -152,7 +157,7 @@ describe('replayBundle', () => {
   });
 
   it('preserves live run 33321172589 while current replay fails closed on contract drift', async () => {
-    const bundle = withGitBaselineForce(await capturedDogfoodReplayBundle());
+    const bundle = withCurrentGitBaseline(await capturedDogfoodReplayBundle());
     const report = recordedReport(bundle);
     const originalBundle = JSON.stringify(bundle);
 
@@ -168,17 +173,17 @@ describe('replayBundle', () => {
       .toEqual(Array.from({ length: 7 }, () => ({ enable_thinking: false })));
 
     const error = await captureReplayMismatch(bundle);
-    // The current taxonomy prompt now diverges before the older executor
-    // runMany/run contract; the saved provider request must remain immutable.
-    expect(error.sequence).toBe(50);
-    expect(error.path).toBe('$.messages[0].content');
-    expect(error.expected).toContain('Compilation or packaging failures outside type checking.');
-    expect(error.actual).toContain('missing relative source imports.');
+    // Native Run-group provenance now diverges before the old taxonomy prompt.
+    // Child stdout no longer overrides the observed pnpm run test command.
+    expect(error.sequence).toBe(6);
+    expect(error.path).toBe('$[1]');
+    expect(error.expected).toContain('pnpm -r test');
+    expect(error.actual).toContain('pnpm run test');
     expect(JSON.stringify(bundle)).toBe(originalBundle);
   });
 
   it('preserves live run 33323856253 while current replay fails closed on contract drift', async () => {
-    const bundle = withGitBaselineForce(await capturedDogfoodReplayBundle('33323765566'));
+    const bundle = withCurrentGitBaseline(await capturedDogfoodReplayBundle('33323765566'));
     const report = recordedReport(bundle);
     const originalBundle = JSON.stringify(bundle);
 
@@ -195,13 +200,13 @@ describe('replayBundle', () => {
     expect(capturedSuperRequestBodies(bundle).map(({ chat_template_kwargs }) => chat_template_kwargs))
       .toEqual(Array.from({ length: 6 }, () => ({ enable_thinking: false })));
 
-    // The taxonomy prompt changes before this historical triage batch reaches
-    // its older executor operation contract.
+    // Current command provenance diverges before taxonomy/triage: the native
+    // execution header is authoritative over prompt-like child stdout.
     const error = await captureReplayMismatch(bundle);
-    expect(error.sequence).toBe(44);
-    expect(error.path).toBe('$.messages[0].content');
-    expect(error.expected).toContain('Compilation or packaging failures outside type checking.');
-    expect(error.actual).toContain('missing relative source imports.');
+    expect(error.sequence).toBe(6);
+    expect(error.path).toBe('$[1]');
+    expect(error.expected).toContain('pnpm -r test');
+    expect(error.actual).toContain('pnpm run test');
     expect(JSON.stringify(bundle)).toBe(originalBundle);
   });
 

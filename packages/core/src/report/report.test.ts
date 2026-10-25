@@ -346,6 +346,20 @@ describe('markdown report contract', () => {
     expect(report).toContain('Policy:');
   });
 
+  it('reports a blocked baseline prerequisite without claiming successful reproduction', async () => {
+    const caseFile = await loadFixture('infra-stop');
+    caseFile.diagnosis.signals = ['sandbox-reproduction:prerequisite-missing'];
+    const sentence = 'Sandbox reproduction was blocked by a missing prerequisite. Triage and repair were not run.';
+
+    for (const rendered of [renderComment(caseFile), renderCaseFile(caseFile)]) {
+      expect(rendered).toContain(sentence);
+      expect(rendered).not.toContain('passed in a clean sandbox reproduction');
+      expect(rendered).not.toContain('dependency preparation failed');
+      expect(rendered).not.toContain('Reproduced 4/4');
+      expect(rendered).not.toContain('100.0%');
+    }
+  });
+
   it('reports a preparation failure before reproduction honestly', async () => {
     const caseFile = await loadFixture('infra-stop');
 

@@ -1,0 +1,35 @@
+# Phase 7 — Stable release and staged consumer installation
+
+Parent: [fleet incident recovery](../2026-10-25-fleet-incident-recovery.md). Entry: phases 3–6 accepted; final candidate gates complete; specific external actions authorized before execution. This phase distinguishes local readiness, installed source and demonstrated hosted behavior.
+
+## Preparation and release order
+
+1. Refresh remote refs, branch protection, default/integration topology, all deployment triggers and installed pins. Inspect the net candidate diff against the last stable release; commit count is not release risk assessment. Preserve previously integrated fixes and private evidence. Reconcile locally in isolated worktrees and rerun invalidated gates. Obtain the owner-requested release version at this phase entry. Complete version-bearing edits, release notes, native pre-launch/remediation and version-matched documentation before freezing the candidate in step 2.
+2. Prepare an immutable candidate SHA with full Sutura gates, coverage, generated bundle consistency, package/candidate-install tests, read-only install checks, independent security/reliability review and simplify. Prepare minimally edited consumer workflows: retain watched names, App permissions, provider bindings and protected routing. Capture before/after bytes and rollback patch. Never overwrite configured consumers with `init --force`.
+3. Owner decision, 2026-10-25: retire the pre-release pilot and its 72-hour waiting prerequisite for 0.4.0. Proceed after reviewed local gates and exact-commit native checks pass. Organic supported incidents and pilot qualification remain effectiveness evidence, not prerequisites for this publication. Do not manufacture a failure or claim that an unexercised pilot passed. Subsequent consumer activation and rollout remain separately scoped.
+4. Publish the frozen stable candidate under `.agents/skills/rpi-release/SKILL.md:7` only within the exact approved release scope. The notes/version sweep, adapted release evidence and local gates are already complete. Any intervening code, version, dependency, generated-artifact or workflow edit invalidates affected checks and pilot qualification; rebuild and requalify the exact candidate before publication. A distinct main merge commit requires complete native checks and recorded source/tree equivalence to the reviewed frozen candidate, not a different implementation silently inheriting its proof. Main native checks must pass before tag/release. Actual `.github/workflows/publish.yml:3` triggers npm publication at `:57`; approval must cover both GitHub release and npm side effect. Case Lab benchmark, binding, publication, deployment and live smoke retain their separate existing gates and priced authority. Do not call the entire release cycle complete while its required obligations remain pending.
+5. Repin remaining approved consumers in deterministic waves of at most three, using immutable released SHA rather than a moving tag. Each wave has local checks, exact native readback and 72-hour observation; promote only after previous wave acceptance. These sequential windows are intentional for changed admission/security behavior: about twenty consumers in waves of three can require roughly three weeks after release. Publish the actual calendar from enrolled counts, excluding diagnostic-only entries; do not promise immediate fleet completion. The phase 2 compatibility-only lane has its separate, lighter gate. Check the default-branch workflow separately from integration. Do not infer current pin from the CLI version or a successful Sutura release.
+
+The pilot uses explicit SHA support (`packages/cli/src/release.ts:21`); stable CLI resolution follows its version tag (`:38`). Workflow-run default-branch behavior is documented by [GitHub](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run). The cross-project E2E blueprint is reference material, not a filled executable Sutura procedure.
+
+The public npm package, generated Action SHA and support documentation must identify the same released capability contract. Reuse phase 5 upgrade previews; npm installation alone cannot assert installed Action readiness. Complete the native pre-launch, remediation and documentation workflows before release, with their actual gates and no unadapted blueprint placeholders.
+
+## Administrative and provider boundaries
+
+Execute remaining phase 1/3 prepared App/configuration packets only within explicit authorization, using CLI first. Check scoped token use and permissions without printing secret values. Existing disabled/excluded enrollment requires its recorded owner decision; absence of a disable variable is not sufficient to reverse an exclusion. Do not mutate account/provider configuration to fix an application error.
+
+Provider diagnostics or experiments require measured resource scope and priced ceilings before execution. If authority or telemetry is unavailable, leave the incident externally blocked with its exact next action. Keep unsupported cases out of automatic spending; this is not a resolution claim.
+
+## Automated and hosted acceptance
+
+For every installation record: immutable Action SHA, consumer default-branch source SHA, policy/routing digest, runtime, watched workflows, required checks and configuration readiness. For every exercised source: source run/attempt/SHA, admission result, monitor attempt, typed outcome, repair PR head and diff, complete native proof and integration proof where applicable. Wrong or missing identity fails acceptance.
+
+Local event-matrix tests cover success, failure, timeout, cancellation, owner, Dependabot, schedule, fork, disabled, unsupported and repair-branch recursion. One normal authorized hosted event verifies delivery to the actual installed default-branch monitor; no rerun is used as an acceptance substitute.
+
+Each failed remote result is preserved and diagnosed from existing logs. Fix locally and complete gates; a new push/rerun/provider action needs renewed authorization under push accountability. Do not turn pilot failure into an automatic fix-and-repush loop.
+
+## Recovery, manual acceptance and handoff
+
+Prepare rollback to exact prior pin and original workflow bytes, with local validation and named activation path. Execute only under the publication/rollback authority granted for that wave; never rewrite history or discard claims/evidence. An unsafe pilot halts expansion and visibly reports the rollback action. A corrected distinct source event must be able to proceed after rollback/repair.
+
+Manual acceptance reviews concrete release/wave receipts and unresolved incidents. Installation and observed effectiveness remain separate columns. No `[batch-eligible]` hosted mutations: waves and native evidence are sequential. Local consumer preparation can use phase 1/3 independent units. Handoff records release version/SHA, installed inventory, failed attempts, rollback receipts, authorization scope and phase 8 observation start. Stop at the acceptance boundary.

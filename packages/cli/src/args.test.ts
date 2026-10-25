@@ -102,7 +102,6 @@ describe('parseArgs', () => {
   });
 
   const invalidArguments: string[][] = [
-    [],
     ['repair'],
     ['heal'],
     ['heal', '--case-dir'],

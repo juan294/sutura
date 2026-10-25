@@ -863,7 +863,7 @@ export interface IndexOptions {
 }
 
 export function renderIndexBody(options: IndexOptions): string {
-  const liveNote = `A live run starts one real Sutura repair in the public demo repository when the public-demo gate is on: at most ${options.limits.maxConcurrentRuns} run at a time, ${options.limits.maxRunsPerHour} per hour, and ${options.limits.maxRunsPerDay} per day. Every case has a deterministic result you can open now.`;
+  const liveNote = `A live run starts one real Sutura repair in the public demo repository when the public-demo gate is on: at most ${options.limits.maxConcurrentRuns} run at a time, ${options.limits.maxRunsPerHour} per hour, and ${options.limits.maxRunsPerDay} per day. Every case has a recorded result you can open now.`;
   return `<header class="docket">
   <p class="eyebrow">Sutura · Verified self-healing CI</p>
   <h1>Sutura Case Lab</h1>

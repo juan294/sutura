@@ -318,7 +318,7 @@ export {
   redactExternalText,
 } from './security/external-text.js';
 
-export const VERSION = '0.3.9';
+export const VERSION = '0.4.0';
 
 export type {
   HealCaseContext,
@@ -631,3 +631,19 @@ export * from './verification/source.js';
 export { parseRuntimeCandidateEvidence, type RuntimeCandidateEvidence } from './verification/runtime-evidence.js';
 
 export { executeExternalVerification, type ExternalVerificationInput, type ExternalVerificationResult } from './verification/external.js';
+
+export { assessJobSupport, ASSESSMENT_BOUNDS } from './incidents/assess.js';
+export { parseAssessmentWorkflow, extractAssessmentJobs, selectAssessmentMetadata, type AssessmentWorkflowJob } from './incidents/workflow-assessment.js';
+export { isPublicSnapshotPath } from './security/snapshot-inputs.js';
+export { compareFailureIdentity, nativeFailureForCommand, nativeExecutionCommand, type NativeFailureEvidence, type FailureIdentityEvidence } from './engine/failure-identity.js';
+export { classifyIncident } from './incidents/classify.js';
+export { INCIDENT_ASSESSMENT_VERSION, RUNTIME_SUPPORT_CONTRACT } from './incidents/types.js';
+export type { AssessmentScope, TargetRuntimeContract, ObservationCompleteness, JobAssessmentInput,
+  JobAssessmentRecord, IncidentTrigger, IncidentClassificationInput, IncidentClassificationRecord,
+  IncidentCause, IncidentDisposition, ReadinessStage, SupportVerdict, CapabilityPresence,
+  Confidence as IncidentConfidence } from './incidents/types.js';
+export { nodeImageRefForDeclarations } from './runtime/node.js';
+export { validatePythonDependencyContents } from './runtime/python.js';
+
+export { rankFailedSteps, diagnosisLog } from './orchestrate.js';
+export { selectFailedStepLog } from './github/adapter.js';

@@ -69,12 +69,14 @@ describe('focused triage on the Placebo benchmark', () => {
       });
       const run = await boundedTriage(executor, 'failure-image', 'vitest run', 5, undefined,
         { scope: 'focused', sandboxBudgetSec: 240 },
-        { command: focus.command, sameFailure: (result) => sameFailure(focus, result.stdout, result.exitCode) });
+        { command: focus.command, sameFailure: (result) => sameFailure(focus, result.stdout, result.exitCode) },
+        { command: 'vitest run', log: FAIL });
       const legacy = await triage(new InMemoryExecutor((_command, _parent, index) => ({
-        exitCode: exits[index] ?? 1, stdout: '', stderr: '', truncated: false, metrics: {},
-      })), 'failure-image', 'vitest run', 5);
+        exitCode: exits[index] ?? 1, stdout: exits[index] === 0 ? PASS : FAIL, stderr: '', truncated: false, metrics: {},
+      })), 'failure-image', 'vitest run', 5, undefined, { command: 'vitest run', log: FAIL });
 
       expect(run.verdict, benchmarkCase.id).toEqual(legacy);
+      expect(run.verdict.stopReason, benchmarkCase.id).not.toBe('failure-identity');
       expect(run.verdict.reproduced, benchmarkCase.id).toBe(exits.slice(0, run.verdict.of).filter((code) => code !== 0).length);
     }
   });

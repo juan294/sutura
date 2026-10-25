@@ -505,6 +505,16 @@ Stretch work can start only when Phase 0 is accepted, the Case Lab is public, an
 
 Update this table only when the direct evidence exists. Link the evidence and record the exact commit or release identity in the Evidence field.
 
+**Current status (2026-10-07).** The rows below are a historical record of the v0.2.x
+cycle. The current release evidence is v0.3.9 on commit
+`cc3281485b4364d7c8fcb2e820e03ffbaf893c2a`: 51 cases, 55 evaluations, zero false approvals,
+fix rate 14/18
+([result](../demo/placebo-v0.3.9-live-2026-10-03.json),
+[evidence](../demo/sutura-v0.3.9-release-benchmark-evidence.md)). The Case Lab is bound to
+v0.3.9 ([record](../release/v0.3.9-case-lab-record.md)). The Nebius and NVIDIA feedback is
+complete in `docs/feedback/2026-10-sutura-nebius-feedback.md`. The public video is still
+to be recorded, and nothing is submitted to Devpost yet.
+
 | Evidence | State | Required by | Evidence |
 | --- | --- | --- | --- |
 | v0.2 live benchmark | Failed | Phase 0 | Complete 51-case, 55-evaluation result in `docs/demo/placebo-v0.2-live-2026-09.json`; zero false approvals; required gates missed |
@@ -519,9 +529,9 @@ Update this table only when the direct evidence exists. Link the evidence and re
 | Data Lab batch experiment | Not started | Phase 3 | Local export only; upload disabled |
 | External installs | Not started | Phase 4 | Three accepted records required |
 | Marketplace evidence | Not started | Phase 4 and Phase 6 | No accepted current record |
-| Nebius feedback | Active | Phase 5 | Qualitative draft in `docs/feedback/2026-10-sutura-nebius-feedback.md`; final measured report remains gated |
+| Nebius feedback | Active | Phase 5 | Complete as of 2026-10-07 in `docs/feedback/2026-10-sutura-nebius-feedback.md`; kept open to updates until the day before submission |
 | Public video | Not started | Phase 5 | Public YouTube URL required |
-| Devpost submission | Active | Phase 7 | Qualitative source and video script in `docs/devpost/`; measured assembly and update remain gated |
+| Devpost submission | Active | Phase 7 | Source in `docs/devpost/sutura-submission.md` refreshed to v0.3.9 on 2026-10-07; not submitted yet |
 | Final candidate | Active | Phase 6 | Feature-freeze record in `docs/demo/sutura-v0.2.1-candidate-freeze.md`; exact verified candidate `f8195e8a82ffe1527d755ae7ecb8a047484af9fa` contains WS-1, WS-2, WS-3, and WS-4 |
 | Provider and ConTree canaries | Passed | Phase 0 and Phase 6 | Workflow `33884265464`; provider and runtime-image artifacts bound to `f8195e8a82ffe1527d755ae7ecb8a047484af9fa` in `docs/demo/` |
 | v0.2.1 G1 targeted Tavily proof | Passed | Phase 0 | Workflow `33887916292`; Tavily `fixed`, no Tavily `gave-up`, zero false approvals, USD 0.24664956; exact-candidate artifact in `docs/demo/placebo-v0.2.1-g1-upstream-retry-release-f8195e8a82ffe1527d755ae7ecb8a047484af9fa.json` |

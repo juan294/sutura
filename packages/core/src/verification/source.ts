@@ -12,7 +12,8 @@ import {
   loadRepositoryPolicy,
   type LoadedRepositoryPolicy,
 } from '../policy/load.js';
-import { isSensitiveRepositoryPath, isVerificationPrivatePath } from '../security/repository-path.js';
+import { isVerificationPrivatePath } from '../security/repository-path.js';
+import { assertSafeNpmrcContent, isNpmrcPath, isPublicSnapshotPath } from '../security/snapshot-inputs.js';
 
 const exec = promisify(execFile);
 
@@ -160,7 +161,7 @@ async function trackedFiles(caseDir: string): Promise<string[]> {
       `Checkout tracks ${paths.length} files; at most ${MAX_SNAPSHOT_FILES} are snapshotted`,
     );
   }
-  return paths.filter((path) => !isVerificationPrivatePath(path) && !isSensitiveRepositoryPath(path));
+  return paths.filter((path) => !isVerificationPrivatePath(path) && isPublicSnapshotPath(path));
 }
 
 function sameFile(left: Stats, right: Stats): boolean {
@@ -227,6 +228,12 @@ async function readTracked(caseDir: string, path: string): Promise<{ bytes: Buff
     }
     throw error;
   }
+  if (isNpmrcPath(path)) {
+    try { assertSafeNpmrcContent(bytes.toString('utf8'), path); }
+    catch (error) {
+      throw new VerifySourceError('source-config-unsupported', error instanceof Error ? error.message : 'Unsupported .npmrc');
+    }
+  }
   return { bytes, executable, sha256: createHash('sha256').update(`${executable}\u0000`).update(bytes).digest('hex') };
 }
 
@@ -260,7 +267,7 @@ export async function snapshotSelectedSource(
   validateSource: () => Promise<void>,
 ): Promise<Omit<SourceSnapshot, 'sourceSha'>> {
   const paths = [...new Set(selectedPaths)].sort();
-  if (paths.length > MAX_SNAPSHOT_FILES || paths.some(path => isSensitiveRepositoryPath(path))) {
+  if (paths.length > MAX_SNAPSHOT_FILES || paths.some(path => !isPublicSnapshotPath(path))) {
     throw new VerifySourceError('source-path-escape', 'Snapshot manifest exceeds limits or includes a private path');
   }
   const dir = await mkdtemp(join(tmpdir(), 'sutura-verify-source-'));

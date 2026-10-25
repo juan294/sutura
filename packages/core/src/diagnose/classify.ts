@@ -35,12 +35,24 @@ function githubLogPayload(line: string): string {
 }
 
 const COMMAND_HEADER = /^(?:Run|\$)\s+(\S.*)$/;
-const ACTION_REFERENCE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+$/u;
+const ACTION_REFERENCE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*@\S+$/u;
 const ANSI_SGR = /\x1b\[[0-9;]*m/gu;
 
+/** An Action identity is context for refusal, never a shell execution command. */
+export function externalActionReference(line: string): string | undefined {
+  const command = COMMAND_HEADER.exec(githubLogPayload(line))?.[1];
+  return command !== undefined && ACTION_REFERENCE.test(command) ? command : undefined;
+}
+
 export function isCommandHeader(line: string): boolean {
+  const field = line.slice(line.lastIndexOf('\t') + 1).trim();
+  const unstamped = field.replace(/^\d{4}-\d{2}-\d{2}T\S+Z\s+/, '');
+  // In native runner logs only its Run group identifies the executed script.
+  // A timestamped "Run <build command> and commit ..." is remediation prose,
+  // even when it resembles the shorthand headers used by plain-text fixtures.
+  if (unstamped !== field && !unstamped.startsWith('##[group]Run ')) return false;
   const matched = COMMAND_HEADER.exec(githubLogPayload(line));
-  return matched !== null && !ACTION_REFERENCE.test(matched[1] ?? '');
+  return matched !== null && externalActionReference(line) === undefined;
 }
 
 /** Where a `Run` header's script echo ends, as `shellScriptCommand` reads it. */
@@ -51,7 +63,7 @@ function scriptBlockLine(raw: string): HeaderBlockLine {
   return line.startsWith('env:') || line.startsWith('with:') ? 'abort' : 'continue';
 }
 
-function boundedCommandLog(log: string): string {
+export function boundedCommandLog(log: string): string {
   return boundedTailWithHeader(log, LOG_BOUNDS, isCommandHeader, scriptBlockLine);
 }
 
@@ -76,7 +88,7 @@ function failingCommand(log: string): string {
   for (let index = 0; index < lines.length; index += 1) {
     const line = githubLogPayload(lines[index] ?? '');
     const runMatch = COMMAND_HEADER.exec(line);
-    if (runMatch?.[1] && !ACTION_REFERENCE.test(runMatch[1])) {
+    if (runMatch?.[1] && isCommandHeader(lines[index] ?? '')) {
       const header = runMatch[1].trim();
       command = shellScriptCommand(lines, index) ??
         (header.startsWith('#') ? '' : header);
@@ -263,11 +275,23 @@ export async function classify(
   }
   const classAgrees = mechanical.class === model.class;
   const commandAgrees = mechanical.failingCmd === model.failingCmd;
-  const agrees = classAgrees && commandAgrees;
+  const primaryLines = boundedLog.split('\n').map(githubLogPayload);
+  let nextLine = 0;
+  const excerptLines = model.errorExcerpt.split('\n').map(githubLogPayload).filter(Boolean);
+  const excerptGrounded = excerptLines.length > 0 && excerptLines.every(line => {
+    const found = primaryLines.findIndex((primary, index) => index >= nextLine && primary.includes(line));
+    nextLine = found + 1;
+    return found >= 0;
+  });
+  const classGrounded = classAgrees || FAILURE_TAXONOMY[model.class].signatures
+    .some((signature) => signature.test(model.errorExcerpt));
+  const modelGrounded = commandAgrees && excerptGrounded && classGrounded;
+  const agrees = classAgrees && modelGrounded;
   return {
     ...model,
-    class: model.class === 'dep-upstream-breaking' && hasLocalRelativeModuleFailure(boundedLog)
+    class: !modelGrounded || (model.class === 'dep-upstream-breaking' && hasLocalRelativeModuleFailure(boundedLog))
       ? mechanical.class : model.class,
+    errorExcerpt: modelGrounded ? model.errorExcerpt : mechanical.errorExcerpt,
     confidence: agrees ? model.confidence : Math.min(model.confidence, 0.49),
     failingCmd: mechanical.failingCmd,
     signals: Array.from(
@@ -276,6 +300,8 @@ export async function classify(
         ...mechanical.signals,
         ...(classAgrees ? [] : [`llm:${model.class}`]),
         ...(commandAgrees ? [] : ['llm-command-mismatch']),
+        ...(excerptGrounded ? [] : ['llm-excerpt-ungrounded']),
+        ...(classGrounded ? [] : ['llm-class-ungrounded']),
       ]),
     ),
   };

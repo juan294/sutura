@@ -70,7 +70,7 @@ function parseTimestampedLog(log: string): TimestampedLogLine[] {
 function failedStepLog(
   lines: readonly TimestampedLogLine[],
   step: { name: string; startedAt: string | null; completedAt: string | null },
-): string {
+): { log: string; truncated: boolean } {
   if (!step.startedAt || !step.completedAt) {
     throw new GitHubAdapterError(`Failed step ${step.name} has no timestamp bounds`);
   }
@@ -102,7 +102,7 @@ function failedStepLog(
   if (matching.length === 0) {
     throw new GitHubAdapterError(`Job logs contain no lines for failed step ${step.name}`);
   }
-  if (matching.length <= FAILED_STEP_LINES) return matching.map(({ line }) => line).join('\n');
+  if (matching.length <= FAILED_STEP_LINES) return { log: matching.map(({ line }) => line).join('\n'), truncated: false };
   const kept = new Set<number>();
   if (groupIndex >= 0) {
     for (let index = 0; index <= scriptBlockEnd(matching); index += 1) kept.add(index);
@@ -115,7 +115,7 @@ function failedStepLog(
   for (let index = matching.length - 1; index >= 0 && kept.size < FAILED_STEP_LINES; index -= 1) {
     kept.add(index);
   }
-  return [...kept].sort((left, right) => left - right).map((index) => matching[index]?.line).join('\n');
+  return { log: [...kept].sort((left, right) => left - right).map((index) => matching[index]?.line).join('\n'), truncated: true };
 }
 
 function runContextLines(lines: readonly TimestampedLogLine[]): number[] {
@@ -295,9 +295,11 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
       for (const step of job.steps) {
         if (!FAILED_CONCLUSIONS.has(step.conclusion ?? '')) continue;
         failedSteps.push({
+          jobId: job.id,
           jobName: job.name,
           stepName: step.name,
-          log: failedStepLog(timestampedLines, step),
+          ...(step.number === undefined ? {} : { stepNumber: step.number }),
+          ...failedStepLog(timestampedLines, step),
           ...(step.completedAt ? { completedAt: step.completedAt } : {}),
         });
       }
@@ -484,4 +486,9 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
     }
     return this.options.artifact.uploadTextArtifact(name, content, extension);
   }
+}
+
+/** Shared bounded step selection for read-only diagnosis outside the Action adapter. */
+export function selectFailedStepLog(log: string, step: { name: string; startedAt: string | null; completedAt: string | null }): { log: string; truncated: boolean } {
+  return failedStepLog(parseTimestampedLog(log), step);
 }

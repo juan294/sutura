@@ -8,7 +8,7 @@ async function text(path) {
   return readFile(new URL(path, root), 'utf8');
 }
 
-test('all release-bearing packages and the public API declare 0.3.9', async () => {
+test('all release-bearing packages and the public API declare 0.4.0', async () => {
   const manifests = await Promise.all([
     'package.json',
     'packages/action/package.json',
@@ -18,8 +18,8 @@ test('all release-bearing packages and the public API declare 0.3.9', async () =
     'packages/evaluation/package.json',
     'packages/placebo/package.json',
   ].map(async (path) => JSON.parse(await text(path))));
-  assert.deepEqual(manifests.map(({ version }) => version), Array(7).fill('0.3.9'));
-  assert.match(await text('packages/core/src/index.ts'), /VERSION = '0\.3\.9'/u);
+  assert.deepEqual(manifests.map(({ version }) => version), Array(7).fill('0.4.0'));
+  assert.match(await text('packages/core/src/index.ts'), /VERSION = '0\.4\.0'/u);
 });
 
 test('ordinary CI runs deterministic release contract and candidate install checks', async () => {

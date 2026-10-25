@@ -25,19 +25,25 @@ import {
   type OrchestrationContext,
 } from '@sutura/core';
 
-import { GitHubAdapter } from './github.js';
-import { reportOutcome } from './acceptance.js';
+import { ActionTextArtifactPort, GitHubAdapter } from './github.js';
+import { caseTerminalDetail, expectedActionStop, reportOutcome } from './acceptance.js';
+import { inspectAction, inspectionFetch, type InspectionContext } from './inspect-github.js';
+import { reportInspection, type ActionInspection } from './inspect.js';
+import { buildPublicationReceipt, type AuthenticatedSourceRun } from './publication.js';
 import { runtimeEvidence } from './evidence.js';
 import { withFailureSafeCheck } from './failure-safe.js';
-import { mapActionInputs, type ActionConfiguration } from './input.js';
+import { ActionInputError, mapActionInputs, type ActionConfiguration } from './input.js';
 import { createGitHubApi } from './octokit.js';
 import { GitRepository } from './repository.js';
 import { recordingGitHubApi } from './replay-github.js';
 import { recordingRepositoryPort } from './replay-repository.js';
-import { resolveActionIdentity } from './terminal-failure.js';
+import { createTerminalFailureEvidence, resolveActionIdentity } from './terminal-failure.js';
 
 export interface RunActionDependencies {
   readAction(): ActionConfiguration;
+  inspect(action: ActionConfiguration, context: InspectionContext): Promise<ActionInspection>;
+  publishInspection(result: ActionInspection): void;
+  publishTerminal(evidence: Record<string, unknown>): Promise<void>;
   readVerification(): ActionVerifyInputs;
   verify(inputs: ActionVerifyInputs, context: ActionVerificationContext): Promise<ActionVerificationOutcome>;
   loadConfiguration(environment: ConfigEnvironment): Config;
@@ -48,6 +54,15 @@ export interface RunActionDependencies {
 
 const DEFAULT_DEPENDENCIES: RunActionDependencies = {
   readAction: () => mapActionInputs((name) => core.getInput(name)),
+  inspect: inspectAction,
+  publishInspection: result => reportInspection(result, core),
+  publishTerminal: async evidence => {
+    const identity = evidence.fixtureIdentity as { repository: string; targetRunId: string };
+    if (!/^[1-9]\d*$/u.test(identity.targetRunId) || !/^[1-9]\d*$/u.test(String(evidence.actionRunId))) throw new Error('Terminal artifact identity unavailable');
+    const port = new ActionTextArtifactPort(identity.repository, String(evidence.actionRunId), new DefaultArtifactClient());
+    const artifact = await port.uploadTextArtifact(`sutura-terminal-outcome-${identity.targetRunId}.json`, JSON.stringify(evidence));
+    core.setOutput('terminal-artifact-url', artifact.url);
+  },
   readVerification: () => mapVerifyInputs((name) => core.getInput(name)),
   verify: runActionVerification,
   loadConfiguration: loadConfig,
@@ -61,9 +76,18 @@ export async function runAction(
 ): Promise<void> {
   const dependencies = { ...DEFAULT_DEPENDENCIES, ...overrides };
   let requireFixed = false;
+  let actionMode: 'heal' | 'verify' | 'inspect' = 'heal';
+  let selectedRunId: string | undefined;
+  let recorder: ReplayRecorder | undefined;
   try {
     const action = dependencies.readAction();
     requireFixed = action.requireFixed;
+    actionMode = action.mode ?? 'heal'; selectedRunId = action.runId;
+    if (action.mode === 'inspect') {
+      const { owner, repo } = dependencies.repository();
+      dependencies.publishInspection(await dependencies.inspect(action, { owner, repo, environment: dependencies.environment }));
+      return;
+    }
     const config = dependencies.loadConfiguration(action.environment);
     if (!config.contreeToken || !config.contreeProject) {
       throw new Error('ConTree token and project are required by the GitHub Action');
@@ -102,7 +126,7 @@ export async function runAction(
       'sourceReferenceOrder'
       | 'repairVerificationScope' | 'triagePolicy'
     >;
-    const recorder = action.captureReplay
+    recorder = action.captureReplay
       ? new ReplayRecorder(
           action.runId,
           `${owner}/${repo}`,
@@ -150,7 +174,22 @@ export async function runAction(
           ),
         } : {})
       : undefined;
-    const githubApi = createGitHubApi(octokit, owner, repo);
+    let publicationSource: AuthenticatedSourceRun | undefined;
+    let publishedPrNumber: number | undefined;
+    const baseGithubApi = createGitHubApi(octokit, owner, repo, { onSourceRun: source => {
+      if (source.runId !== Number(action.runId) || source.repository.toLowerCase() !== `${owner}/${repo}`.toLowerCase() ||
+        !Number.isSafeInteger(source.attempt) || source.attempt < 1 || !Number.isSafeInteger(source.repositoryId) || source.repositoryId < 1 ||
+        !Number.isSafeInteger(source.workflowId) || source.workflowId < 1 || !/^[a-f0-9]{40}$/u.test(source.sha) || !source.branch) throw new Error('Publication source identity unavailable');
+      if (dependencies.environment.GITHUB_EVENT_NAME === 'workflow_run') {
+        const event = github.context.payload.workflow_run as { id?: number; run_attempt?: number; head_sha?: string; workflow_id?: number } | undefined;
+        if (!event || event.id !== source.runId || event.run_attempt !== source.attempt || event.head_sha !== source.sha || event.workflow_id !== source.workflowId) throw new Error('Authenticated source event attempt differs from selected run');
+      }
+      if (publicationSource && JSON.stringify(publicationSource) !== JSON.stringify(source)) throw new Error('Selected source run changed during repair');
+      publicationSource = { ...source };
+    } });
+    const githubApi = { ...baseGithubApi, async createPullRequest(input: Parameters<typeof baseGithubApi.createPullRequest>[0]) {
+      const created = await baseGithubApi.createPullRequest(input); publishedPrNumber = created.number; return created;
+    } };
     const adapter = new GitHubAdapter(
       recorder ? recordingGitHubApi(githubApi, recorder) : githubApi,
       {
@@ -210,7 +249,16 @@ export async function runAction(
       actionSha: actionIdentity.sha ?? '',
       actionShaSource: actionIdentity.source,
     });
-    reportOutcome(result.outcome, action.requireFixed, core);
+    if (result.outcome === 'fixed') {
+      if (!publicationSource || publishedPrNumber === undefined || actionIdentity.sha === null) throw new Error('Fixed publication lacks authenticated receipt inputs');
+      const monitorAttempt = Number(dependencies.environment.GITHUB_RUN_ATTEMPT);
+      const receipt = await buildPublicationReceipt({ octokit: github.getOctokit(action.githubToken, { request: { fetch: inspectionFetch() } }), source: publicationSource, monitorRunId: Number(actionRunId), monitorAttempt,
+        actionSha: actionIdentity.sha, prNumber: publishedPrNumber });
+      const artifact = await new ActionTextArtifactPort(`${owner}/${repo}`, actionRunId, new DefaultArtifactClient()).uploadTextArtifact(
+        `sutura-publication-v1-${actionRunId}-${monitorAttempt}`, JSON.stringify(receipt), 'json');
+      core.setOutput('publication-receipt-url', artifact.url);
+    }
+    reportOutcome(result.outcome, action.requireFixed, { setOutput: core.setOutput, setFailed: dependencies.setFailed }, caseTerminalDetail(result));
     for (const evidence of runtimeEvidence(result)) core.info(evidence);
     core.info(`Sutura outcome: ${result.outcome}`);
   } catch (error) {
@@ -224,6 +272,28 @@ export async function runAction(
       reportOutcome('repair-branch-skipped', requireFixed, core);
       return;
     }
+    const mode = error instanceof ActionInputError ? error.actionMode : actionMode;
+    const expected = mode === 'heal' ? expectedActionStop(error) : undefined;
+    if (expected) {
+      if (error instanceof ActionInputError) requireFixed ||= error.admittedStrict;
+      const { owner, repo } = dependencies.repository();
+      const actionIdentity = resolveActionIdentity(dependencies.environment);
+      const replay = recorder?.finish('infra-stop');
+      const evidence = { ...createTerminalFailureEvidence(error, {
+        repository: `${owner}/${repo}`, actionRunId: dependencies.environment.GITHUB_RUN_ID ?? '',
+        targetRunId: selectedRunId ?? (error instanceof ActionInputError ? error.runId : undefined) ?? '',
+        actionSha: actionIdentity.sha ?? '', actionShaSource: actionIdentity.source, ...(replay ? { replay } : {}),
+      }), terminal: expected };
+      core.setOutput('terminal-evidence', JSON.stringify(evidence));
+      try { await dependencies.publishTerminal(evidence); }
+      catch { dependencies.setFailed('Sutura could not persist typed terminal evidence; outcome remains incomplete.'); return; }
+      reportOutcome('infra-stop', requireFixed, { setOutput: core.setOutput, setFailed: dependencies.setFailed }, expected);
+      core.info(`${expected.reason}: ${expected.nextAction} Consumed resources remain in existing case or terminal receipts; unavailable accounting is not zero.`);
+      return;
+    }
+    core.setOutput('outcome', 'monitor-failed');
+    core.setOutput('terminal-reason', 'unexpected-exception');
+    core.setOutput('next-action', 'Inspect the exact failed Action run and retained terminal diagnostics before a new authorized event.');
     dependencies.setFailed(error instanceof Error ? error.message : String(error));
   }
 }

@@ -6,6 +6,9 @@ import {
   type RunResult,
 } from '../executor/types.js';
 import { MAX_TRIAGE_RUNS } from '../config.js';
+import { compareFailureIdentity, nativeExecutionCommand, type FailureIdentityEvidence, type NativeFailureEvidence } from './failure-identity.js';
+import { normalizePythonCommand } from '../runtime/python.js';
+import { sandboxExecutableCommand } from './sandbox-command.js';
 import { shellQuote } from './shell.js';
 import {
   FLAKE_CONFIDENCE_METHOD_VERSION,
@@ -50,12 +53,14 @@ export async function triage(
   failingCmd: string,
   N = DEFAULT_TRIAGE_RUNS,
   observe?: (result: RunResult, attempt: number) => void,
+  native?: NativeFailureEvidence,
 ): Promise<TriageVerdict> {
   if (!Number.isSafeInteger(N) || N <= 0 || N > MAX_TRIAGE_RUNS) {
     throw new RangeError(`N must be between 1 and ${MAX_TRIAGE_RUNS}`);
   }
 
   const exitCodes: number[] = [];
+  let reproduction: FailureIdentityEvidence | undefined;
   while (exitCodes.length < N) {
     const batchSize = Math.min(2, N - exitCodes.length);
     const firstAttempt = exitCodes.length;
@@ -69,17 +74,23 @@ export async function triage(
       { cwd: SNAPSHOT_CWD },
     );
     if (results.length !== batchSize) throw new Error('executor returned an unexpected triage result count');
-    results.forEach((result, offset) => {
-      exitCodes.push(result.exitCode);
+    // Every result was already executed, even if another result invalidates this batch.
+    for (const [offset, result] of results.entries()) {
       observe?.(result, firstAttempt + offset + 1);
-    });
+      if (reproduction && reproduction.status !== 'matched') continue;
+      if (result.exitCode !== 0) reproduction = probeIdentity(native, failingCmd, result);
+      if (!reproduction || reproduction.status === 'matched') exitCodes.push(result.exitCode);
+    }
+    if (reproduction && reproduction.status !== 'matched') {
+      return identityStopVerdict(exitCodes, N, reproduction);
+    }
     const evidence = evaluateFlakeConfidence(exitCodes, N);
     if (evidence.decision !== 'continue') {
-      return completedTriageVerdict(exitCodes, N);
+      return { ...completedTriageVerdict(exitCodes, N), ...(reproduction ? { reproduction } : {}) };
     }
   }
   // The final full batch always makes evaluateFlakeConfidence terminal.
-  return completedTriageVerdict(exitCodes, N);
+  return { ...completedTriageVerdict(exitCodes, N), ...(reproduction ? { reproduction } : {}) };
 }
 
 export type TriageScope = 'focused' | 'full';
@@ -145,6 +156,29 @@ function budgetStopVerdict(exitCodes: readonly number[], maximumAttempts: number
   };
 }
 
+function probeIdentity(native: NativeFailureEvidence | undefined, command: string, result: RunResult): FailureIdentityEvidence {
+  const commands = native ? [native.command, nativeExecutionCommand(native)] : [];
+  if (native && !commands.some(candidate => candidate !== undefined &&
+    (candidate === command || sandboxExecutableCommand(candidate) === command || normalizePythonCommand(candidate) === command))) {
+    return {
+      version: 'sutura-failure-identity-v1', status: 'unavailable', parser: 'unavailable',
+      reason: 'Native command does not match the executed full command',
+      ...(native.selectedStep ? { selectedStep: native.selectedStep } : {}),
+    };
+  }
+  return compareFailureIdentity(native, {
+    log: `${result.stdout}\n${result.stderr}`,
+    exitCode: result.exitCode,
+    truncated: result.truncated,
+  });
+}
+
+function identityStopVerdict(
+  exitCodes: readonly number[], maximumAttempts: number, reproduction: FailureIdentityEvidence,
+): TriageVerdict {
+  return { ...budgetStopVerdict(exitCodes, maximumAttempts), stopReason: 'failure-identity', reproduction };
+}
+
 /**
  * Triage under a cumulative sandbox-time budget, optionally starting from a
  * focused probe. Probe 1 runs alone and is measured, because no other run
@@ -152,8 +186,10 @@ function budgetStopVerdict(exitCodes: readonly number[], maximumAttempts: number
  * another). Probes then run one at a time, and before each the seconds spent
  * plus the slowest probe so far times the remaining attempts must fit the
  * budget. Probes keep the legacy numbering and the legacy evaluation points
- * (after attempts 2, 4 and 5), so a run within budget reaches exactly the
- * legacy verdict. The worst case is the budget plus one probe.
+ * (after attempts 2, 4 and 5), so a run within budget with matched failure
+ * identity reaches the legacy verdict. A failed full probe with mismatched or
+ * unavailable identity stops as not-run with reason failure-identity. The worst
+ * case is the budget plus one probe.
  *
  * A focused probe counts only while it fails the same way as the original
  * failure; it can therefore only confirm `real`. At the first focused pass or
@@ -168,15 +204,17 @@ export async function boundedTriage(
   observe?: (result: RunResult, probe: number, kind: TriageProbeKind) => void,
   policy: TriagePolicy = LEGACY_TRIAGE_POLICY,
   focus?: FocusedProbe,
+  native?: NativeFailureEvidence,
 ): Promise<TriageRun> {
   const budgetSec = policy.sandboxBudgetSec;
   if (budgetSec === undefined && focus === undefined) {
-    return { verdict: await triage(executor, failingImage, failingCmd, N, (result, attempt) => observe?.(result, attempt, 'full')) };
+    return { verdict: await triage(executor, failingImage, failingCmd, N, (result, attempt) => observe?.(result, attempt, 'full'), native) };
   }
   if (!Number.isSafeInteger(N) || N <= 0 || N > MAX_TRIAGE_RUNS) {
     throw new RangeError(`N must be between 1 and ${MAX_TRIAGE_RUNS}`);
   }
   let exitCodes: number[] = [];
+  let reproduction: FailureIdentityEvidence | undefined;
   let focused = focus !== undefined;
   const focusEvidence = focus === undefined ? undefined : { command: focus.command, kept: 0, rejected: 0 };
   let probes = 0;
@@ -203,15 +241,19 @@ export async function boundedTriage(
     }
     let kind: TriageProbeKind = 'full';
     if (focused && focus && focusEvidence) {
-      kind = focus.sameFailure(result) ? 'focused-kept' : 'focused-rejected';
+      const sameIdentity = result.exitCode !== 0 ? probeIdentity(native, failingCmd, result) : undefined;
+      kind = focus.sameFailure(result) && sameIdentity?.status === 'matched' ? 'focused-kept' : 'focused-rejected';
+      if (kind === 'focused-kept') reproduction = sameIdentity;
       focusEvidence[kind === 'focused-kept' ? 'kept' : 'rejected'] += 1;
       if (kind === 'focused-rejected') {
         // Restart: a focused pass or a different failure says nothing about the full command.
         focused = false;
         exitCodes = [];
+        reproduction = undefined;
       }
     }
-    if (kind !== 'focused-rejected') exitCodes.push(result.exitCode);
+    if (kind === 'full' && result.exitCode !== 0) reproduction = probeIdentity(native, failingCmd, result);
+    if (kind !== 'focused-rejected' && (!reproduction || reproduction.status === 'matched')) exitCodes.push(result.exitCode);
     observe?.(result, probes, kind);
   };
   const gated = () => budgetSec !== undefined && enforced && probes > 0;
@@ -220,7 +262,7 @@ export async function boundedTriage(
       const predictedSec = Math.ceil(spentSec + probeSec * (N - exitCodes.length));
       if (predictedSec > budgetSec!) {
         return {
-          verdict: budgetStopVerdict(exitCodes, N),
+          verdict: { ...budgetStopVerdict(exitCodes, N), ...(reproduction ? { reproduction } : {}) },
           budget: { enforced: true, budgetSec: budgetSec!, probeSec, spentSec, predictedSec, probes },
           ...(focusEvidence ? { focus: focusEvidence } : {}),
         };
@@ -228,13 +270,16 @@ export async function boundedTriage(
     }
     // One probe at a time: each is gated, so the worst case is the budget plus one probe.
     await probe();
+    if (reproduction && reproduction.status !== 'matched') break;
     const attempts = exitCodes.length;
     // Evaluate only where legacy batches end (attempts 2, 4, ..., N), so verdicts match legacy.
     if ((attempts % 2 === 0 || attempts === N) && attempts > 0 &&
       evaluateFlakeConfidence(exitCodes, N).decision !== 'continue') break;
   }
   return {
-    verdict: completedTriageVerdict(exitCodes, N),
+    verdict: reproduction && reproduction.status !== 'matched'
+      ? identityStopVerdict(exitCodes, N, reproduction)
+      : { ...completedTriageVerdict(exitCodes, N), ...(reproduction ? { reproduction } : {}) },
     ...(budgetSec === undefined ? {} : {
       budget: enforced
         ? { enforced, budgetSec, probeSec, spentSec, predictedSec: Math.ceil(spentSec), probes }

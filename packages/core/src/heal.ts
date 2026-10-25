@@ -72,6 +72,7 @@ import {
   boundedTriage, LEGACY_TRIAGE_POLICY, TRIAGE_PROBE_NOTES, type FocusedProbe, type TriagePolicy, type TriageRun,
 } from './engine/triage.js';
 import { notRunTriageVerdict } from './engine/triage.js';
+import { compareFailureIdentity, nativeFailureForCommand, type NativeFailureEvidence, type FailureIdentityEvidence } from './engine/failure-identity.js';
 import {
   SNAPSHOT_CWD,
   type Executor,
@@ -132,6 +133,9 @@ export interface RepairFailureContext {
   runId: string;
   repo: string;
   failedLog: string;
+  nativeFailure?: NativeFailureEvidence;
+  baselineResult?: RunResult;
+  reproduction?: FailureIdentityEvidence;
   failingImage: ImageId;
   executor: Executor;
   llm: HealLlm;
@@ -510,6 +514,18 @@ export function noReproductionCaseFile(
   );
 }
 
+function sandboxFailureExcerpt(result: Pick<RunResult, 'stdout' | 'stderr'>): string {
+  // Redact a wider window before the final cut, so a credential split by the
+  // character bound is never published as an unrecognisable fragment.
+  return boundedTail(
+    redactExternalText(boundedTail(
+      [result.stdout, result.stderr].filter(Boolean).join('\n'),
+      { maxLines: 20, maxCharacters: 8_000, maxBytes: 8_000 },
+    )).text,
+    { maxLines: 20, maxCharacters: 2_000, maxBytes: 2_000 },
+  ).trim();
+}
+
 export function preparationFailureCaseFile(
   ctx: Pick<
     HealCaseContext,
@@ -518,15 +534,7 @@ export function preparationFailureCaseFile(
   command: string,
   result: RunResult,
 ): CaseFile {
-  // Redact a wider window before the final cut, so a credential split by the
-  // character bound is never published as an unrecognisable fragment.
-  const excerpt = boundedTail(
-    redactExternalText(boundedTail(
-      [result.stdout, result.stderr].filter(Boolean).join('\n'),
-      { maxLines: 20, maxCharacters: 8_000, maxBytes: 8_000 },
-    )).text,
-    { maxLines: 20, maxCharacters: 2_000, maxBytes: 2_000 },
-  ).trim();
+  const excerpt = sandboxFailureExcerpt(result);
   return makeCaseFile(
     ctx,
     {
@@ -540,6 +548,40 @@ export function preparationFailureCaseFile(
     [],
     'infra-stop',
   );
+}
+
+/** Exact baseline preflight markers only; arbitrary failed commands are not prerequisites. */
+function missingPrerequisiteTools(output: string): string[] {
+  const bounded = boundedTail(output, { maxLines: 200, maxCharacters: 20_000, maxBytes: 20_000 });
+  const start = output.length - bounded.length;
+  const firstNewline = bounded.indexOf('\n');
+  const completeLines = start > 0 && output[start - 1] !== '\n'
+    ? (firstNewline < 0 ? '' : bounded.slice(firstNewline + 1)) : bounded;
+  return completeLines.split(/\r?\n/u).flatMap((line) => {
+    const normalized = line.replace(/\x1b\[[0-9;]*m/gu, '').trim()
+      .replace(/^\d{4}-\d{2}-\d{2}T\S+Z[ \t]+/u, '');
+    const match = /^missing required tool: ([A-Za-z0-9][A-Za-z0-9._+-]{0,79})$/u.exec(normalized);
+    return match?.[1] === undefined ? [] : [match[1]];
+  });
+}
+
+export function missingSandboxPrerequisite(result: Pick<RunResult, 'exitCode' | 'stdout' | 'stderr'>, nativeLog?: string): string | undefined {
+  if (result.exitCode === 0) return undefined;
+  const native = new Set(nativeLog === undefined ? [] : missingPrerequisiteTools(nativeLog));
+  return missingPrerequisiteTools([result.stdout, result.stderr].join('\n')).find((tool) => !native.has(tool));
+}
+
+export function missingPrerequisiteCaseFile(
+  ctx: Parameters<typeof preparationFailureCaseFile>[0],
+  command: string,
+  result: Pick<RunResult, 'stdout' | 'stderr'>,
+): CaseFile {
+  return makeCaseFile(ctx, {
+    class: 'infra', confidence: 1,
+    signals: ['sandbox-reproduction:prerequisite-missing'],
+    failingCmd: command,
+    errorExcerpt: sandboxFailureExcerpt(result),
+  }, notRunTriageVerdict(), [], 'infra-stop');
 }
 
 export function sandboxPreparationCommand(): string {
@@ -567,7 +609,6 @@ const DEFAULT_REPOSITORY_INITIALIZATION_PATHS = {
 
 function sandboxRepositoryInitializationCommand(
   paths: SandboxRepositoryInitializationPaths = DEFAULT_REPOSITORY_INITIALIZATION_PATHS,
-  runtime: RuntimeAdapter = NODE_RUNTIME,
 ): string {
   const commands = [
     `mkdir -p ${shellQuote(paths.templatePath)}`,
@@ -579,7 +620,9 @@ function sandboxRepositoryInitializationCommand(
     // repository tracks under its own .gitignore rules (#152).
     `git --literal-pathspecs add --force --pathspec-from-file=${shellQuote(paths.manifestPath)} --pathspec-file-nul`,
     'git -c core.hooksPath=/dev/null commit --quiet --no-verify -m "chore: initialize Sutura sandbox baseline"',
-    ...(runtime.id === 'node' ? ['if [ -f pnpm-lock.yaml ]; then corepack pnpm rebuild; elif [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm rebuild; elif [ -f yarn.lock ]; then sutura_yarn_version="$(corepack yarn --version)"; case "$sutura_yarn_version" in 0.*|1.*) npm rebuild ;; 2.*|3.*|4.*) corepack yarn rebuild ;; *) echo "unsupported Yarn version: $sutura_yarn_version" >&2; exit 69 ;; esac; else true; fi'] : []),
+    // Source overlay must not turn a hook-disabled dependency installation
+    // into unrestricted repository/dependency lifecycle execution. Native
+    // addons requiring build hooks need a separately reviewed preparation path.
   ];
   return `sh -lc ${shellQuote(commands.join(' && '))}`;
 }
@@ -704,9 +747,7 @@ async function prepareSandboxFromSource(
   });
   const initialized = await executor.run(
     sourceImage,
-    runtime.id === 'node'
-      ? INITIALIZE_REPOSITORY_COMMAND
-      : sandboxRepositoryInitializationCommand(DEFAULT_REPOSITORY_INITIALIZATION_PATHS, runtime),
+    INITIALIZE_REPOSITORY_COMMAND,
     { cwd: SNAPSHOT_CWD },
   );
   stages?.record({
@@ -818,6 +859,7 @@ function makeCaseFile(
     | 'recovery'
     | 'verificationRuns'
     | 'preparedChallenges'
+    | 'reproduction'
   >,
   diagnosis: Diagnosis,
   triageVerdict: CaseFile['triage'],
@@ -847,6 +889,7 @@ function makeCaseFile(
     runtime: (ctx.runtime ?? NODE_RUNTIME).id,
     diagnosis,
     triage: triageVerdict,
+    ...(ctx.reproduction === undefined ? {} : { reproduction: ctx.reproduction }),
     race: raceResults.map((result) => ({
       ...result,
       imageId: result.nodeId,
@@ -938,6 +981,25 @@ async function counterfactualEvidence(
   });
 }
 
+/** Exact local manifest bytes establish script provenance; this never runs a script. */
+export async function readNativeFailureEvidence(root: string, command: string, log: string): Promise<NativeFailureEvidence> {
+  const sources: { path: string; content: string }[] = [];
+  let total = 0;
+  try {
+    const paths = (await listSnapshotFiles(root, 'dependency-inputs')).filter(path => path === 'package.json' || path.endsWith('/package.json'));
+    if (paths.length > 64) return nativeFailureForCommand(command, log);
+    for (const path of paths) {
+      const bytes = await readBoundedRegularFile(join(root, path), 128 * 1024);
+      total += bytes.length;
+      if (total > 1_048_576) return nativeFailureForCommand(command, log);
+      sources.push({ path, content: bytes.toString('utf8') });
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  return nativeFailureForCommand(command, log, sources);
+}
+
 export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile> {
   const policy = policyFor(ctx);
   const generated = policy.verification?.mode === 'required' ? new GeneratedVerificationRecorder({
@@ -994,6 +1056,21 @@ async function repairFailureWithinBudget(
     traceRecorder: trace,
   };
   const providerLog = filterPolicyDeniedText(ctx.failedLog, policy);
+  const mechanical = classifyMechanically(providerLog);
+  const native = ctx.nativeFailure ?? nativeFailureForCommand(mechanical.failingCmd, providerLog);
+  const baseline = ctx.baselineResult ?? await charged.executor.run(ctx.failingImage,
+    sandboxExecutableCommand(mechanical.failingCmd, ctx.runtime ?? NODE_RUNTIME), { cwd: SNAPSHOT_CWD, network: 'disabled' });
+  if (ctx.baselineResult === undefined) ledger.record({ stage: 'reproduction', attempt: 1,
+    network: 'disabled', result: baseline, parentImageId: ctx.failingImage, note: 'Original failure identity probe' });
+  if (baseline.exitCode === 0) return noReproductionCaseFile(fullContext, mechanical);
+  const identity = compareFailureIdentity(native, { log: `${baseline.stdout}\n${baseline.stderr}`,
+    exitCode: baseline.exitCode, truncated: baseline.truncated });
+  ctx.reproduction = identity;
+  fullContext.reproduction = identity;
+  if (identity.status !== 'matched') {
+    return makeCaseFile(fullContext, { ...mechanical, signals: [...mechanical.signals, `reproduction:${identity.status}`] },
+      { ...notRunTriageVerdict(), maximumAttempts: ctx.triageN, stopReason: 'failure-identity', reproduction: identity }, [], 'gave-up');
+  }
   const chargedContext = { ...fullContext, ...charged };
   let diagnosis = await classify(charged.llm, providerLog);
   progress.diagnosis = diagnosis;
@@ -1048,6 +1125,7 @@ async function repairFailureWithinBudget(
     }),
     triagePolicy,
     focus === undefined ? undefined : focusedTriageProbe(focus, (command) => sandboxExecutableCommand(command, runtime)),
+    native,
   );
   const triageVerdict = triageRun.verdict;
   if (focus !== undefined) {
@@ -1059,7 +1137,8 @@ async function repairFailureWithinBudget(
   }
   progress.diagnosis = diagnosis;
   progress.triage = triageVerdict;
-  if (triageVerdict.stopReason === 'sandbox-budget') {
+  if (triageVerdict.stopReason === 'sandbox-budget' || triageVerdict.stopReason === 'failure-identity') {
+    if (triageVerdict.reproduction) fullContext.reproduction = triageVerdict.reproduction;
     return makeCaseFile(fullContext, diagnosis, triageVerdict, [], 'gave-up');
   }
   if (triageVerdict.status !== 'real') {
@@ -1764,12 +1843,18 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     return noReproductionCaseFile(fullContext, mechanical);
   }
 
+  if (missingSandboxPrerequisite(reproduction, ctx.nativeFailure?.log ?? '') !== undefined) {
+    return missingPrerequisiteCaseFile(fullContext, command, reproduction);
+  }
+
   return await repairFailure({
     ...(ctx.executionRecorder === undefined ? {} : { executionRecorder: ctx.executionRecorder }),
     evidenceMode: ctx.evidenceMode ?? 'local',
     runId: ctx.runId,
     repo: ctx.repo,
     failedLog,
+    nativeFailure: ctx.nativeFailure ?? await readNativeFailureEvidence(setup.sourceDir ?? ctx.caseDir, command, failedLog),
+    baselineResult: reproduction,
     failingImage: setup.imageId,
     executor,
     llm: fullContext.llm,

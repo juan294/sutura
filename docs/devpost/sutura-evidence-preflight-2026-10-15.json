@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "sutura-submission-preflight-v1",
+  "purpose": "Read-only pre-recording availability; final video, transcript, gallery and Devpost receipt remain pending. No live repair is dispatched.",
+  "sourceCommit": "9d0f14b8198cc2082c4df6eb4a7fb99227333837",
+  "releaseSubject": "cc3281485b4364d7c8fcb2e820e03ffbaf893c2a",
+  "artifacts": [
+    {
+      "name": "case-lab-home",
+      "url": "https://sutura-case-lab.vercel.app/"
+    },
+    {
+      "name": "health",
+      "url": "https://sutura-case-lab.vercel.app/api/health"
+    },
+    {
+      "name": "javascript-repair",
+      "url": "https://sutura-case-lab.vercel.app/replay/javascript-repair/"
+    },
+    {
+      "name": "python-repair",
+      "url": "https://sutura-case-lab.vercel.app/replay/python-repair/"
+    },
+    {
+      "name": "flaky-failure",
+      "url": "https://sutura-case-lab.vercel.app/replay/flaky-failure/"
+    },
+    {
+      "name": "greenwash-trap",
+      "url": "https://sutura-case-lab.vercel.app/replay/greenwash-trap/"
+    },
+    {
+      "name": "upstream-incident",
+      "url": "https://sutura-case-lab.vercel.app/replay/upstream-incident/"
+    },
+    {
+      "name": "benchmark",
+      "url": "https://raw.githubusercontent.com/juan294/sutura/9d0f14b8198cc2082c4df6eb4a7fb99227333837/docs/demo/placebo-v0.3.9-live-2026-10-03.json",
+      "method": "GET",
+      "expectedResultHash": "4052da76e3a4c76653af98d770afe88a9a3bafb856df6b054ae7e8390cd706d9",
+      "expectedPin": "cc3281485b4364d7c8fcb2e820e03ffbaf893c2a",
+      "pinField": "subjectSha"
+    },
+    {
+      "name": "benchmark-ledger",
+      "url": "https://raw.githubusercontent.com/juan294/sutura/9d0f14b8198cc2082c4df6eb4a7fb99227333837/docs/demo/placebo-v0.3.9-live-ledger-2026-10-03.json",
+      "method": "GET",
+      "expectedResultHash": "5fe035d6a19ce0ff04970b36cb101ed63d64055882c369dc5f19f326723f748a"
+    },
+    {
+      "name": "benchmark-report",
+      "url": "https://raw.githubusercontent.com/juan294/sutura/9d0f14b8198cc2082c4df6eb4a7fb99227333837/docs/demo/sutura-v0.3.9-release-benchmark-evidence.md",
+      "method": "GET",
+      "expectedResultHash": "4d0b44fb6dca13744c39a5f53ea7392fa16df3a954e4fd7e2ab6bda4026f53c4"
+    },
+    {
+      "name": "install-readme",
+      "url": "https://raw.githubusercontent.com/juan294/sutura/9d0f14b8198cc2082c4df6eb4a7fb99227333837/README.md",
+      "method": "GET",
+      "expectedResultHash": "6934c9253a3240c42398349739c5b3a629b268cd32f637f672c5bf723bfb8dbd"
+    },
+    {
+      "name": "action-contract",
+      "url": "https://raw.githubusercontent.com/juan294/sutura/9d0f14b8198cc2082c4df6eb4a7fb99227333837/action.yml",
+      "method": "GET",
+      "expectedResultHash": "dc782417d408e7b1042e6f427334d7a150c4e1d5d67bb26e3fdde5ea6a83981d"
+    },
+    {
+      "name": "release",
+      "url": "https://github.com/juan294/sutura/releases/tag/v0.3.9"
+    },
+    {
+      "name": "marketplace",
+      "url": "https://github.com/marketplace/actions/sutura-verified-self-healing-ci"
+    },
+    {
+      "name": "npm-version",
+      "url": "https://registry.npmjs.org/sutura/0.3.9"
+    }
+  ]
+}

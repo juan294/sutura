@@ -2,10 +2,14 @@ const MAX_CANDIDATE_DIFF_BYTES = 1024 * 1024;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 const SHA_PATTERN = /^[a-f0-9]{40}$/iu;
 
-export const VERSION = '0.3.9';
+export const VERSION = '0.4.0';
 export const USAGE = [
   'Usage:',
-  '  sutura init [--workflow <name>] [--repo <owner/repo>] [--action-sha <commit>] [--force] [--no-tavily]',
+  '  sutura assess [path] [--json]',
+  '  sutura diagnose --repo <owner/repo> --run-id <id> [--json]',
+  '  sutura init --plan [--workflow <name>] [--repo <owner/repo>] [--action-sha <commit>] [--credential <name>]',
+  '  sutura init --apply <plan-digest> [same plan options]',
+  '  sutura <upgrade|pause|resume|remove> --plan | --apply <plan-digest>',
   '  sutura doctor [--repo <owner/repo>] [--action-sha <commit>]',
   '  sutura heal --case-dir <dir> --format json [--candidate-diff <diff>] [--alternatives-file <file>] [--routing-profile <id>] [--runtime <auto|node|python>] [--no-tavily]',
   '  sutura verify --case-dir <dir> --source-sha <commit> --policy-base-sha <commit> --candidate-diff <file> --failing-command <id> [--runtime <auto|node|python>] --format json',
@@ -15,7 +19,23 @@ export const USAGE = [
   '  sutura eval export --manifest <file> --format <atif|jsonl> --output <file> [--force]',
   '  sutura --help',
   '  sutura --version',
+  '',
+  'Start with assess: no accounts, provider calls or source execution. Static support is not a reproduced repair.',
+  'Review access, providers and costs in init --plan before applying. ConTree access is required for live repair.',
 ].join('\n');
+
+export interface AssessArguments {
+  command: 'assess';
+  path: string;
+  json: boolean;
+}
+
+export interface DiagnoseArguments {
+  command: 'diagnose';
+  repository: string;
+  runId: number;
+  json: boolean;
+}
 
 export interface HealArguments {
   command: 'heal';
@@ -45,6 +65,11 @@ export interface InitArguments {
   actionSha?: string;
   force: boolean;
   tavilyEnabled: boolean;
+  plan?: boolean;
+  apply?: string;
+  credentials?: string[];
+  json?: boolean;
+  operation?: 'init' | 'upgrade' | 'pause' | 'resume' | 'remove';
 }
 
 /**
@@ -109,6 +134,8 @@ export interface EvalExportArguments {
 }
 
 export type CliArguments =
+  | AssessArguments
+  | DiagnoseArguments
   | HealArguments
   | VerifyArguments
   | AuditArguments
@@ -227,14 +254,19 @@ function parseInit(args: readonly string[]): InitArguments {
   let actionSha: string | undefined;
   let force = false;
   let tavilyEnabled = true;
+  let plan = false, json = false;
+  let apply: string | undefined;
+  const credentials: string[] = [];
   const seen = new Set<string>();
   for (let index = 1; index < args.length; index += 1) {
     const flag = args[index];
-    if (!flag || !['--workflow', '--repo', '--action-sha', '--force', '--no-tavily'].includes(flag)) {
+    if (!flag || !['--workflow', '--repo', '--action-sha', '--force', '--no-tavily', '--plan', '--apply', '--credential', '--json'].includes(flag)) {
       throw new CliUsageError(`Unknown argument: ${flag ?? '(missing)'}`);
     }
-    if (seen.has(flag)) throw new CliUsageError(`Duplicate argument: ${flag}`);
+    if (seen.has(flag) && flag !== '--credential') throw new CliUsageError(`Duplicate argument: ${flag}`);
     seen.add(flag);
+    if (flag === '--plan') { plan = true; continue; }
+    if (flag === '--json') { json = true; continue; }
     if (flag === '--force') {
       force = true;
       continue;
@@ -245,7 +277,13 @@ function parseInit(args: readonly string[]): InitArguments {
     }
     const value = nonEmptyValue(args, index, flag);
     index += 1;
-    if (flag === '--workflow') {
+    if (flag === '--apply') {
+      if (!/^[a-f0-9]{64}$/u.test(value)) throw new CliUsageError('--apply requires the exact plan digest');
+      apply = value;
+    } else if (flag === '--credential') {
+      if (!/^[A-Z][A-Z0-9_]{0,79}$/u.test(value) || credentials.includes(value)) throw new CliUsageError('Invalid or duplicate credential name');
+      credentials.push(value);
+    } else if (flag === '--workflow') {
       if (value.length > 100 || /[\r\n]/u.test(value)) {
         throw new CliUsageError('--workflow must be one line with at most 100 characters');
       }
@@ -256,6 +294,7 @@ function parseInit(args: readonly string[]): InitArguments {
       actionSha = validateActionSha(value);
     }
   }
+  if (plan && apply) throw new CliUsageError('--plan and --apply cannot be used together');
   return {
     command: 'init',
     ...(workflow ? { workflow } : {}),
@@ -263,6 +302,10 @@ function parseInit(args: readonly string[]): InitArguments {
     ...(actionSha ? { actionSha } : {}),
     force,
     tavilyEnabled,
+    ...(plan ? { plan } : {}),
+    ...(json ? { json } : {}),
+    ...(apply ? { apply } : {}),
+    ...(credentials.length ? { credentials } : {}),
   };
 }
 
@@ -418,6 +461,7 @@ function parseEval(args: readonly string[]): EvalValidateArguments | EvalExportA
 }
 
 export function parseArgs(args: readonly string[]): CliArguments {
+  if (args.length === 0 || (args.length === 2 && args[1] === '--help')) return { command: 'help' };
   if (args.length === 1 && (args[0] === '--help' || args[0] === 'help')) return { command: 'help' };
   if (args.length === 1 && (args[0] === '--version' || args[0] === 'version')) return { command: 'version' };
   if (args[0] === 'heal') return parseHeal(args);
@@ -425,6 +469,32 @@ export function parseArgs(args: readonly string[]): CliArguments {
   if (args[0] === 'audit') return parseAudit(args);
   if (args[0] === 'replay') return parseReplay(args);
   if (args[0] === 'init') return parseInit(args);
+  if (['upgrade', 'pause', 'resume', 'remove'].includes(args[0] ?? '')) {
+    return { ...parseInit(['init', ...args.slice(1)]), operation: args[0] as 'upgrade' | 'pause' | 'resume' | 'remove' };
+  }
+  if (args[0] === 'assess') {
+    let path = '.', json = false, selected = false;
+    for (const item of args.slice(1)) {
+      if (item === '--json' && !json) json = true;
+      else if (!item.startsWith('-') && !selected) { path = item; selected = true; }
+      else throw new CliUsageError(`Unknown or duplicate assessment argument: ${item}`);
+    }
+    return { command: 'assess', path, json };
+  }
+  if (args[0] === 'diagnose') {
+    const values = new Map<string, string>();
+    let json = false;
+    for (let i = 1; i < args.length; i++) {
+      const flag = args[i]!;
+      if (flag === '--json' && !json) { json = true; continue; }
+      if (!['--repo', '--run-id'].includes(flag) || values.has(flag)) throw new CliUsageError('Invalid diagnosis scope');
+      values.set(flag, nonEmptyValue(args, i, flag)); i++;
+    }
+    const repository = validateRepository(values.get('--repo') ?? '');
+    const runId = Number(values.get('--run-id'));
+    if (!Number.isSafeInteger(runId) || runId <= 0) throw new CliUsageError('--run-id must be a positive safe integer');
+    return { command: 'diagnose', repository, runId, json };
+  }
   if (args[0] === 'doctor') return parseDoctor(args);
   if (args[0] === 'eval') return parseEval(args);
   throw new CliUsageError(`Unknown command: ${args[0] ?? '(missing)'}`);

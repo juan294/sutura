@@ -16,7 +16,8 @@ it('refuses the first visible-green floor repair under frozen preservation chall
   const before = 'export function pageCount(items, size) { return Math.floor(items / size) + 1; }\n';
   const replacement = (operation: string) => `export function pageCount(items, size) { return Math.${operation}(items / size); }\n`;
   const diff = (operation: string) => ['diff --git a/page-count.js b/page-count.js', '--- a/page-count.js', '+++ b/page-count.js', '@@ -1 +1 @@', `-${before.trimEnd()}`, `+${replacement(operation).trimEnd()}`, ''].join('\n');
-  const result = (exitCode = 0): InMemoryRunResult => ({ exitCode, stdout: exitCode ? 'AssertionError: case.test.js failed' : 'Tests passed', stderr: '', truncated: false, metrics: {} });
+  const failureLog = ' FAIL case.test.js > page count\nAssertionError: expected 3 to be 2\n';
+  const result = (exitCode = 0): InMemoryRunResult => ({ exitCode, stdout: exitCode ? failureLog : 'Tests passed', stderr: '', truncated: false, metrics: {} });
   let baselineReached = false;
   let applied = 0;
   let proposed = 0;
@@ -47,7 +48,7 @@ it('refuses the first visible-green floor repair under frozen preservation chall
         events.push('freeze');
         return { usd: 0, text: JSON.stringify({ challenges: [{ id: 'boundary', kind: 'preservation', contractRefs: [{ path: 'page-count.js', sha256: createHash('sha256').update(before).digest('hex'), startLine: 1, endLine: 1 }], rationale: 'Preserve non-divisible input', probeId: 'pages', inputs: [21, 10], contractId: 'pages', relationId: 'equals' }] }) };
       }
-      if (tier === 'nano') return { usd: 0, text: JSON.stringify({ class: 'test-assertion', confidence: 0.95, signals: ['scripted'], failingCmd: 'pnpm test', errorExcerpt: 'case.test.js: assertion failed' }) };
+      if (tier === 'nano') return { usd: 0, text: JSON.stringify({ class: 'test-assertion', confidence: 0.95, signals: ['scripted'], failingCmd: 'pnpm test', errorExcerpt: failureLog }) };
       if (tier === 'ultra') { adjudications++; return { usd: 0, text: JSON.stringify({ approved: true, reasoning: 'Declared contract preserved' }) }; }
       events.push('repair');
       return { usd: 0, text: JSON.stringify({ replacement: replacement(proposed++ === 0 ? 'floor' : 'ceil') }) };
@@ -55,7 +56,7 @@ it('refuses the first visible-green floor repair under frozen preservation chall
   };
   try {
     await writeFile(join(directory, 'page-count.js'), before);
-    await writeFile(join(directory, 'package.json'), JSON.stringify({ name: 'local-case', version: '1.0.0', type: 'module' }));
+    await writeFile(join(directory, 'package.json'), JSON.stringify({ name: 'local-case', version: '1.0.0', type: 'module', scripts: { test: 'vitest run' } }));
     const outcome = await healCase({
       runId: 'required-search', repo: 'fixture/required-search', caseDir: directory,
       failureCommand: 'pnpm test', executor, llm, cost: { entries: [], totalUsd: () => 0 }, triageN: 5, raceK: 1,

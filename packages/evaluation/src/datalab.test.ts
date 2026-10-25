@@ -11,6 +11,7 @@ import {
   DATALAB_PROMPT_VERSIONS,
   DATALAB_ROW_SCHEMA_VERSION,
   DataLabClient,
+  serializeDatasetRequest,
   assertDataLabCostCap,
   dataLabEvidenceHash,
   prepareDataLabDataset,
@@ -351,6 +352,9 @@ describe('Data Lab official API client', () => {
       apiKey: 'key', fetch: vi.fn(async () => response({ detail: 'denied' }, 403)),
     }).createDataset(request)).rejects.toThrow(/403/u);
     await expect(new DataLabClient({
+      apiKey: 'key', fetch: vi.fn(async () => response({ detail: 'folder not found' }, 400)),
+    }).createDataset(request)).rejects.toThrow(/HTTP 400: .*folder not found/u);
+    await expect(new DataLabClient({
       apiKey: 'key', fetch: vi.fn(async () => response({
         id: 'dataset-1', name: 'different', status: 'READY', current_version: 'v1',
       })),
@@ -362,6 +366,25 @@ describe('Data Lab official API client', () => {
         src: [{ id: 'dataset-1', version: 'v1' }], dst: [{ id: 'out', version: 'v2' }],
       })),
     }).getOperation('operation-1')).rejects.toThrow(/identity/u);
+  });
+});
+
+describe('Data Lab request serialization', () => {
+  it('writes whole numbers in double columns with a decimal point and leaves other columns alone', () => {
+    const body = serializeDatasetRequest({
+      name: 'n', folder: '/f',
+      schema: [
+        { name: 'cost', type: { name: 'double' } },
+        { name: 'count', type: { name: 'integer' } },
+        { name: 'label', type: { name: 'string' } },
+      ],
+      rows: [{ cost: 0, count: 0, label: '__sutura_double__:x' }, { cost: 0.5, count: 2, label: 'a' }],
+    });
+    expect(body).toContain('"cost":0.0,');
+    expect(body).toContain('"cost":0.5,');
+    expect(body).toContain('"count":0,');
+    expect(body).toContain('"label":"__sutura_double__:x"');
+    expect(JSON.parse(body).rows[0].cost).toBe(0);
   });
 });
 

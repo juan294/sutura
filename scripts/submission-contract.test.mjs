@@ -46,9 +46,10 @@ function assertVersionConsistency(document, currentVersion) {
 }
 
 test('submission source carries the qualitative judge story and one architecture diagram', async () => {
-  const [submission, packageJson] = await Promise.all([
+  const [submission, packageJson, publicRelease] = await Promise.all([
     text(submissionUrl),
     text(new URL('package.json', root)).then(JSON.parse),
+    text(new URL('packages/case-lab/release.json', root)).then(JSON.parse),
   ]);
 
   assert.match(submission, /^# Sutura: Verified Self-Healing CI$/mu);
@@ -79,7 +80,9 @@ test('submission source carries the qualitative judge story and one architecture
   assert.equal(count(submission, /^```mermaid\n[\s\S]*?^```$/gmu), 1);
   assert.match(submission, /2026-08-26/u);
 
-  assertVersionConsistency(submission, packageJson.version);
+  // Submission evidence describes the recorded public subject, independently of a newer local candidate.
+  assertVersionConsistency(submission, publicRelease.version);
+  assert.match(submission, /Historical public release evidence/iu);
 });
 
 test('submission, video, and feedback links resolve to repository files', async () => {
@@ -468,4 +471,67 @@ test('evaluator navigation rejects omitted, misspelled, and example-only guide l
   fixture.set('README.md', guideLink);
   fixture.set('docs/README.md', '## For evaluators\n[Evaluation guide](evaluation/README.md)\n[Missing report](missing.md)\n## Process history\n');
   await assert.rejects(checkEvaluatorNavigation(read), /docs\/README\.md: broken target missing\.md: missing file/u);
+});
+
+const releaseIdentity = {
+  commit: 'cc3281485b4364d7c8fcb2e820e03ffbaf893c2a',
+  result: /51\/51/u,
+  fixRate: /14\/18/u,
+  cost: /USD\s+4\.92427699/u,
+};
+
+test('entry points lead with the current release benchmark identity', async () => {
+  for (const path of ['README.md', 'docs/evaluation/README.md', 'docs/devpost/sutura-submission.md']) {
+    const document = await readRepositoryFile(path);
+    assert.ok(document.includes(releaseIdentity.commit), `${path}: v0.3.9 release commit required`);
+    assert.match(document, releaseIdentity.result, `${path}: 51/51 denominator required`);
+    assert.match(document, releaseIdentity.fixRate, `${path}: 14/18 fix rate required`);
+    assert.match(document, releaseIdentity.cost, `${path}: recorded cost required`);
+  }
+});
+
+test('entry points carry no statements the v0.3.9 release made false', async () => {
+  const readme = await readRepositoryFile('README.md');
+  assert.doesNotMatch(readme, /Live runs stay disabled/u, 'README.md: live runs are enabled');
+  assert.doesNotMatch(readme, /^Launching on /mu, 'README.md: launch date has passed');
+  const guide = await readRepositoryFile('docs/evaluation/README.md');
+  assert.doesNotMatch(guide, /Action is v0\.3\.0/u, 'evaluation guide: demo pin is v0.3.9');
+  assert.doesNotMatch(guide, /product source bytes are unchanged/iu, 'evaluation guide: source changed after review');
+  const release = JSON.parse(await readRepositoryFile('packages/case-lab/release.json'));
+  assert.ok(guide.includes(release.actionSha), 'evaluation guide: demo identity must name the pinned Action commit');
+});
+
+async function checkedLine(document, target) {
+  const url = new URL(target, new URL(document, root));
+  const lines = /^L(\d+)(?:-L(\d+))?$/u.exec(url.hash.slice(1));
+  if (!lines) return undefined;
+  const contents = await readRepositoryFile(relative(fileURLToPath(root), fileURLToPath(new URL(url.pathname, 'file:///'))));
+  return contents.split('\n').slice(Number(lines[1]) - 1, Number(lines[2] ?? lines[1])).join('\n');
+}
+
+test('evaluator source anchors land on the symbol or section they name', async () => {
+  const sections = [
+    [/contributor setup/iu, /^## Contributor setup/mu],
+    [/offline replay/iu, /^### Offline replay/mu],
+    [/trajectory/iu, /ATIF|trajectory/iu],
+  ];
+  for (const path of ['docs/evaluation/README.md', 'docs/README.md']) {
+    const document = await readRepositoryFile(path);
+    for (const { label, target } of markdownLinks(document)) {
+      if (!target.includes('#L')) continue;
+      const line = await checkedLine(path, target);
+      const symbol = /`([A-Za-z_$][\w$]*)`/u.exec(label)?.[1];
+      if (symbol && /\.ts#/u.test(target)) {
+        assert.ok(line?.includes(symbol), `${path}: ${target} must land on ${symbol}`);
+      }
+      if (/README\.md\?plain=1#L/u.test(target) && !target.includes('placebo')) {
+        const expected = sections.find(([name]) => name.test(label))?.[1];
+        if (expected) assert.match(line, expected, `${path}: ${target} must land on ${label}`);
+      }
+      if (/sutura-submission\.md\?plain=1#L/u.test(target)) {
+        const heading = /audience/iu.test(label) ? /^## Who it is for/mu : /product workflow/iu.test(label) ? /^## Product workflow/mu : undefined;
+        if (heading) assert.match(line, heading, `${path}: ${target} must land on ${label}`);
+      }
+    }
+  }
 });

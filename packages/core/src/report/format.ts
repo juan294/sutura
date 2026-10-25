@@ -108,7 +108,14 @@ export function stoppedOnTriageBudget(caseFile: CaseFile): boolean {
 }
 
 export function triageSentence(caseFile: CaseFile): string {
+  if (caseFile.triage.stopReason === 'failure-identity') {
+    const identity = caseFile.triage.reproduction ?? caseFile.reproduction;
+    return `Original failure reproduction ${identity?.status ?? 'unavailable'}: ${identity?.reason ?? 'provide complete selected-step diagnostics'}. Repair stopped; consumed probe resources remain recorded.`;
+  }
   if (caseFile.outcome === 'infra-stop') {
+    if (caseFile.diagnosis.signals.includes('sandbox-reproduction:prerequisite-missing')) {
+      return 'Sandbox reproduction was blocked by a missing prerequisite. Triage and repair were not run.';
+    }
     if (caseFile.diagnosis.signals.includes('sandbox-preparation:failed')) {
       return 'Sandbox dependency preparation failed. Sutura stopped before reproduction and inference.';
     }

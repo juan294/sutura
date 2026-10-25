@@ -1,7 +1,9 @@
 # Sutura data boundaries
 
-Status: current implementation contract, revalidated against Sutura 0.3.0 on
-2026-09-15.
+Status: implementation contract refreshed against Sutura 0.4.0 on 2026-10-25.
+Package publication alone does not establish consumer activation.
+Provider retention statements below retain their cited provider basis; this
+source review does not revalidate account settings or provider terms.
 
 Sutura is a bring-your-own-key tool. It does not proxy repository data through Sutura maintainer infrastructure. Provider terms and account settings still govern data after Sutura sends it.
 
@@ -13,16 +15,17 @@ Sutura is a bring-your-own-key tool. It does not proxy repository data through S
 | Nebius Token Factory | Bounded, redacted failure logs; diagnosis data; redacted non-editable evidence; and exact editable excerpts only when no known credential pattern is present | Requests go directly from the action with the repository owner's key. Zero Data Retention prevents inference-log collection when the account enables it. Sutura does not change ZDR settings. |
 | Nebius Data Lab | An explicit, allowlisted evaluation dataset and batch outputs, only after separate upload and spend authorization | Explicit dataset upload creates a retained Data Lab object even when inference ZDR is enabled. Data Lab processes datasets and batch outputs in EU-North1 (Finland). The repository owner must review the exact input hash and delete the dataset and outputs when they are no longer needed. |
 | Tavily | A bounded, redacted error query, public package names and versions, and public release or migration URLs | Tavily is optional. Requests go directly from the action with the repository owner's key. The owner's Tavily plan and provider policy govern retention. |
-| Nebius ConTree | A base image reference, dependency-input archive, repository-overlay archive, commands, and bounded command output | Only dependency preparation has outbound networking. Source is absent then. All source-bearing execution is network-disabled. ConTree beta documentation states that untagged, unreferenced images can remain for 180 days. Sutura 0.3.0 has no image-deletion control. |
-| Package registries | Package names, versions, lockfile resolution data, and normal package-manager request metadata | Registry access occurs only from the manifest-only dependency image. Lifecycle scripts are disabled. Sutura refuses `.npmrc`, embedded URL credentials, and Yarn auth fields. Private authenticated registries are unsupported in Sutura 0.3.0. |
+| Nebius ConTree | A base image reference, dependency-input archive, repository-overlay archive, commands, and bounded command output | Only dependency preparation has outbound networking. Source is absent then. All source-bearing execution is network-disabled. The previously cited ConTree beta documentation states that untagged, unreferenced images can remain for 180 days; confirm current terms before confidential use. Sutura has no verified image-deletion control. |
+| Package registries | Package names, versions, lockfile resolution data, and normal package-manager request metadata | Registry access occurs only from the dependency-input image. Lifecycle scripts are disabled. Bounded `.npmrc` files may contain only comments, blank lines and boolean `engine-strict`, `legacy-peer-deps` or `prefer-offline`. Credentials, registry overrides, other configuration and Yarn auth fields are refused. Private authenticated registries remain unsupported. |
+| Resend, when explicitly configured | The bounded private owner digest, configured sender and recipient, and stable idempotency key | The optional fleet worker requires exact scoped authorization and a credential reference before sending. Its private outbox separates provider acceptance from delivery; retries are bounded. No email was sent by local candidate preparation. |
 
 ## Local CLI and action data
 
-The CLI reads repository configuration and writes the Sutura workflow. Provider secret values are passed to GitHub through standard input during setup. The CLI does not write them into repository files.
+Assessment reads bounded repository metadata without executing scripts or calling providers. Selected-run diagnosis uses bounded read-only GitHub evidence without inference or sandbox access. Setup previews a digest-bound plan before writing the workflow or configuring explicitly selected credential names. Selected secret values go to GitHub through standard input and never enter setup plans or receipts. `.sutura/setup-receipt.json` retains local operation state and repository metadata; keep it private and out of commits.
 
-The action reads the exact failed GitHub run, checks out its exact head SHA, and keeps provider keys in the action process. It does not copy provider keys, the GitHub token, `.env` files, private keys, credential files, `.npmrc`, Git metadata, installed dependencies, caches, or build output into a repository overlay.
+Generated workflows inspect failures with read permissions before entering privileged repair. The heal path reads the exact failed GitHub run, checks out its exact head SHA, and keeps provider keys in the action process. It excludes provider keys, the GitHub token, `.env` files, private keys, credential files, Git metadata, installed dependencies and caches from repository overlays. Tracked build output and dependency fixtures under `__fixtures__/**/node_modules/**` can remain as source; they are never dependency-preparation inputs. `.npmrc` bytes pass the bounded allowlist above before copying.
 
-Sutura-owned local outputs are console output, generated configuration, optional sanitized evaluation manifests, one-trajectory ATIF files, and explicit JSONL exports. GitHub-hosted outputs are the evidence comment, HTML case-file artifact, repair branch, and pull request. Sutura has no maintainer-operated telemetry or artifact service.
+Sutura-owned local outputs include console output, generated configuration, private setup receipts, optional sanitized evaluation manifests, one-trajectory ATIF files, and explicit JSONL exports. The optional fleet collector also retains private incident/native records, queue state, daily reports and email outbox receipts; its public projection is an aggregate whitelist. GitHub-hosted outputs include terminal evidence, comments, checks, HTML case files, repair branches and pull requests. Sutura has no maintainer-operated telemetry or artifact service.
 
 ## Sandbox network sequence
 
@@ -32,11 +35,12 @@ import trusted base image
   -> install with network enabled and lifecycle scripts disabled
   -> overlay the safe repository archive
   -> initialize an exact hook-disabled Git baseline
-  -> rebuild required dependencies with network disabled
+  -> reproduce the observed command without automatic lifecycle rebuilds
+  -> require the selected native failure to match the sandbox failure
   -> reproduce, triage, adaptive repair search, and audit with network disabled
 ```
 
-The dependency archive includes the root package manifest, supported root lockfiles and workspace files, and package manifests selected by declared workspace patterns. It excludes source and installed dependency paths. The overlay rejects symlink destinations, symlink parents, and collisions with preparation-generated paths.
+The dependency archive includes the root package manifest, supported root lockfiles and workspace files, package manifests selected by declared workspace patterns, and validated supported npm configuration. It excludes source and installed dependency paths. The overlay rejects symlink destinations, symlink parents, and collisions with preparation-generated paths. Missing native build prerequisites require a separately reviewed preparation path; Sutura does not enable lifecycle hooks to force reproduction.
 
 ## Redaction limits
 

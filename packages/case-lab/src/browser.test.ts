@@ -210,7 +210,7 @@ describe('live controls', () => {
 
     expect(buttons.every((button) => button.disabled)).toBe(true);
     expect(statusText(document)).toContain('Live runs are disabled right now');
-    expect(statusText(document)).toContain('deterministic result');
+    expect(statusText(document)).toContain('recorded result');
   });
 
   it('enables the buttons only after the service confirms it is ready', async () => {
@@ -259,7 +259,7 @@ describe('live controls', () => {
 
     expect(statusText(document)).toContain('Live run refused: hourly limit reached');
     expect(statusText(document)).toContain('Try again in about 5 minutes');
-    expect(statusText(document)).toContain('The deterministic result stays available');
+    expect(statusText(document)).toContain('The recorded result stays available');
     expect(button.disabled).toBe(false);
   });
 

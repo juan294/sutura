@@ -24,6 +24,7 @@ import {
   redactExternalJsonValue,
   redactExternalMessages,
 } from '../security/external-text.js';
+import { nativeFailureForCommand, type NativeFailureEvidence } from './failure-identity.js';
 import { triage } from './triage.js';
 import { shellQuote } from './shell.js';
 
@@ -594,9 +595,14 @@ export async function prepareRepair(
   N = 5,
   K = DEFAULT_RACE_CANDIDATES,
   sourceContext: RepairSourceContext = { sources: [] },
+  native?: NativeFailureEvidence,
 ): Promise<RepairPreparation> {
   positiveCount(K, 'K');
-  const verdict = await triage(executor, failingImage, diagnosis.failingCmd, N);
+  const evidence = native ?? nativeFailureForCommand(
+    diagnosis.failingCmd, diagnosis.errorExcerpt,
+    sourceContext.sources.filter(source => source.startLine === 1 && !source.truncated),
+  );
+  const verdict = await triage(executor, failingImage, diagnosis.failingCmd, N, undefined, evidence);
   if (verdict.status !== 'real') {
     return { triage: verdict, candidates: [] };
   }

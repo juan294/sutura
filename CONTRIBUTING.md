@@ -6,7 +6,7 @@ Thanks for helping improve Sutura.
 
 1. Fork and clone the repository.
 2. Create a branch from `develop`.
-3. Install dependencies with `pnpm install`.
+3. Use Node.js 22 or later and pnpm 11.22.0; install dependencies with `pnpm install --frozen-lockfile`.
 4. Use synthetic or public fixtures only.
 
 ## Development Workflow
@@ -16,13 +16,17 @@ Use the repository's Research-Plan-Implement workflow for substantial changes. K
 Run the standard local checks before opening a pull request:
 
 ```bash
-pnpm run typecheck
-pnpm run lint
-pnpm run verify:bundle
-pnpm run test
+pnpm run ci:local
+node scripts/release-case-lab.mjs check
 ```
 
-Run `pnpm run ci:local` for changes to `packages/core`. Rebuild and commit `packages/action/dist/index.cjs` with any source change that affects the Action bundle.
+The combined gate includes release contracts, README setup, ATIF validation,
+offline runtime smoke, types, lint, bundle verification, workspace tests, packed
+installation and guard coverage. The separate read-only Case Lab check verifies
+its existing published release pin. Reuse passing evidence only for unchanged
+tested inputs; documentation changes still require their affected contract
+checks. Rebuild and commit `packages/action/dist/index.cjs` with any source
+change that affects the Action bundle.
 
 Use lowercase Conventional Commits:
 

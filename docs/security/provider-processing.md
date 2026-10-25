@@ -1,6 +1,8 @@
 # Provider processing, retention, and external-adoption boundaries
 
-Status: WS-3 implementation contract, reviewed 2026-09-04.
+Status: implementation boundaries refreshed for the local 0.4.0 candidate on
+2026-10-25. Provider-policy statements retain their original cited basis; no new
+provider-policy or account-settings verification is claimed.
 
 Sutura is bring-your-own-key software. GitHub, Nebius Token Factory, Nebius Data
 Lab, Nebius ConTree, Tavily, package registries, and GitHub Marketplace are
@@ -42,9 +44,13 @@ Official references:
 
 ## GitHub, npm, and GitHub Marketplace
 
-The CLI and Action are public artifacts. `sutura init` resolves a release tag to
-an exact Action commit and writes that immutable commit into the consumer
-workflow. npm receives normal package lookup and download metadata. GitHub stores
+The CLI and Action are public artifacts. The 0.4.0 candidate's `sutura init`
+previews changes before an exact-digest apply. After publication it resolves its
+matching release tag to an exact Action commit; candidate checks supply an exact
+`--action-sha`. Only explicitly selected credential names are configured, with
+secret values passed to GitHub through standard input. Private local receipts
+store operation state without secret values. npm receives normal package lookup
+and download metadata. GitHub stores
 workflow definitions, runs, logs, comments, checks, artifacts, branches, and pull
 requests under the installing repository's settings.
 
@@ -52,6 +58,14 @@ GitHub Marketplace publishes Action metadata and the release listing. Marketplac
 installation does not change Sutura's required repository permissions or move
 provider secrets into Sutura infrastructure. The consumer owns GitHub secret and
 variable configuration and should retain the exact commit pin.
+
+The optional fleet digest uses Resend only after exact sender, recipient, fleet
+scope and credential-reference authorization. Its bounded payload contains
+private incident summaries. The local outbox persists send intent and an
+idempotency key before transmission, bounds retries and records acceptance
+separately from delivery. Resend is an additional external processor when this
+capability is enabled; the owner must review its account terms and retention.
+No send or delivery was established by local candidate preparation.
 
 ## External participant records
 

@@ -17,21 +17,23 @@ The protected assets are repository source, unreleased product details, CI logs,
 
 - The action repairs only the exact head SHA reported by GitHub and claims one attempt before provider spending.
 - The action passes only `CI=true` and `NODE_ENV=test` into sandbox commands. Provider and GitHub credentials do not enter ConTree.
-- Network-enabled preparation receives only declared dependency inputs. Package lifecycle scripts are disabled.
+- Network-enabled preparation receives only declared dependency inputs and bounded allowlisted npm configuration. Package lifecycle scripts are disabled, with no blanket post-overlay rebuild.
 - Source is overlaid only after dependency preparation. Every source-bearing command is network-disabled.
 - Dependency snapshots exclude source, Git metadata, credentials, caches, build output, and installed dependencies. Repository overlays keep tracked build output when it is part of the exact failing checkout, but exclude Git metadata, sensitive credential paths, and installed dependencies.
-- Overlay extraction refuses unsafe paths, installed-dependency paths, symlink destinations, symlink parents, and unexpected existing-path collisions.
+- Overlay extraction refuses unsafe paths, installed dependencies, symlink destinations, symlink parents, and unexpected existing-path collisions. Tracked dependency fixtures under `__fixtures__/**/node_modules/**` are retained only as source, never as preparation inputs.
 - The sandbox Git baseline uses only the exact overlay manifest. Git templates and hooks are disabled.
 - Model and Tavily inputs use bounded shared redaction. Editable source that matches a credential pattern is refused instead of rewritten.
+- Setup previews the exact workflow and explicitly selected credential names before applying changes. Private setup receipts contain operation state and non-secret configuration such as `CONTREE_PROJECT`, but no secret values. Read-only inspection precedes privileged repair, and native/sandbox failure identity must match before repair inference.
 - Candidate diffs pass deterministic patch policy, isolated tests, and adversarial audit. Sutura opens a pull request but never merges it.
 
 ## Unsupported configurations
 
-Sutura 0.3.0 refuses private registries that need `.npmrc`, embedded URL
-credentials, Yarn authentication fields, or copied registry credentials. It
-also refuses an unverified Yarn installer version. Use a public dependency set
-or wait for a credential-broker design that does not expose registry secrets to
-repository code.
+Private authenticated registries remain unsupported. A bounded `.npmrc` may
+contain comments, blank lines and boolean `engine-strict`, `legacy-peer-deps`
+or `prefer-offline`; credentials, registry overrides and other options are
+refused. Embedded URL credentials, Yarn authentication fields, copied registry
+credentials and an unverified Yarn installer version are also refused. Use a
+public dependency set until a reviewed credential-broker design exists.
 
 Do not give the workflow broad organization tokens, production credentials, deployment keys, signing keys, or cloud administrator roles. Do not disable branch protection for Sutura.
 
@@ -43,16 +45,17 @@ Do not give the workflow broad organization tokens, production credentials, depl
   merely because ZDR is enabled.
 - Token Factory, Tavily, ConTree, GitHub, and package registries remain external data processors with their own retention and access policies.
 - ConTree images can retain private source for the documented image-retention
-  period. Sutura 0.3.0 cannot delete them through a verified API.
-- A malicious public package can run code during the post-overlay rebuild. Networking is disabled, but that code can read overlaid source inside the sandbox.
+  period. Confirm current provider terms before use; Sutura cannot delete them
+  through a verified API.
+- A malicious dependency or test can run code during source-bearing verification. Networking is disabled, but that code can read overlaid source inside the sandbox. Automatic post-overlay lifecycle rebuilds are disabled.
 - A generated patch can be logically wrong even when tests and audit pass. Human review remains required.
 - GitHub comments and artifacts can expose sanitized failure context to repository collaborators who can read Actions data.
 
 ## Maintainer checklist
 
 - Pin Sutura to an immutable release commit, not a mutable branch or tag.
-- Confirm GitHub permissions are limited to `actions: read`, `checks: write`,
-  `contents: write`, and `pull-requests: write`.
+- Keep inspection at `contents: read` and `actions: read`. Only the admitted
+  repair job needs `checks: write`, `contents: write`, and `pull-requests: write`.
 - Confirm the Token Factory ZDR and provider retention settings required by your organization.
 - Review the exact Data Lab request hash before any explicit dataset upload; after
   an authorized experiment, record the output hash and delete the dataset and
@@ -81,3 +84,8 @@ still controls workflow permissions, secrets, variables, Actions retention,
 provider processing, and human review. Pin Marketplace installations to the exact
 release commit generated by `sutura init`; do not replace it with a mutable branch
 or floating tag.
+
+The optional fleet digest stays private and requires its own reviewed sender,
+recipient, fleet scope and credential reference. Public field reports omit exact
+repository identities and free text. Local setup and synthetic receipts do not
+prove native CI recovery, digest delivery or independent adoption.

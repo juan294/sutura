@@ -19,7 +19,7 @@
   },
   {
     "repository": "juan294/cirujano",
-    "expectedFailingCmd": "pnpm -r test",
+    "expectedFailingCmd": "pnpm run test",
     "monitorRunId": "34773582017",
     "ciRunId": "34773526825",
     "jobs": [

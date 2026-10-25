@@ -1,0 +1,8 @@
+2026-10-19T20:37:31.4703719Z ##[group]Run node scripts/verify-output.mjs
+2026-10-19T20:37:31.4704164Z node scripts/verify-output.mjs
+2026-10-19T20:37:31.4754264Z shell: /usr/bin/bash -e {0}
+2026-10-19T20:37:31.4755331Z ##[endgroup]
+2026-10-19T20:37:31.5456799Z [PASS] packages/action/dist/index.cjs matches the current source.
+2026-10-19T20:37:31.5496081Z [FAIL] scripts/generated-helper.mjs is stale: the committed bundle does not match the current source.
+2026-10-19T20:37:31.5497888Z        Run `pnpm run build` and commit scripts/generated-helper.mjs together with the source change.
+2026-10-19T20:37:31.5545327Z ##[error]Process completed with exit code 1.

@@ -81,7 +81,7 @@ test('public install uses only sutura@0.3.9 and verifies the independently resol
 });
 
 test('public wrapper accepts one explicit exact semver and rejects mutable or ranged releases', async () => {
-  assert.equal(parseReleaseVersion([]), '0.3.9');
+  assert.equal(parseReleaseVersion([]), '0.4.0');
   assert.equal(parseReleaseVersion(['--release', '1.2.3']), '1.2.3');
   assert.deepEqual(parsePublicInstallOptions([
     '--candidate-evidence', '/tmp/candidate.json', '--release', '1.2.3',
@@ -116,7 +116,7 @@ test('public install fails when the generated workflow differs from the release 
   try {
     await writeFile(join(temporary, 'LICENSE'), 'MIT fixture\n');
     await assert.rejects(() => verifyInstall({
-      mode: 'public', root: temporary,
+      mode: 'public', root: temporary, releaseVersion: '0.3.9',
       dependencies: {
         resolvePublicCommit: async () => ACTION_SHA,
         pack: async (_source, destination) => {
@@ -153,7 +153,7 @@ test('public package content must match candidate evidence before any installed 
   try {
     await writeFile(join(temporary, 'LICENSE'), 'MIT fixture\n');
     await assert.rejects(() => verifyInstall({
-      mode: 'public', root: temporary, expectedPackageContentHash: '0'.repeat(64),
+      mode: 'public', root: temporary, releaseVersion: '0.3.9', expectedPackageContentHash: '0'.repeat(64),
       dependencies: {
         resolvePublicCommit: async () => ACTION_SHA,
         pack: async (_source, destination) => {

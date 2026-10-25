@@ -2,8 +2,17 @@
 
 Owner: Juan González Ponce. Operational window: December 1–15, 2026.
 Implementation prepared September 8. This runbook does not record completed
-future checks, a published final release, credential expiry dates, or an
-approved live operation reserve.
+future checks, a published final release, or credential expiry dates.
+
+Live operation reserve: on 2026-10-07 Juan approved a finite reserve of about USD 40 in
+total for Case Lab live runs during judging. The daily spend stop stays at USD 18 and each
+run is capped at USD 0.75 in the worst case. This is a ceiling for the owner, not money
+set aside. Checked in the Token Factory console on 2026-10-07: account balance USD 24.12,
+October consumption USD 1.27 so far, and the only paid invoice is USD 1.00 (the rest is
+credit). The balance covers about 32 worst-case runs, not the full USD 40 ceiling, so a top-up
+of about USD 16 is needed if the full reserve must be funded. Recheck the balance during the
+November 16-20 inventory. The November 16-20 and November 27 steps below are on Juan's
+calendar.
 
 ## Before submission
 

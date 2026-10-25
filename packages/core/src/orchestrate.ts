@@ -4,7 +4,7 @@ import { VerificationExecutionRecorder } from './verification/execution-record.j
 import type { VerificationMode } from './verification/types.js';
 import { Buffer } from 'node:buffer';
 
-import { classifyMechanically } from './diagnose/classify.js';
+import { boundedCommandLog, classifyMechanically, externalActionReference } from './diagnose/classify.js';
 import type { TavilySearch } from './diagnose/tavily.js';
 import type { RepairBudgetOverrides } from './engine/repair-budget.js';
 import type { AuditLlm } from './audit/audit.js';
@@ -33,6 +33,9 @@ import {
   noReproductionCaseFile,
   prepareSandbox,
   preparationFailureCaseFile,
+  missingSandboxPrerequisite,
+  missingPrerequisiteCaseFile,
+  readNativeFailureEvidence,
   repairFailure,
   sandboxTargetCommand,
   type HealLlm,
@@ -99,9 +102,12 @@ const FIX_COMMIT_MESSAGE = [
 ].join('\n');
 
 export interface FailedStepLog {
+  jobId?: number;
   jobName: string;
+  stepNumber?: number;
   stepName: string;
   log: string;
+  truncated?: boolean;
   /** When the step finished; orders a multi-failure run (see rankFailedSteps). */
   completedAt?: string;
 }
@@ -350,13 +356,13 @@ export function rankFailedSteps(steps: readonly FailedStepLog[]): FailedStepLog[
 }
 
 /**
- * The diagnosis log with the chosen step last: the classifier reads the tail
- * and the last command header, so that step's output and command lead.
+ * Only the selected step is primary evidence. Other labeled logs remain in
+ * failedSteps/replay; combining them here can change its class and grounding.
  */
 export function diagnosisLog(ranked: readonly FailedStepLog[], chosen: number): string {
   const primary = ranked[chosen];
-  const others = ranked.filter((_, index) => index !== chosen);
-  return collectFailedLogs(primary === undefined ? others : [...others, primary]);
+  return primary === undefined ? ''
+    : `[${primary.jobName} / ${primary.stepName}]\n${boundedCommandLog(primary.log)}`;
 }
 
 function safeSourcePath(path: string): string | null {
@@ -699,13 +705,21 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
   // header carried past truncation would come from a different step.
   const candidates = rankedSteps.flatMap((step, index) =>
     classifyMechanically(collectFailedLogs([step])).failingCmd === 'unknown' ? [] : [index]);
-  let failedLog = diagnosisLog(rankedSteps, candidates[0] ?? 0);
+  let chosenStep = candidates[0] ?? 0;
+  let failedLog = diagnosisLog(rankedSteps, chosenStep);
   let mechanical = candidates.length === 0
     ? { ...classifyMechanically(failedLog), failingCmd: 'unknown' }
     : classifyMechanically(failedLog);
   if (mechanical.failingCmd === 'unknown') {
+    const externalActions = [...new Set(rankedSteps.flatMap(({ log }) =>
+      log.split(/\r?\n/u).flatMap((line) => {
+        const reference = externalActionReference(line);
+        return reference === undefined ? [] : [redactExternalText(reference).text.slice(0, 160)];
+      })))].slice(0, 3);
+    const context = externalActions.length === 0 ? ''
+      : `; unsupported external action steps: ${externalActions.join(', ')}`;
     throw new OrchestrationError(
-      'Failed-step logs do not contain an observed failing command',
+      `Failed-step logs do not contain an observed failing command${context}`,
       'failing-command-not-observed',
       'diagnosis',
     );
@@ -815,11 +829,14 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     // observed command differs, for a chosen step that was flaky or only
     // reflected another job's failure.
     const next = candidates.slice(1)
-      .map((index) => diagnosisLog(rankedSteps, index))
-      .map((log) => ({ log, diagnosis: classifyMechanically(log) }))
+      .map((index) => {
+        const log = diagnosisLog(rankedSteps, index);
+        return { index, log, diagnosis: classifyMechanically(log) };
+      })
       .find(({ diagnosis }) =>
         diagnosis.failingCmd !== 'unknown' && diagnosis.failingCmd !== mechanical.failingCmd);
     if (next !== undefined) {
+      chosenStep = next.index;
       failedLog = next.log;
       mechanical = next.diagnosis;
       reproduction = await reproduce(2);
@@ -843,12 +860,33 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     return caseFile;
   }
 
+  if (missingSandboxPrerequisite(reproduction, rankedSteps[chosenStep]?.log ?? '') !== undefined) {
+    const caseFile = missingPrerequisiteCaseFile({
+      runId: run.runId, repo: run.repo, cost: ctx.cost,
+      policyEvidence, stageLedger, traceRecorder, runtime,
+    }, mechanical.failingCmd, reproduction);
+    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir, ctx.replay);
+    return caseFile;
+  }
+
   const caseFile = await repairFailure({
     ...(executionRecorder === undefined ? {} : { executionRecorder }),
     evidenceMode: ctx.evidenceMode ?? 'local',
     runId: run.runId,
     repo: run.repo,
     failedLog,
+    nativeFailure: {
+      ...await readNativeFailureEvidence(setup.sourceDir ?? checkoutDir, mechanical.failingCmd, failedLog),
+      truncated: rankedSteps[chosenStep]?.truncated === true ||
+        boundedCommandLog(rankedSteps[chosenStep]?.log ?? '') !== (rankedSteps[chosenStep]?.log ?? ''),
+      selectedStep: {
+        jobName: rankedSteps[chosenStep]!.jobName,
+        stepName: rankedSteps[chosenStep]!.stepName,
+        ...(rankedSteps[chosenStep]!.jobId === undefined ? {} : { jobId: rankedSteps[chosenStep]!.jobId }),
+        ...(rankedSteps[chosenStep]!.stepNumber === undefined ? {} : { stepNumber: rankedSteps[chosenStep]!.stepNumber }),
+      },
+    },
+    baselineResult: reproduction,
     failingImage: setup.imageId,
     executor,
     llm: ctx.llm,

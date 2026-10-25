@@ -1,71 +1,32 @@
 # Sutura user guide
 
-This guide covers Sutura 0.3.9 for repository owners installing the GitHub
-Action. Sutura is in public beta, and Nebius ConTree access remains an
-access-controlled prerequisite.
+This guide covers Sutura 0.4.0. Use the packed candidate during release verification and `npx sutura@0.4.0` after publication. Sutura is in public beta, and Nebius ConTree access remains an access-controlled prerequisite.
 
 ## Requirements
 
-Before setup, you need:
+Assess one repository with Node.js 22 or later before configuring accounts:
 
-- A GitHub repository with at least one existing Actions CI workflow.
-- Git and Node.js 22 or later.
-- The [GitHub CLI](https://cli.github.com/) authenticated with `gh auth login`.
-- Permission to configure repository Actions secrets and variables and to add
-  a workflow to the default branch.
-- A Nebius Token Factory API key, a Nebius ConTree token and project, and an
-  optional Tavily API key.
+```bash
+sutura assess . --json
+```
 
-Read the [data boundary and retention contract](security/data-boundaries.md)
-and [private repository threat model](security/private-repositories.md) before
-enabling Sutura on confidential source.
+The assessment reads bounded manifests, locks and workflows without executing scripts or uploading source. It reports support per job; services or native dependencies in another job do not automatically exclude a self-contained job. Incomplete metadata stays unknown. Static support is not preparation, reproduction or repair evidence.
+
+For optional selected-run diagnosis, authenticate the GitHub CLI and run `sutura diagnose --repo example/project --run-id 12345 --json`. This reads only the named repository's bounded run/job/log evidence and uses no model or sandbox.
+
+Live repair requires your own Nebius Token Factory key and access-controlled ConTree token/project. Tavily, OpenAI and TypeSafe are optional. Setup does not provision provider access. Read the [data boundary and retention contract](security/data-boundaries.md) and [private repository threat model](security/private-repositories.md) before enabling confidential source processing.
 
 ## Install one repository
 
-Sutura installation is repository-scoped. A global npm installation is not
-required. `npx` downloads the exact CLI version for each command, and the
-generated GitHub workflow pins the corresponding Action to an immutable commit.
-
-From a clone of the repository, confirm GitHub access:
-
 ```bash
-gh auth status
-gh repo view --json nameWithOwner --jq .nameWithOwner
+sutura init --plan --workflow "CI" --repo example/project
 ```
 
-Export provider credentials only in the current shell:
+Review the proposed diff, provider destinations, permissions, configured limits, unpriced sandbox/runner charges and concrete next command. Apply the printed digest using the same options. Candidate testing supplies `--action-sha` with an exact candidate commit; after publication the CLI resolves its matching release tag.
 
-```bash
-export NEBIUS_API_KEY="..."
-export CONTREE_TOKEN="..."
-export CONTREE_PROJECT="..."
-export TAVILY_API_KEY="..."
-export OPENAI_API_KEY="..."
-export TYPESAFE_API_KEY="..."
-```
+Select each credential explicitly with repeated `--credential` options. Required names for live repair are `NEBIUS_API_KEY`, `CONTREE_TOKEN` and `CONTREE_PROJECT`. Optional names are `TAVILY_API_KEY`, `OPENAI_API_KEY` and `TYPESAFE_API_KEY`. Supply selected values in your current environment; secret values go to GitHub through standard input and are not stored in the receipt. Unselected ambient values are ignored. `CONTREE_PROJECT` is a repository variable. Use `--no-tavily` to omit that input; `SUTURA_RUNTIME=node|python` resolves an intentional polyglot choice.
 
-Then generate and inspect the workflow:
-
-```bash
-npx sutura@0.3.9 init
-sed -n '1,220p' .github/workflows/sutura.yml
-npx sutura@0.3.9 doctor
-```
-
-If the repository has more than one workflow, select the exact workflow name:
-
-```bash
-npx sutura@0.3.9 init --workflow "CI"
-```
-
-Use `--no-tavily` when Tavily is unavailable. For a polyglot repository, set
-`SUTURA_RUNTIME=node` or `SUTURA_RUNTIME=python` for the `init` command; a
-single-runtime repository is detected automatically at run time.
-
-`init` creates `.github/workflows/sutura.yml`. It sends available credential
-values to GitHub through standard input, stores provider keys as Actions
-secrets, and stores `CONTREE_PROJECT` as a repository variable. It does not
-write credential values into repository files.
+Preview makes no writes. Apply retains `.sutura/setup-receipt.json` and prior receipt history. Completed writes are not blindly repeated. Missing selected values keep setup incomplete; a lost remote response records an unknown outcome and requires a newly reviewed replacement plan. Keep receipts private and out of commits. Local completion does not prove provider access or activation.
 
 ## Activate the monitor
 
@@ -85,11 +46,13 @@ through the repository's normal review process.
 
 ## Understand the first run
 
-The monitor observes completion of the selected CI workflow. A successful run
-needs no repair, so the repair job is skipped. A failed or timed-out pull
-request, push, scheduled run, or manual run starts one Sutura attempt.
+The monitor inspects completion of the selected CI workflow without repair
+credentials. A successful run needs no repair. Failed or timed-out runs start
+a repair attempt only when inspection admits the job, repair is enabled and
+the source is not a Sutura repair branch. Inspection-only stops retain their
+summary and next action; a skipped repair is not a verified recovery.
 
-Sutura publishes:
+For admitted repair attempts, Sutura publishes the applicable evidence:
 
 - An evidence comment on the pull request or exact failing commit.
 - One **Sutura repair audit** GitHub Check on the exact failing SHA.
@@ -97,12 +60,16 @@ Sutura publishes:
 - A repair pull request when a candidate passes verification, with one
   **Sutura repair verification** GitHub Check on the repair commit.
 
+Typed setup, unsupported-input or resource stops can occur before a case file
+or GitHub Check exists. They retain terminal outputs/artifacts and a next action;
+unexpected internal, security or evidence failures remain failed monitors.
+
 Every attempt ends as `fixed`, `flaky-no-patch`, `refused`, `gave-up`, or
 `infra-stop`. Generated customer workflows are advisory by default. Even a
 verified repair remains neutral and requires human review; Sutura never merges
 it.
 
-Before it proposes a repair, Sutura reruns the failing command in the sandbox
+Before repair inference, Sutura requires the sandbox failure to match the selected native failure. Mismatch or unavailable identity stops without further inference and retains consumed resources. Before it proposes a repair, Sutura reruns the failing command in the sandbox
 up to five times to tell a real failure from a flaky one. On a slow test suite
 those reruns dominate the cost of an attempt, so they share a sandbox-time
 budget, `triage-sandbox-seconds` (default 240). Sutura measures the first rerun
@@ -148,18 +115,18 @@ requests write. Pull requests opened with an App token trigger CI normally.
 Run `doctor` from the repository whenever setup or credentials change:
 
 ```bash
-npx sutura@0.3.9 doctor
+sutura doctor
 ```
 
-It checks the local workflow, immutable Action pin, required permissions and
-inputs, GitHub secrets, and the `CONTREE_PROJECT` variable.
+It checks the local workflow, exact installed Action contract, required permissions and inputs, secret/variable names, default-branch activation and bounded trigger history. Names do not prove credential validity. Configured-but-unexercised, missed eligible events and unknown history are separate. Preparation, reproduction, native checks and integration remain unmeasured until their own evidence exists. Incomplete readiness returns 2; operational errors return 1.
 
 Common configuration:
 
 - Set `runtime` to `node` or `python` in protected `.sutura.json` when automatic
   detection finds equal evidence for both runtimes.
 - Keep the generated advisory behavior for normal use. The `require-fixed`
-  Action input makes every result other than `fixed` fail the Sutura job.
+  Action input makes every admitted repair result other than `fixed` fail the
+  Sutura job. Inspection-only stops and skipped repair jobs are not repairs.
 - Keep branch protection and human review enabled.
 - Lower Action budgets when needed. Action inputs cannot raise the core safety
   maxima. The triage sandbox budget's default (240 seconds) sits below its
@@ -172,44 +139,13 @@ Each repository pins its own immutable Action commit. Updating a global npm
 package, or running a newer CLI elsewhere on the machine, does not update any
 installed workflow.
 
-Sutura 0.3.9 does not have an `upgrade` command. Upgrade each repository
-deliberately after reading the target release notes.
+Review `sutura upgrade --plan --workflow "CI" --repo example/project`, then use its exact apply command. The preview changes immutable Action pins while preserving App-token wiring, custom jobs, permissions and unrelated configuration. Drift produces a three-way conflict rather than an overwrite. `init --force` cannot bypass ownership or review.
 
-For an unmodified generated workflow, regenerate it with the target CLI and
-review the complete diff before committing:
-
-```bash
-npx sutura@0.3.9 init --force
-git diff -- .github/workflows/sutura.yml
-npx sutura@0.3.9 doctor
-```
-
-`init --force` replaces the entire workflow. Do not use it on a customized
-workflow. For a customized installation, update only the immutable Action
-commit on the workflow's `uses` line and any release-specific inputs you
-intentionally adopt. The immutable Action commit for v0.3.0 is
-`c94eee2086b31450d975137a0102dda18522d0b8`. Run `doctor`, review the diff, and
-commit the update through the repository's normal process.
-
-Repeat this process in every repository that uses Sutura. There is no
-machine-wide switch that can safely rewrite independent GitHub workflows.
+Repeat the reviewed update for each installation. Doctor reports installed source independently of the CLI's desired version; an old Action's unknown contract is not silently assigned newer capabilities.
 
 ## Pause or resume repairs
 
-Pause provider and sandbox work without removing the workflow:
-
-```bash
-gh variable set SUTURA_DISABLED --body true
-```
-
-Remove the variable to resume:
-
-```bash
-gh variable delete SUTURA_DISABLED
-```
-
-The monitor checks this variable before credentials, providers, or sandboxes
-are used.
+Use `sutura pause --plan --workflow "CI" --repo example/project` or the corresponding `resume` command. Apply the exact reviewed digest. These commands require a proven admission guard and check the prior `SUTURA_DISABLED` value before changing it. They do not alter CI routing modes.
 
 ## Rotate credentials
 
@@ -223,7 +159,7 @@ gh secret set TAVILY_API_KEY
 gh secret set OPENAI_API_KEY
 gh secret set TYPESAFE_API_KEY
 gh variable set CONTREE_PROJECT
-npx sutura@0.3.9 doctor
+sutura doctor
 ```
 
 Omit Tavily when the installation uses `--no-tavily`. `OPENAI_API_KEY` and
@@ -231,31 +167,7 @@ Omit Tavily when the installation uses `--no-tavily`. `OPENAI_API_KEY` and
 
 ## Remove Sutura
 
-Pause Sutura first if an attempt may still be running. Then remove the workflow
-and commit that removal:
-
-```bash
-gh variable set SUTURA_DISABLED --body true
-git rm .github/workflows/sutura.yml
-git commit -m "ci: remove Sutura repair monitor"
-git push
-```
-
-After the removal reaches the default branch, optionally delete Sutura's
-repository secrets and variables:
-
-```bash
-gh secret delete NEBIUS_API_KEY
-gh secret delete CONTREE_TOKEN
-gh secret delete TAVILY_API_KEY
-gh secret delete OPENAI_API_KEY
-gh secret delete TYPESAFE_API_KEY
-gh variable delete CONTREE_PROJECT
-gh variable delete SUTURA_DISABLED
-```
-
-Existing comments, checks, workflow artifacts, repair branches, and pull
-requests remain part of repository history and follow GitHub retention rules.
+Pause first if an attempt may still be running. Preview `sutura remove --plan --workflow "CI" --repo example/project` and apply its exact digest. Removal deletes only an unchanged wholly owned generated workflow. Customized/unowned files require an explicit manual diff through your normal review process. Credentials, comments, checks, workflow artifacts, repair branches, pull requests and local evidence remain retained. Commit the reviewed workflow deletion normally; local removal does not change the default branch until published.
 
 ## Troubleshooting
 
@@ -302,8 +214,7 @@ attempts, so the next run uses the new budget.
 
 ### An upgrade would overwrite custom settings
 
-Do not run `init --force`. Update the immutable `uses` commit manually, preserve
-the intentional inputs and conditions, and confirm the result with `doctor`.
+Use `upgrade --plan` to inspect minimal pin changes. Resolve the displayed three-way conflict while preserving intentional inputs and conditions, then review a fresh plan. `--force` cannot overwrite custom settings.
 
 Report reproducible defects through the repository's
 [GitHub issues](https://github.com/juan294/sutura/issues). Report security

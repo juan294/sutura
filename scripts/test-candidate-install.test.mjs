@@ -1,13 +1,39 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
 import { assertCandidateCheckout } from './test-candidate-install.mjs';
-import { packedFilename, verifyInstall } from './install-test-lib.mjs';
+import { packedFilename, verifyInstall, validateGeneratedWorkflow } from './install-test-lib.mjs';
 
 const ACTION_SHA = 'a'.repeat(40);
+
+const progressiveWorkflow = `permissions: {}
+jobs:
+  inspect:
+    permissions: { actions: read, contents: read }
+    outputs:
+      repair-eligible: \${{ steps.inspect.outputs.repair-eligible }}
+    steps:
+      - id: inspect
+        uses: juan294/sutura@${ACTION_SHA}
+        with: { mode: inspect }
+  repair:
+    needs: inspect
+    if: \${{ needs.inspect.outputs['repair-eligible'] == 'true' && vars.SUTURA_DISABLED != 'true' && !startsWith(github.event.workflow_run.head_branch, 'sutura/fix-') && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') }}
+    permissions: { actions: read, checks: write, contents: write, pull-requests: write }
+    steps:
+      - uses: juan294/sutura@${ACTION_SHA}
+        with: { mode: heal }
+  finalize:
+    needs: [inspect, repair]
+    if: \${{ always() }}
+    permissions: {}
+    steps:
+      - run: echo finalizing
+`;
 
 function doctorOutput(commit) {
   return [
@@ -21,10 +47,10 @@ function doctorOutput(commit) {
 }
 
 test('candidate pack accepts npm 11 and npm 12 JSON output only when one package is present', () => {
-  assert.equal(packedFilename('[{"filename":"sutura-0.3.9.tgz"}]'), 'sutura-0.3.9.tgz');
-  assert.equal(packedFilename('{"filename":"sutura-0.3.9.tgz"}'), 'sutura-0.3.9.tgz');
-  assert.equal(packedFilename('{"sutura":{"filename":"sutura-0.3.9.tgz"}}'),
-    'sutura-0.3.9.tgz');
+  assert.equal(packedFilename('[{"filename":"sutura-0.4.0.tgz"}]'), 'sutura-0.4.0.tgz');
+  assert.equal(packedFilename('{"filename":"sutura-0.4.0.tgz"}'), 'sutura-0.4.0.tgz');
+  assert.equal(packedFilename('{"sutura":{"filename":"sutura-0.4.0.tgz"}}'),
+    'sutura-0.4.0.tgz');
   assert.throws(() => packedFilename('{}'), /did not return one filename/u);
   assert.throws(() => packedFilename('{"one":{"filename":"one.tgz"},"two":{"filename":"two.tgz"}}'),
     /did not return one filename/u);
@@ -43,7 +69,7 @@ test('candidate install uses the local tarball and exact candidate Action SHA wi
       dependencies: {
         pack: async (source, destination) => {
           calls.push(['pack', source]);
-          const tarball = join(destination, 'sutura-0.3.9.tgz');
+          const tarball = join(destination, 'sutura-0.4.0.tgz');
           await writeFile(tarball, 'candidate');
           return tarball;
         },
@@ -51,33 +77,43 @@ test('candidate install uses the local tarball and exact candidate Action SHA wi
           calls.push(['install']);
           await mkdir(join(consumer, 'node_modules', 'sutura'), { recursive: true });
           await writeFile(join(consumer, 'node_modules', 'sutura', 'package.json'), JSON.stringify({
-            name: 'sutura', version: '0.3.9', dependencies: {},
+            name: 'sutura', version: '0.4.0', dependencies: {},
           }));
           await writeFile(join(consumer, 'node_modules', 'sutura', 'LICENSE'), 'MIT fixture\n');
         },
-        invoke: async (_binary, args, consumer) => {
+        invoke: async (_binary, args, consumer, environment) => {
           calls.push(args);
-          if (args[0] === 'init') {
+          if (args[0] === 'assess') return JSON.stringify({ schemaVersion: 'sutura-repository-assessment-v1', jobs: [], complete: true });
+          if (args[0] === 'init' && args.includes('--plan')) return JSON.stringify({ plan: { digest: 'd'.repeat(64), blockers: [], actionSha: ACTION_SHA } });
+          if (args[0] === 'init' && args.includes('--apply')) {
             await mkdir(join(consumer, '.github', 'workflows'), { recursive: true });
             await writeFile(join(consumer, '.github', 'workflows', 'sutura.yml'),
-              `jobs:\n  repair:\n    steps:\n      - uses: juan294/sutura@${ACTION_SHA}\n`);
+              progressiveWorkflow);
             return '';
           }
-          if (args[0] === 'doctor') return doctorOutput(ACTION_SHA);
-          if (args[0] === '--version') return '0.3.9\n';
+          if (args[0] === 'doctor') {
+            for (const kind of ['secret', 'variable']) {
+              assert.equal(execFileSync('gh', [kind, 'list', '--json', 'name', '--jq', '.[].name'], { env: environment, encoding: 'utf8', timeout: 5000 }), '', 'candidate shim must not invent configured credential names');
+            }
+            return doctorOutput(ACTION_SHA) + '\n[INFO] Readiness: assessed=observed; configured=incomplete; activated=unknown; prepared=unmeasured; reproduced=unmeasured; native-verified=unmeasured; integrated=unmeasured.\n[INFO] No paid execution was attempted.';
+          }
+          if (args[0] === '--version') return '0.4.0\n';
           throw new Error(`unexpected invocation ${args.join(' ')}`);
         },
       },
     });
 
     assert.equal(result.mode, 'candidate');
+    assert.equal(result.doctorOutcome, 'incomplete-expected');
+    assert.ok(calls.some(entry => entry.includes('--plan')));
+    assert.ok(calls.some(entry => entry.includes('--apply')));
     assert.equal(result.actionCommit, ACTION_SHA);
-    assert.equal(result.packageVersion, '0.3.9');
+    assert.equal(result.packageVersion, '0.4.0');
     assert.equal(result.setupDurationMs, 25);
     assert.match(result.packageIntegrity, /^[a-f0-9]{64}$/u);
     assert.deepEqual(calls[0], ['pack', join(temporary, 'packages', 'cli')]);
     assert.ok(calls.some((entry) => Array.isArray(entry) && entry.includes('--action-sha')));
-    assert.ok(!JSON.stringify(calls).includes('sutura@0.3.9'));
+    assert.ok(!JSON.stringify(calls).includes('sutura@0.4.0'));
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
@@ -115,4 +151,17 @@ test('candidate wrapper rejects a different HEAD or relevant dirty files', async
     if (args[0] === 'ls-files') return 'packages/cli/src/untracked.ts\n';
     return clean(command, args, options);
   }), /untracked/u);
+});
+
+test('progressive workflow validation checks privilege and unconditional finalization semantics', () => {
+  assert.doesNotThrow(() => validateGeneratedWorkflow(progressiveWorkflow, ACTION_SHA, true));
+  for (const workflow of [
+    progressiveWorkflow.replace('permissions: {}', 'permissions: write-all'),
+    progressiveWorkflow.replace('actions: read, contents: read', 'actions: read, contents: write'),
+    progressiveWorkflow.replace('with: { mode: inspect }', 'with: { mode: heal }'),
+    progressiveWorkflow.replace("needs.inspect.outputs['repair-eligible'] == 'true' && ", ''),
+    progressiveWorkflow.replace(`uses: juan294/sutura@${ACTION_SHA}`, 'uses: unrelated/action@v1') + `\n  extra:\n    steps:\n      - uses: juan294/sutura@${ACTION_SHA}\n`,
+    progressiveWorkflow.replace('always()', 'success()'),
+    progressiveWorkflow.replace('run: echo finalizing', 'run: echo \${{ secrets.NEBIUS_API_KEY }}'),
+  ]) assert.throws(() => validateGeneratedWorkflow(workflow, ACTION_SHA, true), /inspection|finaliz|admission|permission/iu);
 });

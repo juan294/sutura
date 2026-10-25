@@ -154,3 +154,179 @@ describe('demo materializer', () => {
     expect(MATERIALIZER).not.toMatch(/exec(?:Sync)?\(/u);
   });
 });
+
+type NativeEvidence = {
+  checkUrl: string; commentUrl: string;
+  native: { status: string; reason?: string; runId?: number; runAttempt?: number | null; headSha?: string };
+};
+type NativeObserverContext = {
+  api: (path: string) => Promise<unknown[]>;
+  now: () => number; pause: (milliseconds: number) => Promise<void>;
+  record: (evidence: NativeEvidence) => void;
+  repository: string; runId: string; fixtureSha: string; caseBranch: string; fixturePrNumber: number;
+  appSlug: string; outcome: string; runtime: string;
+};
+
+function nativeObserver(): (context: NativeObserverContext) => Promise<NativeEvidence> {
+  const body = /\/\/ BEGIN NATIVE OBSERVER\n([\s\S]*?)\n {10}\/\/ END NATIVE OBSERVER/u.exec(WORKFLOW)?.[1];
+  if (!body) throw new Error('case-lab.yml: native observation contract missing');
+  const source = body.split('\n').map(line => line.replace(/^ {10}/u, '')).join('\n');
+  return new Function('Buffer', `${source}; return observeNativeRepair;`)(Buffer) as (context: NativeObserverContext) => Promise<NativeEvidence>;
+}
+
+function nativeContext(status = 'success') {
+  const fixtureSha = 'a'.repeat(40), repairSha = 'b'.repeat(40);
+  const marker = '<!-- sutura-run:NDE -->';
+  let clock = 0;
+  const records: NativeEvidence[] = [];
+  const context: NativeObserverContext = {
+    repository: 'owner/demo', runId: '41', fixtureSha, caseBranch: 'case-lab/request/javascript-repair',
+    fixturePrNumber: 1, appSlug: 'sutura-repair', outcome: 'fixed', runtime: 'node', now: () => clock,
+    pause: async milliseconds => { clock += milliseconds; }, record: value => { records.push(structuredClone(value)); },
+    api: async path => {
+      if (path.includes('/check-runs')) return [{ check_runs: [
+        { id: 80, external_id: 'sutura:owner/demo:workflow-run:41', head_sha: fixtureSha, app: { slug: 'unrelated' }, html_url: 'https://github.com/owner/demo/runs/80' },
+        { id: 81, external_id: 'sutura:owner/demo:workflow-run:41', head_sha: fixtureSha, app: { slug: 'sutura-repair' }, html_url: 'https://github.com/owner/demo/runs/81' },
+      ] }];
+      if (path.includes('/comments')) return [[
+        { user: { type: 'Bot', login: 'other[bot]' }, body: `${marker}\nCopied text`, html_url: 'https://github.com/owner/demo/issues/1#wrong-bot' },
+        { user: { type: 'User', login: 'sutura-repair[bot]' }, body: `${marker}\nCopied text`, html_url: 'https://github.com/owner/demo/issues/1#wrong-type' },
+        { user: { type: 'Bot', login: 'sutura-repair[bot]' }, body: '<!-- sutura-run:NDI -->\nOther run', html_url: 'https://github.com/owner/demo/issues/1#wrong-run' },
+        { user: { type: 'Bot', login: 'sutura-repair[bot]' }, body: `${marker}\nFinal sandbox report`, html_url: 'https://github.com/owner/demo/issues/1#correct' },
+      ]];
+      if (path.includes('/commits/') && !path.includes('/check-runs')) return [{ parents: [{ sha: fixtureSha }] }];
+      if (path.includes('/pulls?')) return [[{ number: 9, html_url: 'https://github.com/owner/demo/pull/9',
+        user: { type: 'Bot', login: 'sutura-repair[bot]' }, body: `${marker}\nVerified sandbox patch`,
+        head: { sha: repairSha, ref: 'sutura/fix-41', repo: { full_name: 'owner/demo' } },
+        base: { ref: context.caseBranch } }]];
+      if (path.includes('/runs?')) return [{ workflow_runs: [{ id: 91, run_attempt: 3, head_sha: repairSha,
+        head_branch: 'sutura/fix-41', path: '.github/workflows/ci.yml', event: 'pull_request',
+        pull_requests: [{ number: 9, head: { sha: repairSha, ref: 'sutura/fix-41' }, base: { ref: context.caseBranch, sha: fixtureSha } }],
+        status: status === 'pending' ? 'in_progress' : status === 'approval_required' ? 'action_required' : 'completed',
+        conclusion: status === 'failure' ? 'failure' : ['pending', 'approval_required'].includes(status) ? null : 'success',
+        html_url: 'https://github.com/owner/demo/actions/runs/91' }] }];
+      if (path.includes('/jobs')) return [{ jobs: status === 'empty-jobs' ? [] : [
+        { id: 101, name: 'test', status: 'completed', conclusion: status === 'skipped-job' ? 'skipped' : 'success' },
+      ] }];
+      throw new Error(`Unexpected GitHub read ${path}`);
+    },
+  };
+  return { context, records, repairSha };
+}
+
+describe('Case Lab native repair admission', () => {
+  const steps = stepBlocks(WORKFLOW);
+  it('uses an immutable repository-scoped App token only for repair publication', () => {
+    const token = steps.find(step => step.name === 'Create the repository-scoped repair token');
+    expect(token?.body).toContain('actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1');
+    expect(token?.body).toContain('permission-actions: read');
+    expect(token?.body).toContain('permission-checks: write');
+    expect(token?.body).toContain('permission-contents: write');
+    expect(token?.body).toContain('permission-pull-requests: write');
+    expect(token?.body).not.toMatch(/permission-workflows|skip-token-revoke|owner:|repositories:/u);
+    const repair = steps.find(step => step.name === 'Run Sutura at the exact release');
+    expect(repair?.body).toContain('github-token: ${{ steps.repair-app-token.outputs.token }}');
+    expect(WORKFLOW.match(/steps\.repair-app-token\.outputs\.token/gu)).toHaveLength(1);
+    for (const name of ['Push the broken branch and open the broken pull request', 'Dispatch CI and prove it is red']) {
+      expect(steps.find(step => step.name === name)?.body).toContain('GH_TOKEN: ${{ github.token }}');
+    }
+    expect(steps.findIndex(step => step.name === 'Observe native repair CI and authenticated evidence'))
+      .toBeLessThan(steps.findIndex(step => step.name === 'Publish the public-safe result document'));
+    expect(WORKFLOW).toContain('timeout 300s node --input-type=module');
+    expect(WORKFLOW).toContain('GITHUB_STEP_SUMMARY');
+    expect(WORKFLOW).toContain('end-to-end verification remains unmet');
+    expect(WORKFLOW).toContain('name: sutura-native-ci-${{ steps.failed-ci.outputs.run-id }}');
+  });
+
+  it('retains only expected App/source evidence and proves real jobs on the exact repair head', async () => {
+    const { context, records, repairSha } = nativeContext();
+    const reads: string[] = [];
+    const original = context.api;
+    context.api = async path => { reads.push(path); return original(path); };
+    const evidence = await nativeObserver()(context);
+    expect(reads).toContain('repos/owner/demo/actions/runs/91/attempts/3/jobs?per_page=100');
+    expect(evidence.checkUrl).toBe('https://github.com/owner/demo/runs/81');
+    expect(evidence.commentUrl).toBe('https://github.com/owner/demo/issues/1#correct');
+    expect(evidence.native.status).toBe('success');
+    expect(evidence.native.headSha).toBe(repairSha);
+    expect(evidence.native.runId).toBe(91);
+    expect(evidence.native.runAttempt).toBe(3);
+    expect(records.at(-1)?.native.status).toBe('success');
+  });
+
+  it.each(['failure', 'approval_required', 'pending', 'empty-jobs', 'skipped-job'])('retains %s as unverified before cleanup', async status => {
+    const { context } = nativeContext(status);
+    const evidence = await nativeObserver()(context);
+    expect(evidence.native.status).toBe(status === 'pending' ? 'timeout' : status === 'approval_required' ? 'approval_required' : status === 'failure' ? 'failure' : 'unavailable');
+    expect(evidence.native.runId).toBe(91);
+  });
+
+  it('does not replace Python fixture verification with a successful unrelated JavaScript CI', async () => {
+    const { context } = nativeContext();
+    context.runtime = 'python';
+    const evidence = await nativeObserver()(context);
+    expect(evidence.native.status).toBe('unavailable');
+    expect(evidence.native.reason).toBe('python-fixture-has-no-pr-ci-contract');
+  });
+
+  it('does not use an unrelated run or missing API evidence as native success', async () => {
+    const { context } = nativeContext();
+    const original = context.api;
+    context.api = async path => path.includes('/runs?') ? [{ workflow_runs: [{ id: 92,
+      head_sha: 'c'.repeat(40), head_branch: 'sutura/fix-41', path: '.github/workflows/ci.yml', event: 'pull_request', status: 'completed', conclusion: 'success' }] }] : original(path);
+    expect((await nativeObserver()(context)).native.status).toBe('timeout');
+    context.api = async () => { throw new Error('API unavailable'); };
+    expect((await nativeObserver()(context)).native.status).toBe('unavailable');
+  });
+});
+
+describe('Case Lab native source continuity', () => {
+  it('rejects a repair PR whose current head no longer has the exact failing source as parent', async () => {
+    const { context } = nativeContext();
+    const original = context.api;
+    context.api = async path => path.includes('/commits/') && !path.includes('/check-runs')
+      ? [{ parents: [{ sha: 'c'.repeat(40) }] }] : original(path);
+    expect((await nativeObserver()(context)).native.status).toBe('unavailable');
+  });
+});
+
+
+describe('native proof cannot be borrowed from another pull request', () => {
+  it.each(['wrong-pr', 'wrong-base', 'missing-association', 'missing-attempt'])('refuses %s even with the same green workflow and head', async mismatch => {
+    const { context } = nativeContext();
+    const original = context.api;
+    context.api = async path => {
+      const pages = await original(path);
+      if (path.includes('/runs?')) {
+        const run = (pages[0] as { workflow_runs: Array<Record<string, unknown>> }).workflow_runs[0]!;
+        const association = (run.pull_requests as Array<{ number: number; base: { ref: string } }>)[0]!;
+        if (mismatch === 'wrong-pr') association.number = 10;
+        if (mismatch === 'wrong-base') association.base.ref = 'main';
+        if (mismatch === 'missing-association') run.pull_requests = [];
+        if (mismatch === 'missing-attempt') delete run.run_attempt;
+      }
+      return pages;
+    };
+    expect((await nativeObserver()(context)).native.status).toBe('unavailable');
+  });
+
+  it('fails the fixed-result gate without native success after preserving artifacts and before cleanup', () => {
+    const steps = stepBlocks(WORKFLOW);
+    const gate = steps.find(step => step.name === 'Require native CI for a fixed repair');
+    expect(gate).toBeDefined();
+    const index = steps.indexOf(gate!);
+    expect(index).toBeGreaterThan(steps.findIndex(step => step.name === 'Upload the result artifact'));
+    expect(index).toBeLessThan(steps.findIndex(step => step.name === 'Close the reported pull requests and discard their held CI runs'));
+    const command = gate!.body.split('run: |\n')[1]!.split('\n').map(line => line.replace(/^ {10}/u, '')).join('\n');
+    for (const status of ['failure', 'approval_required', 'timeout', 'unavailable', '', 'not-applicable']) {
+      expect(() => execFileSync('bash', ['-e', '-c', command], {
+        env: { PATH: process.env.PATH, OUTCOME: 'fixed', NATIVE_STATUS: status }, stdio: 'pipe',
+      })).toThrow();
+    }
+    for (const [outcome, status] of [['fixed', 'success'], ['gave-up', 'not-applicable']]) {
+      expect(() => execFileSync('bash', ['-e', '-c', command], {
+        env: { PATH: process.env.PATH, OUTCOME: outcome, NATIVE_STATUS: status }, stdio: 'pipe',
+      })).not.toThrow();
+    }
+  });
+});

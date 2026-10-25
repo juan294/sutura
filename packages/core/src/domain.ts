@@ -5,6 +5,7 @@ import type { RunMetrics } from './executor/types.js';
 import type { TraceEvent } from './trace/types.js';
 import type { VerificationArtifact, VerificationEvidence } from './verification/types.js';
 import type { DiagnosisRecoveryEvidence } from './diagnose/hypotheses.js';
+import type { FailureIdentityEvidence } from './engine/failure-identity.js';
 
 export type FailureClass =
   | 'typecheck'
@@ -47,8 +48,9 @@ export interface TriageVerdict {
   confidenceLower: number;
   confidenceUpper: number;
   /** `sandbox-budget`: triage stopped before its next batch would exceed the sandbox budget (status `not-run`). */
-  stopReason: 'failure-boundary' | 'pass-boundary' | 'maximum-attempts' | 'not-run' | 'sandbox-budget';
+  stopReason: 'failure-boundary' | 'pass-boundary' | 'maximum-attempts' | 'not-run' | 'sandbox-budget' | 'failure-identity';
   methodVersion: 'sprt-p20-p80-a05-b05-v1';
+  reproduction?: FailureIdentityEvidence;
 }
 
 export interface Candidate {
@@ -160,6 +162,8 @@ export interface CaseFile {
   runtime: 'node' | 'python';
   diagnosis: Diagnosis;
   triage: TriageVerdict;
+  /** Absent historical records have no measured original-failure identity. */
+  reproduction?: FailureIdentityEvidence;
   race: RaceResult[];
   audit?: AuditVerdict;
   selectedCandidate?: {

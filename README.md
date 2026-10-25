@@ -1,14 +1,28 @@
 # Sutura: Verified Self-Healing CI
 
-[![CI](https://github.com/juan294/sutura/actions/workflows/ci.yml/badge.svg)](https://github.com/juan294/sutura/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6)
-![Node](https://img.shields.io/badge/Node-22%2B-339933)
-![Python](https://img.shields.io/badge/Python-3.13-3776AB)
+[![CI](https://github.com/juan294/sutura/actions/workflows/ci.yml/badge.svg?branch=develop&event=push)](https://github.com/juan294/sutura/actions/workflows/ci.yml?query=branch%3Adevelop+event%3Apush)
+[![CodeQL](https://github.com/juan294/sutura/actions/workflows/codeql.yml/badge.svg?branch=develop&event=push)](https://github.com/juan294/sutura/actions/workflows/codeql.yml?query=branch%3Adevelop+event%3Apush)
+[![npm](https://img.shields.io/npm/v/sutura?logo=npm&logoColor=white&color=CB3837)](https://www.npmjs.com/package/sutura)
+![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178C6?logo=typescript&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-22-43853D?logo=node.js&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
+![pnpm](https://img.shields.io/badge/pnpm-11.22.0-F69220?logo=pnpm&logoColor=white)
+![Vitest](https://img.shields.io/badge/Vitest-4.1.12-6E9F18?logo=vitest&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Nebius Token Factory](https://img.shields.io/badge/Nebius-Token_Factory-6C5CE7)](https://tokenfactory.nebius.com/)
+[![NVIDIA Nemotron](https://img.shields.io/badge/NVIDIA-Nemotron_3-76B900?logo=nvidia&logoColor=white)](https://www.nvidia.com/en-us/ai-data-science/foundation-models/nemotron/)
+[![Nebius ConTree](https://img.shields.io/badge/Nebius-ConTree_Sandboxes-6C5CE7)](https://nebius.com/)
+[![Tavily](https://img.shields.io/badge/Tavily-Search-0EA5E9)](https://tavily.com/)
+[![GitHub Actions](https://img.shields.io/badge/GitHub-Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/marketplace/actions/sutura-verified-self-healing-ci)
+[![Vercel](https://img.shields.io/badge/Vercel-Case_Lab-000000?logo=vercel&logoColor=white)](https://sutura-case-lab.vercel.app/)
+
+<a href="https://chapa.thecreativetoken.com/u/juan294">
+  <img src="https://chapa.thecreativetoken.com/u/juan294/badge.svg" alt="juan294's Chapa Impact Badge" width="100%" />
+</a>
 
 Try it: [Sutura Case Lab](https://sutura-case-lab.vercel.app/) — five CI repair, refusal, and no-patch cases with labeled evidence, no account needed.
 
-Launching on [Product Hunt](https://www.producthunt.com/products/sutura?launch=sutura) on 2026-09-18 as a GPT-6 Astra Challenge entry.
+Sutura launched on [Product Hunt](https://www.producthunt.com/products/sutura/launches/sutura) on 2026-09-18.
 
 AI agents make CI pass. Sutura verifies the fix, filters flaky failures,
 rejects unsafe shortcuts, and opens an evidence-backed PR for human review.
@@ -18,10 +32,26 @@ repair checkpoints before the independent audit. It never auto-merges.
 
 The public [Sutura Case Lab](https://sutura-case-lab.vercel.app/) lets a
 signed-out visitor select one of five fixed cases and read a stable, labeled
-result. Its source lives in [`packages/case-lab`](packages/case-lab/README.md).
-Live runs stay disabled until the public-demo gate is authorized against one
-exact release commit; every case has a labeled deterministic result today.
+result. Each case shows the recorded result from the latest release benchmark.
+A visitor can also start a rate-limited live run of the pinned release against
+a public demo repository. Its source lives in
+[`packages/case-lab`](packages/case-lab/README.md). The Case Lab is pinned to
+the exact v0.3.9 release commit `cc3281485b4364d7c8fcb2e820e03ffbaf893c2a`.
 Sutura is built for the Nebius x NVIDIA Global AI Hackathon.
+
+## Repository fit and access
+
+Sutura targets self-contained Node and Python verification jobs with locked public
+dependencies. The selected job must not need application secrets, services or
+unsupported native build preparation. Other jobs in the same repository can use
+those capabilities; they do not establish that Sutura can reproduce them.
+
+Live repair requires access to Nebius ConTree as well as inference credentials.
+ConTree access is a prerequisite, not something the installer provisions. Confirm
+that access before configuring a repair workflow. Current runtime limits include
+Node 22/24, bounded workspace layouts, frozen Python dependencies and disabled
+lifecycle scripts. Static repository fit does not prove preparation or repair.
+The recorded Case Lab remains available without provider accounts.
 
 ## Technical review
 
@@ -36,9 +66,11 @@ offline examples, controls, and pending evidence. The
 ```mermaid
 flowchart LR
   A[Failed GitHub Actions run] --> B[Exact failing source SHA and failed-step log]
-  B --> C[Nemotron Nano diagnosis]
-  C --> D[ConTree dependency-prepared snapshot]
-  D -->|Branching use 1| E1[Progressive triage batch 1]
+  B --> P[Read-only inspection and admission]
+  P --> D[ConTree dependency-prepared snapshot]
+  D --> R[Match selected native failure]
+  R --> C[Nemotron Nano diagnosis]
+  C -->|Branching use 1| E1[Progressive triage batch 1]
   D -->|Same image| E2[Next batch when evidence is mixed]
   E1 --> F[Nemotron Super repair proposals]
   E2 --> F
@@ -91,6 +123,15 @@ as **inference cost** from the token ledger. Each entry keeps the abstract
 Nano, Super, or Ultra role separate from the actual routed provider model ID.
 It is not presented as total operating cost.
 
+### Where Token Factory fits
+
+In the v0.3.9 release benchmark (55 evaluations), Nebius Token Factory served 168
+Nemotron calls. Median latency was 1.1 s for Super, 2.2 s for Ultra and 3.4 s for Nano
+(95th percentile 2.9, 4.0 and 7.9 s). Together those calls took 9% of the wall-clock
+time (430 of 4,663 case-seconds, no case above 20%) and USD 0.17 of the USD 4.92 total.
+The rest is sandbox time and cost, so Token Factory never gated a run. This measures one
+benchmark run on one provider; it is not a comparison with another one.
+
 ## Evidence, with claims discipline
 
 Sutura is measured by [Placebo](packages/placebo/README.md), a
@@ -98,6 +139,37 @@ placebo-controlled benchmark for CI-repair agents. Results are versioned and
 dated. Catch-rate claims use the form “refused X/X placebos in Placebo vN.”
 Fix rate includes every failed case ID, and flaky accuracy states the corpus
 sample size. The internal ship gate is zero false approvals.
+
+On 2026-10-03, the exact v0.3.9 subject
+`cc3281485b4364d7c8fcb2e820e03ffbaf893c2a` completed 51/51 Placebo cases and
+55/55 evaluations under the release-mode benchmark gate, with no infrastructure
+stops. The [machine-readable result](docs/demo/placebo-v0.3.9-live-2026-10-03.json),
+[run ledger](docs/demo/placebo-v0.3.9-live-ledger-2026-10-03.json), and
+[evidence index](docs/demo/sutura-v0.3.9-release-benchmark-evidence.md) retain
+every failure.
+
+- Sutura's trap catch rate was 18/19 with zero false approvals. The miss,
+  `trap-workflow-check-removal`, is a `gave-up` coverage gap, not a false
+  approval.
+- It fixed 14/18 repairable cases. Four repairs gave up:
+  `python-repair-missing-await`, `repair-esm-extension-nested`,
+  `repair-hard-cache-invalidation`, and `repair-tsconfig-drift`.
+- It identified 10/10 flaky cases without patching them and rejected 11/11
+  deceptive patches.
+- It fixed 1/4 upstream cases with Tavily.
+- Hidden repair preservation passed in three of four repair cases; the fourth
+  did not run because its repair gave up.
+- Recorded inference cost was USD 0.645343, of which USD 0.173620 was Nemotron on
+  Nebius Token Factory and the rest the optional audit voices. Recorded sandbox cost
+  was USD 4.27893399, for a total of USD 4.92427699 across the complete evaluation.
+- The optional GPT-6 Astra and TypeSafe Jev audit voices both ran. They can
+  only veto a repair.
+
+Fix rates for v0.3.6 through v0.3.9 were 14/18, 17/18, 13/18 and 14/18. Each
+release has one live evaluation per case, so treat that spread as run-to-run
+variance, not a measured improvement or regression.
+
+### Historical v0.3.0 result
 
 On 2026-09-15, the exact v0.3.0 subject
 `c94eee2086b31450d975137a0102dda18522d0b8` completed all 51 Placebo cases and
@@ -162,17 +234,20 @@ The public dogfood record starts with [PR #18](https://github.com/juan294/sutura
 
 ## Security boundary
 
-- The action runs trusted code from the repository default branch. It repairs
-  only a same-repository pull request tied to the failed run and exact head SHA.
+- The action runs trusted code from the repository default branch. It admits
+  supported same-repository failures tied to the exact failed run and head SHA;
+  fork sources and Sutura repair branches are excluded.
 - Repository secrets are not copied into ConTree. Sandbox commands receive only
   `CI=true` and `NODE_ENV=test`.
 - Dependency installation receives only declared package and workspace
   manifests. It runs with networking enabled and lifecycle scripts disabled.
   Sutura overlays source only after that stage, then disables networking for
   reproduction, triage, adaptive repair search, and audit.
-- Python dependency preparation rejects missing locks, editable or local paths,
-  VCS and requirement includes, workspaces, source builds, and repository build
-  hooks before it enables network access.
+- Python dependency preparation rejects missing locks, editable or local
+  dependencies, VCS and requirement includes, workspaces, source builds, and
+  repository build hooks before it enables network access. A single matching
+  root project's `editable = "."` lock record is allowed only because
+  `--no-install-project` excludes that project from dependency installation.
 - Log-derived source reads are bounded, stay inside the checkout, reject
   sensitive paths, and do not follow symlinks.
 - Each repair attempt is one structured Nemotron Super proposal for one
@@ -205,78 +280,46 @@ before enabling Sutura on confidential source.
 
 ## Install Sutura
 
-Sutura uses bring-your-own-key billing. Each repository supplies its provider
-credentials. The repository owner pays providers directly for its usage.
+Version 0.4.0 adds repository assessment, guided setup and evidence-qualified recovery. The recorded Case Lab benchmark above remains v0.3.9 and does not measure 0.4.0 repair effectiveness. The following flow uses the 0.4.0 CLI; install it with `npx sutura@0.4.0` after publication, or use the packed candidate during release verification.
 
-Installation is repository-scoped. You do not need to install Sutura globally:
-`npx` downloads the selected CLI version for the command, while the generated
-workflow pins the matching Action to an immutable commit.
-
-Before setup, install Git and Node.js 22 or later, install the GitHub CLI, run
-`gh auth login`, and clone a GitHub repository that already has at least one
-Actions CI workflow. Your GitHub account must be able to configure Actions
-secrets and variables and commit the generated workflow.
-
-Create these provider credentials first:
-
-- A [Nebius Token Factory API key](https://docs.tokenfactory.nebius.com/quickstart)
-  for Nemotron inference.
-- A Nebius ConTree token and project for isolated sandboxes. ConTree access is
-  an access-controlled prerequisite during the public beta.
-- An optional [Tavily API key](https://docs.tavily.com/documentation/api-reference/endpoint/usage)
-  for dependency research.
-
-Export the values only in your current shell. The installer sends secret values
-to GitHub through standard input. It does not write them into repository files.
-
-Set `NEBIUS_API_KEY`, `CONTREE_TOKEN`, `CONTREE_PROJECT`, and optional
-`TAVILY_API_KEY`, `OPENAI_API_KEY`, and `TYPESAFE_API_KEY` in your environment. Then run these commands:
+Start from one repository clone with Node.js 22 or later. Assessment needs no provider account, GitHub authentication, source upload or script execution:
 
 ```bash
-npx sutura@0.3.9 init
-sed -n '1,220p' .github/workflows/sutura.yml
-npx sutura@0.3.9 doctor
-git add .github/workflows/sutura.yml
-git commit -m "ci: add Sutura repair monitor"
-git push
+sutura assess . --json
 ```
 
-The installer detects a single CI workflow. Use `--workflow <name>` when the
-repository has multiple workflows. Add `--no-tavily` when Tavily is unavailable.
-Review the generated workflow before committing it. It becomes active only
-after it is committed and reaches the repository's default branch, either by a
-direct push or through the repository's normal pull-request process.
+Self-contained locked Node/Python jobs may be candidates. Services, application secrets, unsupported native preparation and incomplete metadata produce explicit limitations. Other jobs in the repository are assessed separately. Static support does not prove that dependencies prepare or that a repair works.
 
-The installer resolves the `v0.3.9` Action tag and writes its immutable commit
-SHA into the generated workflow. `doctor` resolves the tag again and verifies
-the pin. Release-candidate testing can supply an exact commit with
-`--action-sha <40-character-commit>`; mutable refs are rejected.
-
-Maintainers verify the published npm package and independently resolved immutable
-Action tag from a fresh temporary consumer with:
+For an optional diagnosis of one existing failed run, authenticate the GitHub CLI and supply its exact repository and run ID:
 
 ```bash
-node scripts/test-public-install.mjs --release 0.3.9
+sutura diagnose --repo example/project --run-id 12345 --json
 ```
 
-The command installs only that exact public npm version, disables lifecycle
-scripts, removes provider credentials from the child environment, runs the
-installed `init`, `doctor`, and version commands, and records package and Action
-identity hashes. It never substitutes `latest` or a mutable Action ref.
+Diagnosis reads bounded metadata and the selected failed step. It executes no source and calls no model or sandbox. Before live repair, obtain access to Nebius Token Factory and Nebius ConTree. ConTree is access-controlled during the public beta; setup does not provision it. Tavily and the two veto-only audit providers are optional. Inference budgets do not cap total sandbox or GitHub runner cost.
 
-The generated workflow uses the repository's automatic GitHub token. It stores
-provider keys as GitHub secrets. It stores `CONTREE_PROJECT` as a repository
-variable. Sutura does not proxy requests through maintainer infrastructure.
+Review a setup proposal before making changes:
 
-Sutura handles failed and timed-out runs from pull requests, pushes, scheduled workflows, and manual dispatches.
+```bash
+sutura init --plan --workflow "CI" --repo example/project
+```
 
-Pull request runs receive an evidence comment. Direct runs receive the same evidence as a commit comment. Both paths also update one GitHub Check on the exact failing SHA and link the comment and check to the same HTML artifact. Maintainers can require the Sutura check. A verified repair remains `neutral` because the repair pull request still needs human review.
+The plan displays workflow changes, provider destinations, permissions, limits, unknown costs and a concrete apply command. Apply the displayed digest with the same options. Credentials are uploaded only when explicitly selected with `--credential NEBIUS_API_KEY`, `--credential CONTREE_TOKEN`, `--credential CONTREE_PROJECT`, or an optional documented name. Unselected environment credentials are ignored. Preview writes nothing; apply retains a private local receipt without secret values. Non-secret configuration such as `CONTREE_PROJECT` can be retained. `--force` cannot overwrite customized workflows.
 
-When Sutura verifies a repair, it opens a pull request against the failing branch. It never merges the repair.
+The generated workflow pins the resolved release to an immutable Action commit and separates read-only inspection, conditional repair and an always-evaluated finalizer. Candidate testing passes `--action-sha` with the exact local candidate commit. Review the diff before committing it through your repository's normal process. Activation requires the workflow to reach the default branch; local setup does not establish activation.
 
-The complete [user guide](docs/user-guide.md) covers first-run behavior,
-configuration, per-repository upgrades, disabling, removal, credential
-rotation, and troubleshooting.
+```bash
+sutura doctor --repo example/project
+sutura upgrade --plan --workflow "CI" --repo example/project
+```
+
+Doctor reports the installed Action separately from the desired version, bounded trigger reachability, access gaps and staged readiness. Secret-name presence does not verify credential values. `upgrade` previews minimal pin changes and preserves App wiring and custom jobs. `pause`, `resume` and `remove` also require a reviewed plan. Removal retains credentials and evidence and refuses to delete unowned custom workflows.
+
+Maintainers run `node scripts/test-candidate-install.mjs` against a clean candidate. After publication, `node scripts/test-public-install.mjs --release 0.4.0` installs that exact package, independently resolves its Action tag, verifies the no-credential assessment and preview/apply journey, and requires doctor to disclose incomplete readiness. Synthetic installation proof is not hosted activation or a successful repair.
+
+The complete [user guide](docs/user-guide.md) covers migration, interrupted setup, native CI approval and troubleshooting. Sutura never merges a generated repair. Exact native checks and authorized integration remain separate from sandbox verification.
+
+<a id="contributor-setup"></a>
 
 ## Contributor setup
 
@@ -303,8 +346,15 @@ Run the complete local gate before you open a pull request:
 | Release contracts | `pnpm run test:release-contracts` |
 | Candidate package | `pnpm run test:package`           |
 
+`pnpm run ci:local` runs the combined local gate, including README setup,
+ATIF validation, offline runtime smoke, bundle verification and guard coverage.
+CI also runs `node scripts/release-case-lab.mjs check` to verify the existing
+published Case Lab pin. Live dispatch and publication remain separate actions.
+
 Live tests are opt-in with `SUTURA_LIVE=1` and require the corresponding
 credentials. Normal tests use recorded fixtures and do not spend API credit.
+
+<a id="offline-replay"></a>
 
 ### Offline replay and fixture capture
 
@@ -370,8 +420,11 @@ The versioned [release evidence requirements](docs/demo/sutura-v0.3.9-release-ev
 define the eleven required records, including dogfood plus separate candidate and public
 matrices. Canaries, the live benchmark, both matrices, publication, public demo,
 and Devpost evidence use separate authorization gates. The v0.2.0 benchmark and
-matrices remain immutable failed baselines. v0.3.9 evidence stays pending until
-each required gate is authorized and passed.
+matrices remain immutable failed baselines. The v0.3.9 release, npm package and
+benchmark are complete. Its remaining records stay pending until each required
+gate is authorized and passed.
+
+<a id="evaluation-lab"></a>
 
 ### Evaluation Lab
 
@@ -420,7 +473,7 @@ explicit Data Lab dataset transient. Read the
 
 ## GitHub Action configuration
 
-The action needs `actions: read`, `checks: write`, `contents: write`, and `pull-requests: write`.
+The read-only `mode: inspect` needs repository and Actions read access, with no provider credentials. Privileged `mode: heal` remains the default and needs `actions: read`, `checks: write`, `contents: write`, and `pull-requests: write`. Inspection output is advisory; heal independently revalidates source identity and policy before spending.
 Configure `NEBIUS_API_KEY`, `CONTREE_TOKEN`, and optional `TAVILY_API_KEY`,
 `OPENAI_API_KEY`, and `TYPESAFE_API_KEY` as repository secrets. Configure
 `CONTREE_PROJECT` as a repository variable. The
@@ -429,15 +482,20 @@ Pin external use to an exact commit SHA so replay evidence can identify the
 executed Action code rather than the consumer workflow commit.
 
 Set the repository variable `SUTURA_DISABLED` to `true` to opt a project out
-while its repair queue is deferred or its CI shape is unsupported. The monitor
-job is then skipped before credentials, providers, or sandboxes are used. Remove
-the variable or set it to any value other than `true` to resume repairs.
+while its repair queue is deferred or its CI shape is unsupported. In generated
+workflows, the repair job is skipped before repair credentials, providers or
+sandboxes are used; read-only inspection and finalization still run. Custom
+workflows can guard the whole job instead. Remove the variable or set it to any
+value other than `true` to resume repairs.
 
-The optional `require-fixed` Action input makes any outcome other than `fixed`
-fail the Action job. Sutura's own workflow enables it, so a green workflow can
-no longer hide a `gave-up` self-repair result. Generated customer workflows keep
-the default advisory behavior and publish the exact outcome through the Action
-output and GitHub Check.
+The optional `require-fixed` Action input makes any admitted repair outcome other
+than `fixed` fail the Action job. Sutura's own workflow enables it, so a green
+workflow cannot hide a `gave-up` self-repair result. Generated customer workflows
+keep the default advisory behavior. Case-file outcomes appear in Action outputs
+and GitHub Checks; typed stops before case-file publication retain terminal
+outputs and artifacts without necessarily creating a GitHub Check. Inspection
+stops and skipped repairs are never counted as fixes. Unexpected internal,
+security or evidence failures remain failed monitors.
 
 Runtime detection is automatic for single-runtime repositories. For local
 healing, `--runtime node` or `--runtime python` is an explicit override. The

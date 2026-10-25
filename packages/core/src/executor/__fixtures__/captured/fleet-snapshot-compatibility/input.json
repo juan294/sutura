@@ -1,0 +1,6 @@
+{
+  "provenance": "Captured snapshot failure shapes, 2026-10-23; repository names and paths sanitized. No provider invocation or private source bytes.",
+  "fixturePath": "packages/app/src/__fixtures__/repo-sensitive/node_modules/dummy-pkg/index.js",
+  "fixtureContent": "module.exports = { fixture: true };\n",
+  "npmrc": "# Captured harmless boolean settings\nlegacy-peer-deps=true\nprefer-offline=true\n"
+}

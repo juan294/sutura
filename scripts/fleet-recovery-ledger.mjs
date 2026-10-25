@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { incidentEvidenceKey, sealIncidentEvidence, qualifyIncident, persistIncidentEvidence,
+  readIncidentEvidence, validateIncidentEvidence, summarizeQualifications, publicQualificationSummary } from './fleet-incident-evidence.mjs';
+import { count, amount, counts, publicDelivery } from './fleet-public-summary.mjs';
 
 const SHA = /^[a-f0-9]{40}$/u;
 const DIGEST = /^[a-f0-9]{64}$/u;
@@ -176,7 +179,7 @@ export async function readObservations(directory) {
   return records;
 }
 
-export function summarizeRecovery(incidents) {
+export function summarizeRecovery(incidents, qualifications = null, coverage = {}) {
   const states = Object.fromEntries(STATES.map((state) => [state, 0]));
   const causes = { 'flaky-no-patch': 0, refused: 0, 'gave-up': 0, 'infra-stop': 0, unknown: 0 };
   const cohorts = {};
@@ -193,11 +196,16 @@ export function summarizeRecovery(incidents) {
     const cohort = validSha(incident.actionSha) ? incident.actionSha : 'unavailable';
     cohorts[cohort] = (cohorts[cohort] ?? 0) + 1;
   }
+  const qualification = summarizeQualifications(qualifications ?? incidents.map(() => ({
+    proposal: 'unmeasured', integration: 'unmeasured', currentScanComplete: false })), coverage);
   return {
     schemaVersion: 'sutura-fleet-recovery-summary-v2',
     incidents: incidents.length, states, causes, actionCohorts: cohorts,
     attempted: incidents.filter(({ monitorRunId }) => monitorRunId !== null).length,
-    verifiedRepairPrs: incidents.filter(({ state }) => ['sutura-green', 'sutura-proposed'].includes(state)).length,
+    verifiedRepairPrs: qualification.verifiedRepairPrs, qualification,
+    delivery: { typedFixedOutcomes: incidents.filter(({ cause }) => cause === 'fixed').length,
+      verifiedRepairPrs: qualification.verifiedRepairPrs,
+      integratedRecoveries: qualification.integratedRecoveries },
     costCoverage: { measured: measuredCostCount, unavailable: incidents.length - measuredCostCount },
     measuredCostUsd: Math.round(measuredCostUsd * 1_000_000) / 1_000_000,
   };
@@ -205,15 +213,16 @@ export function summarizeRecovery(incidents) {
 
 export function publicRecoverySummary(summary) {
   return {
-    schemaVersion: summary.schemaVersion,
-    incidents: summary.incidents,
-    attempted: summary.attempted,
-    verifiedRepairPrs: summary.verifiedRepairPrs,
-    states: structuredClone(summary.states),
-    causes: structuredClone(summary.causes),
-    actionCohorts: structuredClone(summary.actionCohorts),
-    costCoverage: structuredClone(summary.costCoverage),
-    measuredCostUsd: summary.measuredCostUsd,
+    schemaVersion: 'sutura-fleet-recovery-summary-v2',
+    incidents: count(summary.incidents), attempted: count(summary.attempted), verifiedRepairPrs: count(summary.verifiedRepairPrs),
+    delivery: publicDelivery(summary.delivery),
+    states: counts(summary.states, STATES),
+    causes: counts(summary.causes, ['flaky-no-patch', 'refused', 'gave-up', 'infra-stop', 'unknown']),
+    actionCohorts: Object.fromEntries(Object.entries(summary.actionCohorts ?? {})
+      .filter(([key]) => key === 'unavailable' || validSha(key)).map(([key, value]) => [key, count(value)])),
+    costCoverage: counts(summary.costCoverage, ['measured', 'unavailable']),
+    measuredCostUsd: amount(summary.measuredCostUsd),
+    ...(summary.qualification ? { qualification: publicQualificationSummary(summary.qualification) } : {}),
   };
 }
 
@@ -288,8 +297,12 @@ export async function collectRecoveryLedger(config, client, monitorEvents, now =
   const incidents = [];
   const baselines = [];
   const postWindows = [];
+  const evidenceObservations = [];
+  const verificationContracts = config.verificationContracts ?? {};
+  let detailGaps = 0;
   const unmeasuredRepositories = new Set();
   for (const repository of [...config.repositories].sort()) {
+    let detailReads = 0;
     let installation;
     try {
       installation = await client.inspectRepository(repository);
@@ -303,7 +316,11 @@ export async function collectRecoveryLedger(config, client, monitorEvents, now =
       unmeasuredRepositories.add(repository);
       continue;
     }
-    if (!installation.workflows?.length) continue;
+    if (!installation.workflows?.length) {
+      unmeasuredRepositories.add(repository);
+      baselines.push({ repository, workflowId: null, status: 'unmeasured', reason: 'watched-workflow-scope-unavailable', incidents: null });
+      continue;
+    }
     const activationAt = installation.activationAt;
     const since = activationAt
       ? new Date(Math.min(Date.parse(config.startedAt), Date.parse(activationAt) - 45 * 86400_000)).toISOString()
@@ -352,10 +369,40 @@ export async function collectRecoveryLedger(config, client, monitorEvents, now =
             // No unauthenticated actor claim is made when the source is unavailable.
           }
         }
-        incidents.push(classifyFleetIncident({ source: normalizedSource, monitor, repairPr,
+        const incident = classifyFleetIncident({ source: normalizedSource, monitor, repairPr,
           repairCi, nextGreen, actor,
           lookupError,
-          coverage: { ciPagesComplete: true, monitorObserved: monitor !== null } }));
+          coverage: { ciPagesComplete: true, monitorObserved: monitor !== null } });
+        incidents.push(incident);
+        const evidenceSource = { repositoryId: installation.repositoryId, sourceRunId: source.id,
+          sourceAttempt: source.attempt ?? 1, sourceSha: source.headSha, workflowId: workflow.id, branch: source.branch };
+        const contract = verificationContracts[String(installation.repositoryId)] ?? null;
+        let sourceEvidence = null, nativeProof = null;
+        if (detailReads < 100 && typeof client.inspectFailedRun === 'function') {
+          detailReads++;
+          try { sourceEvidence = await client.inspectFailedRun(repository, normalizedSource); } catch { /* disclosed below */ }
+        }
+        if (!sourceEvidence?.complete) detailGaps++;
+        if (contract && monitor?.outcome === 'fixed' && typeof client.collectNativeVerification === 'function') {
+          try { nativeProof = await client.collectNativeVerification(repository, normalizedSource, monitor, repairPr, contract); }
+          catch { /* API failure is missing evidence, never a contradictory green receipt. */ }
+        }
+        evidenceObservations.push(sealIncidentEvidence({ schemaVersion: 'sutura-incident-evidence-v1',
+          source: evidenceSource, observedAt: now.toISOString(),
+          trigger: { event: source.event ?? null, actorId: source.actorId ?? null,
+            triggeringActorId: source.triggeringActorId ?? null, authenticated: source.metadataComplete === true },
+          workflowDefinition: source.workflowDefinition ?? null,
+          classificationRevision: 'sutura-incident-classification-v1', classification: sourceEvidence?.classification ?? null,
+          policyDigest: contract?.policyDigest ?? null,
+          completeness: { collection: source.paginationComplete === true,
+            source: source.metadataComplete === true, native: nativeProof?.complete === true,
+            logs: sourceEvidence?.complete === true && sourceEvidence.log?.truncated === false },
+          sourceEvidence, proof: nativeProof?.proof ?? {},
+          nextAction: nativeProof?.complete ? 'Review exact native qualification.' :
+            'Obtain complete selected-step evidence and the enrolled protected native adapter receipts; do not infer repair from a later green.',
+          nextObservedGreen: nextGreen ? { runId: nextGreen.id, attempt: nextGreen.attempt ?? null,
+            headSha: nextGreen.headSha, completedAt: nextGreen.completedAt,
+            elapsedSec: (Date.parse(nextGreen.completedAt) - Date.parse(source.completedAt)) / 1000 } : null }));
       }
     }
   }
@@ -366,11 +413,13 @@ export async function collectRecoveryLedger(config, client, monitorEvents, now =
         activationAt: installation?.activationAt ?? null,
         workflowIds: installation?.workflows?.map(({ id }) => id) ?? [] };
     }) };
-  return { installations, incidents, baselines, postWindows, scope, summary: summarizeRecovery(incidents),
-    coverage: { complete: unmeasuredRepositories.size === 0,
+  return { installations, incidents, baselines, postWindows, scope, evidenceObservations, verificationContracts,
+    summary: summarizeRecovery(incidents),
+    coverage: { complete: config.repositories.length > 0 && unmeasuredRepositories.size === 0,
+      sourceDetailGaps: detailGaps,
       unmeasuredRepositories: unmeasuredRepositories.size,
       actorProvenanceAvailable: typeof client.findAuthenticatedActor === 'function',
-      baselineComplete: baselines.every((item) => item.status === 'measured') } };
+      baselineComplete: baselines.length > 0 && baselines.every((item) => item.status === 'measured') } };
 }
 
 async function writeAtomic(path, content) {
@@ -399,10 +448,27 @@ function aggregateWindow(rows) {
 
 export async function writeRecoveryLedger(result, outputDirectory, observedAt = new Date().toISOString()) {
   await mkdir(outputDirectory, { recursive: true });
+  const companionDirectory = join(outputDirectory, 'incident-evidence-v1');
+  // Validate history before touching any current view or v2 observation.
+  const priorEvidence = await readIncidentEvidence(companionDirectory);
+  for (const record of result.evidenceObservations ?? []) validateIncidentEvidence(record);
+  const evidence = [...priorEvidence, ...(result.evidenceObservations ?? [])];
+  const evidenceIdentities = new Map();
+  for (const record of evidence) {
+    const signature = JSON.stringify([record.source.sourceSha, record.source.workflowId, record.source.branch]);
+    const previous = evidenceIdentities.get(record.incidentKey);
+    if (previous !== undefined && previous !== signature) throw new Error('Companion incident identity integrity conflict; preserve history and rebuild into a new output generation');
+    evidenceIdentities.set(record.incidentKey, signature);
+  }
   const journal = join(outputDirectory, 'observations-v2');
-  for (const incident of result.incidents) await persistObservation(journal, incident, observedAt);
+  const priorObservations = await readObservations(journal);
+  const incomingObservations = result.incidents.map(incident => {
+    if (incident.schemaVersion !== 'sutura-fleet-incident-v2') throw new Error('Incident schema is invalid');
+    return { schemaVersion: 'sutura-fleet-observation-v1', observedAt, incident };
+  });
   let scope = result.scope;
   let priorScope = null;
+  let retainedWorkflowScope = 0;
   if (scope) {
     try {
       priorScope = JSON.parse(await readFile(join(outputDirectory, 'scope-v2.json'), 'utf8'));
@@ -411,16 +477,20 @@ export async function writeRecoveryLedger(result, outputDirectory, observedAt = 
     }
     scope = { ...scope, repositories: scope.repositories.map((entry) => {
       const prior = priorScope?.repositories?.find((item) => item.repository === entry.repository);
-      return entry.repositoryId === null && prior
-        ? { ...entry, repositoryId: prior.repositoryId, workflowIds: prior.workflowIds,
-          activationAt: entry.activationAt ?? prior.activationAt }
-        : entry;
+      if (!prior || (entry.repositoryId !== null && entry.repositoryId !== prior.repositoryId)) return entry;
+      const missing = prior.workflowIds.filter(id => !entry.workflowIds.includes(id));
+      if (missing.length) retainedWorkflowScope++;
+      // Discovery loss is not an owner request to erase prior scope. Repository
+      // removal and the configured window still bound the historical view.
+      return { ...entry, repositoryId: entry.repositoryId ?? prior.repositoryId,
+        workflowIds: [...new Set([...entry.workflowIds, ...prior.workflowIds])],
+        activationAt: entry.activationAt ?? prior.activationAt };
     }) };
   }
   const allowed = scope ? new Map(scope.repositories.filter(({ repositoryId }) =>
     Number.isSafeInteger(repositoryId)).map((entry) => [entry.repositoryId, entry])) : null;
   const currentIncidents = new Map(result.incidents.map((incident) => [identity(incident), incident]));
-  const incidents = mergeObservations(await readObservations(journal)).filter((incident) => {
+  const incidents = mergeObservations([...priorObservations, ...incomingObservations]).filter((incident) => {
     if (!allowed) return true;
     const entry = allowed.get(incident.repositoryId);
     const windowAt = currentIncidents.get(identity(incident))?.sourceCreatedAt ??
@@ -434,8 +504,22 @@ export async function writeRecoveryLedger(result, outputDirectory, observedAt = 
     ? incidents.filter((incident) => !currentIncidents.has(identity(incident)) && !incident.sourceCreatedAt).length : 0;
   const missingPreviouslyObserved = unchangedScope && result.coverage.complete
     ? incidents.filter((incident) => !currentIncidents.has(identity(incident))).length : 0;
+  const qualifications = incidents.map(incident => {
+    const source = Object.fromEntries(['repositoryId', 'sourceRunId', 'sourceAttempt', 'sourceSha', 'workflowId', 'branch']
+      .map(key => [key, incident[key]]));
+    const companionIdentity = evidenceIdentities.get(incidentEvidenceKey(source));
+    if (companionIdentity !== undefined && companionIdentity !== JSON.stringify([source.sourceSha, source.workflowId, source.branch])) {
+      throw new Error('Companion and v2 source identity integrity conflict; preserve history and rebuild into a new output generation');
+    }
+    const qualification = qualifyIncident(source, evidence, result.verificationContracts?.[String(source.repositoryId)]);
+    // A missing current observation does not revoke history, but cannot establish fresh coverage.
+    if (!(result.evidenceObservations ?? []).some(record => record.incidentKey === incidentEvidenceKey(source))) qualification.currentScanComplete = false;
+    return qualification;
+  });
+  const effectiveCoverage = { ...result.coverage,
+    complete: result.coverage.complete && missingPreviouslyObserved === 0 && legacyWindowUnknown === 0 && retainedWorkflowScope === 0 };
   const summary = {
-    ...publicRecoverySummary(summarizeRecovery(incidents)),
+    ...publicRecoverySummary(summarizeRecovery(incidents, qualifications, effectiveCoverage)),
     observedAt,
     baseline: {
       workflows: result.baselines.length,
@@ -450,14 +534,20 @@ export async function writeRecoveryLedger(result, outputDirectory, observedAt = 
       after: aggregateWindow(result.postWindows ?? []),
     },
     coverage: {
-      complete: result.coverage.complete && missingPreviouslyObserved === 0 && legacyWindowUnknown === 0,
+      complete: effectiveCoverage.complete,
+      retainedWorkflowScope,
       unmeasuredRepositories: result.coverage.unmeasuredRepositories,
       missingPreviouslyObserved,
       legacyWindowUnknown,
       actorProvenanceAvailable: result.coverage.actorProvenanceAvailable === true,
       baselineComplete: result.coverage.baselineComplete,
+      sourceDetailGaps: result.coverage.sourceDetailGaps ?? null,
     },
   };
+  // All input/history validation and qualification must finish before append.
+  for (const incident of result.incidents) await persistObservation(journal, incident, observedAt);
+  for (const record of result.evidenceObservations ?? []) await persistIncidentEvidence(companionDirectory, record);
+  await writeAtomic(join(outputDirectory, 'qualifications-v1.json'), `${JSON.stringify(qualifications, null, 2)}\n`);
   await writeAtomic(join(outputDirectory, 'incidents-v2.jsonl'),
     incidents.map((incident) => JSON.stringify(incident)).join('\n') + (incidents.length ? '\n' : ''));
   await writeAtomic(join(outputDirectory, 'installations-v2.json'), `${JSON.stringify(result.installations, null, 2)}\n`);

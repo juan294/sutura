@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Fake fix illustration</title>
+<link rel="stylesheet" href="base.css">
+<style>
+  .wrap { position: absolute; top: 150px; bottom: 60px; left: 120px; right: 120px; display: grid; grid-template-columns: 1.45fr 1fr; gap: 80px; align-items: center; }
+  .diff { background: var(--sheet); border: 2px solid var(--line); border-radius: 20px; overflow: hidden; }
+  .file { font-family: var(--mono); font-size: 28px; line-height: 1.5; color: var(--muted); padding: 22px 32px; border-bottom: 2px solid var(--line); }
+  .file b { color: var(--ink); font-weight: 600; }
+  pre { font-family: var(--mono); font-size: 33px; line-height: 1.75; padding: 28px 0; }
+  pre span { display: block; padding: 0 32px; white-space: pre; }
+  .del { background: rgba(255,107,97,.16); color: #ffb3ad; text-decoration: line-through; text-decoration-thickness: 3px; text-decoration-color: var(--accent); }
+  .del::first-letter { color: var(--accent); }
+  .ctx { color: var(--muted); }
+  .agent { font-size: 28px; color: var(--muted); padding: 0 32px 28px; }
+  .right { display: flex; flex-direction: column; gap: 48px; }
+  .check { display: flex; align-items: center; gap: 28px; background: var(--sheet); border: 2px solid var(--line); border-radius: 20px; padding: 36px 40px; }
+  .dot { width: 84px; height: 84px; border-radius: 50%; background: var(--ok); display: grid; place-items: center; flex: none; }
+  .check h2 { font-size: 46px; font-weight: 700; color: var(--ok); }
+  .check p { font-size: 28px; color: var(--muted); margin-top: 6px; }
+  .bug { font-size: 58px; font-weight: 700; line-height: 1.15; }
+  .bug em { font-style: normal; color: var(--accent); }
+</style></head>
+<body>
+  <div class="tag">Illustration: how a fake fix can pass</div>
+  <div class="wrap">
+    <div class="diff">
+      <div class="file"><b>retry-policy.test.ts</b><br>agent commit: "fix failing test"</div>
+      <pre><span class="ctx">  it('retries on 503', () =&gt; {</span><span class="del">-   expect(statusFor(503)).toBe('retry');</span><span class="ctx">  });</span></pre>
+    </div>
+    <div class="right">
+      <div class="check">
+        <div class="dot"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#121417" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+        <div><h2>CI passed</h2><p>All checks have passed</p></div>
+      </div>
+      <div class="bug">The check is green.<br><em>The bug is still there.</em></div>
+    </div>
+  </div>
+</body></html>

@@ -109,7 +109,7 @@ describe('real repairFailure diagnosis recovery', () => {
     const result = await runRecoveryControllerCase(caseId);
     const deceptive = caseId.startsWith('trap-');
     const replay = STAGE3_V8_REPLAYS.records.find((record) => record.caseId === caseId);
-    expect(result.caseFile.outcome, JSON.stringify(result.caseFile.recovery)).toBe(replay?.expectedReplayOutcome ?? (deceptive ? 'gave-up' : 'fixed'));
+    expect(result.caseFile.outcome, JSON.stringify({ recovery: result.caseFile.recovery, reproduction: result.caseFile.reproduction, triage: result.caseFile.triage })).toBe(replay?.expectedReplayOutcome ?? (deceptive ? 'gave-up' : 'fixed'));
     expect(result.baselineExitCode).not.toBe(0);
     expect(result.caseFile.diagnosis.failingCmd).toBe(result.observedCommand);
     expect(result.baselineAfterExitCode).not.toBe(0);
@@ -157,7 +157,7 @@ describe('real repairFailure diagnosis recovery', () => {
 
   it('repairs the real missing-await fixture without trusting a model hypothesis', async () => {
     const result = await runRecoveryControllerCase('repair-missing-await', { invalidRecoveryHypothesis: true });
-    expect(result.caseFile.outcome, JSON.stringify(result.caseFile.recovery)).toBe('fixed');
+    expect(result.caseFile.outcome, JSON.stringify({ recovery: result.caseFile.recovery, reproduction: result.caseFile.reproduction, triage: result.caseFile.triage })).toBe('fixed');
     expect(result.inferenceCalls).not.toContain('hypotheses');
     expect(result.caseFile.recovery?.authorizations).toHaveLength(1);
     expect(result.proofCount).toBeGreaterThan(0);
@@ -167,7 +167,7 @@ describe('real repairFailure diagnosis recovery', () => {
     const result = await runRecoveryControllerCase('repair-missing-await', {
       invalidRecoveryHypothesis: true, invalidRepairProposal: true,
     });
-    expect(result.caseFile.outcome, JSON.stringify(result.caseFile.recovery)).toBe('fixed');
+    expect(result.caseFile.outcome, JSON.stringify({ recovery: result.caseFile.recovery, reproduction: result.caseFile.reproduction, triage: result.caseFile.triage })).toBe('fixed');
     expect(result.selectedDiff).toContain('+  expect(await renderName()).toBe(\'ADA\');');
     expect(result.selectedDiff).not.toContain('WRONG');
     expect(result.baselineAfterExitCode).not.toBe(0);
@@ -177,7 +177,7 @@ describe('real repairFailure diagnosis recovery', () => {
     const result = await runRecoveryControllerCase('python-repair-missing-await', {
       invalidRepairProposal: true,
     });
-    expect(result.caseFile.outcome, JSON.stringify(result.caseFile.recovery)).toBe('fixed');
+    expect(result.caseFile.outcome, JSON.stringify({ recovery: result.caseFile.recovery, reproduction: result.caseFile.reproduction, triage: result.caseFile.triage })).toBe('fixed');
     expect(result.selectedDiff).toContain('+        self.assertEqual(await fetch_name(), "Ada")');
     expect(result.caseFile.trace?.some((entry) => entry.type === 'search-decision' &&
       entry.summary === 'Propose exact await insertion from source-hash-bound controller grant')).toBe(true);
@@ -188,7 +188,7 @@ describe('real repairFailure diagnosis recovery', () => {
     const result = await runRecoveryControllerCase('python-repair-await-result-preservation', {
       invalidRepairProposal: true,
     });
-    expect(result.caseFile.outcome, JSON.stringify(result.caseFile.recovery)).toBe('fixed');
+    expect(result.caseFile.outcome, JSON.stringify({ recovery: result.caseFile.recovery, reproduction: result.caseFile.reproduction, triage: result.caseFile.triage })).toBe('fixed');
     expect(result.selectedDiff).toContain('+        result = await fetch_profile(" Ada ")');
     expect(result.caseFile.trace?.some((entry) => entry.type === 'search-decision' &&
       entry.summary === 'Propose exact await insertion from source-hash-bound controller grant')).toBe(true);
@@ -199,7 +199,7 @@ describe('real repairFailure diagnosis recovery', () => {
     const result = await runRecoveryControllerCase('repair-await-helper-preservation', {
       invalidRecoveryHypothesis: true, invalidRepairProposal: true,
     });
-    expect(result.caseFile.outcome, JSON.stringify(result.caseFile.recovery)).toBe('fixed');
+    expect(result.caseFile.outcome, JSON.stringify({ recovery: result.caseFile.recovery, reproduction: result.caseFile.reproduction, triage: result.caseFile.triage })).toBe('fixed');
     expect(result.inferenceCalls).not.toContain('hypotheses');
     expect(result.selectedDiff).toContain("+  const profile = await load(' Ada ');");
     expect(result.caseFile.trace?.some((entry) => entry.type === 'search-decision' &&

@@ -5,6 +5,7 @@ import {
   parseArgs,
   USAGE,
   VERSION,
+  type AssessArguments,
   type DoctorArguments,
   type AuditArguments,
   type HealArguments,
@@ -12,6 +13,7 @@ import {
   type ReplayArguments,
   type VerifyArguments,
 } from './args.js';
+import { diagnoseRun } from './diagnose.js';
 import { doctorSutura, type DoctorResult } from './doctor.js';
 import { detectLocalRuntimeId, healFromEnvironment } from './heal.js';
 import { auditFromEnvironment } from './heal.js';
@@ -19,6 +21,7 @@ import { installSutura, type SetupResult } from './setup.js';
 import { runEvaluationCommand } from './eval.js';
 import { replayFromFile } from './replay.js';
 import { executeVerify, verifyRuntimeFromEnvironment } from './verify.js';
+import { assessRepository, type RepositoryAssessment } from './assess.js';
 
 export interface CliIo {
   write?: (value: string) => void;
@@ -26,6 +29,7 @@ export interface CliIo {
 }
 
 export interface CliDependencies {
+  assess?: (request: AssessArguments) => Promise<RepositoryAssessment>;
   heal?: (request: HealArguments) => Promise<CaseFile>;
   init?: (request: InitArguments) => Promise<SetupResult>;
   doctor?: (request: DoctorArguments) => Promise<DoctorResult>;
@@ -127,12 +131,30 @@ export async function runCli(
     write(`${VERSION}\n`);
     return 0;
   }
+  if (request.command === 'diagnose') {
+    try {
+      const result = await diagnoseRun(request);
+      write(request.json ? `${JSON.stringify(result)}\n` : `${result.reason}. ${result.nextAction}\nReproduction and repair: unmeasured.\n`);
+      return 0;
+    } catch (error) { writeError(`${publicError(error)}\n`); return 1; }
+  }
+  if (request.command === 'assess') {
+    try {
+      const result = dependencies.assess ? await dependencies.assess(request) : await assessRepository(request.path);
+      write(request.json ? `${JSON.stringify(result)}\n` : [
+        'Static repository assessment; preparation and repair remain unmeasured.',
+        ...result.jobs.map(job => `${job.scope.workflowPath} / ${job.scope.jobKey}: ${job.support} (${job.reason}). ${job.nextAction}`),
+        ...result.warnings, result.nextAction,
+      ].join('\n') + '\n');
+      return 0;
+    } catch (error) { writeError(`${publicError(error)}\n`); return 1; }
+  }
   if (request.command === 'init' || request.command === 'doctor') {
     try {
       const result = request.command === 'init'
         ? await (dependencies.init ?? installSutura)(request)
         : await (dependencies.doctor ?? doctorSutura)(request);
-      write(`${result.lines.join('\n')}\n`);
+      write(request.command === 'init' && request.json ? `${JSON.stringify(result)}\n` : `${result.lines.join('\n')}\n`);
       return 'exitCode' in result ? result.exitCode : 0;
     } catch (error) {
       writeError(`${publicError(error)}\n`);

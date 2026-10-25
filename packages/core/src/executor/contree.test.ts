@@ -1009,15 +1009,15 @@ describe('ContreeExecutor', { timeout: 30_000 }, () => {
     }
   });
 
-  it('accepts engine-strict npmrc without putting it in either snapshot', async () => {
+  it('preserves supported engine-strict npmrc in both snapshots', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sutura-contree-safe-npmrc-'));
     try {
       await execFileAsync('git', ['init', '--quiet', dir]);
       await writeFile(join(dir, '.npmrc'), 'engine-strict=true\n');
       await writeFile(join(dir, 'package.json'), '{"name":"fixture"}\n');
       await execFileAsync('git', ['-C', dir, 'add', '.npmrc', 'package.json']);
-      expect(await listSnapshotFiles(dir, 'dependency-inputs')).toEqual(['package.json']);
-      expect(await listSnapshotFiles(dir, 'repository')).toEqual(['package.json']);
+      expect((await listSnapshotFiles(dir, 'dependency-inputs')).sort()).toEqual(['.npmrc', 'package.json']);
+      expect((await listSnapshotFiles(dir, 'repository')).sort()).toEqual(['.npmrc', 'package.json']);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

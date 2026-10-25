@@ -40,7 +40,7 @@ import {
   RUN_ID,
 } from './replay-fixtures.test-helper.js';
 
-const PACKAGE_JSON = '{"scripts":{"test":"pnpm test"}}\n';
+const PACKAGE_JSON = '{"scripts":{"test":"tsc --noEmit"}}\n';
 const SOURCE_PATH = 'src/value.ts';
 const SOURCE_BEFORE = 'export const value: string = 1;\n';
 const HONEST_REPLACEMENT = 'export const value: string = "1";\n';

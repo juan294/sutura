@@ -37,3 +37,22 @@ request shapes as one, so bundles captured before 2026-09-16 still replay.
 One request reproduces it: POST `https://api.tokenfactory.nebius.com/v1/chat/completions` with
 `request-json-schema.json` from the fixture directory returns the dropped-escape content; the same
 body with `{"response_format":{"type":"json_object"}}` returns correct escapes.
+
+## Recheck 2026-10-07
+
+Same request bodies as the fixtures above (Super, the canary's `sutura_repair_proposal`
+schema, `max_tokens` 8192), one request each, sent to the Token Factory chat completions
+endpoint on 2026-10-07. Both returned HTTP 200.
+
+| Variant | Request ID | `choices[0].message.content` |
+| --- | --- | --- |
+| `response_format: json_schema` | `chatcmpl-ae94feeff96dafe4` | `{"replacement": "export function add(left: number, right: number): number {  return left + right; }"}` — line breaks lost |
+| `response_format: json_object` | `chatcmpl-8069800b5479a983` | `{"replacement": "export function add(left: number, right: number): number {\n  return left + right;\n}"}` — correct |
+
+The behavior still reproduces 21 days after the first observation: `json_schema` returns the
+replacement on one line, `json_object` preserves the `\n` escapes. The 2026-09-16 failure
+mode that dropped the backslash (`{n  return …}`) did not appear in this single sample, so
+the symptom is lost line breaks, which changes the meaning of code that depends on
+newlines. One sample per variant is not a rate. The `json_object` workaround in Sutura
+stays.
+

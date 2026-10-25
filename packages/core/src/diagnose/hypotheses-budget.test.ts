@@ -55,6 +55,45 @@ describe('shared recovery ports', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it('identifies the per-operation deadline while the global elapsed budget remains', async () => {
+    vi.useFakeTimers();
+    try {
+      const input = setup(); input.run.mockImplementation(() => new Promise(() => {}));
+      const budget = new RepairBudget({ elapsedTimeSec: 600 });
+      const ports = budgetedRecoveryPorts({ ...input, budget, operationIdPrefix: 'captured-long-shard' });
+      const pending = ports.executor.run('base', 'pnpm test');
+      const caught = pending.catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(await caught).toMatchObject({
+        name: 'BudgetExceededError', budget: 'elapsedTimeSec',
+        message: 'Sandbox operation captured-long-shard-op-001 exceeded its per-operation deadline of 120 seconds',
+        operationId: 'captured-long-shard-op-001', timeoutSec: 120,
+      });
+      expect(budget.remainingElapsedTimeSec()).toBe(480);
+      expect(budget.snapshot().sandboxOperations).toBe(1);
+      expect(input.cancel).toHaveBeenCalledExactlyOnceWith('captured-long-shard-op-001');
+      expect(input.run).toHaveBeenCalledOnce();
+      expect(input.run.mock.calls[0]?.[2]).toMatchObject({ timeoutSec: 120, network: 'disabled' });
+      expect(await caught).toBeInstanceOf(BudgetExceededError);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('retains global budget exhaustion when remaining time selects the operation deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const input = setup(); input.run.mockImplementation(() => new Promise(() => {}));
+      const budget = new RepairBudget({ elapsedTimeSec: 1 });
+      const ports = budgetedRecoveryPorts({ ...input, budget, operationIdPrefix: 'global-limit' });
+      const rejected = expect(ports.executor.run('base', 'pnpm test')).rejects.toMatchObject({
+        name: 'BudgetExceededError', budget: 'elapsedTimeSec', message: 'Repair elapsedTimeSec budget is exhausted',
+      });
+      await vi.advanceTimersByTimeAsync(1000); await rejected;
+      expect(budget.remainingElapsedTimeSec()).toBe(0);
+      expect(input.cancel).toHaveBeenCalledExactlyOnceWith('global-limit-op-001');
+      expect(input.run.mock.calls[0]?.[2]?.timeoutSec).toBe(1);
+    } finally { vi.useRealTimers(); }
+  });
+
   it('cancels the exact active sandbox operation and stops on caller cancellation', async () => {
     const input = setup(); input.run.mockImplementation(() => new Promise(() => {}));
     const controller = new AbortController();

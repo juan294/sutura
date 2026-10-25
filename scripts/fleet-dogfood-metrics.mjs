@@ -1,12 +1,15 @@
 import { execFile as execFileCallback } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { collectRecoveryLedger, writeRecoveryLedger } from './fleet-recovery-ledger.mjs';
+import { sanitizeFleetSummary } from './fleet-public-summary.mjs';
+import { decodeSingleFileArtifact } from './fleet-artifact.mjs';
+import { collectNativeVerification } from './fleet-native-verification.mjs';
+import { evaluateFleetDigest, withDigestEvaluation } from './fleet-digest-worker.mjs';
 
 const execFile = promisify(execFileCallback);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -58,6 +61,17 @@ function repositoryIdentity(defaultOwner, repository) {
   return repository.includes('/') ? repository : `${defaultOwner}/${repository}`;
 }
 
+function scopeMonitorEvents(config, events) {
+  const repositories = new Map(config.repositories.map((repository) =>
+    [repositoryIdentity(config.owner, repository).toLowerCase(), repository]));
+  const startedAt = Date.parse(config.startedAt);
+  return events.flatMap((event) => {
+    const repository = repositories.get(repositoryIdentity(config.owner, event.repository).toLowerCase());
+    return repository && Date.parse(event.startedAt ?? '') >= startedAt
+      ? [{ ...event, repository }] : [];
+  });
+}
+
 function completePages(pages, field, capped = false) {
   if (!Array.isArray(pages) || pages.length === 0 ||
       pages.some((page) => !Array.isArray(page?.[field]) || !Number.isSafeInteger(page.total_count))) {
@@ -65,10 +79,13 @@ function completePages(pages, field, capped = false) {
   }
   const count = pages.reduce((sum, page) => sum + page[field].length, 0);
   const expected = pages[0].total_count;
-  if ((capped && expected >= 1000) || count !== expected) {
+  const rows = pages.flatMap((page) => page[field]);
+  if ((capped && expected >= 1000) || expected < 0 || count !== expected ||
+      pages.some(page => page.total_count !== expected) ||
+      rows.some(row => !Number.isSafeInteger(row.id) || row.id <= 0) || new Set(rows.map(row => row.id)).size !== rows.length) {
     throw new Error(`${field} pagination is capped or incomplete`);
   }
-  return pages.flatMap((page) => page[field]);
+  return rows;
 }
 
 function exactNumber(pattern, html, label) {
@@ -433,7 +450,7 @@ export async function collectFleetMetrics(configInput, client, now = new Date(),
       });
     }
   }
-  const mergedEvents = mergeMonitorEvents(options.previousEvents ?? [], events);
+  const mergedEvents = mergeMonitorEvents(scopeMonitorEvents(config, options.previousEvents ?? []), events);
   mergedEvents.sort((left, right) => String(left.startedAt).localeCompare(String(right.startedAt)) || left.repository.localeCompare(right.repository));
   const outcomes = emptyOutcomes();
   let inferenceCostUsd = 0;
@@ -482,6 +499,9 @@ export async function collectFleetMetrics(configInput, client, now = new Date(),
       unavailable: attempts.filter(({ actionSha }) => actionSha === null || actionSha === undefined).length,
     },
     outcomes,
+    monitorConclusions: Object.fromEntries(['success', 'failure', 'timed_out', 'cancelled', 'skipped', 'unavailable']
+      .map(conclusion => [conclusion, mergedEvents.filter(event => (event.workflowConclusion ?? 'unavailable') === conclusion).length])),
+    // Historical compatibility proxy, never independent proof of PR creation.
     repairPrsOpened: attempts.filter(({ outcome, workflowConclusion }) => outcome === 'fixed' && workflowConclusion === 'success').length,
     inferenceCostUsd: rounded(inferenceCostUsd),
     sandboxCostUsd: rounded(sandboxCostUsd),
@@ -492,29 +512,60 @@ export async function collectFleetMetrics(configInput, client, now = new Date(),
 }
 
 export function publicFleetSummary(summary) {
-  return structuredClone(summary);
+  return sanitizeFleetSummary(summary);
+}
+
+function freshness(observedAt, now, maxAgeSec) {
+  const at = typeof observedAt === 'string' ? Date.parse(observedAt) : Number.NaN;
+  const ageSec = (now.getTime() - at) / 1000;
+  if (!Number.isFinite(ageSec) || ageSec < 0) return { observedAt: null, ageSec: null, status: 'unavailable' };
+  return { observedAt, ageSec, status: ageSec > maxAgeSec ? 'stale' : 'current' };
+}
+
+function reportSummary(summary, { recoverySummary = null, now = new Date(), maxAgeSec = 36 * 60 * 60 } = {}) {
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime()) || !Number.isFinite(maxAgeSec) || maxAgeSec < 0) {
+    throw new Error('Fleet report requires a valid observation clock and nonnegative freshness threshold');
+  }
+  const coverage = recoverySummary?.coverage;
+  return { ...summary,
+    delivery: {
+      typedFixedOutcomes: summary.outcomes.fixed,
+      verifiedRepairPrs: recoverySummary?.qualification?.verifiedRepairPrs ?? null,
+      integratedRecoveries: recoverySummary?.qualification?.integratedRecoveries ?? null,
+      observedAt: recoverySummary?.observedAt ?? null,
+    },
+    evidence: {
+      collection: coverage ? (coverage.complete ? 'complete' : 'incomplete') : 'unavailable',
+      baseline: coverage ? (coverage.baselineComplete ? 'complete' : 'incomplete') : 'unavailable',
+      actorProvenance: coverage?.actorProvenanceAvailable ? 'available' : 'unavailable',
+      freshness: { assessedAt: now.toISOString(), maxAgeSec,
+        monitor: freshness(summary.collectedAt, now, maxAgeSec),
+        recovery: freshness(recoverySummary?.observedAt, now, maxAgeSec) },
+    },
+  };
 }
 
 function markdown(summary) {
-  const completed = summary.outcomes.fixed + summary.outcomes['flaky-no-patch'] + summary.outcomes.refused + summary.outcomes['gave-up'];
-  const repairRate = completed === 0 ? 'n/a' : `${((summary.outcomes.fixed / completed) * 100).toFixed(1)}%`;
-  return `# Sutura fleet dogfood metrics\n\nCollected ${summary.collectedAt}. Window starts ${summary.startedAt}.\n\n| Metric | Value |\n| --- | ---: |\n| Repositories configured | ${summary.installedRepositories}/${summary.fleetRepositories} |\n| CI completions observed | ${summary.monitorRuns} |\n| Green CI, no repair needed | ${summary.noRepairNeeded} |\n| Other CI conclusions, no repair attempted | ${summary.notTriggered} |\n| Repair attempts | ${summary.attemptStages.attempted} |\n| Attempts claimed | ${summary.attemptStages.claimed} |\n| Provider invoked | ${summary.attemptStages.providerInvoked} |\n| Repair search started | ${summary.attemptStages.searchStarted} |\n| Verified repairs and PRs | ${summary.repairPrsOpened} |\n| Recovered CI | ${summary.attemptStages.recovered === null ? 'not measured' : summary.attemptStages.recovered} |\n| Flakes classified without patching | ${summary.outcomes['flaky-no-patch']} |\n| Unsafe repairs refused | ${summary.outcomes.refused} |\n| Gave up safely | ${summary.outcomes['gave-up']} |\n| Infrastructure stops | ${summary.outcomes['infra-stop']} |\n| Unknown or missing evidence | ${summary.outcomes.unknown} |\n| Repair rate among terminal repair searches | ${repairRate} |\n| Measured inference cost | $${summary.inferenceCostUsd.toFixed(6)} |\n| Measured sandbox cost | $${summary.sandboxCostUsd.toFixed(6)} |\n| Measured total cost | $${summary.totalCostUsd.toFixed(6)} |\n| Median attempt duration | ${summary.medianAttemptDurationSec === null ? 'n/a' : `${summary.medianAttemptDurationSec.toFixed(1)} s`} |\n`;
+  const fixedRate = summary.repairAttempts === 0 ? 'n/a' : `${((summary.outcomes.fixed / summary.repairAttempts) * 100).toFixed(1)}%`;
+  const known = value => value === null || value === undefined ? 'unavailable' : value;
+  return `# Sutura fleet dogfood metrics\n\nCollected ${summary.collectedAt}. Window starts ${summary.startedAt}.\n\nWrapper completion, sandbox-fixed outcomes, native-CI-verified PRs and integrated recovery are separate stages. Freshness alone does not establish health.\n\n| Metric | Value |\n| --- | ---: |\n| Repositories with monitor installed | ${summary.installedRepositories}/${summary.fleetRepositories} |\n| Monitor runs observed | ${summary.monitorRuns} |\n| Successful monitor wrappers | ${known(summary.monitorConclusions?.success)} |\n| Green CI, no repair needed | ${summary.noRepairNeeded} |\n| Other skipped monitors (reason not independently verified) | ${summary.notTriggered} |\n| Monitor attempts (may stop before repair starts) | ${summary.attemptStages.attempted} |\n| Attempts claimed | ${summary.attemptStages.claimed} |\n| Provider invoked | ${summary.attemptStages.providerInvoked} |\n| Repair search started | ${summary.attemptStages.searchStarted} |\n| Typed fixed outcomes (sandbox verification) | ${summary.delivery.typedFixedOutcomes} |\n| Verified repair PRs (native CI) | ${known(summary.delivery.verifiedRepairPrs)} |\n| Integrated recoveries (exact branch proof) | ${known(summary.delivery.integratedRecoveries)} |\n| Recovery evidence collected at | ${known(summary.delivery.observedAt)} |\n| Collection evidence | ${summary.evidence.collection} |\n| Baseline evidence | ${summary.evidence.baseline} |\n| Actor provenance | ${summary.evidence.actorProvenance} |\n| Freshness assessed at | ${summary.evidence.freshness.assessedAt} |\n| Monitor evidence age | ${known(summary.evidence.freshness.monitor.ageSec)} s |\n| Recovery evidence age | ${known(summary.evidence.freshness.recovery.ageSec)} s |\n| Monitor evidence freshness | ${summary.evidence.freshness.monitor.status} |\n| Recovery evidence freshness | ${summary.evidence.freshness.recovery.status} |\n| Freshness threshold | ${summary.evidence.freshness.maxAgeSec} s |\n| Flakes classified without patching | ${summary.outcomes['flaky-no-patch']} |\n| Unsafe repairs refused | ${summary.outcomes.refused} |\n| Gave up safely | ${summary.outcomes['gave-up']} |\n| Infrastructure stops | ${summary.outcomes['infra-stop']} |\n| Unknown or missing evidence | ${summary.outcomes.unknown} |\n| Fixed outcomes among all monitor attempts | ${fixedRate} |\n| Measured inference cost | $${summary.inferenceCostUsd.toFixed(6)} |\n| Measured sandbox cost | $${summary.sandboxCostUsd.toFixed(6)} |\n| Measured total cost | $${summary.totalCostUsd.toFixed(6)} |\n| Median attempt duration | ${summary.medianAttemptDurationSec === null ? 'n/a' : `${summary.medianAttemptDurationSec.toFixed(1)} s`} |\n`;
 }
 
-export async function writeFleetMetrics(result, outputDirectory) {
+export async function writeFleetMetrics(result, outputDirectory, options = {}) {
+  const summary = publicFleetSummary(reportSummary(result.summary, options));
   await mkdir(outputDirectory, { recursive: true });
-  await writeFile(join(outputDirectory, 'summary.json'), `${JSON.stringify(result.summary, null, 2)}\n`);
-  await writeFile(join(outputDirectory, 'summary.md'), markdown(result.summary));
+  await writeFile(join(outputDirectory, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
+  await writeFile(join(outputDirectory, 'summary.md'), markdown(summary));
   await writeFile(join(outputDirectory, 'events.jsonl'), result.events.map((event) => JSON.stringify(event)).join('\n') + (result.events.length ? '\n' : ''));
   await writeFile(join(outputDirectory, 'installations.json'), `${JSON.stringify(result.installations, null, 2)}\n`);
   const snapshotsPath = join(outputDirectory, 'snapshots.jsonl');
   let snapshots = [];
   try {
-    snapshots = (await readFile(snapshotsPath, 'utf8')).split(/\r?\n/u).filter(Boolean).map((line) => JSON.parse(line));
+    snapshots = (await readFile(snapshotsPath, 'utf8')).split(/\r?\n/u).filter(Boolean).map((line) => publicFleetSummary(JSON.parse(line)));
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
-  const publicSummary = publicFleetSummary(result.summary);
+  const publicSummary = publicFleetSummary(summary);
   const day = publicSummary.collectedAt.slice(0, 10);
   snapshots = snapshots.filter(({ collectedAt }) => String(collectedAt).slice(0, 10) !== day);
   snapshots.push(publicSummary);
@@ -532,7 +583,7 @@ export class GhFleetClient {
 
   async api(path, options = []) {
     try {
-      const { stdout } = await execFile(this.gh, ['api', ...options, path], { maxBuffer: 64 * 1024 * 1024 });
+      const { stdout } = await execFile(this.gh, ['api', ...options, path], { maxBuffer: 64 * 1024 * 1024, timeout: 30_000 });
       return JSON.parse(stdout);
     } catch (error) {
       const detail = `${error?.stderr ?? ''}`;
@@ -569,7 +620,13 @@ export class GhFleetClient {
     try {
       monitor = await this.api(`repos/${identity}/actions/workflows/sutura.yml`);
     } catch (error) {
-      if (error?.status === 404) return { state: 'uninstalled', repositoryId: repo.id, workflows: [] };
+      if (error?.status === 404) {
+        const pages = await this.api(`repos/${identity}/actions/workflows?per_page=100`, ['--paginate', '--slurp']);
+        return { state: 'uninstalled', repositoryId: repo.id, defaultBranch: repo.default_branch, workflows: [],
+          inventoryComplete: true, observedAt: new Date().toISOString(),
+          allWorkflows: completePages(pages, 'workflows').map(({ id, name, path, state }) =>
+            ({ id, name, path, state, watched: false, disposition: 'not-watched-intent-unmeasured' })) };
+      }
       throw error;
     }
     const content = await this.api(`repos/${identity}/contents/.github/workflows/sutura.yml?ref=${encodeURIComponent(repo.default_branch)}`);
@@ -579,8 +636,9 @@ export class GhFleetClient {
       throw new Error('Monitor workflow has no supported exact CI workflow list');
     }
     const pages = await this.api(`repos/${identity}/actions/workflows?per_page=100`, ['--paginate', '--slurp']);
-    const workflows = completePages(pages, 'workflows')
-      .filter(({ name }) => names.includes(name)).map(({ id, name }) => ({ id, name }));
+    const allWorkflows = completePages(pages, 'workflows').map(({ id, name, path, state }) => ({ id, name, path, state,
+      watched: names.includes(name), disposition: names.includes(name) ? 'watched' : 'not-watched-intent-unmeasured' }));
+    const workflows = allWorkflows.filter(({ watched }) => watched);
     if (workflows.length !== names.length) throw new Error('Monitored CI workflow identity is unavailable');
     let disabledVariable = false;
     try {
@@ -590,6 +648,12 @@ export class GhFleetClient {
       if (error?.status !== 404) throw error;
     }
     return { repositoryId: repo.id, state: monitor.state === 'active' && !disabledVariable ? 'active' : 'disabled',
+      defaultBranch: repo.default_branch, monitorWorkflowId: monitor.id,
+      monitorPath: monitor.path ?? '.github/workflows/sutura.yml', monitorBlobSha: content.sha ?? null,
+      actionShas: [...new Set(Object.values(parsed.jobs ?? {}).flatMap(job => (job.steps ?? []).flatMap(step => {
+        const match = /^juan294\/sutura@([a-f0-9]{40})(?:\s|$)/u.exec(step.uses ?? ''); return match ? [match[1]] : [];
+      })))],
+      observedAt: new Date().toISOString(), inventoryComplete: true, allWorkflows,
       stateReason: disabledVariable ? 'repository-variable' : monitor.state,
       activationAt: this.activationAtByRepository[repository] ?? null,
       activationUpperBoundAt: this.activationEvidenceByRepository[repository]?.firstObservedMonitorRunAt ?? null,
@@ -639,6 +703,13 @@ export class GhFleetClient {
       conclusion: run.conclusion, createdAt: run.created_at, completedAt: run.updated_at,
       startedAt: run.run_started_at, attempt: run.run_attempt,
       url: run.html_url,
+      status: run.status ?? null, event: run.event ?? null,
+      actorId: Number.isSafeInteger(run.actor?.id) ? run.actor.id : null,
+      triggeringActorId: Number.isSafeInteger(run.triggering_actor?.id) ? run.triggering_actor.id : null,
+      workflowDefinition: { path: run.path ?? workflow.path ?? null, sha: null },
+      paginationComplete: true,
+      metadataComplete: Number.isSafeInteger(run.id) && Number.isSafeInteger(run.workflow_id) &&
+        Number.isSafeInteger(run.run_attempt) && SHA.test(run.head_sha ?? '') && typeof run.event === 'string',
     }));
   }
 
@@ -666,22 +737,95 @@ export class GhFleetClient {
     const diffSha = createHash('sha256').update(JSON.stringify(files.map(({ filename, status, patch }) =>
       ({ filename, status, patch })))).digest('hex');
     return { number: pr.number, sourceRunId: source.id, sourceSha: source.headSha,
+      repositoryId: pr.base?.repo?.id ?? null, sourceAttempt: null,
+      sourceParentSha: source.headSha, headBranch: pr.head.ref, baseSha: pr.base.sha ?? null,
+      // The legacy marker binds the run, not its attempt; never copy the loop attempt into proof.
       baseBranch: pr.base.ref, headSha: pr.head.sha, diffSha,
       merged: typeof pr.merged_at === 'string', integrationSha: pr.merge_commit_sha ?? null,
       url: pr.html_url ?? null };
   }
 
-  async downloadArtifact(repository, runId, artifact) {
+  async readJobLog(repository, jobId) {
     const identity = repositoryIdentity(this.owner, repository);
-    const directory = await mkdtemp(join(tmpdir(), 'sutura-fleet-artifact-'));
+    const maximum = 1024 * 1024;
+    let bytes, truncated = false;
     try {
-      await execFile(this.gh, ['run', 'download', String(runId), '--repo', identity, '--name', artifact.name, '--dir', directory], { maxBuffer: 8 * 1024 * 1024 });
-      const files = await readdir(directory, { recursive: true });
-      if (files.length !== 1) throw new Error('Sutura evidence artifact must contain exactly one file');
-      return readFile(join(directory, files[0]), 'utf8');
-    } finally {
-      await rm(directory, { recursive: true, force: true });
+      const { stdout } = await execFile(this.gh, ['api', `repos/${identity}/actions/jobs/${jobId}/logs`],
+        { maxBuffer: maximum, timeout: 30_000, encoding: 'buffer' });
+      bytes = Buffer.from(stdout);
+    } catch (error) {
+      if (error?.code !== 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') throw error;
+      bytes = Buffer.from(error.stdout ?? '').subarray(0, maximum); truncated = true;
     }
+    return { text: bytes.toString('utf8'), sha256: createHash('sha256').update(bytes).digest('hex'),
+      bytes: bytes.length, truncated };
+  }
+
+  async inspectFailedRun(repository, source) {
+    if (!Number.isSafeInteger(source.id) || !Number.isSafeInteger(source.attempt) || source.attempt < 1 || !SHA.test(source.headSha ?? '')) {
+      throw new Error('Failed-run detail requires exact run, attempt and source SHA');
+    }
+    const identity = repositoryIdentity(this.owner, repository);
+    const pages = await this.api(`repos/${identity}/actions/runs/${source.id}/attempts/${source.attempt}/jobs?per_page=100`, ['--paginate', '--slurp']);
+    const jobs = completePages(pages, 'jobs');
+    if (jobs.length > 1000 || jobs.some(job => job.run_id !== source.id || job.run_attempt !== source.attempt || job.head_sha !== source.headSha)) {
+      throw new Error('Failed-run job identity is unavailable or mismatched');
+    }
+    const failed = jobs.filter(job => ['failure', 'timed_out'].includes(job.conclusion));
+    const selected = failed.length === 1 ? failed[0] : null;
+    const steps = selected?.steps?.filter(step => ['failure', 'timed_out'].includes(step.conclusion)) ?? [];
+    const unique = selected && steps.length === 1;
+    const captured = unique ? await this.readJobLog(repository, selected.id) : null;
+    let log = captured, failureIdentity = null;
+    if (unique && captured) {
+      const { selectFailedStepLog, classifyMechanically, nativeFailureForCommand, compareFailureIdentity } = await import('../packages/core/dist/index.js');
+      const step = steps[0];
+      let window = { log: '', truncated: true };
+      try { window = selectFailedStepLog(captured.text, { name: step.name, startedAt: step.started_at ?? null, completedAt: step.completed_at ?? null }); }
+      catch { /* A missing step window cannot borrow a different step's diagnostics. */ }
+      log = { text: window.log, sha256: createHash('sha256').update(window.log).digest('hex'),
+        bytes: Buffer.byteLength(window.log), truncated: captured.truncated || window.truncated };
+      const command = classifyMechanically(log.text).failingCmd, sources = [];
+      if (/^(?:npm|pnpm|yarn)\s/u.test(command) && !log.truncated) {
+        try {
+          const content = await this.api(`repos/${identity}/contents/package.json?ref=${source.headSha}`);
+          const bytes = Buffer.from(content.content, 'base64');
+          if (content.type === 'file' && content.encoding === 'base64' && bytes.length <= 1_000_000 && bytes.length === content.size &&
+            createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex') === content.sha) sources.push({ path: 'package.json', content: bytes.toString('utf8') });
+        } catch { /* Missing exact script provenance leaves identity unavailable. */ }
+      }
+      const native = { ...nativeFailureForCommand(command, log.text, sources), truncated: log.truncated,
+        selectedStep: { jobId: selected.id, jobName: selected.name, stepNumber: step.number, stepName: step.name } };
+      // Self-comparison parses native structure only. It never proves sandbox reproduction.
+      failureIdentity = compareFailureIdentity(native, { log: log.text, exitCode: 1, truncated: log.truncated });
+    }
+    const known = failureIdentity?.status === 'matched';
+    const classification = { schemaVersion: 'sutura-incident-classification-v1', cause: known ? 'source-defect' : 'unknown',
+      confidence: known ? 'confirmed' : 'unknown', ownerDomain: known ? 'repository' : 'unknown',
+      disposition: 'escalation', support: 'unknown', executionAuthorized: false,
+      reason: known ? 'structured-native-failure' : 'cause-evidence-unavailable',
+      nextAction: 'Review repository support and independent execution policy; native parsing does not authorize repair.' };
+    return { complete: Boolean(unique && log && !log.truncated), selectedJobId: selected?.id ?? null,
+      selectedStepNumber: unique ? steps[0].number : null,
+      failureIdentity, classification, reproduction: 'unmeasured',
+      reason: unique ? log?.truncated ? 'source-log-truncated' : 'selected-step-observed' : 'selected-failure-ambiguous',
+      jobs: jobs.map(job => ({ id: job.id, name: job.name, conclusion: job.conclusion,
+        steps: (job.steps ?? []).map(step => ({ number: step.number, name: step.name, conclusion: step.conclusion })) })), log };
+  }
+
+  async collectNativeVerification(repository, source, monitor, repairPr, contract) {
+    return collectNativeVerification({ repository, source, monitor, repairPr, contract, client: this });
+  }
+
+  async downloadArtifact(repository, runId, artifact, { maximumBytes = 32 * 1024 * 1024 } = {}) {
+    const identity = repositoryIdentity(this.owner, repository);
+    if (!Number.isSafeInteger(runId) || runId <= 0 || !Number.isSafeInteger(artifact?.id) || artifact.id <= 0 ||
+        !Number.isSafeInteger(maximumBytes) || maximumBytes <= 0 || maximumBytes > 64 * 1024 * 1024 ||
+        (artifact.size_in_bytes !== undefined && (!Number.isSafeInteger(artifact.size_in_bytes) || artifact.size_in_bytes > maximumBytes)) ||
+        (artifact.workflow_run?.id !== undefined && artifact.workflow_run.id !== runId)) throw new Error('Evidence artifact identity or size is invalid');
+    const { stdout } = await execFile(this.gh, ['api', `repos/${identity}/actions/artifacts/${artifact.id}/zip`],
+      { maxBuffer: maximumBytes, timeout: 30_000, encoding: 'buffer' });
+    return decodeSingleFileArtifact(stdout, maximumBytes);
   }
 }
 
@@ -703,36 +847,43 @@ export async function main(arguments_ = process.argv.slice(2)) {
   const paths = parseCli(arguments_);
   const config = JSON.parse(await readFile(paths.config, 'utf8'));
   validateConfig(config, new Date());
-  const client = new GhFleetClient(config.owner, process.env.GH_BIN || 'gh',
-    config.activationAtByRepository, config.activationEvidenceByRepository);
-  const evidenceDirectory = join(paths.output, 'monitor-evidence-v2');
-  let priorEvents = await readMonitorEvidence(evidenceDirectory);
-  try {
-    const oldEvents = (await readFile(join(paths.output, 'events.jsonl'), 'utf8'))
-      .split(/\r?\n/u).filter(Boolean).map((line) => JSON.parse(line));
-    priorEvents = mergeMonitorEvents(oldEvents, priorEvents);
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error;
-  }
-  let monitorEvents;
-  let legacySummary = null;
-  let monitorCollectionComplete = true;
-  try {
-    const result = await collectFleetMetrics(config, client, new Date(),
-      { previousEvents: priorEvents, evidenceDirectory });
-    await writeFleetMetrics(result, paths.output);
-    monitorEvents = result.events;
-    legacySummary = publicFleetSummary(result.summary);
-  } catch {
-    monitorCollectionComplete = false;
-    monitorEvents = mergeMonitorEvents(priorEvents, await readMonitorEvidence(evidenceDirectory));
-  }
-  const recovery = await collectRecoveryLedger(config, client, monitorEvents);
-  recovery.coverage.monitorCollectionComplete = monitorCollectionComplete;
-  recovery.coverage.complete &&= monitorCollectionComplete;
-  const recoverySummary = await writeRecoveryLedger(recovery, paths.output);
-  process.stdout.write(`${JSON.stringify({ legacySummary, recoverySummary })}\n`);
-  if (!recoverySummary.coverage.complete) process.exitCode = 1;
+  return withDigestEvaluation(async () => {
+    const client = new GhFleetClient(config.owner, process.env.GH_BIN || 'gh',
+      config.activationAtByRepository, config.activationEvidenceByRepository);
+    const evidenceDirectory = join(paths.output, 'monitor-evidence-v2');
+    let priorEvents = await readMonitorEvidence(evidenceDirectory);
+    try {
+      const oldEvents = (await readFile(join(paths.output, 'events.jsonl'), 'utf8'))
+        .split(/\r?\n/u).filter(Boolean).map((line) => JSON.parse(line));
+      priorEvents = mergeMonitorEvents(oldEvents, priorEvents);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    priorEvents = mergeMonitorEvents([], scopeMonitorEvents(config, priorEvents));
+    let monitorEvents;
+    let legacySummary = null;
+    let fleetResult = null;
+    let monitorCollectionComplete = true;
+    try {
+      const result = await collectFleetMetrics(config, client, new Date(),
+        { previousEvents: priorEvents, evidenceDirectory });
+      fleetResult = result;
+      await writeFleetMetrics(result, paths.output);
+      monitorEvents = result.events;
+      legacySummary = publicFleetSummary(result.summary);
+    } catch {
+      monitorCollectionComplete = false;
+      monitorEvents = mergeMonitorEvents(priorEvents,
+        scopeMonitorEvents(config, await readMonitorEvidence(evidenceDirectory)));
+    }
+    const recovery = await collectRecoveryLedger(config, client, monitorEvents);
+    recovery.coverage.monitorCollectionComplete = monitorCollectionComplete;
+    recovery.coverage.complete &&= monitorCollectionComplete;
+    const recoverySummary = await writeRecoveryLedger(recovery, paths.output);
+    if (fleetResult) await writeFleetMetrics(fleetResult, paths.output, { recoverySummary });
+    process.stdout.write(`${JSON.stringify({ legacySummary, recoverySummary })}\n`);
+    if (!recoverySummary.coverage.complete) process.exitCode = 1;
+  }, collectionFailed => evaluateFleetDigest({ output: paths.output, configPath: paths.config, collectionFailed }));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

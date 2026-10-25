@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -257,6 +257,45 @@ test('collector accepts mixed-owner repositories and rejects duplicate identitie
   }, client, new Date('2026-09-13T12:00:00.000Z')), /unique/u);
 });
 
+test('collector scopes cached evidence and deduplicates owner-qualified aliases without losing proof', async () => {
+  const config = { schemaVersion: 'sutura-fleet-config-v1', owner: 'owner',
+    repositories: ['alpha', 'owner/beta', 'other/alpha'],
+    startedAt: '2026-09-13T00:00:00.000Z', actionCommit: 'a'.repeat(40) };
+  const fixed = { repository: 'OWNER/Alpha', runId: 11, runAttempt: 1,
+    startedAt: '2026-09-13T09:00:00Z', attempted: true, outcome: 'fixed',
+    costStatus: 'measured', inferenceCostUsd: 0.125, sandboxCostUsd: 0.375,
+    sourceRunId: '41', actionSha: 'a'.repeat(40), durationSec: 60 };
+  const unknown = { ...fixed, repository: 'alpha', outcome: 'unknown',
+    costStatus: 'unavailable', sourceRunId: null, actionSha: null };
+  const skipped = { repository: 'beta', runId: 12, runAttempt: 1,
+    startedAt: fixed.startedAt, attempted: false, outcome: 'not-triggered',
+    costStatus: 'not-incurred' };
+  const previousEvents = [fixed, unknown, skipped,
+    { ...skipped, repository: 'other/alpha', runId: 11 },
+    { ...unknown, runAttempt: 2 },
+    { ...fixed, repository: 'removed-project', runId: 13 },
+    { ...fixed, repository: 'alpha', runId: 14, startedAt: '2026-09-12T23:00:00Z' }];
+  const client = {
+    async listWorkflowRuns(repository) {
+      return repository === 'alpha' ? [{ id: 11, run_attempt: 1,
+        conclusion: 'success', run_started_at: fixed.startedAt,
+        updated_at: '2026-09-13T09:01:00Z' }] : [];
+    },
+    async listArtifacts() { return []; },
+  };
+  const result = await collectFleetMetrics(config, client,
+    new Date('2026-09-14T00:00:00.000Z'), { previousEvents });
+  assert.equal(result.summary.monitorRuns, 4);
+  assert.equal(result.summary.repairAttempts, 2);
+  assert.equal(result.summary.outcomes.fixed, 1);
+  assert.equal(result.summary.totalCostUsd, 0.5);
+  assert.deepEqual(result.events.map(({ repository, runId, runAttempt }) =>
+    [repository, runId, runAttempt]).sort(), [
+    ['alpha', 11, 1], ['alpha', 11, 2], ['other/alpha', 11, 1], ['owner/beta', 12, 1],
+  ]);
+  assert.equal(previousEvents[0].repository, 'OWNER/Alpha');
+});
+
 test('public summary removes repository identities and daily snapshots are idempotent', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'sutura-fleet-metrics-'));
   try {
@@ -281,8 +320,44 @@ test('public summary removes repository identities and daily snapshots are idemp
     const snapshots = (await readFile(join(directory, 'snapshots.jsonl'), 'utf8')).trim().split('\n');
     assert.equal(snapshots.length, 1);
     assert.equal((await readFile(join(directory, 'events.jsonl'), 'utf8')).includes('private-project'), true);
+    const old = { ...JSON.parse(snapshots[0]), collectedAt: '2026-09-12T12:00:00.000Z',
+      delivery: { privateSentinel: 'private-old-snapshot' } };
+    await writeFile(join(directory, 'snapshots.jsonl'), JSON.stringify(old) + '\n');
+    await writeFleetMetrics(result, directory);
+    const retained = await readFile(join(directory, 'snapshots.jsonl'), 'utf8');
+    assert.doesNotMatch(retained, /privateSentinel|private-old-snapshot/u);
+    assert.equal(retained.trim().split('\n').length, 2);
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('uninstalled monitor retains every discovered workflow disposition', async () => {
+  const client = new GhFleetClient('owner');
+  client.api = async path => {
+    if (path === 'repos/owner/alpha') return { id: 7, default_branch: 'main' };
+    if (path.includes('/actions/workflows?')) return [{ total_count: 1, workflows: [{ id: 12, name: 'CI', path: '.github/workflows/ci.yml', state: 'active' }] }];
+    if (path.endsWith('/actions/workflows/sutura.yml')) throw Object.assign(new Error('not found'), { status: 404 });
+    throw new Error(`Unexpected API ${path}`);
+  };
+  const result = await client.inspectRepository('alpha');
+  assert.equal(result.state, 'uninstalled');
+  assert.equal(result.defaultBranch, 'main');
+  assert.equal(result.inventoryComplete, true);
+  assert.deepEqual(result.allWorkflows, [{ id: 12, name: 'CI', path: '.github/workflows/ci.yml', state: 'active', watched: false, disposition: 'not-watched-intent-unmeasured' }]);
+});
+test('pagination rejects duplicate identities and changing totals before declaring completeness', async () => {
+  const client = new GhFleetClient('owner');
+  for (const pages of [
+    [{ total_count: 2, workflows: [{ id: 12 }] }, { total_count: 2, workflows: [{ id: 12 }] }],
+    [{ total_count: 2, workflows: [{ id: 12 }] }, { total_count: 3, workflows: [{ id: 13 }] }],
+  ]) {
+    client.api = async path => {
+      if (path === 'repos/owner/alpha') return { id: 7, default_branch: 'main' };
+      if (path.includes('/actions/workflows?')) return pages;
+      throw Object.assign(new Error('not found'), { status: 404 });
+    };
+    await assert.rejects(client.inspectRepository('alpha'), /pagination/u);
   }
 });
 
@@ -451,4 +526,119 @@ test('repair PR lookup proves the source marker, parent commit and real diff dig
   };
   await assert.rejects(() => client.findRepairPr('alpha', { id: 41, branch: 'develop', headSha: sourceSha }),
     /parent|source/u);
+});
+
+test('fleet report distinguishes captured fixed outcomes from verified delivery and stale evidence', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sutura-delivery-report-'));
+  try {
+    // Oct21 fleet audit: fixed monitor outcomes existed without any verified repair CI.
+    const result = await collectFleetMetrics({
+      schemaVersion: 'sutura-fleet-config-v1', owner: 'owner', repositories: ['alpha'],
+      startedAt: '2026-09-13T00:00:00.000Z', actionCommit: 'a'.repeat(40),
+    }, {
+      async listWorkflowRuns() { return [{ id: 11, conclusion: 'success',
+        run_started_at: '2026-10-21T07:00:00Z', updated_at: '2026-10-21T07:04:00Z' }]; },
+      async listArtifacts() { return [{ name: 'sutura-case-file-11.html', expired: false }]; },
+      async downloadArtifact() { return FIXED_HTML; },
+    }, new Date('2026-10-21T07:10:00.000Z'));
+    await writeFleetMetrics(result, directory, {
+      now: new Date('2026-10-23T07:10:00.000Z'),
+      recoverySummary: { observedAt: '2026-10-21T07:43:00.000Z', verifiedRepairPrs: 0,
+        states: { 'sutura-green': 0 },
+        qualification: { verifiedRepairPrs: 0, integratedRecoveries: 0 },
+        coverage: { complete: true, baselineComplete: false, actorProvenanceAvailable: false } },
+    });
+    const report = JSON.parse(await readFile(join(directory, 'summary.json'), 'utf8'));
+    assert.equal(report.monitorConclusions.success, 1);
+    assert.equal(report.delivery.typedFixedOutcomes, 1);
+    assert.equal(report.delivery.verifiedRepairPrs, 0);
+    assert.equal(report.delivery.integratedRecoveries, 0);
+    assert.equal(report.evidence.collection, 'complete');
+    assert.equal(report.evidence.baseline, 'incomplete');
+    assert.equal(report.evidence.actorProvenance, 'unavailable');
+    assert.equal(report.evidence.freshness.monitor.status, 'stale');
+    assert.equal(report.evidence.freshness.monitor.ageSec, 172800);
+    const markdown = await readFile(join(directory, 'summary.md'), 'utf8');
+    assert.doesNotMatch(markdown, /Verified repairs and PRs|Repair rate among terminal repair searches/u);
+    assert.match(markdown, /Typed fixed outcomes \(sandbox verification\) \| 1/u);
+    assert.match(markdown, /Verified repair PRs \(native CI\) \| 0/u);
+    assert.match(markdown, /Integrated recoveries \(exact branch proof\) \| 0/u);
+    assert.match(markdown, /Baseline evidence \| incomplete/u);
+    assert.match(markdown, /stale/u);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('fleet report with no current recovery ledger leaves delivery unavailable', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sutura-unverified-report-'));
+  try {
+    const result = await collectFleetMetrics({
+      schemaVersion: 'sutura-fleet-config-v1', owner: 'owner', repositories: ['alpha'],
+      startedAt: '2026-09-13T00:00:00.000Z', actionCommit: 'a'.repeat(40),
+    }, { async listWorkflowRuns() { return []; } }, new Date('2026-10-23T07:10:00.000Z'));
+    await writeFleetMetrics(result, directory, { now: new Date('2026-10-23T08:10:00.000Z') });
+    const report = JSON.parse(await readFile(join(directory, 'summary.json'), 'utf8'));
+    assert.equal(report.delivery.verifiedRepairPrs, null);
+    assert.equal(report.delivery.integratedRecoveries, null);
+    assert.equal(report.evidence.collection, 'unavailable');
+    assert.equal(report.evidence.freshness.monitor.status, 'current');
+    assert.equal(report.evidence.freshness.recovery.status, 'unavailable');
+    assert.match(await readFile(join(directory, 'summary.md'), 'utf8'), /Verified repair PRs \(native CI\) \| unavailable/u);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('public fleet summaries discard nested identifiers and arbitrary failure-code keys', () => {
+  const result = publicFleetSummary({ schemaVersion: 'sutura-fleet-summary-v2', collectedAt: '2026-10-25T09:00:00.000Z',
+    startedAt: '2026-10-01T00:00:00.000Z', actionCommit: 'a'.repeat(40), fleetRepositories: 1,
+    privateRepository: 'private-value', outcomes: { fixed: 1, privateRepository: 'private-value' },
+    failureCauses: { 'private-value': 1, 'runtime-evidence-limit': 1 },
+    delivery: { typedFixedOutcomes: 1, verifiedRepairPrs: null, integratedRecoveries: null, privateValue: 'private-value' } });
+  assert.doesNotMatch(JSON.stringify(result), /private-value|privateRepository|privateValue/u);
+  assert.equal(result.failureCauses['runtime-evidence-limit'], 1);
+});
+test('CI records retain authenticated trigger metadata and workflow identity without inventing missing actors', async () => {
+  const client = new GhFleetClient('owner');
+  client.api = async () => [{ total_count: 1, workflow_runs: [{ id: 41, run_attempt: 1, workflow_id: 12,
+    repository: { id: 7 }, path: '.github/workflows/ci.yml', event: 'schedule', actor: { id: 9 },
+    triggering_actor: { id: 10 }, head_branch: 'integration', head_sha: 'a'.repeat(40),
+    conclusion: 'failure', updated_at: '2026-10-25T09:00:00Z' }] }];
+  const runs = await client.listCiRuns('alpha', { id: 12 }, '2026-10-01T00:00:00.000Z');
+  assert.equal(runs[0].event, 'schedule'); assert.equal(runs[0].actorId, 9);
+  assert.equal(runs[0].triggeringActorId, 10); assert.equal(runs[0].workflowDefinition.path, '.github/workflows/ci.yml');
+  assert.equal(runs[0].workflowDefinition.sha, null);
+  assert.equal(runs[0].paginationComplete, true);
+});
+test('failed-run evidence binds exact attempt and explicitly marks ambiguous failed steps', async () => {
+  const client = new GhFleetClient('owner'); let logCalls = 0;
+  client.api = async path => {
+    assert.match(path, /runs\/41\/attempts\/2\/jobs/u);
+    return [{ total_count: 1, jobs: [{ id: 81, run_id: 41, run_attempt: 2, head_sha: 'a'.repeat(40),
+      conclusion: 'failure', steps: [{ number: 3, name: 'Tests', conclusion: 'failure' }, { number: 4, name: 'Gate', conclusion: 'failure' }] }] }];
+  };
+  client.readJobLog = async () => { logCalls++; return { text: 'native-log', truncated: false }; };
+  const result = await client.inspectFailedRun('alpha', { id: 41, attempt: 2, headSha: 'a'.repeat(40) });
+  assert.equal(result.selectedStepNumber, null); assert.equal(result.complete, false);
+  assert.equal(logCalls, 0);
+});
+
+test('collector selects the failed step and records diagnostic identity without claiming reproduction', async () => {
+  const client = new GhFleetClient('owner');
+  client.api = async () => [{ total_count: 1, jobs: [{ id: 81, name: 'checks', run_id: 41, run_attempt: 2, head_sha: 'a'.repeat(40),
+    conclusion: 'failure', steps: [{ number: 3, name: 'Tests', conclusion: 'failure', started_at: '2026-10-25T09:01:00Z', completed_at: '2026-10-25T09:02:00Z' }] }] }];
+  client.readJobLog = async () => ({ text: [
+    '2026-10-25T09:00:00Z unrelated previous failure',
+    '2026-10-25T09:01:00Z ##[group]Run pnpm exec vitest run',
+    '2026-10-25T09:01:01Z pnpm exec vitest run',
+    '2026-10-25T09:01:02Z ##[endgroup]',
+    '2026-10-25T09:01:03Z  FAIL src/add.test.ts > adds',
+    '2026-10-25T09:01:04Z AssertionError: expected 2 to be 3',
+  ].join('\n'), truncated: false });
+  const result = await client.inspectFailedRun('alpha', { id: 41, attempt: 2, headSha: 'a'.repeat(40) });
+  assert.equal(result.failureIdentity.status, 'matched');
+  assert.equal(result.reproduction, 'unmeasured');
+  assert.equal(result.classification.cause, 'source-defect');
+  assert.doesNotMatch(result.log.text, /unrelated/);
+  client.readJobLog = async () => ({ text: 'custom unknown failure', truncated: true });
+  const incomplete = await client.inspectFailedRun('alpha', { id: 41, attempt: 2, headSha: 'a'.repeat(40) });
+  assert.equal(incomplete.complete, false);
+  assert.equal(incomplete.classification.cause, 'unknown');
 });

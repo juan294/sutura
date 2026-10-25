@@ -3,6 +3,8 @@ import { spawn } from 'node:child_process';
 export interface RunOptions {
   cwd?: string;
   stdin?: string;
+  timeoutMs?: number;
+  maxOutputBytes?: number;
 }
 
 export type CommandRunner = (
@@ -30,11 +32,37 @@ export function runCommand(
     });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
-    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
-    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
-    child.on('error', (error) => reject(new CommandError(`${command} failed: ${error.message}`)));
+    let outputBytes = 0;
+    let failure: CommandError | undefined;
+    const stop = (message: string): void => {
+      failure ??= new CommandError(message);
+      child.kill('SIGKILL');
+    };
+    const deadline = options.timeoutMs === undefined ? undefined : setTimeout(
+      () => stop(`${command} timed out`), options.timeoutMs,
+    );
+    const receive = (target: Buffer[], chunk: Buffer): void => {
+      outputBytes += chunk.length;
+      if (options.maxOutputBytes !== undefined && outputBytes > options.maxOutputBytes) {
+        stop(`${command} exceeded output limit`);
+      } else if (!failure) {
+        target.push(chunk);
+      }
+    };
+    child.stdout.on('data', (chunk: Buffer) => receive(stdout, chunk));
+    child.stderr.on('data', (chunk: Buffer) => receive(stderr, chunk));
+    child.on('error', (error) => {
+      clearTimeout(deadline);
+      reject(new CommandError(`${command} failed: ${error.message}`));
+    });
+    child.stdin.on('error', (error: NodeJS.ErrnoException) => {
+      if (error.code !== 'EPIPE') stop(`${command} input failed: ${error.message}`);
+    });
     child.on('close', (code) => {
-      if (code === 0) {
+      clearTimeout(deadline);
+      if (failure) {
+        reject(failure);
+      } else if (code === 0) {
         resolve(Buffer.concat(stdout).toString('utf8'));
       } else {
         reject(new CommandError(

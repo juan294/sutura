@@ -1,4 +1,5 @@
-import { mkdir, readFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 import {
   AlreadyAttemptedError,
@@ -141,7 +142,14 @@ async function loadFixtures(): Promise<RecordedFixtures> {
       'utf8',
     ),
   ]);
-  return { workflowRun, pullRequest, jobs, jobLog };
+  // Use complete structured native diagnostics; truncation is tested separately by the adapter.
+  const diagnostic = jobLog.split('\n').find(line => line.includes('error TS2322'))!;
+  const nativeLog = [
+    '2026-08-27T10:00:11Z ##[group]Run pnpm test',
+    '2026-08-27T10:00:11Z ##[endgroup]',
+    diagnostic.replace(/failure-\d+ /u, ''),
+  ].join('\n');
+  return { workflowRun, pullRequest, jobs, jobLog: nativeLog };
 }
 
 class RecordedGitHubApi implements GitHubApi {
@@ -353,7 +361,7 @@ class RecordedRepository implements RepositoryPort {
   readonly sourceRequests: SourceReference[][] = [];
   readonly sources = new Map([
     ['src/value.ts', 'export const value: string = 1;\n'],
-    ['package.json', '{"scripts":{"test":"vitest run"}}'],
+    ['package.json', '{"scripts":{"test":"tsc --noEmit"}}'],
     ['tsconfig.json', '{"compilerOptions":{"strict":true}}'],
   ]);
 
@@ -375,6 +383,12 @@ class RecordedRepository implements RepositoryPort {
       ...(headRef === undefined ? {} : { headRef }),
       ...(prNumber === undefined ? {} : { prNumber }),
     });
+    await rm(CHECKOUT_DIR, { recursive: true, force: true });
+    for (const [path, content] of this.sources) {
+      const target = join(CHECKOUT_DIR, path);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, content);
+    }
     return CHECKOUT_DIR;
   }
 
@@ -473,7 +487,9 @@ function executorFor(
       return {
         exitCode,
         stdout: exitCode === 0 ? 'Tests passed' : '',
-        stderr: exitCode === 0 ? '' : 'TS2322',
+        stderr: exitCode === 0 ? '' : repairDiff === DOGFOOD_DIFF
+          ? ' FAIL src/dogfood-add.test.ts > adds\nAssertionError: expected -1 to be 5\n'
+          : "src/value.ts(1,30): error TS2322: Type 'number' is not assignable to type 'string'",
         truncated: false,
         metrics: {},
       };
@@ -486,7 +502,9 @@ function executorFor(
     return {
       exitCode,
       stdout: exitCode === 0 ? 'Tests passed' : '',
-      stderr: exitCode === 0 ? '' : 'TS2322',
+      stderr: exitCode === 0 ? '' : repairDiff === DOGFOOD_DIFF
+          ? ' FAIL src/dogfood-add.test.ts > adds\nAssertionError: expected -1 to be 5\n'
+          : "src/value.ts(1,30): error TS2322: Type 'number' is not assignable to type 'string'",
       truncated: false,
       metrics: {},
     };
@@ -620,8 +638,10 @@ describe('recorded GitHub API orchestration E2E', () => {
       pull_requests: [],
     };
     fixtures.jobLog = [
-      '2026-08-27T10:00:12Z Run pnpm --filter @sutura/core test',
-      '2026-08-27T10:00:13Z packages/core test: \u001b[31m❯\u001b[39m src/dogfood-add.test.ts:7: expected -1 to be 5',
+      '2026-08-27T10:00:12Z ##[group]Run pnpm --filter @sutura/core test',
+      '2026-08-27T10:00:13Z ##[endgroup]',
+      '2026-08-27T10:00:14Z packages/core test:  FAIL src/dogfood-add.test.ts > adds',
+      '2026-08-27T10:00:15Z packages/core test: AssertionError: expected -1 to be 5',
     ].join('\n');
     const api = new RecordedGitHubApi(fixtures);
     const artifact = new RecordedArtifactApi();
@@ -630,6 +650,9 @@ describe('recorded GitHub API orchestration E2E', () => {
     });
     const repository = new RecordedRepository(api);
     repository.sources.clear();
+    repository.sources.set('package.json', '{"private":true,"packageManager":"pnpm@11.22.0"}');
+    repository.sources.set('packages/core/package.json', '{"name":"@sutura/core","scripts":{"test":"vitest run"}}');
+    repository.sources.set('pnpm-workspace.yaml', 'packages:\n  - packages/*\n');
     repository.sources.set(
       'packages/core/src/dogfood-add.test.ts',
       "import { add } from './dogfood-add.js';\n\nit('adds', () => { expect(add(2, 3)).toBe(5); });\n",
@@ -744,9 +767,9 @@ describe('recorded GitHub API orchestration E2E', () => {
           headRef: 'feature/broken-build',
         });
         const failedLog = harness.github.resolvedRuns[0]?.failedSteps[0]?.log;
-        expect(failedLog?.split('\n')).toHaveLength(200);
-        expect(failedLog).toContain('failure-005');
-        expect(failedLog).toContain('failure-203');
+        expect(failedLog?.split('\n')).toHaveLength(3);
+        expect(failedLog).toContain("src/value.ts(1,30): error TS2322: Type 'number' is not assignable to type 'string'");
+        expect(harness.github.resolvedRuns[0]?.failedSteps[0]?.truncated).toBe(false);
         expect(failedLog).toContain('Run pnpm test');
         expect(failedLog).not.toContain('failure-004');
         expect(failedLog).not.toContain('setup-noise');

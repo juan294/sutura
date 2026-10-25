@@ -1,8 +1,10 @@
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_MODELS } from './config.js';
 import { classifyMechanically, isCommandHeader } from './diagnose/classify.js';
@@ -182,7 +184,14 @@ class FakeGitHub implements GitHubOrchestrationPort {
   }
 }
 
+const checkoutRoots: string[] = [];
+afterEach(async () => {
+  await Promise.all(checkoutRoots.splice(0).map(root => rm(root, { recursive: true, force: true })));
+});
+
 class FakeRepository implements RepositoryPort {
+  checkoutDir = '';
+  packageJson = '{"scripts":{"test":"tsc --noEmit","lint":"eslint .","build":"vite build"}}\n';
   readonly checkouts: Array<{ repo: string; sha: string }> = [];
   readonly fixes: Array<{
     branch: string;
@@ -208,7 +217,15 @@ class FakeRepository implements RepositoryPort {
 
   async checkoutHead(repo: string, sha: string): Promise<string> {
     this.checkouts.push({ repo, sha });
-    return '/tmp/exact-pr-head';
+    this.checkoutDir = await mkdtemp(join(tmpdir(), 'sutura-orchestrate-'));
+    checkoutRoots.push(this.checkoutDir);
+    const files = new Map([['package.json', this.packageJson], ...this.sources]);
+    for (const [path, content] of files) {
+      const absolute = join(this.checkoutDir, path);
+      await mkdir(dirname(absolute), { recursive: true });
+      await writeFile(absolute, content);
+    }
+    return this.checkoutDir;
   }
 
   async readSourceExcerpts(
@@ -313,7 +330,7 @@ function runResult(exitCode: number): InMemoryRunResult {
   return {
     exitCode,
     stdout: exitCode === 0 ? 'Tests passed' : '',
-    stderr: exitCode === 0 ? '' : 'TS2322',
+    stderr: exitCode === 0 ? '' : 'src/value.ts(1,14): error TS2322: Type number is not assignable to type string',
     truncated: false,
     metrics: {},
   };
@@ -353,6 +370,13 @@ function context(
 } {
   const github = new FakeGitHub(run);
   const repository = new FakeRepository();
+  const scenarioResult = (exit: number, command: string): InMemoryRunResult => {
+    const selected = run.failedSteps.find(step => {
+      const observed = classifyMechanically(step.log).failingCmd;
+      return observed !== 'unknown' && command.includes(observed);
+    }) ?? run.failedSteps[0];
+    return { ...runResult(exit), stderr: exit === 0 ? '' : selected?.log ?? '' };
+  };
   let scenarioIndex = 0;
   let agentPatched = false;
   const executor = new InMemoryExecutor((command) => {
@@ -369,9 +393,9 @@ function context(
       agentPatched = false;
       const firstRaceExit = exits[scenarioIndex] ?? 1;
       scenarioIndex += 3;
-      return runResult(firstRaceExit);
+      return scenarioResult(firstRaceExit, command);
     }
-    return runResult(exits[scenarioIndex++] ?? 1);
+    return scenarioResult(exits[scenarioIndex++] ?? 1, command);
   });
   const { llm, chat } = scriptedLlm(auditVerdict);
   return {
@@ -468,11 +492,11 @@ describe('orchestrate', () => {
       .split(/\r?\n/u)
       .slice(1)
       .join('\n');
-    // Fleet repair-path recovery, phase 2: the live B4 log still carries the
-    // step's own `$ pnpm -r test` echo, which the 20 KB byte cap used to drop.
-    // It is now carried past truncation, so the fail-closed premise is kept by
-    // removing every command header rather than only the first line.
-    expect(classifyMechanically(preFixLog).failingCmd).toBe('pnpm -r test');
+    // The native Run group proves the executed package script. Its timestamped
+    // `$ pnpm -r test` output cannot replace that proof or establish execution
+    // after the native header is removed.
+    expect(classifyMechanically(currentLog).failingCmd).toBe('pnpm run test');
+    expect(classifyMechanically(preFixLog).failingCmd).toBe('unknown');
     const headerlessLog = preFixLog
       .split('\n')
       .filter((line) => !isCommandHeader(line))
@@ -632,7 +656,8 @@ describe('orchestrate', () => {
           '/workspace/src/private data/token.ts:5: spaced-secret',
           'private.ts:6: root-secret',
           './private.ts:7: dot-root-secret',
-          'src/value.ts:1: Type number is not assignable to type string',
+          'src/value.ts(1,14): error TS2322: Type number is not assignable to type string',
+          'Dependency breaking change',
         ].join('\n'),
       }],
     };
@@ -651,6 +676,7 @@ describe('orchestrate', () => {
       if (tier === 'nano') return { text: JSON.stringify({
         ...diagnosisReply(),
         class: 'dep-upstream-breaking',
+        errorExcerpt: 'Dependency breaking change',
       }) };
       if (tier === 'super') return repairProposalReply(candidates()[0]!, HONEST_REPLACEMENT);
       return { text: JSON.stringify({
@@ -707,7 +733,7 @@ describe('orchestrate', () => {
     expect(repository.fixes).toEqual([
       expect.objectContaining({
         branch: 'sutura/fix-98765',
-        checkoutDir: '/tmp/exact-pr-head',
+        checkoutDir: repository.checkoutDir,
         diff: HONEST_DIFF,
         headSha: RUN.headSha,
         message: expect.stringMatching(
@@ -841,6 +867,9 @@ describe('orchestrate', () => {
       [1, 1, 1, 0, 1, 1, 0], true, dogfoodRun,
     );
     repository.sources.clear();
+    for (const path of ['package.json', 'packages/core/package.json', 'pnpm-workspace.yaml']) {
+      repository.sources.set(path, await readFile(new URL(`../../placebo/corpus/repair-dogfood-arithmetic/fixture/${path}`, import.meta.url), 'utf8'));
+    }
     repository.sources.set(
       'packages/core/src/dogfood-add.test.ts',
       "import { add } from './dogfood-add.js';\n\nit('adds', () => { expect(add(2, 3)).toBe(5); });\n",
@@ -1164,6 +1193,15 @@ describe('orchestrate', () => {
     expect(classifyMechanically(diagnosisLog(ranked, 0)).failingCmd).toBe('verify');
   });
 
+  it('keeps auxiliary aggregate output out of selected primary diagnosis', () => {
+    const ranked = rankFailedSteps(multiFailureRun.failedSteps);
+    const primary = diagnosisLog(ranked, 0);
+    expect(primary).toContain('TS2322');
+    expect(primary).not.toContain('checks=failure');
+    expect(primary).not.toContain('no-unused-vars');
+    expect(classifyMechanically(primary)).toMatchObject({ class: 'typecheck', failingCmd: 'pnpm test' });
+  });
+
   it('skips an earlier failed step that has no command of its own instead of borrowing one', async () => {
     const { ctx, executor } = context([1], true, {
       ...multiFailureRun,
@@ -1180,6 +1218,29 @@ describe('orchestrate', () => {
 
     expect(reproductionCommands(executor)[0]).toContain('pnpm test');
     expect(caseFile.diagnosis.failingCmd).not.toMatch(/^echo /u);
+  });
+
+  it.each(['gitleaks/gitleaks-action@v3', 'actions/cache/restore@v4', 'actions/cache/restore@refs/heads/main', `actions/cache@refs/heads/${'branch'.repeat(40)}`])('identifies unsupported external action %s without shell execution evidence', async (action) => {
+    const { ctx, executor, github, chat } = context([], true, {
+      ...RUN,
+      failedSteps: [{
+        jobName: 'CI Fast', stepName: 'Scan introduced commits for secrets',
+        log: [
+          `2026-10-23T06:17:24.2583496Z ##[group]Run ${action}`,
+          '2026-10-23T06:17:24.2585810Z env:',
+          '2026-10-23T06:17:24.2587220Z ##[endgroup]',
+          '2026-10-23T06:17:29.0000000Z Scan failed',
+        ].join('\n'),
+      }],
+    });
+
+    await expect(orchestrate(ctx)).rejects.toMatchObject({
+      code: 'failing-command-not-observed',
+      message: `Failed-step logs do not contain an observed failing command; unsupported external action steps: ${action.slice(0, 160)}`,
+    });
+    expect(executor.calls).toEqual([]);
+    expect(github.comments).toEqual([]);
+    expect(chat).not.toHaveBeenCalled();
   });
 
   it('still fails closed when no failed step shows a command', async () => {
@@ -1260,6 +1321,33 @@ describe('orchestrate', () => {
     expect(calls.slice(2).every(({ opts }) => opts?.network === 'disabled')).toBe(true);
   });
 
+  it.each([false, true])('stops on a new missing sandbox prerequisite with unrelated native marker=%s', async (unrelatedMarker) => {
+    const run = { ...RUN, failedSteps: [{ jobName: 'boot', stepName: 'Boot guest',
+      log: 'Run pnpm run verify:cloud-init-boot\nprovisioning did not complete within the armed window' },
+      ...(unrelatedMarker ? [{ jobName: 'unrelated', stepName: 'Other check',
+        log: 'Run echo check\nmissing required tool: qemu-img' }] : [])] };
+    const { ctx, github, repository, chat } = context([], true, run);
+    const executor = new InMemoryExecutor((command) =>
+      command.includes('corepack pnpm install --frozen-lockfile') || command.includes('git init --quiet')
+        ? runResult(0) : { ...runResult(1), stdout: '[ELIFECYCLE] Command failed with exit code 1.\n',
+          stderr: '$ bash scripts/test-runner-cloud-init-boot.sh\nmissing required tool: qemu-img\n' });
+    ctx.executor = executor;
+
+    const caseFile = await orchestrate(ctx);
+
+    expect(caseFile).toMatchObject({ runId: RUN.runId, outcome: 'infra-stop',
+      diagnosis: { class: 'infra', failingCmd: 'pnpm run verify:cloud-init-boot',
+        signals: ['sandbox-reproduction:prerequisite-missing'] },
+      triage: { status: 'not-run', reproduced: 0, of: 0 }, race: [] });
+    expect(caseFile.diagnosis.errorExcerpt).toContain('missing required tool: qemu-img');
+    expect(caseFile.stages.filter(({ stage }) => stage === 'reproduction')).toMatchObject([{ exitCode: 1 }]);
+    expect(runCalls(executor)).toHaveLength(3);
+    expect(chat).not.toHaveBeenCalled();
+    expect(repository.fixes).toEqual([]);
+    expect(github.pullRequests).toEqual([]);
+    expect(github.comments[0]?.body).toContain('Sandbox reproduction was blocked by a missing prerequisite.');
+  });
+
   it('reports preparation failure before reproduction or paid inference', async () => {
     const { ctx, github, chat } = context([]);
     const executor = new InMemoryExecutor(() => runResult(1));
@@ -1283,7 +1371,7 @@ describe('orchestrate', () => {
         {
           jobName: 'build',
           stepName: 'Build',
-          log: "Run pnpm build\nError: Cannot find module '@acme/money'",
+          log: "Run pnpm build\nError: Cannot find module '@acme/money' imported from /external/runner.js",
         },
       ],
     };
@@ -1355,7 +1443,7 @@ describe('orchestrate', () => {
     ) => {
       if (tier === 'nano') return { text: JSON.stringify({
         class: 'typecheck', confidence: 0.99, signals: ['TS2322'],
-        failingCmd: 'pnpm test', errorExcerpt: 'parse-port.ts(2,3): TS2322',
+        failingCmd: 'pnpm test', errorExcerpt: 'parse-port.ts(2,3): error TS2322: Type string is not assignable to type number',
       }) };
       if (tier === 'super') {
         if (placeboSuperCall === 0) {
@@ -1388,7 +1476,7 @@ describe('orchestrate', () => {
     expect(caseFile.outcome).toBe('fixed');
     expect(repository.sourceReads).toEqual([
       {
-        checkoutDir: '/tmp/exact-pr-head',
+        checkoutDir: repository.checkoutDir,
         paths: ['parse-port.ts', 'tsconfig.json', 'package.json'],
       },
     ]);
@@ -1404,7 +1492,7 @@ describe('orchestrate', () => {
         {
           jobName: 'test',
           stepName: 'Test',
-          log: "Run pnpm test\nError: Cannot find module '@acme/money'",
+          log: "Run pnpm test\nError: Cannot find module '@acme/money' imported from /external/runner.js",
         },
       ],
     };
@@ -1416,15 +1504,15 @@ describe('orchestrate', () => {
     repository.sources.clear();
     repository.sources.set(
       'package.json',
-      '{"dependencies":{"@acme/money":"4.0.0"}}',
+      '{"scripts":{"test":"node index.js"},"dependencies":{"@acme/money":"4.0.0"}}',
     );
     const dependencyDiff = (version: string) => [
       'diff --git a/package.json b/package.json',
       '--- a/package.json',
       '+++ b/package.json',
       '@@ -1 +1 @@',
-      '-{"dependencies":{"@acme/money":"4.0.0"}}',
-      `+{"dependencies":{"@acme/money":"${version}"}}`,
+      '-{"scripts":{"test":"node index.js"},"dependencies":{"@acme/money":"4.0.0"}}',
+      `+{"scripts":{"test":"node index.js"},"dependencies":{"@acme/money":"${version}"}}`,
     ].join('\n');
     ctx.tavily = {
       search: vi.fn().mockResolvedValue([{
@@ -1451,7 +1539,7 @@ describe('orchestrate', () => {
         dependencySuperCall += 1;
         return repairProposalReply(
           { id: 'pin-a', rationale: 'pin compatible release', diff: dependencyDiff('3.9.0') },
-          '{"dependencies":{"@acme/money":"3.9.0"}}',
+          '{"scripts":{"test":"node index.js"},"dependencies":{"@acme/money":"3.9.0"}}',
         );
       }
       return { text: JSON.stringify({ approved: true, reasoning: 'not reached' }) };
@@ -1594,6 +1682,9 @@ describe('repair source context', () => {
     const captured = await capturedFailingRun('Live run 5', '33243759945');
     const repository = new FakeRepository();
     repository.sources.clear();
+    for (const path of ['package.json', 'packages/core/package.json', 'pnpm-workspace.yaml']) {
+      repository.sources.set(path, await readFile(new URL(`../../placebo/corpus/repair-dogfood-arithmetic/fixture/${path}`, import.meta.url), 'utf8'));
+    }
     repository.sources.set(
       'packages/core/src/dogfood-add.test.ts',
       "import { add } from './dogfood-add.js';\n\nexpect(add(2, 3)).toBe(5);\n",
@@ -1807,6 +1898,9 @@ describe('repair source context', () => {
   it('resolves ANSI-colored Vitest reporter paths to their pnpm workspace', async () => {
     const repository = new FakeRepository();
     repository.sources.clear();
+    for (const path of ['package.json', 'packages/core/package.json', 'pnpm-workspace.yaml']) {
+      repository.sources.set(path, await readFile(new URL(`../../placebo/corpus/repair-dogfood-arithmetic/fixture/${path}`, import.meta.url), 'utf8'));
+    }
     repository.sources.set(
       'packages/core/src/dogfood-add.test.ts',
       "import { add } from './dogfood-add.js';\nexpect(add(2, 3)).toBe(5);\n",

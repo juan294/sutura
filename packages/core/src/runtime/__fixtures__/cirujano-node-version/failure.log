@@ -1,0 +1,7 @@
+Source repository: juan294/cirujano
+Source commit: 112f75a6b1c4b57957c0509a45bed041c759360c
+Repair monitor: https://github.com/juan294/cirujano/actions/runs/40070227746
+Sutura action: fdb34a4386f8e7460391c9a35c0b2f467c1a715e
+.nvmrc is copied verbatim; package.json retains only the relevant engines field.
+Captured log line:
+2026-10-24T06:27:04.6845769Z ##[error]Node version declarations conflict between .nvmrc and package.json

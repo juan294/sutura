@@ -12,6 +12,14 @@ import pLimit, { type LimitFunction } from 'p-limit';
 import { shellQuote } from '../engine/shell.js';
 import { isSensitiveRepositoryPath } from '../security/repository-path.js';
 import {
+  assertSafeNpmrcContent,
+  isDependencyFixturePath,
+  isInstalledDependencyPath,
+  isNpmrcPath,
+  isPublicSnapshotPath,
+} from '../security/snapshot-inputs.js';
+import { snapshotSelectedSource } from '../verification/source.js';
+import {
   SNAPSHOT_CWD,
   type Executor,
   type CancellationResult,
@@ -668,7 +676,7 @@ function snapshotCommand(
   paths: SnapshotCommandPaths = DEFAULT_SNAPSHOT_COMMAND_PATHS,
 ): string {
   if (options.mode === 'replace') {
-    return `rm -rf ${shellQuote(paths.cwd)} && mkdir -p ${shellQuote(paths.cwd)} && tar -xf ${shellQuote(paths.snapshotPath)} -C ${shellQuote(paths.cwd)}`;
+    return `rm -rf ${shellQuote(paths.cwd)} && mkdir -p ${shellQuote(paths.cwd)} && tar -xf ${shellQuote(paths.snapshotPath)} -C ${shellQuote(paths.cwd)} && rm -f -- ${shellQuote(paths.snapshotPath)}`;
   }
   const validateMember = [
     'sutura_root="$1"',
@@ -685,6 +693,7 @@ function snapshotCommand(
     `mkdir -p ${shellQuote(paths.cwd)}`,
     `xargs -0 -n 1 sh -c ${shellQuote(validateMember)} sh ${shellQuote(paths.cwd)} ${shellQuote(paths.dependencyManifestPath)} < ${shellQuote(paths.manifestPath)}`,
     `tar -xf ${shellQuote(paths.snapshotPath)} -C ${shellQuote(paths.cwd)}`,
+    `rm -f -- ${shellQuote(paths.snapshotPath)}`,
   ].join(' && ');
 }
 
@@ -695,24 +704,12 @@ export function buildSnapshotCommandForTest(
   return snapshotCommand(options, paths);
 }
 
-function isInstalledDependencyPath(path: string): boolean {
-  const segments = path.split('/');
-  return (
-    segments.includes('node_modules') ||
-    segments.includes('.pnpm') ||
-    path === '.pnp.cjs' ||
-    path === '.pnp.loader.mjs' ||
-    path.startsWith('.yarn/cache/') ||
-    path.startsWith('.yarn/unplugged/') ||
-    path.startsWith('.yarn/install-state.gz')
-  );
-}
-
 function isDependencyInputPath(
   path: string,
   workspacePatterns: readonly string[],
   localDependencyPaths: readonly string[] = [],
 ): boolean {
+  if (path === '.npmrc') return true;
   if (isSensitiveRepositoryPath(path, { includeDependencies: true })) return false;
   const segments = path.split('/');
   const basename = segments.at(-1) ?? '';
@@ -953,7 +950,7 @@ function includeSnapshotPath(
 ): boolean {
   validateSnapshotPath(path);
   if (profile === 'repository') {
-    if (isInstalledDependencyPath(path)) {
+    if (isInstalledDependencyPath(path) && !isDependencyFixturePath(path)) {
       throw new ContreeError(
         `ConTree repository overlay refuses installed dependency path: ${path}`,
       );
@@ -961,7 +958,7 @@ function includeSnapshotPath(
     // Plan evidence screenshots can exhaust the provider's image layer.
     // Keep other documentation assets: repository tests may read them.
     if (/^docs\/plans\/.*\/evidence\/.*\.(?:avif|gif|jpe?g|mp4|pdf|png|svg|webm|webp)$/iu.test(path)) return false;
-    return !isSensitiveRepositoryPath(path);
+    return isPublicSnapshotPath(path);
   }
   return isDependencyInputPath(path, workspacePatterns, localPaths);
 }
@@ -988,11 +985,11 @@ async function listNonGitFiles(
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
       const path = directory ? `${directory}/${entry.name}` : entry.name;
       validateSnapshotPath(path);
-      if (entry.name.toLowerCase() === '.npmrc') await assertSafeNpmrc(root, path);
-      if (isInstalledDependencyPath(path)) {
+      if (isNpmrcPath(path)) await assertSafeNpmrc(root, path);
+      if (isInstalledDependencyPath(path) && !isDependencyFixturePath(path)) {
         continue;
       }
-      if (isSensitiveRepositoryPath(path, { includeDependencies: true })) continue;
+      if (!isPublicSnapshotPath(path)) continue;
       const absolute = join(root, path);
       const metadata = await lstat(absolute);
       if (metadata.isSymbolicLink()) {
@@ -1109,7 +1106,7 @@ export async function listSnapshotFiles(
       .split('\0')
       .filter((path) => path.length > 0 && !deletedPaths.has(path));
     for (const path of listedFiles) {
-      if (path.split('/').at(-1)?.toLowerCase() === '.npmrc') await assertSafeNpmrc(dir, path);
+      if (isNpmrcPath(path)) await assertSafeNpmrc(dir, path);
     }
     const files = listedFiles.filter((path) =>
       includeSnapshotPath(path, profile, workspacePatterns, localPaths));
@@ -1136,6 +1133,7 @@ async function listApprovedDependencyFiles(
     }
     const absolute = join(root, path);
     const metadata = await lstat(absolute);
+    if (isNpmrcPath(path)) await assertSafeNpmrc(root, path);
     if (metadata.isSymbolicLink()) {
       throw new ContreeError(`ConTree dependency snapshot refuses symlink: ${path}`);
     }
@@ -1215,15 +1213,30 @@ async function createSnapshotArchive(
   if (options.profile === 'dependency-inputs') {
     await rejectRegistryCredentials(dir, files);
   }
-  const input = Buffer.from(files.map((path) => `${path}\0`).join(''));
+  const configFiles = files.filter(isNpmrcPath);
+  const input = Buffer.from(files.filter(path => !isNpmrcPath(path)).map((path) => `${path}\0`).join(''));
   const archiveDir = await mkdtemp(join(tmpdir(), 'sutura-contree-'));
   const archivePath = join(archiveDir, 'snapshot.tar');
   const manifestPath = join(archiveDir, 'manifest.bin');
+  let frozenConfig: Awaited<ReturnType<typeof snapshotSelectedSource>> | undefined;
   try {
-    await writeFile(manifestPath, input);
+    // Tar rereads its inputs. Freeze validated configuration so a concurrent
+    // safe-to-credential swap cannot upload bytes the validator never checked.
+    if (configFiles.length) frozenConfig = await snapshotSelectedSource(dir, configFiles, async () => {});
+    await writeFile(manifestPath, Buffer.from(files.map(path => `${path}\0`).join('')));
+    const configManifestPath = join(archiveDir, 'configuration.bin');
+    if (frozenConfig) {
+      await writeFile(configManifestPath, Buffer.from(configFiles.map(path => `${path}\0`).join('')));
+      for (const path of configFiles) {
+        if ((await stat(join(frozenConfig.dir, path))).size > MAX_DEPENDENCY_CONTROL_BYTES) {
+          throw new ContreeError(`ConTree dependency preparation refuses oversized .npmrc: ${path}`);
+        }
+      }
+    }
     await runProcess(
       'tar',
-      ['-cf', archivePath, '--no-recursion', '--null', '-T', '-'],
+      ['-cf', archivePath, '--no-recursion', '--null', '-T', '-',
+        ...(frozenConfig ? ['-C', frozenConfig.dir, '-T', configManifestPath] : [])],
       dir,
       input,
       { ...process.env, COPYFILE_DISABLE: '1' },
@@ -1242,6 +1255,8 @@ async function createSnapshotArchive(
   } catch (error) {
     await rm(archiveDir, { recursive: true, force: true });
     throw error;
+  } finally {
+    await frozenConfig?.cleanup();
   }
 }
 
@@ -1266,17 +1281,16 @@ async function assertSafeNpmrcFiles(dir: string): Promise<void> {
 }
 
 async function assertSafeNpmrc(root: string, path: string): Promise<void> {
-  const reject = (): never => {
-    throw new ContreeError('ConTree dependency preparation refuses repository .npmrc credentials');
-  };
   const absolute = join(root, path);
   const metadata = await lstat(absolute);
-  if (!metadata.isFile() || metadata.size > MAX_DEPENDENCY_CONTROL_BYTES) reject();
-  const lines = (await readFile(absolute, 'utf8')).split(/\r?\n/u);
-  if (lines.some((line) => {
-    const value = line.trim();
-    return value !== '' && !value.startsWith('#') && value !== 'engine-strict=true';
-  })) reject();
+  if (!metadata.isFile() || metadata.size > MAX_DEPENDENCY_CONTROL_BYTES) {
+    throw new ContreeError(`ConTree dependency preparation refuses non-regular or oversized .npmrc: ${path}`);
+  }
+  try {
+    assertSafeNpmrcContent(await readFile(absolute, 'utf8'), path);
+  } catch (error) {
+    throw new ContreeError(`ConTree dependency preparation refuses ${errorMessage(error)}`);
+  }
 }
 
 async function rejectRegistryCredentials(
