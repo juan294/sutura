@@ -88,6 +88,14 @@ export class LocalBranchExecutor implements Executor {
       normalized.set('pnpm test', packageTest);
       normalized.set(NODE_RUNTIME.normalizeCommand('pnpm test'), packageTest);
     }
+    // Triage wraps an exact registered command; translate that payload without
+    // evaluating arbitrary shell text or reloading a host login-shell PATH.
+    const triage = /^(SUTURA_TRIAGE_ATTEMPT='(?:0|[1-9]\d*)') sh -lc (.+)$/u.exec(command);
+    if (triage) {
+      for (const [trusted, local] of normalized) {
+        if (triage[2] === quote(trusted)) return `${triage[1]} sh -c ${quote(local)}`;
+      }
+    }
     const direct = normalized.get(command);
     if (direct) return direct;
     if (command.startsWith('node -e ') || command.startsWith('python -I -c ')) {
