@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -80,7 +81,7 @@ test('candidate install uses the local tarball and exact candidate Action SHA wi
           }));
           await writeFile(join(consumer, 'node_modules', 'sutura', 'LICENSE'), 'MIT fixture\n');
         },
-        invoke: async (_binary, args, consumer) => {
+        invoke: async (_binary, args, consumer, environment) => {
           calls.push(args);
           if (args[0] === 'assess') return JSON.stringify({ schemaVersion: 'sutura-repository-assessment-v1', jobs: [], complete: true });
           if (args[0] === 'init' && args.includes('--plan')) return JSON.stringify({ plan: { digest: 'd'.repeat(64), blockers: [], actionSha: ACTION_SHA } });
@@ -90,7 +91,12 @@ test('candidate install uses the local tarball and exact candidate Action SHA wi
               progressiveWorkflow);
             return '';
           }
-          if (args[0] === 'doctor') return doctorOutput(ACTION_SHA) + '\n[INFO] Readiness: assessed=observed; configured=incomplete; activated=unknown; prepared=unmeasured; reproduced=unmeasured; native-verified=unmeasured; integrated=unmeasured.\n[INFO] No paid execution was attempted.';
+          if (args[0] === 'doctor') {
+            for (const kind of ['secret', 'variable']) {
+              assert.equal(execFileSync('gh', [kind, 'list', '--json', 'name', '--jq', '.[].name'], { env: environment, encoding: 'utf8', timeout: 5000 }), '', 'candidate shim must not invent configured credential names');
+            }
+            return doctorOutput(ACTION_SHA) + '\n[INFO] Readiness: assessed=observed; configured=incomplete; activated=unknown; prepared=unmeasured; reproduced=unmeasured; native-verified=unmeasured; integrated=unmeasured.\n[INFO] No paid execution was attempted.';
+          }
           if (args[0] === '--version') return '0.4.0\n';
           throw new Error(`unexpected invocation ${args.join(' ')}`);
         },

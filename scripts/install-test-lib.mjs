@@ -98,12 +98,13 @@ async function publicCommitDefault(version, cwd) {
 
 export const resolvePublicActionCommit = publicCommitDefault;
 
-async function createDoctorShim(directory) {
+async function createDoctorShim(directory, progressive) {
   const path = join(directory, 'gh');
   await writeFile(path, `#!/usr/bin/env node
 const args = process.argv.slice(2);
-if (args[0] === 'secret' && args[1] === 'list') process.stdout.write(args.includes('--jq') ? 'NEBIUS_API_KEY\\nCONTREE_TOKEN\\n' : '[]');
-else if (args[0] === 'variable' && args[1] === 'list') process.stdout.write(args.includes('--jq') ? 'CONTREE_PROJECT\\n' : '[]');
+const legacy = ${!progressive};
+if (args[0] === 'secret' && args[1] === 'list') process.stdout.write(args.includes('--jq') ? legacy ? 'NEBIUS_API_KEY\\nCONTREE_TOKEN\\n' : '' : '[]');
+else if (args[0] === 'variable' && args[1] === 'list') process.stdout.write(args.includes('--jq') ? legacy ? 'CONTREE_PROJECT\\n' : '' : '[]');
 else { process.stderr.write('unsupported read-only gh smoke command\\n'); process.exitCode = 2; }
 `);
   await chmod(path, 0o755);
@@ -218,7 +219,7 @@ export async function verifyInstall(options) {
     await mkdir(shimDirectory);
     await writeFile(join(consumer, 'package.json'), '{"name":"sutura-install-smoke","private":true}\n');
     await writeFile(join(consumer, '.github', 'workflows', 'ci.yml'), 'name: CI\non: [push]\n');
-    await createDoctorShim(shimDirectory);
+    await createDoctorShim(shimDirectory, progressive);
 
     const source = options.mode === 'candidate'
       ? join(options.root, 'packages', 'cli')
