@@ -1,12 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { sandboxExecutableCommand } from './sandbox-command.js';
+import { normalizePythonCommand } from '../runtime/python.js';
+import { nativeFailureForCommand } from './failure-identity.js';
 import { InMemoryExecutor } from '../executor/memory.js';
 import { boundedTriage, LEGACY_TRIAGE_POLICY, triage, type FocusedProbe, type TriageProbeKind } from './triage.js';
+
+const FAILURE_LOG = ' FAIL src/value.test.ts > returns the value\nAssertionError: expected 2 to be 3\n';
+const MANIFEST = { path: 'package.json', content: JSON.stringify({ scripts: { test: 'vitest run' } }) };
+const native = (command: string) => nativeFailureForCommand(command, FAILURE_LOG, [MANIFEST]);
+const triageWithEvidence = (...args: Parameters<typeof triage>) =>
+  triage(args[0], args[1], args[2], args[3], args[4], native(args[2]));
+const boundedTriageWithEvidence = (...args: Parameters<typeof boundedTriage>) =>
+  boundedTriage(args[0], args[1], args[2], args[3], args[4], args[5], args[6], native(args[2]));
 
 function scriptedTriage(exitCodes: readonly number[]): InMemoryExecutor {
   return new InMemoryExecutor((_cmd, _parent, callIndex) => ({
     exitCode: exitCodes[callIndex] ?? 1,
-    stdout: '',
+    stdout: FAILURE_LOG,
     stderr: '',
     truncated: false,
     metrics: {},
@@ -27,7 +38,7 @@ describe('triage', () => {
   }) => {
     const executor = scriptedTriage(exits);
 
-    await expect(triage(executor, 'failure-image', 'pnpm test')).resolves.toMatchObject({
+    await expect(triageWithEvidence(executor, 'failure-image', 'pnpm test')).resolves.toMatchObject({
       status,
       reproduced,
       of: attempts,
@@ -50,7 +61,7 @@ describe('triage', () => {
   it('rejects an invalid sample count before using the executor', async () => {
     const executor = scriptedTriage([]);
 
-    await expect(triage(executor, 'failure-image', 'pnpm test', 0)).rejects.toThrow(
+    await expect(triageWithEvidence(executor, 'failure-image', 'pnpm test', 0)).rejects.toThrow(
       'N must be between 1 and 20',
     );
     expect(executor.calls).toEqual([]);
@@ -60,16 +71,16 @@ describe('triage', () => {
     const executor = scriptedTriage([]);
 
     await expect(
-      triage(executor, 'failure-image', 'pnpm test', 21),
+      triageWithEvidence(executor, 'failure-image', 'pnpm test', 21),
     ).rejects.toThrow('N must be between 1 and 20');
     expect(executor.calls).toEqual([]);
   });
 
   it('gives every independent branch a deterministic attempt index and quotes the failing command', async () => {
-    const executor = scriptedTriage([1, 0, 1]);
+    const executor = scriptedTriage([0, 0, 0]);
     const failingCmd = `node -e "console.log('quoted value')" && printf '%s' "done"`;
 
-    await triage(executor, 'failure-image', failingCmd, 3);
+    await triageWithEvidence(executor, 'failure-image', failingCmd, 3);
 
     expect(executor.calls.map((call) => call.kind === 'run' ? call.cmd : '')).toEqual([
       `SUTURA_TRIAGE_ATTEMPT='0' sh -lc 'node -e "console.log('"'"'quoted value'"'"')" && printf '"'"'%s'"'"' "done"'`,
@@ -82,7 +93,7 @@ describe('triage', () => {
     const executor = scriptedTriage([1, 0, 1, 0, 1]);
     const runMany = vi.spyOn(executor, 'runMany');
 
-    const verdict = await triage(executor, 'failure-image', 'pnpm test', 5);
+    const verdict = await triageWithEvidence(executor, 'failure-image', 'pnpm test', 5);
 
     expect(runMany.mock.calls.map(([, commands]) => commands.length)).toEqual([2, 2, 1]);
     expect(verdict).toMatchObject({
@@ -95,7 +106,7 @@ describe('triage', () => {
 function timedTriage(exitCodes: readonly number[], seconds: number | undefined): InMemoryExecutor {
   return new InMemoryExecutor((_cmd, _parent, callIndex) => ({
     exitCode: exitCodes[callIndex] ?? 1,
-    stdout: '',
+    stdout: FAILURE_LOG,
     stderr: '',
     truncated: false,
     metrics: seconds === undefined ? {} : { elapsedTimeSec: seconds },
@@ -111,7 +122,7 @@ describe('boundedTriage', () => {
   it('stops after one measured probe when the rest would exceed the budget', async () => {
     const executor = timedTriage([1, 1, 1, 1, 1], 231.26);
 
-    const run = await boundedTriage(executor, 'failure-image', 'pnpm exec vitest run', 5, undefined, budget);
+    const run = await boundedTriageWithEvidence(executor, 'failure-image', 'pnpm exec vitest run', 5, undefined, budget);
 
     expect(executor.calls).toHaveLength(1);
     expect(run.verdict).toMatchObject({ status: 'not-run', stopReason: 'sandbox-budget', reproduced: 1, of: 1, attemptsUsed: 1, maximumAttempts: 5 });
@@ -123,8 +134,8 @@ describe('boundedTriage', () => {
     { exits: [0, 0, 0, 0, 0], status: 'flaky', of: 4, reason: 'pass-boundary' },
     { exits: [1, 0, 1, 0, 0], status: 'intermittent', of: 5, reason: 'maximum-attempts' },
   ] as const)('reaches the legacy $status verdict when probes fit the budget', async ({ exits, status, of, reason }) => {
-    const bounded = await boundedTriage(timedTriage(exits, 2), 'failure-image', 'pnpm test', 5, undefined, budget);
-    const legacy = await triage(scriptedTriage(exits), 'failure-image', 'pnpm test', 5);
+    const bounded = await boundedTriageWithEvidence(timedTriage(exits, 2), 'failure-image', 'pnpm test', 5, undefined, budget);
+    const legacy = await triageWithEvidence(scriptedTriage(exits), 'failure-image', 'pnpm test', 5);
 
     expect(bounded.verdict).toEqual(legacy);
     expect(bounded.verdict).toMatchObject({ status, of, stopReason: reason });
@@ -132,9 +143,9 @@ describe('boundedTriage', () => {
 
   it('numbers attempts exactly as the legacy loop does', async () => {
     const executor = timedTriage([1, 1, 1, 1, 1], 2);
-    await boundedTriage(executor, 'failure-image', 'pnpm test', 5, undefined, budget);
+    await boundedTriageWithEvidence(executor, 'failure-image', 'pnpm test', 5, undefined, budget);
     const legacy = scriptedTriage([1, 1, 1, 1, 1]);
-    await triage(legacy, 'failure-image', 'pnpm test', 5);
+    await triageWithEvidence(legacy, 'failure-image', 'pnpm test', 5);
 
     expect(executor.calls.map((call) => call.kind === 'run' ? call.cmd : '')).toEqual(legacy.calls.map((call) => call.kind === 'run' ? call.cmd : ''));
   });
@@ -142,11 +153,11 @@ describe('boundedTriage', () => {
   it('accounts cumulatively and gates on the slowest probe so far', async () => {
     const seconds = [40, 40, 90, 90, 90];
     const executor = new InMemoryExecutor((_cmd, _parent, callIndex) => ({
-      exitCode: [1, 0, 1, 0, 1][callIndex] ?? 1, stdout: '', stderr: '', truncated: false,
+      exitCode: [1, 0, 1, 0, 1][callIndex] ?? 1, stdout: FAILURE_LOG, stderr: '', truncated: false,
       metrics: { elapsedTimeSec: seconds[callIndex] ?? 90 },
     }));
 
-    const run = await boundedTriage(executor, 'failure-image', 'pnpm test', 5, undefined, budget);
+    const run = await boundedTriageWithEvidence(executor, 'failure-image', 'pnpm test', 5, undefined, budget);
 
     expect(executor.calls).toHaveLength(3);
     expect(run.verdict).toMatchObject({ status: 'not-run', stopReason: 'sandbox-budget', reproduced: 2, of: 3 });
@@ -156,7 +167,7 @@ describe('boundedTriage', () => {
   it('runs the legacy loop and reports an unenforced budget when probes report no sandbox time', async () => {
     const executor = timedTriage([1, 1, 1, 1, 1], undefined);
 
-    const run = await boundedTriage(executor, 'failure-image', 'pnpm test', 5, undefined, budget);
+    const run = await boundedTriageWithEvidence(executor, 'failure-image', 'pnpm test', 5, undefined, budget);
 
     expect(run.verdict).toMatchObject({ status: 'real', of: 4 });
     expect(run.budget).toEqual({ enforced: false, budgetSec: 240 });
@@ -166,8 +177,8 @@ describe('boundedTriage', () => {
     const executor = timedTriage([1, 1, 1, 1, 1], 231.26);
     const legacy = scriptedTriage([1, 1, 1, 1, 1]);
 
-    const run = await boundedTriage(executor, 'failure-image', 'pnpm test', 5, undefined, LEGACY_TRIAGE_POLICY);
-    await triage(legacy, 'failure-image', 'pnpm test', 5);
+    const run = await boundedTriageWithEvidence(executor, 'failure-image', 'pnpm test', 5, undefined, LEGACY_TRIAGE_POLICY);
+    await triageWithEvidence(legacy, 'failure-image', 'pnpm test', 5);
 
     expect(run.budget).toBeUndefined();
     expect(run.verdict.of).toBe(4);
@@ -180,11 +191,11 @@ describe('boundedTriage', () => {
   it('gates before every probe so the worst case is the budget plus one probe', async () => {
     const seconds = [1, 1, 500, 500, 500];
     const executor = new InMemoryExecutor((_cmd, _parent, callIndex) => ({
-      exitCode: 1, stdout: '', stderr: '', truncated: false,
+      exitCode: 1, stdout: FAILURE_LOG, stderr: '', truncated: false,
       metrics: { elapsedTimeSec: seconds[callIndex] ?? 500 },
     }));
 
-    const run = await boundedTriage(executor, 'failure-image', 'pnpm test', 5, undefined, budget);
+    const run = await boundedTriageWithEvidence(executor, 'failure-image', 'pnpm test', 5, undefined, budget);
 
     expect(executor.calls).toHaveLength(3);
     expect(run.verdict).toMatchObject({ status: 'not-run', stopReason: 'sandbox-budget', reproduced: 3, of: 3 });
@@ -196,8 +207,8 @@ describe('boundedTriage', () => {
     for (const N of [1, 2, 3, 5, 7]) {
       for (let mask = 0; mask < 2 ** N; mask += 1) {
         const exits = Array.from({ length: N }, (_, index) => (mask >> index) & 1);
-        const bounded = await boundedTriage(timedTriage(exits, 1), 'failure-image', 'pnpm test', N, undefined, { scope: 'full', sandboxBudgetSec: 3600 });
-        const legacy = await triage(scriptedTriage(exits), 'failure-image', 'pnpm test', N);
+        const bounded = await boundedTriageWithEvidence(timedTriage(exits, 1), 'failure-image', 'pnpm test', N, undefined, { scope: 'full', sandboxBudgetSec: 3600 });
+        const legacy = await triageWithEvidence(scriptedTriage(exits), 'failure-image', 'pnpm test', N);
         expect(bounded.verdict, `N=${N} exits=${exits.join('')}`).toEqual(legacy);
       }
     }
@@ -216,13 +227,13 @@ function focusedExecutor(fullExits: readonly number[], focused: readonly Focused
     const outcome = isFocused ? focused[attempt] ?? 'same' : undefined;
     return {
       exitCode: isFocused ? (outcome === 'pass' ? 0 : 1) : fullExits[attempt] ?? 1,
-      stdout: outcome ?? 'full', stderr: '', truncated: false,
+      stdout: outcome === 'other' ? FAILURE_LOG.replace('to be 3', 'to be 4') : FAILURE_LOG, stderr: '', truncated: false,
       metrics: { elapsedTimeSec: isFocused ? seconds.focused : seconds.full },
     };
   });
 }
 
-const probe: FocusedProbe = { command: FOCUSED, sameFailure: (result) => result.exitCode !== 0 && result.stdout === 'same' };
+const probe: FocusedProbe = { command: FOCUSED, sameFailure: (result) => result.exitCode !== 0 && result.stdout === FAILURE_LOG };
 const commands = (executor: InMemoryExecutor) =>
   executor.calls.map((call) => call.kind === 'run' ? `${/SUTURA_TRIAGE_ATTEMPT='?(\d+)/u.exec(call.cmd)?.[1]}:${call.cmd.includes(FOCUSED) ? 'focused' : 'full'}` : '');
 
@@ -233,7 +244,7 @@ describe('boundedTriage with a focused probe', () => {
     const executor = focusedExecutor([1, 1, 1, 1, 1], ['same', 'same', 'same', 'same']);
     const kinds: TriageProbeKind[] = [];
 
-    const run = await boundedTriage(executor, 'failure-image', 'pnpm exec vitest run', 5, (_result, _probe, kind) => kinds.push(kind), budget, probe);
+    const run = await boundedTriageWithEvidence(executor, 'failure-image', 'pnpm exec vitest run', 5, (_result, _probe, kind) => kinds.push(kind), budget, probe);
 
     expect(run.verdict).toMatchObject({ status: 'real', reproduced: 4, of: 4, stopReason: 'failure-boundary' });
     expect(commands(executor)).toEqual(['0:focused', '1:focused', '2:focused', '3:focused']);
@@ -249,8 +260,8 @@ describe('boundedTriage with a focused probe', () => {
     const exits = [1, 0, 1, 0, 0];
     const executor = focusedExecutor(exits, focused);
 
-    const run = await boundedTriage(executor, 'failure-image', 'pnpm exec vitest run', 5, undefined, budget, probe);
-    const legacy = await triage(scriptedTriage(exits), 'failure-image', 'pnpm exec vitest run', 5);
+    const run = await boundedTriageWithEvidence(executor, 'failure-image', 'pnpm exec vitest run', 5, undefined, budget, probe);
+    const legacy = await triageWithEvidence(scriptedTriage(exits), 'failure-image', 'pnpm exec vitest run', 5);
 
     expect(run.verdict).toEqual(legacy);
     expect(commands(executor)).toEqual([...focusedCalls, '0:full', '1:full', '2:full', '3:full', '4:full']);
@@ -260,7 +271,7 @@ describe('boundedTriage with a focused probe', () => {
   it('keeps the cumulative budget across the restart', async () => {
     const executor = focusedExecutor([1, 1, 1, 1, 1], ['same', 'same', 'pass'], { focused: 10, full: 100 });
 
-    const run = await boundedTriage(executor, 'failure-image', 'pnpm exec vitest run', 5, undefined, budget, probe);
+    const run = await boundedTriageWithEvidence(executor, 'failure-image', 'pnpm exec vitest run', 5, undefined, budget, probe);
 
     expect(commands(executor)).toEqual(['0:focused', '1:focused', '2:focused', '0:full']);
     expect(run.verdict).toMatchObject({ status: 'not-run', stopReason: 'sandbox-budget', reproduced: 1, of: 1 });
@@ -272,7 +283,7 @@ describe('boundedTriage with a focused probe', () => {
   it('stops on the budget right after a restart without a counted attempt', async () => {
     const executor = focusedExecutor([1, 1, 1, 1, 1], ['pass'], { focused: 60, full: 60 });
 
-    const run = await boundedTriage(executor, 'failure-image', 'vitest run', 5, undefined, budget, probe);
+    const run = await boundedTriageWithEvidence(executor, 'failure-image', 'vitest run', 5, undefined, budget, probe);
 
     expect(commands(executor)).toEqual(['0:focused']);
     expect(run.verdict).toMatchObject({ status: 'not-run', stopReason: 'sandbox-budget', reproduced: 0, of: 0, attemptsUsed: 0, maximumAttempts: 5 });
@@ -283,7 +294,7 @@ describe('boundedTriage with a focused probe', () => {
   it('runs focused probes without a budget', async () => {
     const executor = focusedExecutor([1, 1, 1, 1, 1], []);
 
-    const run = await boundedTriage(executor, 'failure-image', 'vitest run', 5, undefined, { scope: 'focused' }, probe);
+    const run = await boundedTriageWithEvidence(executor, 'failure-image', 'vitest run', 5, undefined, { scope: 'focused' }, probe);
 
     expect(run.verdict).toMatchObject({ status: 'real', of: 4 });
     expect(run.budget).toBeUndefined();
@@ -304,9 +315,9 @@ describe('boundedTriage with a focused probe', () => {
     }
     for (let mask = 0; mask < 32; mask += 1) {
       const exits = Array.from({ length: 5 }, (_, index) => (mask >> index) & 1);
-      const legacy = await triage(scriptedTriage(exits), 'failure-image', 'vitest run', 5);
+      const legacy = await triageWithEvidence(scriptedTriage(exits), 'failure-image', 'vitest run', 5);
       for (const focused of sequences) {
-        const run = await boundedTriage(focusedExecutor(exits, focused), 'failure-image', 'vitest run', 5, undefined, { scope: 'focused', sandboxBudgetSec: 3600 }, probe);
+        const run = await boundedTriageWithEvidence(focusedExecutor(exits, focused), 'failure-image', 'vitest run', 5, undefined, { scope: 'focused', sandboxBudgetSec: 3600 }, probe);
         const label = `exits=${exits.join('')} focused=${focused.join(',')}`;
         if (run.focus?.rejected === 0) {
           expect(run.verdict.status, label).toBe('real');
@@ -315,5 +326,70 @@ describe('boundedTriage with a focused probe', () => {
         }
       }
     }
+  });
+});
+
+
+describe('failure identity admission', () => {
+  it.each([
+    ['different assertion', FAILURE_LOG.replace('to be 3', 'to be 4'), false, 'mismatch'],
+    ['missing tool', 'vitest: command not found', false, 'mismatch'],
+    ['missing diagnostic', '', false, 'unavailable'],
+    ['truncated diagnostic', FAILURE_LOG, true, 'unavailable'],
+  ] as const)('stops legacy batches on %s but observes all already spent work', async (_name, stdout, truncated, status) => {
+    const executor = new InMemoryExecutor(() => ({ exitCode: 1, stdout, stderr: '', truncated, metrics: { elapsedTimeSec: 3 } }));
+    const observe = vi.fn();
+    const verdict = await triage(executor, 'image', 'pnpm test', 5, observe, native('pnpm test'));
+    expect(verdict).toMatchObject({ status: 'not-run', stopReason: 'failure-identity', reproduced: 0, of: 0, reproduction: { status } });
+    expect(executor.calls).toHaveLength(2);
+    expect(observe).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['legacy', 'bounded'] as const)('rejects native evidence for another command in %s triage', async mode => {
+    const executor = scriptedTriage([1, 1, 1, 1]);
+    const verdict = mode === 'legacy'
+      ? await triage(executor, 'image', 'pnpm test --project other', 5, undefined, native('pnpm test'))
+      : (await boundedTriage(executor, 'image', 'pnpm test --project other', 5, undefined, { scope: 'full', sandboxBudgetSec: 240 }, undefined, native('pnpm test'))).verdict;
+    expect(verdict).toMatchObject({ status: 'not-run', stopReason: 'failure-identity', reproduction: { status: 'unavailable', reason: 'Native command does not match the executed full command' } });
+  });
+
+  it('accepts only the existing Node runtime normalization of the native command', async () => {
+    const verdict = await triage(scriptedTriage([1, 1, 1, 1]), 'image', sandboxExecutableCommand('pnpm test'), 5, undefined, native('pnpm test'));
+    expect(verdict).toMatchObject({ status: 'real', reproduction: { status: 'matched' } });
+  });
+
+  it('accepts the existing Python runtime normalization', async () => {
+    const log = 'src/value.py:2:3: F401 unused import';
+    const executor = new InMemoryExecutor(() => ({ exitCode: 1, stdout: log, stderr: '', truncated: false, metrics: { elapsedTimeSec: 1 } }));
+    const run = await boundedTriage(executor, 'image', normalizePythonCommand('ruff check .'), 5, undefined, { scope: 'full', sandboxBudgetSec: 240 }, undefined, { command: 'ruff check .', log });
+    expect(run.verdict).toMatchObject({ status: 'real', reproduction: { status: 'matched' } });
+  });
+
+  it('stops failing work without native evidence rather than treating the exit as reproduction', async () => {
+    const verdict = await triage(scriptedTriage([1, 1, 1, 1]), 'image', 'pnpm test');
+    expect(verdict).toMatchObject({ status: 'not-run', stopReason: 'failure-identity', reproduction: { status: 'unavailable' } });
+  });
+
+  it('preserves pass semantics without native evidence', async () => {
+    expect(await triage(scriptedTriage([0, 0, 0, 0]), 'image', 'pnpm test')).toMatchObject({ status: 'flaky', reproduced: 0, of: 4 });
+  });
+
+  it('keeps prior matched observations but excludes a later mismatch from SPRT', async () => {
+    const executor = new InMemoryExecutor((_cmd, _parent, index) => ({ exitCode: 1, stdout: index === 0 ? FAILURE_LOG : FAILURE_LOG.replace('to be 3', 'to be 4'), stderr: '', truncated: false, metrics: { elapsedTimeSec: 3 } }));
+    const observe = vi.fn();
+    const run = await boundedTriage(executor, 'image', 'pnpm test', 5, observe, { scope: 'full', sandboxBudgetSec: 240 }, undefined, native('pnpm test'));
+    expect(run.verdict).toMatchObject({ status: 'not-run', stopReason: 'failure-identity', reproduced: 1, of: 1, reproduction: { status: 'mismatch' } });
+    expect(run.budget).toMatchObject({ spentSec: 6, probes: 2, predictedSec: 6 });
+    expect(observe).toHaveBeenCalledTimes(2);
+    expect(executor.calls).toHaveLength(2);
+  });
+
+  it('rejects a focused probe then requires identity on the failing full fallback', async () => {
+    const executor = new InMemoryExecutor(() => ({ exitCode: 1, stdout: 'vitest: command not found', stderr: '', truncated: false, metrics: { elapsedTimeSec: 4 } }));
+    const run = await boundedTriage(executor, 'image', 'pnpm test', 5, undefined, { scope: 'focused', sandboxBudgetSec: 240 }, probe, native('pnpm test'));
+    expect(run.focus).toMatchObject({ kept: 0, rejected: 1 });
+    expect(run.verdict).toMatchObject({ status: 'not-run', stopReason: 'failure-identity', reproduced: 0, reproduction: { status: 'mismatch' } });
+    expect(run.budget).toMatchObject({ spentSec: 8, probes: 2 });
+    expect(executor.calls).toHaveLength(2);
   });
 });

@@ -58,3 +58,23 @@ The full gate at `6e774d3421ac38a0fce3a16af6945c206d466d02` passed all workspace
 - Strong native qualification requires versioned producer receipts that existing consumers do not emit. Phase 3 prepares protected descriptors and a fail-closed reader; phase 6/7 must supply concrete producer patches and separately authorized enrollment. Historical labels are not upgraded in the meantime.
 - Fresh dependency scans identified additional compatible security patches beyond the original selected advisories. They are handled in isolated consumer candidates with their complete local gates. The Python compatibility floor change was explicitly selected by the owner.
 - The owner selected `0.4.0` for the later local release preparation. This version decision grants no publication or hosted activation authority.
+
+## Phases 4–6: implemented local candidate
+
+Selected-step diagnosis now binds command, excerpt and failure class to one native step. Structured native/sandbox identities gate full and focused reproduction before paid repair inference; absent or mismatched evidence stops with a typed reason. Existing test, compiler, lint, build and advisory classes retain explicit supported/unknown paths. Synthetic orchestration fixtures now contain complete diagnostics and actual package manifests; incomplete old shorthand is not accepted as reproduction.
+
+Repository-scoped `assess` and selected-run `diagnose` require no inference or sandbox provider. Setup previews a digest-bound proposal, applies explicit selected capabilities, and resumes through private receipts. Upgrade preserves custom wiring; pause/resume prove an existing guard; removal preserves unrelated files. Doctor separates configuration, activation, support, reproduction and native verification and reports trigger reachability without buying a smoke test.
+
+Generated workflows inspect with read permissions before privileged repair. Expected unsupported/setup/resource stops retain typed evidence; security, corruption and unexpected faults stay failed, and `require-fixed` remains strict. Publication receipts bind the actual returned PR to the authenticated source and producer. Native receipt preparation captures actual checkout identities; control-only jobs without a checkout remain explicitly unavailable.
+
+The existing collector feeds exact incidents and validated companion identities into a private recurring queue and daily field report. A locked worker evaluates the weekly email even after collection failure, falls back to validated prior state, persists intent before send, bounds retry by provider idempotency lifetime and reconciles acceptance separately from delivery. Sending remains disabled without exact scoped authorization and credentials. No mail was sent.
+
+## Phases 7–8: local preparation and instruments
+
+Version 0.4.0, migration documentation, release procedure, packed-install journey and pilot preparation are local. The study preserves every attempted, blocked, failed, withdrawn and assisted session, separates two clocks and cohorts, and retains unknown costs. Field instruments recompute existing native qualification and expose freshness, denominator, privacy and missing-attribution limits. Synthetic tests do not count as organic recovery or independent newcomer evidence.
+
+Stable publication, default-branch installation, 72-hour pilot/wave windows, delivered email, organic integrated recovery, the 14-day recurrence window and independent participant results remain **PARTIAL/unmeasured**. They require separately authorized external actions and subsequent ordinary events. No foreground wait or fabricated success closes those gates.
+
+## Final execution adjustment
+
+The owner explicitly required less redundant checking and faster completion. Disjoint phase 4–8 implementation proceeded together, followed by one combined final gate set; this departs from repeated full suites after each intermediate phase. Passing evidence is reused only for unchanged inputs. Independent reviews, confirmed repairs and final required gates remain recorded in the ignored handoff, including failed attempts. Secondary consumer verification is bounded: completed consumer gates are retained, newer integration changes receive affected checks, and an incomplete extended browser lane stays PARTIAL without restarting its service stack. Private details and final commit/check identities remain outside this public document.

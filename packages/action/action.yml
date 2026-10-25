@@ -4,7 +4,7 @@ author: Sutura
 
 inputs:
   mode:
-    description: heal generates a repair; verify executes only the supplied patch with required trusted challenges and read-only repository access.
+    description: inspect returns read-only evidence without provider configuration; heal generates a repair; verify executes only the supplied patch with required trusted challenges.
     required: false
     default: heal
   github-token:
@@ -15,7 +15,7 @@ inputs:
     required: true
   nebius-api-key:
     description: Nebius Token Factory API key for Nemotron inference.
-    required: true
+    required: false
   tavily-api-key:
     description: Optional Tavily API key for grounded dependency diagnosis.
     required: false
@@ -27,10 +27,10 @@ inputs:
     required: false
   contree-token:
     description: Nebius ConTree token used for sandbox operations.
-    required: true
+    required: false
   contree-project:
     description: Nebius ConTree project ID.
-    required: true
+    required: false
   triage-n:
     description: Maximum independent failure reproductions; progressive confidence can stop earlier.
     required: false
@@ -134,6 +134,31 @@ outputs:
     description: Final Sutura outcome for the failed run, or already-attempted or repair-branch-skipped when Sutura did not start an attempt.
   verification-status:
     description: Terminal supplied-patch verification status in verify mode.
+
+  disposition:
+    description: Evidence-based inspection disposition; it does not authorize repair.
+  reason:
+    description: Detailed inspection reason.
+  owner:
+    description: Domain responsible for the next action.
+  evidence-digest:
+    description: Digest binding the inspected run, source, metadata and bounded diagnostics.
+  next-action:
+    description: Concrete next operation without inferred authority.
+  repair-eligible:
+    description: Advisory inspection routing boolean; heal independently revalidates admission.
+  inspection:
+    description: Versioned read-only inspection evidence, excluding raw logs and credentials.
+  publication-receipt-url:
+    description: Authenticated exact-attempt publication receipt artifact, emitted only after fixed PR publication.
+  terminal-evidence:
+    description: Machine-readable typed terminal evidence with retained or explicitly unavailable accounting.
+  terminal-artifact-url:
+    description: Uploaded typed terminal artifact URL; absence does not establish successful persistence.
+  terminal-reason:
+    description: Validated terminal reason for a completed non-repair.
+  failing-stage:
+    description: Stage associated with the terminal reason.
 
 runs:
   using: node24

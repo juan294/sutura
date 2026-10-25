@@ -9,6 +9,7 @@ import { collectRecoveryLedger, writeRecoveryLedger } from './fleet-recovery-led
 import { sanitizeFleetSummary } from './fleet-public-summary.mjs';
 import { decodeSingleFileArtifact } from './fleet-artifact.mjs';
 import { collectNativeVerification } from './fleet-native-verification.mjs';
+import { evaluateFleetDigest, withDigestEvaluation } from './fleet-digest-worker.mjs';
 
 const execFile = promisify(execFileCallback);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -774,9 +775,39 @@ export class GhFleetClient {
     const selected = failed.length === 1 ? failed[0] : null;
     const steps = selected?.steps?.filter(step => ['failure', 'timed_out'].includes(step.conclusion)) ?? [];
     const unique = selected && steps.length === 1;
-    const log = unique ? await this.readJobLog(repository, selected.id) : null;
+    const captured = unique ? await this.readJobLog(repository, selected.id) : null;
+    let log = captured, failureIdentity = null;
+    if (unique && captured) {
+      const { selectFailedStepLog, classifyMechanically, nativeFailureForCommand, compareFailureIdentity } = await import('../packages/core/dist/index.js');
+      const step = steps[0];
+      let window = { log: '', truncated: true };
+      try { window = selectFailedStepLog(captured.text, { name: step.name, startedAt: step.started_at ?? null, completedAt: step.completed_at ?? null }); }
+      catch { /* A missing step window cannot borrow a different step's diagnostics. */ }
+      log = { text: window.log, sha256: createHash('sha256').update(window.log).digest('hex'),
+        bytes: Buffer.byteLength(window.log), truncated: captured.truncated || window.truncated };
+      const command = classifyMechanically(log.text).failingCmd, sources = [];
+      if (/^(?:npm|pnpm|yarn)\s/u.test(command) && !log.truncated) {
+        try {
+          const content = await this.api(`repos/${identity}/contents/package.json?ref=${source.headSha}`);
+          const bytes = Buffer.from(content.content, 'base64');
+          if (content.type === 'file' && content.encoding === 'base64' && bytes.length <= 1_000_000 && bytes.length === content.size &&
+            createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex') === content.sha) sources.push({ path: 'package.json', content: bytes.toString('utf8') });
+        } catch { /* Missing exact script provenance leaves identity unavailable. */ }
+      }
+      const native = { ...nativeFailureForCommand(command, log.text, sources), truncated: log.truncated,
+        selectedStep: { jobId: selected.id, jobName: selected.name, stepNumber: step.number, stepName: step.name } };
+      // Self-comparison parses native structure only. It never proves sandbox reproduction.
+      failureIdentity = compareFailureIdentity(native, { log: log.text, exitCode: 1, truncated: log.truncated });
+    }
+    const known = failureIdentity?.status === 'matched';
+    const classification = { schemaVersion: 'sutura-incident-classification-v1', cause: known ? 'source-defect' : 'unknown',
+      confidence: known ? 'confirmed' : 'unknown', ownerDomain: known ? 'repository' : 'unknown',
+      disposition: 'escalation', support: 'unknown', executionAuthorized: false,
+      reason: known ? 'structured-native-failure' : 'cause-evidence-unavailable',
+      nextAction: 'Review repository support and independent execution policy; native parsing does not authorize repair.' };
     return { complete: Boolean(unique && log && !log.truncated), selectedJobId: selected?.id ?? null,
       selectedStepNumber: unique ? steps[0].number : null,
+      failureIdentity, classification, reproduction: 'unmeasured',
       reason: unique ? log?.truncated ? 'source-log-truncated' : 'selected-step-observed' : 'selected-failure-ambiguous',
       jobs: jobs.map(job => ({ id: job.id, name: job.name, conclusion: job.conclusion,
         steps: (job.steps ?? []).map(step => ({ number: step.number, name: step.name, conclusion: step.conclusion })) })), log };
@@ -816,41 +847,43 @@ export async function main(arguments_ = process.argv.slice(2)) {
   const paths = parseCli(arguments_);
   const config = JSON.parse(await readFile(paths.config, 'utf8'));
   validateConfig(config, new Date());
-  const client = new GhFleetClient(config.owner, process.env.GH_BIN || 'gh',
-    config.activationAtByRepository, config.activationEvidenceByRepository);
-  const evidenceDirectory = join(paths.output, 'monitor-evidence-v2');
-  let priorEvents = await readMonitorEvidence(evidenceDirectory);
-  try {
-    const oldEvents = (await readFile(join(paths.output, 'events.jsonl'), 'utf8'))
-      .split(/\r?\n/u).filter(Boolean).map((line) => JSON.parse(line));
-    priorEvents = mergeMonitorEvents(oldEvents, priorEvents);
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error;
-  }
-  priorEvents = mergeMonitorEvents([], scopeMonitorEvents(config, priorEvents));
-  let monitorEvents;
-  let legacySummary = null;
-  let fleetResult = null;
-  let monitorCollectionComplete = true;
-  try {
-    const result = await collectFleetMetrics(config, client, new Date(),
-      { previousEvents: priorEvents, evidenceDirectory });
-    fleetResult = result;
-    await writeFleetMetrics(result, paths.output);
-    monitorEvents = result.events;
-    legacySummary = publicFleetSummary(result.summary);
-  } catch {
-    monitorCollectionComplete = false;
-    monitorEvents = mergeMonitorEvents(priorEvents,
-      scopeMonitorEvents(config, await readMonitorEvidence(evidenceDirectory)));
-  }
-  const recovery = await collectRecoveryLedger(config, client, monitorEvents);
-  recovery.coverage.monitorCollectionComplete = monitorCollectionComplete;
-  recovery.coverage.complete &&= monitorCollectionComplete;
-  const recoverySummary = await writeRecoveryLedger(recovery, paths.output);
-  if (fleetResult) await writeFleetMetrics(fleetResult, paths.output, { recoverySummary });
-  process.stdout.write(`${JSON.stringify({ legacySummary, recoverySummary })}\n`);
-  if (!recoverySummary.coverage.complete) process.exitCode = 1;
+  return withDigestEvaluation(async () => {
+    const client = new GhFleetClient(config.owner, process.env.GH_BIN || 'gh',
+      config.activationAtByRepository, config.activationEvidenceByRepository);
+    const evidenceDirectory = join(paths.output, 'monitor-evidence-v2');
+    let priorEvents = await readMonitorEvidence(evidenceDirectory);
+    try {
+      const oldEvents = (await readFile(join(paths.output, 'events.jsonl'), 'utf8'))
+        .split(/\r?\n/u).filter(Boolean).map((line) => JSON.parse(line));
+      priorEvents = mergeMonitorEvents(oldEvents, priorEvents);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    priorEvents = mergeMonitorEvents([], scopeMonitorEvents(config, priorEvents));
+    let monitorEvents;
+    let legacySummary = null;
+    let fleetResult = null;
+    let monitorCollectionComplete = true;
+    try {
+      const result = await collectFleetMetrics(config, client, new Date(),
+        { previousEvents: priorEvents, evidenceDirectory });
+      fleetResult = result;
+      await writeFleetMetrics(result, paths.output);
+      monitorEvents = result.events;
+      legacySummary = publicFleetSummary(result.summary);
+    } catch {
+      monitorCollectionComplete = false;
+      monitorEvents = mergeMonitorEvents(priorEvents,
+        scopeMonitorEvents(config, await readMonitorEvidence(evidenceDirectory)));
+    }
+    const recovery = await collectRecoveryLedger(config, client, monitorEvents);
+    recovery.coverage.monitorCollectionComplete = monitorCollectionComplete;
+    recovery.coverage.complete &&= monitorCollectionComplete;
+    const recoverySummary = await writeRecoveryLedger(recovery, paths.output);
+    if (fleetResult) await writeFleetMetrics(fleetResult, paths.output, { recoverySummary });
+    process.stdout.write(`${JSON.stringify({ legacySummary, recoverySummary })}\n`);
+    if (!recoverySummary.coverage.complete) process.exitCode = 1;
+  }, collectionFailed => evaluateFleetDigest({ output: paths.output, configPath: paths.config, collectionFailed }));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

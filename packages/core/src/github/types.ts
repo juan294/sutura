@@ -20,6 +20,7 @@ export interface PullRequestRecord {
 }
 
 export interface WorkflowJobStep {
+  number?: number;
   name: string;
   conclusion: string | null;
   startedAt: string | null;

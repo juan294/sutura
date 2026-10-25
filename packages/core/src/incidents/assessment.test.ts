@@ -30,6 +30,21 @@ describe('shared static job assessment', () => {
     expect(result.coveredFailureClasses).toContain('typecheck');
     expect(input).toEqual(before);
   });
+  it('accepts a bounded metadata identity only for static fit', () => {
+    const input = nodeInput(); delete input.scope.localTreeDigest; delete input.scope.remoteSourceSha;
+    input.scope.localMetadataDigest = 'd'.repeat(64);
+    expect(assessJobSupport(input)).toMatchObject({ support: 'candidate-supported', readiness: { prepared: 'unmeasured', reproduced: 'unmeasured' } });
+    input.scope.localMetadataDigest = 'invalid';
+    expect(assessJobSupport(input).reason).toBe('source-identity-unavailable');
+  });
+  it('does not reuse cause or policy observations from another metadata identity', () => {
+    const input = nodeInput(); delete input.scope.localTreeDigest; delete input.scope.remoteSourceSha;
+    input.scope.localMetadataDigest = 'd'.repeat(64);
+    const assessment = assessJobSupport(input), scope = { ...assessment.scope, localMetadataDigest: 'e'.repeat(64) };
+    const trigger = { event: 'push', authenticated: true };
+    expect(classifyIncident({ assessment, trigger, causeEvidence: { cause: 'source-defect', confidence: 'confirmed', digest: 'f'.repeat(64), scope, complete: true } }).cause).toBe('unknown');
+    expect(classifyIncident({ assessment, trigger, protectedPolicy: { schemaVersion: 'sutura-protected-repair-policy-v1', repair: 'excluded', sourceSha: 'a'.repeat(40), digest: 'f'.repeat(64), scope } }).reason).toBe('protected-policy-scope-unavailable');
+  });
   it('assesses the supported Python root exception with frozen public dependencies', () => {
     expect(assessJobSupport(pythonInput())).toMatchObject({ support: 'candidate-supported', runtime: 'python' });
   });

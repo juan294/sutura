@@ -96,10 +96,11 @@ export function assessJobSupport(input: JobAssessmentInput): JobAssessmentRecord
   if (!record.observation.observedAt) {
     return stop(record, 'unknown', 'observation-time-unavailable', 'valid-observation-time', 'Capture a valid UTC observation timestamp without changing the source evidence.');
   }
-  if ((!input.scope.localTreeDigest && !input.scope.remoteSourceSha) ||
+  if ((!input.scope.localTreeDigest && !input.scope.localMetadataDigest && !input.scope.remoteSourceSha) ||
       (input.scope.localTreeDigest !== undefined && !DIGEST.test(input.scope.localTreeDigest)) ||
+      (input.scope.localMetadataDigest !== undefined && !DIGEST.test(input.scope.localMetadataDigest)) ||
       (input.scope.remoteSourceSha !== undefined && !SHA.test(input.scope.remoteSourceSha))) {
-    return stop(record, 'unknown', 'source-identity-unavailable', 'source-identity', 'Capture the selected local tree digest or authenticated remote source SHA.');
+    return stop(record, 'unknown', 'source-identity-unavailable', 'source-identity', 'Capture the bounded metadata digest, selected local tree digest or authenticated remote source SHA.');
   }
   if (!supportedTarget(input.target)) {
     return stop(record, 'unknown', 'target-contract-unavailable', 'target-runtime-contract',

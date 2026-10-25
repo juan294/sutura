@@ -5,9 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
+import { parse as parseYaml } from 'yaml';
 import { workflowActionReferences } from './evidence-contract.mjs';
 
-export const RELEASE_VERSION = '0.3.9';
+export const RELEASE_VERSION = '0.4.0';
 const SHA_PATTERN = /^[a-f0-9]{40}$/iu;
 const EXACT_SEMVER_PATTERN = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 const execFileAsync = promisify(execFile);
@@ -65,7 +66,11 @@ async function installDefault(tarball, consumer) {
 }
 
 async function invokeDefault(binary, args, consumer, environment) {
-  return execute(binary, args, { cwd: consumer, env: environment });
+  try { return await execute(binary, args, { cwd: consumer, env: environment }); }
+  catch (error) {
+    if ((args[0] === 'init' && error.code === 2) || (args[0] === 'doctor' && [1, 2].includes(error.code))) return error.stdout;
+    throw error;
+  }
 }
 
 async function publicCommitDefault(version, cwd) {
@@ -97,8 +102,8 @@ async function createDoctorShim(directory) {
   const path = join(directory, 'gh');
   await writeFile(path, `#!/usr/bin/env node
 const args = process.argv.slice(2);
-if (args[0] === 'secret' && args[1] === 'list') process.stdout.write('NEBIUS_API_KEY\\nCONTREE_TOKEN\\n');
-else if (args[0] === 'variable' && args[1] === 'list') process.stdout.write('CONTREE_PROJECT\\n');
+if (args[0] === 'secret' && args[1] === 'list') process.stdout.write(args.includes('--jq') ? 'NEBIUS_API_KEY\\nCONTREE_TOKEN\\n' : '[]');
+else if (args[0] === 'variable' && args[1] === 'list') process.stdout.write(args.includes('--jq') ? 'CONTREE_PROJECT\\n' : '[]');
 else { process.stderr.write('unsupported read-only gh smoke command\\n'); process.exitCode = 2; }
 `);
   await chmod(path, 0o755);
@@ -112,11 +117,30 @@ function cleanEnvironment(shimDirectory) {
   };
 }
 
-function validateGeneratedWorkflow(workflow, actionCommit) {
+export function validateGeneratedWorkflow(workflow, actionCommit, progressive = false) {
   const activeReferences = workflowActionReferences(workflow, 'Generated Sutura workflow');
-  if (activeReferences.length !== 1 || activeReferences[0] !== `juan294/sutura@${actionCommit}`) {
-    throw new Error('Generated workflow must contain exactly one active Sutura step at the release commit');
+  if (activeReferences.length !== (progressive ? 2 : 1) || activeReferences.some(reference => reference !== `juan294/sutura@${actionCommit}`)) {
+    throw new Error(`Generated workflow must contain exactly ${progressive ? 'two' : 'one'} active Sutura step${progressive ? 's' : ''} at the release commit`);
   }
+  if (!progressive) return;
+  const document = parseYaml(workflow, { maxAliasCount: 0 });
+  const { inspect, repair, finalize } = document.jobs ?? {};
+  const equal = (actual, expected) => actual && typeof actual === 'object' &&
+    Object.keys(actual).length === Object.keys(expected).length && Object.entries(expected).every(([key, value]) => actual[key] === value);
+  if (!equal(document.permissions, {}) || !equal(inspect?.permissions, { actions: 'read', contents: 'read' }) ||
+      !equal(repair?.permissions, { actions: 'read', checks: 'write', contents: 'write', 'pull-requests': 'write' }) || !equal(finalize?.permissions, {})) {
+    throw new Error('Generated monitor permissions must isolate read-only inspection and finalization');
+  }
+  if (inspect.steps?.length !== 1 || inspect.steps[0]?.uses !== `juan294/sutura@${actionCommit}` || inspect.steps[0]?.id !== 'inspect' || inspect.steps[0]?.with?.mode !== 'inspect' ||
+      Object.keys(inspect.steps[0]?.with ?? {}).some(key => !['mode', 'github-token', 'run-id', 'runtime'].includes(key)) ||
+      /secrets\./u.test(JSON.stringify([document.env, inspect])) ||
+      inspect.outputs?.['repair-eligible'] !== '${{ steps.inspect.outputs.repair-eligible }}' ||
+      repair.steps?.length !== 1 || repair.steps[0]?.uses !== `juan294/sutura@${actionCommit}` || repair.steps[0]?.with?.mode !== 'heal') throw new Error('Generated inspection must not receive repair credentials');
+  const admission = "${{ needs.inspect.outputs['repair-eligible'] == 'true' && vars.SUTURA_DISABLED != 'true' && !startsWith(github.event.workflow_run.head_branch, 'sutura/fix-') && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') }}";
+  if (repair.needs !== 'inspect' || String(repair.if).replace(/\s+/gu, ' ').trim() !== admission) throw new Error('Generated repair admission must retain all independent guards');
+  if (JSON.stringify(finalize.needs) !== JSON.stringify(['inspect', 'repair']) || finalize.if !== '${{ always() }}' ||
+      /secrets\.|CONTREE|NEBIUS/u.test(JSON.stringify(finalize)) || !Array.isArray(finalize.steps) || !finalize.steps.length ||
+      finalize.steps.some(step => typeof step.run !== 'string' || step.uses !== undefined)) throw new Error('Generated finalizer must run independently without provider configuration');
 }
 
 function validateDoctorOutput(doctor, actionCommit) {
@@ -179,6 +203,8 @@ export async function verifyInstall(options) {
   const releaseVersion = options.mode === 'public'
     ? exactReleaseVersion(options.releaseVersion ?? RELEASE_VERSION)
     : RELEASE_VERSION;
+  const [major, minor] = releaseVersion.split('.').map(Number);
+  const progressive = major > 0 || minor >= 4;
   const actionCommit = options.mode === 'candidate'
     ? exactSha(options.actionCommit, 'Candidate Action SHA')
     : exactSha(await resolvePublicCommit(releaseVersion, options.root), 'Public Action SHA');
@@ -223,18 +249,29 @@ export async function verifyInstall(options) {
     const environment = cleanEnvironment(shimDirectory);
     const actionArgs = options.mode === 'candidate' ? ['--action-sha', actionCommit] : [];
     const startedAt = now();
-    await invoke(binary, [
-      'init', '--workflow', 'CI', '--repo', 'sutura/install-smoke', ...actionArgs,
-    ], consumer, environment);
+    const initArgs = ['init', '--workflow', 'CI', '--repo', 'sutura/install-smoke', ...actionArgs];
+    if (progressive) {
+      const assessment = JSON.parse(await invoke(binary, ['assess', '.', '--json'], consumer, environment));
+      if (!Array.isArray(assessment.jobs) || typeof assessment.complete !== 'boolean') throw new Error('Installed assessment returned no scoped result');
+      const preview = JSON.parse(await invoke(binary, [...initArgs, '--plan', '--json'], consumer, environment));
+      if (!/^[a-f0-9]{64}$/u.test(preview.plan?.digest ?? '') || preview.plan.blockers?.length !== 0 || preview.plan.actionSha !== actionCommit) throw new Error('Installed preview is not applicable to the candidate');
+      try { await stat(join(consumer, '.github', 'workflows', 'sutura.yml')); throw new Error('Preview unexpectedly wrote a workflow'); }
+      catch (error) { if (error.code !== 'ENOENT') throw error; }
+      await invoke(binary, [...initArgs, '--apply', preview.plan.digest], consumer, environment);
+    } else await invoke(binary, initArgs, consumer, environment);
     const setupDurationMs = Math.max(0, now() - startedAt);
     const workflow = await readFile(join(consumer, '.github', 'workflows', 'sutura.yml'), 'utf8');
-    validateGeneratedWorkflow(workflow, actionCommit);
+    validateGeneratedWorkflow(workflow, actionCommit, progressive);
     const doctorStartedAt = now();
     const doctor = await invoke(binary, [
       'doctor', '--repo', 'sutura/install-smoke', ...actionArgs,
     ], consumer, environment);
     const doctorDurationMs = Math.max(0, now() - doctorStartedAt);
-    validateDoctorOutput(doctor, actionCommit);
+    if (progressive) {
+      if (!doctor.includes(`Workflow uses juan294/sutura@${actionCommit}.`) || !doctor.includes('configured=incomplete') ||
+          !doctor.includes('prepared=unmeasured; reproduced=unmeasured; native-verified=unmeasured; integrated=unmeasured') ||
+          !doctor.includes('No paid execution was attempted.')) throw new Error('Installed doctor did not disclose expected unconfigured readiness');
+    } else validateDoctorOutput(doctor, actionCommit);
     if ((await invoke(binary, ['--version'], consumer, environment)).trim() !== releaseVersion) {
       throw new Error('Installed CLI returned the wrong version');
     }
@@ -250,7 +287,8 @@ export async function verifyInstall(options) {
       actionCommit,
       setupDurationMs,
       doctorDurationMs,
-      doctorOutcome: 'passed',
+      doctorOutcome: progressive ? 'incomplete-expected' : 'passed',
+      ...(progressive ? { readiness: 'unmeasured', setupContract: 'preview-apply-v1', fixture: 'synthetic-no-credentials' } : {}),
       setupFailures: [],
       unclearInstructions: [],
       manualInterventions: [],

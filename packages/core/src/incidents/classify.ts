@@ -3,7 +3,7 @@ import type { IncidentCause, IncidentClassificationInput, IncidentClassification
 const CAUSES: readonly IncidentCause[] = ['source-defect', 'generated-bundle-stale', 'action-version-mismatch', 'installation',
   'credential-boundary', 'live-probe', 'provider-resource', 'network', 'sutura-internal', 'unknown'];
 const DIGEST = /^[a-f0-9]{64}$/u, SHA = /^[a-f0-9]{40}$/u;
-const scopeKeys = ['repositoryId', 'workflowId', 'workflowPath', 'jobKey', 'localTreeDigest', 'remoteSourceSha'] as const;
+const scopeKeys = ['repositoryId', 'workflowId', 'workflowPath', 'jobKey', 'localTreeDigest', 'localMetadataDigest', 'remoteSourceSha'] as const;
 
 /** Classification is descriptive. Trusted admission, credentials and spend gates remain independent. */
 export function classifyIncident(input: IncidentClassificationInput): IncidentClassificationRecord {

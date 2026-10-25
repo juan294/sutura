@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-25
+
+Local release candidate; publication and hosted activation remain pending.
+
+### Added
+
+- Provider-free, repository-scoped `assess`, read-only selected-run `diagnose`, and evidence-aware `doctor`. Static support, configuration, activation, reproduction, native verification and integration are distinct stages.
+- Reviewed setup plans and durable apply receipts; explicit credential selection; resumable setup and minimal upgrade, pause, resume and owned-workflow removal.
+- Read-only Action inspection before privileged repair, qualified incident recovery records, a recurring private queue and an optional weekly email outbox with bounded retries and delivery readback.
+- Offline field measurement and adoption instruments that retain failed, blocked and assisted attempts and report missing field evidence explicitly.
+
+### Changed
+
+- Breaking CLI migration: `init` previews by default. Apply the exact displayed plan digest with the same options; `--force` no longer overwrites a customized workflow. Environment credentials are used only when their names are explicitly selected.
+- Full and focused reproduction must match the selected native failure before repair inference proceeds. Mismatch or insufficient identity stops with consumed resources retained. Unsupported and setup stops remain non-repairs; admitted `require-fixed` remains strict.
+
+### Fixed
+
+- Diagnosis no longer combines unrelated failed steps or accepts ungrounded model excerpts. Exact package-script provenance preserves supported Node and Python runner failures.
+- Recovery qualification requires the full native verification contract on the exact candidate and integration identity; a later green workflow alone cannot close an incident.
+
+Retired guidance: blind `init --force` workflow replacement and ambient credential upload. Historical release and benchmark records remain unchanged.
+
 ## [0.3.9] - 2026-10-03
 
 ### Added

@@ -63,7 +63,7 @@ function scriptBlockLine(raw: string): HeaderBlockLine {
   return line.startsWith('env:') || line.startsWith('with:') ? 'abort' : 'continue';
 }
 
-function boundedCommandLog(log: string): string {
+export function boundedCommandLog(log: string): string {
   return boundedTailWithHeader(log, LOG_BOUNDS, isCommandHeader, scriptBlockLine);
 }
 
@@ -275,11 +275,23 @@ export async function classify(
   }
   const classAgrees = mechanical.class === model.class;
   const commandAgrees = mechanical.failingCmd === model.failingCmd;
-  const agrees = classAgrees && commandAgrees;
+  const primaryLines = boundedLog.split('\n').map(githubLogPayload);
+  let nextLine = 0;
+  const excerptLines = model.errorExcerpt.split('\n').map(githubLogPayload).filter(Boolean);
+  const excerptGrounded = excerptLines.length > 0 && excerptLines.every(line => {
+    const found = primaryLines.findIndex((primary, index) => index >= nextLine && primary.includes(line));
+    nextLine = found + 1;
+    return found >= 0;
+  });
+  const classGrounded = classAgrees || FAILURE_TAXONOMY[model.class].signatures
+    .some((signature) => signature.test(model.errorExcerpt));
+  const modelGrounded = commandAgrees && excerptGrounded && classGrounded;
+  const agrees = classAgrees && modelGrounded;
   return {
     ...model,
-    class: model.class === 'dep-upstream-breaking' && hasLocalRelativeModuleFailure(boundedLog)
+    class: !modelGrounded || (model.class === 'dep-upstream-breaking' && hasLocalRelativeModuleFailure(boundedLog))
       ? mechanical.class : model.class,
+    errorExcerpt: modelGrounded ? model.errorExcerpt : mechanical.errorExcerpt,
     confidence: agrees ? model.confidence : Math.min(model.confidence, 0.49),
     failingCmd: mechanical.failingCmd,
     signals: Array.from(
@@ -288,6 +300,8 @@ export async function classify(
         ...mechanical.signals,
         ...(classAgrees ? [] : [`llm:${model.class}`]),
         ...(commandAgrees ? [] : ['llm-command-mismatch']),
+        ...(excerptGrounded ? [] : ['llm-excerpt-ungrounded']),
+        ...(classGrounded ? [] : ['llm-class-ungrounded']),
       ]),
     ),
   };

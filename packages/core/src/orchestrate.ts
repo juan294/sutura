@@ -4,7 +4,7 @@ import { VerificationExecutionRecorder } from './verification/execution-record.j
 import type { VerificationMode } from './verification/types.js';
 import { Buffer } from 'node:buffer';
 
-import { classifyMechanically, externalActionReference } from './diagnose/classify.js';
+import { boundedCommandLog, classifyMechanically, externalActionReference } from './diagnose/classify.js';
 import type { TavilySearch } from './diagnose/tavily.js';
 import type { RepairBudgetOverrides } from './engine/repair-budget.js';
 import type { AuditLlm } from './audit/audit.js';
@@ -35,6 +35,7 @@ import {
   preparationFailureCaseFile,
   missingSandboxPrerequisite,
   missingPrerequisiteCaseFile,
+  readNativeFailureEvidence,
   repairFailure,
   sandboxTargetCommand,
   type HealLlm,
@@ -101,9 +102,12 @@ const FIX_COMMIT_MESSAGE = [
 ].join('\n');
 
 export interface FailedStepLog {
+  jobId?: number;
   jobName: string;
+  stepNumber?: number;
   stepName: string;
   log: string;
+  truncated?: boolean;
   /** When the step finished; orders a multi-failure run (see rankFailedSteps). */
   completedAt?: string;
 }
@@ -352,13 +356,13 @@ export function rankFailedSteps(steps: readonly FailedStepLog[]): FailedStepLog[
 }
 
 /**
- * The diagnosis log with the chosen step last: the classifier reads the tail
- * and the last command header, so that step's output and command lead.
+ * Only the selected step is primary evidence. Other labeled logs remain in
+ * failedSteps/replay; combining them here can change its class and grounding.
  */
 export function diagnosisLog(ranked: readonly FailedStepLog[], chosen: number): string {
   const primary = ranked[chosen];
-  const others = ranked.filter((_, index) => index !== chosen);
-  return collectFailedLogs(primary === undefined ? others : [...others, primary]);
+  return primary === undefined ? ''
+    : `[${primary.jobName} / ${primary.stepName}]\n${boundedCommandLog(primary.log)}`;
 }
 
 function safeSourcePath(path: string): string | null {
@@ -871,6 +875,18 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     runId: run.runId,
     repo: run.repo,
     failedLog,
+    nativeFailure: {
+      ...await readNativeFailureEvidence(setup.sourceDir ?? checkoutDir, mechanical.failingCmd, failedLog),
+      truncated: rankedSteps[chosenStep]?.truncated === true ||
+        boundedCommandLog(rankedSteps[chosenStep]?.log ?? '') !== (rankedSteps[chosenStep]?.log ?? ''),
+      selectedStep: {
+        jobName: rankedSteps[chosenStep]!.jobName,
+        stepName: rankedSteps[chosenStep]!.stepName,
+        ...(rankedSteps[chosenStep]!.jobId === undefined ? {} : { jobId: rankedSteps[chosenStep]!.jobId }),
+        ...(rankedSteps[chosenStep]!.stepNumber === undefined ? {} : { stepNumber: rankedSteps[chosenStep]!.stepNumber }),
+      },
+    },
+    baselineResult: reproduction,
     failingImage: setup.imageId,
     executor,
     llm: ctx.llm,

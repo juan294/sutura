@@ -10,7 +10,7 @@ import {
 export type InputReader = (name: string) => string;
 
 export interface ActionConfiguration {
-  mode?: 'verify';
+  mode?: 'verify' | 'inspect';
   githubToken: string;
   runId: string;
   triageN: number;
@@ -29,15 +29,15 @@ function runtimeInput(value: string): 'node' | 'python' | undefined {
 }
 
 export class ActionInputError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly admittedStrict = false, readonly runId?: string, readonly actionMode: 'heal' | 'verify' | 'inspect' = 'heal') {
     super(message);
     this.name = 'ActionInputError';
   }
 }
 
-function required(read: InputReader, name: string): string {
+function required(read: InputReader, name: string, strict = false, runId?: string, mode: 'heal' | 'verify' | 'inspect' = 'heal'): string {
   const value = read(name).trim();
-  if (!value) throw new ActionInputError(`Missing required action input: ${name}`);
+  if (!value) throw new ActionInputError(`Missing required action input: ${name}`, strict, runId, mode);
   return value;
 }
 
@@ -84,18 +84,21 @@ function booleanInput(value: string, fallback: boolean, name: string): boolean {
 
 export function mapActionInputs(read: InputReader): ActionConfiguration {
   const mode = read('mode').trim() || 'heal';
-  if (mode !== 'heal' && mode !== 'verify') {
-    throw new ActionInputError('mode must be heal or verify');
+  if (mode !== 'heal' && mode !== 'verify' && mode !== 'inspect') {
+    throw new ActionInputError('mode must be heal, verify, or inspect');
   }
   const runId = required(read, 'run-id');
   if (!/^[1-9]\d*$/.test(runId)) {
     throw new ActionInputError('run-id must be a positive decimal id');
   }
+  if (mode === 'inspect') return { mode, githubToken: required(read, 'github-token'), runId,
+    triageN: 0, requireFixed: false, captureReplay: false, environment: {} };
+  const requireFixed = booleanInput(read('require-fixed'), false, 'require-fixed');
   const triageN = boundedInteger(read('triage-n'), 5, MAX_TRIAGE_RUNS, 'triage-n');
   const environment: Record<string, string> = {
-    NEBIUS_API_KEY: required(read, 'nebius-api-key'),
-    CONTREE_TOKEN: required(read, 'contree-token'),
-    CONTREE_PROJECT: required(read, 'contree-project'),
+    NEBIUS_API_KEY: required(read, 'nebius-api-key', requireFixed, runId, mode),
+    CONTREE_TOKEN: required(read, 'contree-token', requireFixed, runId, mode),
+    CONTREE_PROJECT: required(read, 'contree-project', requireFixed, runId, mode),
     SUTURA_TRIAGE_N: String(triageN),
     SUTURA_TRIAGE_SANDBOX_SEC: String(boundedInteger(read('triage-sandbox-seconds'), DEFAULT_TRIAGE_SANDBOX_SEC, MAX_TRIAGE_SANDBOX_SEC, 'triage-sandbox-seconds')),
     SUTURA_ROUTING_PROFILE: read('routing-profile').trim() || DEFAULT_ROUTING_PROFILE_ID,
@@ -127,7 +130,7 @@ export function mapActionInputs(read: InputReader): ActionConfiguration {
     githubToken: required(read, 'github-token'),
     runId,
     triageN,
-    requireFixed: booleanInput(read('require-fixed'), false, 'require-fixed'),
+    requireFixed,
     captureReplay: booleanInput(read('capture-replay'), false, 'capture-replay'),
     environment,
   };

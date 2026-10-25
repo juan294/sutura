@@ -77,6 +77,32 @@ describe('captured command provenance', () => {
   });
 });
 
+describe('GitHub excerpt transport wrappers', () => {
+  it.each([
+    ['AssertionError: expected 1 to be 2\n at src/value.test.ts:4:3', true],
+    ['AssertionError: expected 1 to be 2\n invented failure\n at src/value.test.ts:4:3', false],
+    ['at src/value.test.ts:4:3\nAssertionError: expected 1 to be 2', false],
+  ])('grounds only authentic ordered excerpt lines: %s', async (excerpt, grounded) => {
+    const result = await classify(scriptedLlm({ class: 'test-assertion', confidence: 0.97,
+      signals: [], failingCmd: 'pnpm test', errorExcerpt: excerpt }),
+    'Run pnpm test\nAssertionError: expected 1 to be 2\n at internal/library.js:9:1\n at src/value.test.ts:4:3');
+    expect(result.confidence).toBe(grounded ? 0.97 : 0.49);
+  });
+
+  it('grounds a multiline diagnostic after removing only runner line wrappers', async () => {
+    const excerpt = 'AssertionError: expected 1 to be 2\n    at src/value.test.ts:4:3';
+    const diagnosis: Diagnosis = { class: 'test-assertion', confidence: 0.97,
+      signals: ['AssertionError'], failingCmd: 'pnpm test', errorExcerpt: excerpt };
+    const result = await classify(scriptedLlm(diagnosis), [
+      '2026-10-25T12:00:00Z ##[group]Run pnpm test',
+      ...excerpt.split('\n').map(line => `2026-10-25T12:00:01Z ${line}`),
+    ].join('\n'));
+    expect(result.confidence).toBe(0.97);
+    expect(result.errorExcerpt).toBe(excerpt);
+    expect(result.signals).not.toContain('llm-excerpt-ungrounded');
+  });
+});
+
 describe('failure classification', () => {
   it('carries a multi-line script when the character bound cuts its group (gh-glance 36969419519)', () => {
     const script = [
@@ -193,7 +219,8 @@ describe('failure classification', () => {
 
     const result = await classify(llm, log);
 
-    expect(result).toMatchObject({ class: 'build', confidence: 0.49 });
+    expect(result).toMatchObject({ class: 'typecheck', confidence: 0.49 });
+    expect(result.errorExcerpt).not.toBe('build failed');
     expect(result.signals).toEqual(
       expect.arrayContaining(['mechanical:typecheck', 'llm:build', 'llm:vite']),
     );
@@ -283,7 +310,7 @@ describe('failure classification', () => {
     await expect(classify(llm, log)).resolves.toMatchObject({ class: 'dep-upstream-breaking' });
   });
 
-  it('preserves another Nano class when a local import is also present', async () => {
+  it('rejects another Nano class unsupported by the primary local import diagnostic', async () => {
     const log = "Run pnpm test\nCannot find module './missing.js' imported from /workspace/calculate.js";
     const llm = scriptedLlm({
       class: 'test-bug', confidence: 0.82,
@@ -292,7 +319,7 @@ describe('failure classification', () => {
     });
 
     await expect(classify(llm, log)).resolves.toMatchObject({
-      class: 'test-bug', confidence: 0.49,
+      class: 'build', confidence: 0.49,
       signals: expect.arrayContaining(['mechanical:build', 'llm:test-bug']),
     });
   });
@@ -333,6 +360,38 @@ describe('failure classification', () => {
       confidence: 0.49,
       signals: expect.arrayContaining(['llm-command-mismatch']),
     });
+  });
+
+  it('rejects an aggregate command and its unrelated class and excerpt', async () => {
+    const log = 'Run pnpm typecheck\nerror TS2322: invalid assignment';
+    const result = await classify(scriptedLlm({
+      class: 'infra', confidence: 0.99, signals: ['aggregate failure'],
+      failingCmd: 'node scripts/aggregate.mjs', errorExcerpt: 'Error: checks failed',
+    }), log);
+    expect(result).toMatchObject({ class: 'typecheck', failingCmd: 'pnpm typecheck', confidence: 0.49 });
+    expect(result.errorExcerpt).toContain('TS2322');
+    expect(result.errorExcerpt).not.toContain('checks failed');
+    expect(result.signals).toContain('llm-command-mismatch');
+  });
+
+  it('allows a different class only with the observed command and primary excerpt', async () => {
+    const excerpt = 'TypeError: invalid fixture\n at src/value.test.ts:3:1';
+    const log = `Run pnpm test\n${excerpt}\nAssertionError: expected 1 to equal 2`;
+    const result = await classify(scriptedLlm({
+      class: 'test-bug', confidence: 0.9, signals: ['fixture exception'],
+      failingCmd: 'pnpm test', errorExcerpt: excerpt,
+    }), log);
+    expect(result).toMatchObject({ class: 'test-bug', errorExcerpt: excerpt });
+  });
+
+  it('rejects class disagreement grounded only in the primary command header', async () => {
+    const log = 'Run pnpm test\nerror TS2322: invalid assignment';
+    const result = await classify(scriptedLlm({
+      class: 'dep-upstream-breaking', confidence: 0.99, signals: ['invented upstream class'],
+      failingCmd: 'pnpm test', errorExcerpt: 'Run pnpm test',
+    }), log);
+    expect(result).toMatchObject({ class: 'typecheck', confidence: 0.49 });
+    expect(result.errorExcerpt).toContain('TS2322');
   });
 
   it('repairs one invalid Nano response against the same bounded log', async () => {

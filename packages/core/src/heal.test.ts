@@ -9,10 +9,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { AuditVerdict, Candidate, CostLedger, Diagnosis } from './domain.js';
 import { DEFAULT_MODELS, MAX_STAGE_EVIDENCE_ENTRIES } from './config.js';
+import { nativeFailureForCommand } from './engine/failure-identity.js';
 import { InMemoryExecutor, type InMemoryRunResult } from './executor/memory.js';
 import {
   buildSandboxRepositoryInitializationCommandForTest,
   healCase,
+  readNativeFailureEvidence,
   missingSandboxPrerequisite,
   missingPrerequisiteCaseFile,
   triageBudgetLedgerNote,
@@ -75,7 +77,10 @@ function candidateReplacement(candidate: Candidate): string {
   throw new Error(`No explicit replacement fixture for ${candidate.id}`);
 }
 
-function result(exitCode: number, stderr = exitCode === 0 ? '' : 'case.test.js: assertion failed'): InMemoryRunResult {
+const FAILURE_LOG = ' FAIL case.test.js > page count\nAssertionError: expected 3 to be 2\n';
+const UPSTREAM_FAILURE_LOG = " FAIL case.test.js > fetches the upstream name\nError [ERR_MODULE_NOT_FOUND]: Cannot find module 'node-fetch' imported from /workspace/app.cjs\n";
+
+function result(exitCode: number, stderr = exitCode === 0 ? '' : FAILURE_LOG): InMemoryRunResult {
   return { exitCode, stdout: exitCode === 0 ? 'Tests passed' : '', stderr, truncated: false, metrics: {} };
 }
 
@@ -89,7 +94,7 @@ function diagnosis(failureClass: Diagnosis['class']): Diagnosis {
     confidence: 0.95,
     signals: ['scripted'],
     failingCmd: 'pnpm test',
-    errorExcerpt: 'case.test.js: assertion failed',
+    errorExcerpt: failureClass === 'dep-upstream-breaking' ? UPSTREAM_FAILURE_LOG : FAILURE_LOG,
   };
 }
 
@@ -127,14 +132,12 @@ function context(
     ? [{ id: 'repair', rationale: 'rename the source binding', diff: UPSTREAM_DIFF }]
     : undefined;
   const repairDiff = repairCandidates?.[0]?.diff ?? HONEST_DIFF;
-  const executor = new InMemoryExecutor((command) =>
-    command.includes('git apply - && git diff')
-      ? { ...result(0), stdout: repairDiff }
-      : command.includes('corepack pnpm install --frozen-lockfile') ||
-        command.includes('git init --quiet')
-      ? result(0)
-      : result(exits[scenarioIndex++] ?? 1),
-  );
+  const executor = new InMemoryExecutor((command) => {
+    if (command.includes('git apply - && git diff')) return { ...result(0), stdout: repairDiff };
+    if (command.includes('corepack pnpm install --frozen-lockfile') || command.includes('git init --quiet')) return result(0);
+    const exit = exits[scenarioIndex++] ?? 1;
+    return result(exit, exit !== 0 && caseId.startsWith('upstream-') ? UPSTREAM_FAILURE_LOG : undefined);
+  });
   const { llm, chat } = scriptedLlm(failureClass, repairCandidates);
   return {
     executor,
@@ -213,9 +216,11 @@ describe('healCase', () => {
       ...after.trimEnd().split('\n').map((line) => `+${line}`), '',
     ].join('\n');
     const value = context('repair-off-by-one', [], 'test-assertion', { repairBudgets: { modelTurns: 5 } });
+    const recoveryFailure = 'packages/core test: FAIL case.test.js > name\npackages/core test: AssertionError: expected Promise to be ADA\n';
+    const nativeFailure = nativeFailureForCommand('pnpm -r test', recoveryFailure, [{ path: 'packages/core/package.json', content: JSON.stringify({ name: '@fixture/core', scripts: { test: 'vitest run' } }) }]);
     const executor = new InMemoryExecutor((command) => {
       if (command.includes('SUTURA_SOURCE_SHA256')) return { ...result(1), stdout: `SUTURA_SOURCE_SHA256=${createHash('sha256').update(before).digest('hex')}\nExpected Promise to be ADA` };
-      if (command.includes('SUTURA_TRIAGE_ATTEMPT')) return result(1);
+      if (command.includes('SUTURA_TRIAGE_ATTEMPT')) return result(1, recoveryFailure);
       if (command.includes('git apply')) return { ...result(0), stdout: patch };
       return result(0);
     });
@@ -228,7 +233,8 @@ describe('healCase', () => {
       messages[0]?.content?.includes('Investigate') ? { hypotheses: [{ signalIndex: 0, sourceIndex: 0, intent: 'await-operation', probeId: 'async-completion' }] } : { replacement: after },
     ) }) };
     const caseFile = await repairFailure({ ...value.ctx, executor, failingImage: 'baseline',
-      failedLog: 'Run pnpm -r test\npackages/core test: AssertionError: expected Promise to be ADA',
+      failedLog: `Run pnpm -r test\n${recoveryFailure}`, nativeFailure,
+      baselineResult: { ...result(1, recoveryFailure), imageId: 'baseline' },
     });
     expect(caseFile.outcome).toBe('fixed');
     expect(caseFile.diagnosis.failingCmd).toBe('pnpm -r test');
@@ -245,7 +251,9 @@ describe('healCase', () => {
       if (tier === 'super') throw new Error('quote unavailable');
       return tier === 'nano' ? quote('nano', messages, options) : quote('ultra', messages, options);
     } };
-    const caseFile = await repairFailure({ ...value.ctx, failingImage: 'baseline', failedLog: 'Run pnpm test\nAssertionError: expected 5' });
+    const caseFile = await repairFailure({ ...value.ctx, failingImage: 'baseline', failedLog: `Run pnpm test\n${FAILURE_LOG}`,
+      nativeFailure: await readNativeFailureEvidence(value.ctx.caseDir, 'pnpm test', FAILURE_LOG),
+      baselineResult: { ...result(1), imageId: 'baseline' } });
     expect(caseFile.outcome).toBe('gave-up');
     expect(value.chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
     expect(caseFile.stages.some(({ note }) => note?.startsWith('provider abstention'))).toBe(true);
@@ -255,7 +263,9 @@ describe('healCase', () => {
     const value = context('repair-off-by-one', [1, 1, 1, 1, 0, 0], 'test-assertion', {
       repairBudgets: { modelTurns: 3 },
     });
-    const caseFile = await repairFailure({ ...value.ctx, failingImage: 'baseline', failedLog: 'Run pnpm test\nAssertionError: expected 5' });
+    const caseFile = await repairFailure({ ...value.ctx, failingImage: 'baseline', failedLog: `Run pnpm test\n${FAILURE_LOG}`,
+      nativeFailure: await readNativeFailureEvidence(value.ctx.caseDir, 'pnpm test', FAILURE_LOG),
+      baselineResult: { ...result(1), imageId: 'baseline' } });
     expect(caseFile.outcome).toBe('gave-up');
     expect(value.chat.mock.calls.map(([tier]) => tier)).toEqual(['nano']);
   });
@@ -263,7 +273,9 @@ describe('healCase', () => {
   it('charges classification schema repair before making a second model call', async () => {
     const value = context('repair-off-by-one', [1, 1, 1, 1], 'test-assertion', { repairBudgets: { modelTurns: 1 } });
     value.chat.mockResolvedValueOnce({ text: 'not JSON' });
-    const caseFile = await repairFailure({ ...value.ctx, failingImage: 'baseline', failedLog: 'Run pnpm test\nAssertionError: expected 5' });
+    const caseFile = await repairFailure({ ...value.ctx, failingImage: 'baseline', failedLog: `Run pnpm test\n${FAILURE_LOG}`,
+      nativeFailure: await readNativeFailureEvidence(value.ctx.caseDir, 'pnpm test', FAILURE_LOG),
+      baselineResult: { ...result(1), imageId: 'baseline' } });
     expect(caseFile.outcome).toBe('gave-up');
     expect(value.chat).toHaveBeenCalledTimes(1);
     expect(value.executor.calls).toEqual([]);
@@ -276,7 +288,9 @@ describe('healCase', () => {
     const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
     value.chat.mockImplementation(async () => { now += 2_000; return { text: JSON.stringify(diagnosis('test-assertion')) }; });
     try {
-      const caseFile = await repairFailure({ ...value.ctx, failingImage: 'baseline', failedLog: 'Run pnpm test\nAssertionError: expected 5' });
+      const caseFile = await repairFailure({ ...value.ctx, failingImage: 'baseline', failedLog: `Run pnpm test\n${FAILURE_LOG}`,
+      nativeFailure: await readNativeFailureEvidence(value.ctx.caseDir, 'pnpm test', FAILURE_LOG),
+      baselineResult: { ...result(1), imageId: 'baseline' } });
       expect(caseFile.outcome).toBe('gave-up');
       expect(value.executor.calls).toEqual([]);
       expect(caseFile.stages.some(({ note }) => note?.includes('elapsedTimeSec'))).toBe(true);
@@ -1305,13 +1319,13 @@ describe('healCase', () => {
       if (command.includes('SUTURA_TRIAGE_ATTEMPT')) {
         triage.push(command);
         const attempt = Number(/SUTURA_TRIAGE_ATTEMPT='?(\d+)/u.exec(command)?.[1]);
-        return command.includes('case.test.js') ? focused(attempt) : { ...result(1), stdout: failure, metrics: { elapsedTimeSec: 30 } };
+        return command.includes('case.test.js') ? focused(attempt) : { ...result(1), stdout: failure, stderr: '', metrics: { elapsedTimeSec: 30 } };
       }
       if (command.includes('git apply - && git diff')) return { ...result(0), stdout: HONEST_DIFF };
       if (command.includes('corepack pnpm install --frozen-lockfile') || command.includes('git init --quiet')) return result(0);
       if (!reproduced) {
         reproduced = true;
-        return { ...result(1), stdout: `> placebo-case@1.0.0 test /workspace\n> vitest run\n\n${failure}` };
+        return { ...result(1), stdout: `> placebo-case@1.0.0 test /workspace\n> vitest run\n\n${failure}`, stderr: '' };
       }
       return result(0);
     });
@@ -1321,7 +1335,7 @@ describe('healCase', () => {
   it('triages the failing vitest file alone while it fails the same way', async () => {
     const failure = await focusFailure();
     const { ctx } = context('repair-off-by-one', [], 'test-assertion', { triagePolicy: { scope: 'focused', sandboxBudgetSec: 240 } });
-    const { executor, triage } = focusedExecutor(failure, () => ({ ...result(1), stdout: failure, metrics: { elapsedTimeSec: 2 } }));
+    const { executor, triage } = focusedExecutor(failure, () => ({ ...result(1), stdout: failure, stderr: '', metrics: { elapsedTimeSec: 2 } }));
     ctx.executor = executor;
 
     const caseFile = await healCase(ctx);
@@ -1338,7 +1352,7 @@ describe('healCase', () => {
     const [failure, pass] = [await focusFailure(), await focusPass()];
     const { ctx } = context('repair-off-by-one', [], 'test-assertion', { triagePolicy: { scope: 'focused', sandboxBudgetSec: 240 } });
     const { executor, triage } = focusedExecutor(failure, (attempt) =>
-      attempt === 0 ? { ...result(1), stdout: failure, metrics: { elapsedTimeSec: 2 } } : { ...result(0), stdout: pass, metrics: { elapsedTimeSec: 2 } });
+      attempt === 0 ? { ...result(1), stdout: failure, stderr: '', metrics: { elapsedTimeSec: 2 } } : { ...result(0), stdout: pass, metrics: { elapsedTimeSec: 2 } });
     ctx.executor = executor;
 
     const caseFile = await healCase(ctx);
@@ -1997,14 +2011,14 @@ it('heals a required local contract using one frozen source manifest through the
   const before = 'export function pageCount(items, size) { return Math.floor(items / size) + 1; }\n';
   try {
     await writeFile(join(directory, 'page-count.js'), before);
-    await writeFile(join(directory, 'package.json'), JSON.stringify({ name: 'local-case', version: '1.0.0', type: 'module' }));
+    await writeFile(join(directory, 'package.json'), JSON.stringify({ name: 'local-case', version: '1.0.0', type: 'module', scripts: { test: 'vitest run' } }));
     await mkdir(join(directory, '.sutura-controller'));
     await writeFile(join(directory, '.sutura-controller', 'answer.json'), '{"secret":1}');
     let observedBaseline = false;
     const executor = new InMemoryExecutor(command => {
       if (command.includes('JSON.stringify')) return { ...result(0), stdout: '{"version":1,"value":3}' };
       if (command.includes('SUTURA_TRIAGE_ATTEMPT')) return result(1);
-      if (command.includes('pnpm test') && !observedBaseline) { observedBaseline = true; return { ...result(1), stdout: 'AssertionError: expected 3 received 2' }; }
+      if (command.includes('pnpm test') && !observedBaseline) { observedBaseline = true; return result(1); }
       return result(0);
     });
     const snapshots: string[] = [];

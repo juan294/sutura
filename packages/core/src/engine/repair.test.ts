@@ -558,6 +558,37 @@ describe('prepareRepair', () => {
     expect(chat).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])('requires native script provenance before paid generation (supplied=%s)', async supplied => {
+    const log = ' FAIL src/value.test.ts > returns the value\nAssertionError: expected 2 to be 3\n';
+    const executor = new InMemoryExecutor(() => ({ exitCode: 1, stdout: log, stderr: '', truncated: false, metrics: {} }));
+    const chat = vi.fn().mockResolvedValue({ text: JSON.stringify({ candidates: [candidate('fix', 'old')] }) });
+    const context: RepairSourceContext = { sources: supplied ? [{ path: 'package.json', startLine: 1, content: JSON.stringify({ scripts: { test: 'vitest run' } }), truncated: false }] : [] };
+    // Keep candidate grounding independent from the manifest adapter under test.
+    if (supplied) context.sources.push({ path: 'src/fix.ts', startLine: 1, content: 'old\n', truncated: false });
+    const result = await prepareRepair(executor, { chat }, 'image', { ...buildDiagnosis, errorExcerpt: log }, 5, 1, context);
+    expect(result.triage).toMatchObject(supplied ? { status: 'real', reproduction: { status: 'matched' } } : { status: 'not-run', reproduction: { status: 'unavailable' } });
+    expect(chat).toHaveBeenCalledTimes(supplied ? 1 : 0);
+  });
+
+  it.each([{ startLine: 2, truncated: false }, { startLine: 1, truncated: true }])('refuses incomplete manifest provenance %j', async bounds => {
+    const log = ' FAIL src/value.test.ts > returns the value\nAssertionError: expected 2 to be 3\n';
+    const executor = new InMemoryExecutor(() => ({ exitCode: 1, stdout: log, stderr: '', truncated: false, metrics: {} }));
+    const chat = vi.fn();
+    const result = await prepareRepair(executor, { chat }, 'image', { ...buildDiagnosis, errorExcerpt: log }, 5, 1, {
+      sources: [{ path: 'package.json', content: JSON.stringify({ scripts: { test: 'vitest run' } }), ...bounds }],
+    });
+    expect(result.triage).toMatchObject({ status: 'not-run', reproduction: { status: 'unavailable' } });
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  it('does not generate for an unrelated failure with the same exit', async () => {
+    const executor = new InMemoryExecutor(() => ({ exitCode: 1, stdout: "src/other.ts(1,2): error TS2304: Cannot find name other.", stderr: '', truncated: false, metrics: {} }));
+    const chat = vi.fn();
+    const result = await prepareRepair(executor, { chat }, 'image', { ...buildDiagnosis, failingCmd: 'tsc --noEmit', errorExcerpt: 'src/value.ts(1,2): error TS2304: Cannot find name value.' });
+    expect(result.triage).toMatchObject({ status: 'not-run', reproduction: { status: 'mismatch' } });
+    expect(chat).not.toHaveBeenCalled();
+  });
+
   it('rejects an excessive candidate count before paid triage work', async () => {
     const executor = new InMemoryExecutor(() => ({
       exitCode: 1,

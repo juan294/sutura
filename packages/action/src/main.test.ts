@@ -355,3 +355,35 @@ describe('TypeSafe Jev calibrated audit construction', () => {
     expect(secrets).toContain('typesafe-secret');
   });
 });
+
+describe('inspection dispatch before provider configuration', () => {
+  it('does not load providers or claim when inspecting a run', async () => {
+    const loadConfiguration = vi.fn(() => { throw new Error('provider configuration must not be touched'); });
+    const inspect = vi.fn(async () => ({ schemaVersion: 'sutura-action-inspection-v1' as const, repository: 'owner/repo', runId: '7', attempt: 1, sourceSha: SHA,
+      disposition: 'observe-only' as const, reason: 'no-failed-source-run', owner: 'repository', nextAction: 'Wait for a real failure.', evidenceDigest: 'c'.repeat(64), repairEligible: false, executionAuthorized: false as const }));
+    const publishInspection = vi.fn(), setFailed = vi.fn();
+    await runAction({ readAction: () => ({ mode: 'inspect', githubToken: 'read-only', runId: '7', triageN: 0, requireFixed: false, captureReplay: false, environment: {} }),
+      repository: () => ({ owner: 'owner', repo: 'repo' }), environment: {}, loadConfiguration, inspect, publishInspection, setFailed });
+    expect(inspect).toHaveBeenCalledOnce();
+    expect(loadConfiguration).not.toHaveBeenCalled();
+    expect(publishInspection).toHaveBeenCalledOnce();
+    expect(setFailed).not.toHaveBeenCalled();
+  });
+});
+
+it.each([false, true])('preserves strict=%s when missing provider input stops before configuration', async strict => {
+  const { mapActionInputs } = await import('./input.js');
+  const setFailed = vi.fn(), loadConfiguration = vi.fn(), publishTerminal = vi.fn(async () => undefined);
+  await runAction({ repository: () => ({ owner: 'owner', repo: 'repo' }), environment: { GITHUB_RUN_ID: '88' }, publishTerminal, readAction: () => mapActionInputs(name => ({ 'run-id': '7', 'github-token': 'read-only', 'require-fixed': String(strict) } as Record<string, string>)[name] ?? ''), loadConfiguration, setFailed });
+  expect(loadConfiguration).not.toHaveBeenCalled();
+  expect(setFailed).toHaveBeenCalledTimes(strict ? 1 : 0);
+  expect(publishTerminal).toHaveBeenCalledWith(expect.objectContaining({ terminal: expect.objectContaining({ reason: 'setup-blocked' }), costStatus: 'unavailable' }));
+});
+
+it('never turns verify-mode missing provider input into advisory success', async () => {
+  const { mapActionInputs } = await import('./input.js');
+  const setFailed = vi.fn(), publishTerminal = vi.fn(async () => undefined);
+  await runAction({ readAction: () => mapActionInputs(name => ({ mode: 'verify', 'run-id': '7', 'github-token': 'read-only' } as Record<string, string>)[name] ?? ''), setFailed, publishTerminal });
+  expect(setFailed).toHaveBeenCalledOnce();
+  expect(publishTerminal).not.toHaveBeenCalled();
+});

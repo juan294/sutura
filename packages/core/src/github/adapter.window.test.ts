@@ -30,6 +30,15 @@ function tapBlock(header: string, yaml: readonly string[] = []): string[] {
 }
 
 describe('failed-step window over 200 lines', () => {
+  it('retains selected job identity and explicitly marks a truncated primary window', async () => {
+    const api = githubApi({
+      logLines: stamped(['##[group]Run pnpm test', ...filler(400), '##[error]AssertionError: mismatch']),
+      startedAt: '2026-10-02T05:33:03Z', completedAt: '2026-10-02T05:33:03Z',
+    });
+    const adapter = new GitHubAdapter(api, { owner: 'acme', repo: 'widget', runId: RUN_ID });
+    const [step] = (await adapter.getFailingRun(RUN_ID)).failedSteps;
+    expect(step).toMatchObject({ jobId: 9, jobName: 'test', stepName: 'Run tests', truncated: true });
+  });
   it('retains a captured multi-line coverage wrapper as execution evidence', async () => {
     // Captured native runner script; repository names and test output omitted.
     const script = [

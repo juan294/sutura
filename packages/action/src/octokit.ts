@@ -7,6 +7,8 @@ import type {
   WorkflowRunRecord,
 } from './github.js';
 
+import type { AuthenticatedSourceRun } from './publication.js';
+
 type Octokit = ReturnType<typeof getOctokit>;
 
 function responseText(value: unknown): string {
@@ -22,6 +24,7 @@ export function createGitHubApi(
   octokit: Octokit,
   owner: string,
   repo: string,
+  options: { onSourceRun?: (run: AuthenticatedSourceRun) => void } = {},
 ): GitHubApi {
   return {
     async getWorkflowRun(runId): Promise<WorkflowRunRecord> {
@@ -30,6 +33,8 @@ export function createGitHubApi(
         repo,
         run_id: runId,
       });
+      options.onSourceRun?.({ repositoryId: data.repository.id, repository: data.repository.full_name,
+        runId: data.id, attempt: data.run_attempt ?? 0, workflowId: data.workflow_id, sha: data.head_sha, branch: data.head_branch ?? '' });
       return {
         id: data.id,
         headSha: data.head_sha,
@@ -71,6 +76,7 @@ export function createGitHubApi(
         name: job.name,
         conclusion: job.conclusion,
         steps: (job.steps ?? []).map((step) => ({
+          number: step.number,
           name: step.name,
           conclusion: step.conclusion,
           startedAt: step.started_at ?? null,

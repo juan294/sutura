@@ -41,7 +41,7 @@ function positiveId(value: string, name: string): number {
   return parsed;
 }
 
-class ActionTextArtifactPort implements TextArtifactPort {
+export class ActionTextArtifactPort implements TextArtifactPort {
   constructor(
     private readonly repository: string,
     private readonly actionRunId: string,
@@ -51,10 +51,11 @@ class ActionTextArtifactPort implements TextArtifactPort {
   async uploadTextArtifact(
     name: string,
     content: string,
+    extension?: 'html' | 'json',
   ): Promise<{ url: string }> {
     const directory = await mkdtemp(join(tmpdir(), 'sutura-artifact-'));
     try {
-      const path = join(directory, name);
+      const path = join(directory, extension && !name.endsWith(`.${extension}`) ? `${name}.${extension}` : name);
       await writeFile(path, content, { encoding: 'utf8', mode: 0o600 });
       const uploaded = await this.artifact.uploadArtifact(name, [path], directory);
       if (!Number.isSafeInteger(uploaded.id) || (uploaded.id ?? 0) <= 0) {

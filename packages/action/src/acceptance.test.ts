@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ContreeError, RuntimeDetectionError } from '@sutura/core';
+import { ActionInputError } from './input.js';
 
-import { reportOutcome, requiredOutcomeFailure } from './acceptance.js';
+import { expectedActionStop, reportOutcome, requiredOutcomeFailure } from './acceptance.js';
 
 describe('required action outcome', () => {
   it('does not fail ordinary advisory runs', () => {
@@ -40,4 +42,45 @@ describe('required action outcome', () => {
       'Sutura required fixed but produced already-attempted',
     );
   });
+});
+
+it('keeps unknown internal stops red even in advisory mode', () => {
+  const reporter = { setOutput: vi.fn(), setFailed: vi.fn() };
+  reportOutcome('infra-stop', false, reporter, { reason: 'unexpected-exception', stage: 'preparation', nextAction: 'Inspect the retained incident.' });
+  expect(reporter.setFailed).toHaveBeenCalled();
+});
+
+it.each(['unsupported-input', 'setup-blocked', 'resource-blocked', 'reproduction-mismatch', 'identity-unavailable', 'budget-exhausted'] as const)(
+  'preserves advisory non-repair and strict failure for %s', reason => {
+    for (const strict of [false, true]) {
+      const reporter = { setOutput: vi.fn(), setFailed: vi.fn() };
+      reportOutcome('infra-stop', strict, reporter, { reason, stage: reason === 'setup-blocked' ? 'configuration' : reason === 'reproduction-mismatch' || reason === 'identity-unavailable' ? 'reproduction' : reason === 'budget-exhausted' ? 'search' : 'preparation', nextAction: 'Resolve the exact boundary before a new eligible event.' });
+      expect(reporter.setFailed).toHaveBeenCalledTimes(strict ? 1 : 0);
+      expect(reporter.setOutput).toHaveBeenCalledWith('terminal-reason', reason);
+      expect(reporter.setOutput).toHaveBeenCalledWith('next-action', expect.any(String));
+    }
+  });
+
+it('does not accept invalid reason/stage combinations as a successful stop', () => {
+  const reporter = { setOutput: vi.fn(), setFailed: vi.fn() };
+  reportOutcome('infra-stop', false, reporter, { reason: 'setup-blocked', stage: 'evidence-api', nextAction: 'Retry.' });
+  expect(reporter.setFailed).toHaveBeenCalledOnce();
+});
+
+it('recognizes only typed source-defined setup, unsupported and rate-limit boundaries', () => {
+  expect(expectedActionStop(new ActionInputError('Missing required action input: contree-token'))).toMatchObject({ reason: 'setup-blocked' });
+  expect(expectedActionStop(new RuntimeDetectionError('unknown root', 'runtime-ambiguous'))).toMatchObject({ reason: 'unsupported-input' });
+  expect(expectedActionStop(new ContreeError('limited', 429))).toMatchObject({ reason: 'resource-blocked' });
+  expect(expectedActionStop(new ContreeError('ConTree snapshot exceeds 10000 files'))).toMatchObject({ reason: 'unsupported-input' });
+  for (const error of [new Error('ConTree snapshot exceeds 10000 files'), new ContreeError('quota maybe', 500),
+    new RuntimeDetectionError('escape', 'runtime-evidence-escape'), new Error('Missing required action input: contree-token')]) {
+    expect(expectedActionStop(error)).toBeUndefined();
+  }
+});
+
+it.each(['flaky-no-patch', 'already-attempted', 'repair-branch-skipped'] as const)('gives %s a usable next action without changing strict acceptance', outcome => {
+  const reporter = { setOutput: vi.fn(), setFailed: vi.fn() };
+  reportOutcome(outcome, false, reporter);
+  expect(reporter.setOutput).toHaveBeenCalledWith('next-action', expect.any(String));
+  expect(reporter.setFailed).not.toHaveBeenCalled();
 });

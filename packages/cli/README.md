@@ -2,35 +2,28 @@
 
 Sutura verifies AI-generated CI repairs before it opens a pull request.
 
-Configure Sutura in a GitHub repository; a global npm installation is not
-required. Setup needs Git, Node.js 22 or later, an authenticated GitHub CLI,
-an existing Actions CI workflow, and permission to configure repository
-secrets, variables, and workflows.
+The 0.4.0 candidate starts with one repository assessment. Node.js 22 or later is required; assessment needs no provider account and never runs repository scripts.
 
 ```bash
-npx sutura@0.3.9 init
-npx sutura@0.3.9 doctor
-git add .github/workflows/sutura.yml
-git commit -m "ci: add Sutura repair monitor"
-git push
+sutura assess . --json
+sutura init --plan --workflow "CI" --repo example/project
 ```
 
-`init` resolves the `v0.3.9` Action tag to one immutable commit and writes that
-SHA into the workflow. `doctor` verifies the pin against the tag. Release
-candidate checks can pass `--action-sha <40-character-commit>` to both commands;
-mutable refs are rejected.
+Review the displayed workflow diff, permissions, provider destinations, limits and unknown total costs, then use the exact apply command it prints. Candidate testing supplies an immutable `--action-sha`; after publication, the CLI resolves its matching version tag. Live repair needs your own Nebius Token Factory and access-controlled ConTree credentials. Assessment and selected-run diagnosis remain available without them.
 
-Review the generated workflow before committing it. The monitor becomes active
-only after `.github/workflows/sutura.yml` reaches the repository's default
-branch.
+`init` is now preview-first. Select every credential name explicitly with `--credential`; unselected environment values are ignored. `--force` does not overwrite custom workflows. Apply persists a local receipt without secret values. Interrupted operations resume from observed state; an uncertain remote write requires a newly reviewed replacement plan before it can repeat.
 
-Every repository pins its own Action commit. Sutura 0.3.9 has no automatic
-`upgrade` command, and `init --force` replaces the whole workflow. Preserve
-customized inputs and conditions by updating their immutable `uses` commit
-manually, then run `doctor` and review the diff.
+```bash
+sutura diagnose --repo example/project --run-id 12345 --json
+sutura doctor --repo example/project
+sutura upgrade --plan --workflow "CI" --repo example/project
+```
 
-Sutura uses bring-your-own-key billing. Your repository supplies its own
-Nebius Token Factory and ConTree credentials. Tavily is optional.
+Doctor distinguishes installed and desired Action versions and static/configured/activated/prepared/reproduced/native-verified/integrated stages. Secret names do not prove credential validity. Incomplete readiness returns exit 2; an operational read error returns 1. Assessment and diagnosis can return a useful unsupported/unknown result successfully.
+
+`upgrade` changes reviewed pins without replacing App wiring or unrelated jobs. `pause`, `resume` and `remove` use the same plan/apply contract; removal requires an unchanged wholly owned workflow and retains credentials/evidence. Activation only occurs after the workflow reaches the default branch. No setup command activates a workflow or runs a paid smoke test.
+
+This source is a local 0.4.0 candidate. After publication, use `npx sutura@0.4.0` in place of `sutura`; local preparation is not registry publication.
 
 Sutura handles pull request, push, scheduled, and manual CI failures. It records evidence on the pull request or failing commit and in one GitHub Check on the exact failing SHA.
 

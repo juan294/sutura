@@ -619,3 +619,26 @@ test('failed-run evidence binds exact attempt and explicitly marks ambiguous fai
   assert.equal(result.selectedStepNumber, null); assert.equal(result.complete, false);
   assert.equal(logCalls, 0);
 });
+
+test('collector selects the failed step and records diagnostic identity without claiming reproduction', async () => {
+  const client = new GhFleetClient('owner');
+  client.api = async () => [{ total_count: 1, jobs: [{ id: 81, name: 'checks', run_id: 41, run_attempt: 2, head_sha: 'a'.repeat(40),
+    conclusion: 'failure', steps: [{ number: 3, name: 'Tests', conclusion: 'failure', started_at: '2026-10-25T09:01:00Z', completed_at: '2026-10-25T09:02:00Z' }] }] }];
+  client.readJobLog = async () => ({ text: [
+    '2026-10-25T09:00:00Z unrelated previous failure',
+    '2026-10-25T09:01:00Z ##[group]Run pnpm exec vitest run',
+    '2026-10-25T09:01:01Z pnpm exec vitest run',
+    '2026-10-25T09:01:02Z ##[endgroup]',
+    '2026-10-25T09:01:03Z  FAIL src/add.test.ts > adds',
+    '2026-10-25T09:01:04Z AssertionError: expected 2 to be 3',
+  ].join('\n'), truncated: false });
+  const result = await client.inspectFailedRun('alpha', { id: 41, attempt: 2, headSha: 'a'.repeat(40) });
+  assert.equal(result.failureIdentity.status, 'matched');
+  assert.equal(result.reproduction, 'unmeasured');
+  assert.equal(result.classification.cause, 'source-defect');
+  assert.doesNotMatch(result.log.text, /unrelated/);
+  client.readJobLog = async () => ({ text: 'custom unknown failure', truncated: true });
+  const incomplete = await client.inspectFailedRun('alpha', { id: 41, attempt: 2, headSha: 'a'.repeat(40) });
+  assert.equal(incomplete.complete, false);
+  assert.equal(incomplete.classification.cause, 'unknown');
+});

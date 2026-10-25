@@ -32,7 +32,7 @@ import {
   RUN_ID,
 } from './replay-fixtures.test-helper.js';
 
-const PACKAGE_JSON = '{"scripts":{"test":"vitest run"}}\n';
+const PACKAGE_JSON = '{"scripts":{"test":"node src/main.js"}}\n';
 
 function tavilyResponse(body: unknown): TavilyHttpResponse & { arrayBuffer(): Promise<ArrayBuffer> } {
   const bytes = new TextEncoder().encode(JSON.stringify(body));
@@ -49,7 +49,7 @@ function runResult(imageId: string, exitCode: number): RunResult {
     imageId,
     exitCode,
     stdout: '',
-    stderr: exitCode === 0 ? '' : 'Error: build failed',
+    stderr: exitCode === 0 ? '' : 'Error: Cannot find module \'./missing.js\' imported from /workspace/main.js',
     truncated: false,
     metrics: { elapsedTimeSec: 0.1, cost: 0.001 },
   };
@@ -115,7 +115,7 @@ export async function createCompleteReplayBundleForTest(): Promise<ReplayBundle>
             confidence: 0.9,
             signals: ['captured-integration'],
             failingCmd: 'pnpm test',
-            errorExcerpt: 'Error: build failed',
+            errorExcerpt: 'Error: Cannot find module \'./missing.js\' imported from /workspace/main.js',
           }),
         },
       }],
@@ -134,9 +134,9 @@ export async function createCompleteReplayBundleForTest(): Promise<ReplayBundle>
       runId: RUN_ID,
       github: new GitHubAdapter(recordingGitHubApi(githubApi({
         logLines: [
-          '2026-08-30T10:00:00Z ##[group]Run tests',
+          '2026-08-30T10:00:00Z ##[group]Run pnpm test',
           '2026-08-30T10:00:00Z Run pnpm test',
-          '2026-08-30T10:00:01Z Error: build failed',
+          '2026-08-30T10:00:01Z Error: Cannot find module \'./missing.js\' imported from /workspace/main.js',
         ],
         startedAt: '2026-08-30T10:00:00Z',
         completedAt: '2026-08-30T10:00:01Z',

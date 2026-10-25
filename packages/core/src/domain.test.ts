@@ -52,8 +52,9 @@ describe('domain model', () => {
       reproductionProbability: number;
       confidenceLower: number;
       confidenceUpper: number;
-      stopReason: 'failure-boundary' | 'pass-boundary' | 'maximum-attempts' | 'not-run' | 'sandbox-budget';
+      stopReason: 'failure-boundary' | 'pass-boundary' | 'maximum-attempts' | 'not-run' | 'sandbox-budget' | 'failure-identity';
       methodVersion: 'sprt-p20-p80-a05-b05-v1';
+      reproduction?: import('./engine/failure-identity.js').FailureIdentityEvidence;
     }>();
     expectTypeOf<Candidate>().toEqualTypeOf<{
       id: string;
@@ -110,6 +111,7 @@ describe('domain model', () => {
       runtime: 'node' | 'python';
       diagnosis: Diagnosis;
       triage: TriageVerdict;
+      reproduction?: import('./engine/failure-identity.js').FailureIdentityEvidence;
       race: RaceResult[];
       audit?: AuditVerdict;
       outcome:

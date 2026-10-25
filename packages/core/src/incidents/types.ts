@@ -18,6 +18,8 @@ export interface AssessmentScope {
   workflowPath: string;
   jobKey: string;
   localTreeDigest?: string;
+  /** Allowlisted content and public metadata identity; never a complete source-tree identity. */
+  localMetadataDigest?: string;
   remoteSourceSha?: string;
 }
 export interface InstalledActionTarget {

@@ -1,5 +1,6 @@
 export { CliUsageError, parseArgs, USAGE, VERSION } from './args.js';
 export { runCli } from './cli.js';
+export { assessRepository } from './assess.js';
 export { atifOutputPaths, runEvaluationCommand } from './eval.js';
 export { doctorSutura } from './doctor.js';
 export { healFromEnvironment, healWithRuntime, readLocalSourceContext } from './heal.js';
@@ -8,6 +9,7 @@ export { MAX_REPLAY_BUNDLE_BYTES, replayFromFile } from './replay.js';
 export { resolveActionCommit, ReleaseResolutionError } from './release.js';
 export type {
   CliArguments,
+  AssessArguments,
   DoctorArguments,
   EvalExportArguments,
   EvalValidateArguments,

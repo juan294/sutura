@@ -135,3 +135,15 @@ Set the repository variable `SUTURA_DISABLED=true` to skip the monitor before
 credentials, providers, or sandboxes are used for a deferred or currently
 unsupported project. Such skipped monitor runs remain `not-triggered` rather
 than repair attempts.
+
+## Private queue and weekly digest
+
+Each successful collection writes a validated queue snapshot under `weekly-digest/`. Exact incidents remain distinct; only complete failure signatures scoped to repository, workflow, owner and verification contract can form recurrence groups. A v2 green wrapper cannot close a group. Queue metrics distinguish retained open incidents from failures completed inside the explicit rate window.
+
+After every collection attempt, including a failure, a separate bounded worker evaluates the newest due weekly email. It uses the preceding complete ISO week in Europe/Madrid, due Monday 09:10 local, and the existing daily collector schedule. A recovering host sends only the newest due week and discloses missed weeks. Freshness remains 36 hours. A corrupt current queue falls back to a validated prior snapshot; no valid snapshot produces `UNAVAILABLE`, never invented counts. The host cannot warn while stopped.
+
+Email is disabled unless the ignored fleet configuration contains an explicitly authorized `weeklyDigest` object binding the exact sender, recipient, scope digest and credential environment-name reference. Changing fleet scope or recipient requires a newly reviewed binding. Queue generation works without email credentials. Do not copy real addresses or private incident content into public examples. The protected credential must permit sending and delivery readback; no credentials are written to the outbox.
+
+The Resend adapter freezes the text payload and content hash before sending, under an OS-managed `flock` held by the actual writer. The local worker requires Python 3 with `fcntl` (macOS/Linux); unavailable locking blocks delivery rather than falling back to an unsafe sentinel. The logical delivery key is scope + recipient hash + week, independent of renderer version. Persisted states are `prepared`, `sending`, `accepted`, `delivered`, `bounced` and `delivery-unknown`. A retry uses identical content/key, at most three attempts within Resend's [24-hour idempotency window](https://resend.com/changelog/idempotency-keys). Expired ambiguity requires reconciliation, never automatic resending. Delivery readback uses the [sent-email API](https://resend.com/docs/api-reference/emails/retrieve-email). Provider acceptance is not delivery, and delivery is not owner comprehension.
+
+The message contains bounded incident summaries and recovery actions, not raw logs or attachments. Its private disclosure to Resend requires separate activation authority. Existing GitHub subscriptions remain unchanged; this is a weekly summary, not a pager. Actual delivery and usefulness remain unmeasured until an authorized send and separate owner review.

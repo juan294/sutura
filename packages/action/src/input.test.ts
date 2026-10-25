@@ -188,3 +188,13 @@ describe('mapActionInputs', () => {
     expect(() => map('3601')).toThrow(/triage-sandbox-seconds/u);
   });
 });
+
+it('parses inspect before provider inputs are requested', () => {
+  const names: string[] = [];
+  const result = mapActionInputs(name => {
+    names.push(name);
+    return ({ mode: 'inspect', 'run-id': '7', 'github-token': 'read-only' } as Record<string, string>)[name] ?? '';
+  });
+  expect(result).toMatchObject({ mode: 'inspect', environment: {}, runId: '7' });
+  expect(names).not.toContain('nebius-api-key');
+});

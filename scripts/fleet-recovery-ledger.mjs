@@ -392,7 +392,7 @@ export async function collectRecoveryLedger(config, client, monitorEvents, now =
           trigger: { event: source.event ?? null, actorId: source.actorId ?? null,
             triggeringActorId: source.triggeringActorId ?? null, authenticated: source.metadataComplete === true },
           workflowDefinition: source.workflowDefinition ?? null,
-          classificationRevision: 'sutura-incident-classification-v1', classification: null,
+          classificationRevision: 'sutura-incident-classification-v1', classification: sourceEvidence?.classification ?? null,
           policyDigest: contract?.policyDigest ?? null,
           completeness: { collection: source.paginationComplete === true,
             source: source.metadataComplete === true, native: nativeProof?.complete === true,
