@@ -60,6 +60,10 @@ For admitted repair attempts, Sutura publishes the applicable evidence:
 - A repair pull request when a candidate passes verification, with one
   **Sutura repair verification** GitHub Check on the repair commit.
 
+Typed setup, unsupported-input or resource stops can occur before a case file
+or GitHub Check exists. They retain terminal outputs/artifacts and a next action;
+unexpected internal, security or evidence failures remain failed monitors.
+
 Every attempt ends as `fixed`, `flaky-no-patch`, `refused`, `gave-up`, or
 `infra-stop`. Generated customer workflows are advisory by default. Even a
 verified repair remains neutral and requires human review; Sutura never merges
@@ -121,7 +125,8 @@ Common configuration:
 - Set `runtime` to `node` or `python` in protected `.sutura.json` when automatic
   detection finds equal evidence for both runtimes.
 - Keep the generated advisory behavior for normal use. The `require-fixed`
-  Action input makes every result other than `fixed` fail the Sutura job.
+  Action input makes every admitted repair result other than `fixed` fail the
+  Sutura job. Inspection-only stops and skipped repair jobs are not repairs.
 - Keep branch protection and human review enabled.
 - Lower Action budgets when needed. Action inputs cannot raise the core safety
   maxima. The triage sandbox budget's default (240 seconds) sits below its

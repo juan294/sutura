@@ -20,6 +20,9 @@ Local release candidate; publication and hosted activation remain pending.
 
 ### Fixed
 
+- Snapshot handling preserves tracked dependency fixtures and the bounded safe `.npmrc` options `engine-strict`, `legacy-peer-deps` and `prefer-offline`, while rejecting credentials and unsupported configuration.
+- Runtime compatibility honors supported Node engine ranges and the skipped Python root-project lock record. Preparation no longer runs blanket lifecycle rebuilds after source overlay; missing sandbox prerequisites stop before speculative repair.
+- The standalone CLI can load its YAML dependency after packaging. Grouped CodeQL updates keep Action references coherent.
 - Diagnosis no longer combines unrelated failed steps or accepts ungrounded model excerpts. Exact package-script provenance preserves supported Node and Python runner failures.
 - Recovery qualification requires the full native verification contract on the exact candidate and integration identity; a later green workflow alone cannot close an incident.
 

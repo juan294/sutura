@@ -186,8 +186,10 @@ function identityStopVerdict(
  * another). Probes then run one at a time, and before each the seconds spent
  * plus the slowest probe so far times the remaining attempts must fit the
  * budget. Probes keep the legacy numbering and the legacy evaluation points
- * (after attempts 2, 4 and 5), so a run within budget reaches exactly the
- * legacy verdict. The worst case is the budget plus one probe.
+ * (after attempts 2, 4 and 5), so a run within budget with matched failure
+ * identity reaches the legacy verdict. A failed full probe with mismatched or
+ * unavailable identity stops as not-run with reason failure-identity. The worst
+ * case is the budget plus one probe.
  *
  * A focused probe counts only while it fails the same way as the original
  * failure; it can therefore only confirm `real`. At the first focused pass or

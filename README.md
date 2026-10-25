@@ -7,7 +7,7 @@
 ![Node.js](https://img.shields.io/badge/Node.js-22-43853D?logo=node.js&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
 ![pnpm](https://img.shields.io/badge/pnpm-11.22.0-F69220?logo=pnpm&logoColor=white)
-![Vitest](https://img.shields.io/badge/Vitest-4.1.11-6E9F18?logo=vitest&logoColor=white)
+![Vitest](https://img.shields.io/badge/Vitest-4.1.12-6E9F18?logo=vitest&logoColor=white)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Nebius Token Factory](https://img.shields.io/badge/Nebius-Token_Factory-6C5CE7)](https://tokenfactory.nebius.com/)
 [![NVIDIA Nemotron](https://img.shields.io/badge/NVIDIA-Nemotron_3-76B900?logo=nvidia&logoColor=white)](https://www.nvidia.com/en-us/ai-data-science/foundation-models/nemotron/)
@@ -234,17 +234,20 @@ The public dogfood record starts with [PR #18](https://github.com/juan294/sutura
 
 ## Security boundary
 
-- The action runs trusted code from the repository default branch. It repairs
-  only a same-repository pull request tied to the failed run and exact head SHA.
+- The action runs trusted code from the repository default branch. It admits
+  supported same-repository failures tied to the exact failed run and head SHA;
+  fork sources and Sutura repair branches are excluded.
 - Repository secrets are not copied into ConTree. Sandbox commands receive only
   `CI=true` and `NODE_ENV=test`.
 - Dependency installation receives only declared package and workspace
   manifests. It runs with networking enabled and lifecycle scripts disabled.
   Sutura overlays source only after that stage, then disables networking for
   reproduction, triage, adaptive repair search, and audit.
-- Python dependency preparation rejects missing locks, editable or local paths,
-  VCS and requirement includes, workspaces, source builds, and repository build
-  hooks before it enables network access.
+- Python dependency preparation rejects missing locks, editable or local
+  dependencies, VCS and requirement includes, workspaces, source builds, and
+  repository build hooks before it enables network access. A single matching
+  root project's `editable = "."` lock record is allowed only because
+  `--no-install-project` excludes that project from dependency installation.
 - Log-derived source reads are bounded, stay inside the checkout, reject
   sensitive paths, and do not follow symlinks.
 - Each repair attempt is one structured Nemotron Super proposal for one
@@ -301,7 +304,7 @@ Review a setup proposal before making changes:
 sutura init --plan --workflow "CI" --repo example/project
 ```
 
-The plan displays workflow changes, provider destinations, permissions, limits, unknown costs and a concrete apply command. Apply the displayed digest with the same options. Credentials are uploaded only when explicitly selected with `--credential NEBIUS_API_KEY`, `--credential CONTREE_TOKEN`, `--credential CONTREE_PROJECT`, or an optional documented name. Unselected environment credentials are ignored. Preview writes nothing; apply retains a local receipt without credential values. `--force` cannot overwrite customized workflows.
+The plan displays workflow changes, provider destinations, permissions, limits, unknown costs and a concrete apply command. Apply the displayed digest with the same options. Credentials are uploaded only when explicitly selected with `--credential NEBIUS_API_KEY`, `--credential CONTREE_TOKEN`, `--credential CONTREE_PROJECT`, or an optional documented name. Unselected environment credentials are ignored. Preview writes nothing; apply retains a private local receipt without secret values. Non-secret configuration such as `CONTREE_PROJECT` can be retained. `--force` cannot overwrite customized workflows.
 
 The generated workflow pins the resolved release to an immutable Action commit and separates read-only inspection, conditional repair and an always-evaluated finalizer. Candidate testing passes `--action-sha` with the exact local candidate commit. Review the diff before committing it through your repository's normal process. Activation requires the workflow to reach the default branch; local setup does not establish activation.
 
@@ -315,6 +318,8 @@ Doctor reports the installed Action separately from the desired version, bounded
 Maintainers run `node scripts/test-candidate-install.mjs` against a clean candidate. After publication, `node scripts/test-public-install.mjs --release 0.4.0` installs that exact package, independently resolves its Action tag, verifies the no-credential assessment and preview/apply journey, and requires doctor to disclose incomplete readiness. Synthetic installation proof is not hosted activation or a successful repair.
 
 The complete [user guide](docs/user-guide.md) covers migration, interrupted setup, native CI approval and troubleshooting. Sutura never merges a generated repair. Exact native checks and authorized integration remain separate from sandbox verification.
+
+<a id="contributor-setup"></a>
 
 ## Contributor setup
 
@@ -341,8 +346,15 @@ Run the complete local gate before you open a pull request:
 | Release contracts | `pnpm run test:release-contracts` |
 | Candidate package | `pnpm run test:package`           |
 
+`pnpm run ci:local` runs the combined local gate, including README setup,
+ATIF validation, offline runtime smoke, bundle verification and guard coverage.
+CI also runs `node scripts/release-case-lab.mjs check` to verify the existing
+published Case Lab pin. Live dispatch and publication remain separate actions.
+
 Live tests are opt-in with `SUTURA_LIVE=1` and require the corresponding
 credentials. Normal tests use recorded fixtures and do not spend API credit.
+
+<a id="offline-replay"></a>
 
 ### Offline replay and fixture capture
 
@@ -412,6 +424,8 @@ matrices remain immutable failed baselines. The v0.3.9 release, npm package and
 benchmark are complete. Its remaining records stay pending until each required
 gate is authorized and passed.
 
+<a id="evaluation-lab"></a>
+
 ### Evaluation Lab
 
 Sutura records a versioned, bounded trace for model, tool, sandbox, search,
@@ -468,15 +482,20 @@ Pin external use to an exact commit SHA so replay evidence can identify the
 executed Action code rather than the consumer workflow commit.
 
 Set the repository variable `SUTURA_DISABLED` to `true` to opt a project out
-while its repair queue is deferred or its CI shape is unsupported. The monitor
-job is then skipped before credentials, providers, or sandboxes are used. Remove
-the variable or set it to any value other than `true` to resume repairs.
+while its repair queue is deferred or its CI shape is unsupported. In generated
+workflows, the repair job is skipped before repair credentials, providers or
+sandboxes are used; read-only inspection and finalization still run. Custom
+workflows can guard the whole job instead. Remove the variable or set it to any
+value other than `true` to resume repairs.
 
-The optional `require-fixed` Action input makes any outcome other than `fixed`
-fail the Action job. Sutura's own workflow enables it, so a green workflow can
-no longer hide a `gave-up` self-repair result. Generated customer workflows keep
-the default advisory behavior and publish the exact outcome through the Action
-output and GitHub Check.
+The optional `require-fixed` Action input makes any admitted repair outcome other
+than `fixed` fail the Action job. Sutura's own workflow enables it, so a green
+workflow cannot hide a `gave-up` self-repair result. Generated customer workflows
+keep the default advisory behavior. Case-file outcomes appear in Action outputs
+and GitHub Checks; typed stops before case-file publication retain terminal
+outputs and artifacts without necessarily creating a GitHub Check. Inspection
+stops and skipped repairs are never counted as fixes. Unexpected internal,
+security or evidence failures remain failed monitors.
 
 Runtime detection is automatic for single-runtime repositories. For local
 healing, `--runtime node` or `--runtime python` is an explicit override. The

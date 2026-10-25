@@ -13,12 +13,17 @@
 
 - [User guide](user-guide.md): prerequisites, repository setup, activation,
   upgrades, disabling, removal, and troubleshooting.
-- [CLI](../packages/cli/README.md): installation, audit, and replay commands.
-- [Contributor setup](../README.md?plain=1#L319): prerequisites, build, and local checks.
+- [CLI](../packages/cli/README.md): assessment, diagnosis, guided setup, doctor,
+  audit, and replay commands.
+- [Contributor setup](../README.md#contributor-setup): prerequisites, build, and local checks.
 - [Case Lab](../packages/case-lab/README.md): fixed cases, result modes, and dispatch boundaries.
 - [Placebo](../packages/placebo/README.md): benchmark corpus, scoring, and execution.
 - [Fleet dogfood metrics](adoption/fleet-dogfood-metrics.md): rebuild daily usage,
   outcome, duration, and cost evidence across multiple repositories.
+- [Recovery study](adoption/fleet-recovery-study.md): all-attempt adoption and
+  field measurements, with synthetic and organic evidence kept distinct.
+- [0.4.0 local release preparation](release/v0.4.0-local-preparation.md): candidate
+  verification, migration and the remaining publication and activation gates.
 
 ## Evidence and security
 
