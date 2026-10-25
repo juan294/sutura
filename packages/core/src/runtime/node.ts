@@ -6,30 +6,23 @@ import type { DependencyPreparation, RuntimeAdapter, RuntimeEvidence } from './t
 
 export const NODE_IMAGE_REF = 'node:22';
 
-/** Choose a supported sandbox major from the repository's declared Node version. */
-export async function nodeImageRefForRepository(dir: string): Promise<string> {
+/** Shared declaration validator; reads data only and never executes repository scripts. */
+export function nodeImageRefForDeclarations(input: { nvmrc?: string; packageJson?: string }): string {
   let nvmMajor: number | undefined;
   let nvmVersion: string | undefined;
-  try {
-    const path = join(dir, '.nvmrc');
-    const metadata = await lstat(path);
-    if (!metadata.isFile() || metadata.size > 64) throw new Error('Invalid .nvmrc');
-    const version = (await readFile(path, 'utf8')).trim();
+  if (input.nvmrc !== undefined) {
+    if (Buffer.byteLength(input.nvmrc, 'utf8') > 64) throw new Error('Invalid .nvmrc');
+    const version = input.nvmrc.trim();
     const match = /^v?(\d+)(?:\.\d+(?:\.\d+)?)?$/u.exec(version);
     if (!match) throw new Error('Unsupported .nvmrc Node version');
     nvmMajor = Number(match[1]);
     nvmVersion = validRange(version) ?? undefined;
     if (nvmVersion === undefined) throw new Error('Invalid .nvmrc Node version');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
-
   let engineRange: string | undefined;
-  try {
-    const path = join(dir, 'package.json');
-    const metadata = await lstat(path);
-    if (!metadata.isFile() || metadata.size > 1_048_576) throw new Error('Invalid package.json');
-    const parsed: unknown = JSON.parse(await readFile(path, 'utf8'));
+  if (input.packageJson !== undefined) {
+    if (Buffer.byteLength(input.packageJson, 'utf8') > 1_048_576) throw new Error('Invalid package.json');
+    const parsed: unknown = JSON.parse(input.packageJson);
     if (typeof parsed === 'object' && parsed !== null && 'engines' in parsed) {
       const engines = parsed.engines;
       if (typeof engines === 'object' && engines !== null && 'node' in engines && typeof engines.node === 'string') {
@@ -37,8 +30,6 @@ export async function nodeImageRefForRepository(dir: string): Promise<string> {
         if (engineRange === undefined) throw new Error('Invalid package.json engines.node range');
       }
     }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   if (nvmMajor !== undefined && nvmMajor !== 22 && nvmMajor !== 24) {
     throw new Error(`Unsupported sandbox Node major: ${nvmMajor}`);
@@ -46,12 +37,28 @@ export async function nodeImageRefForRepository(dir: string): Promise<string> {
   if (nvmVersion !== undefined && engineRange !== undefined && !intersects(nvmVersion, engineRange)) {
     throw new Error('Node version declarations conflict between .nvmrc and package.json');
   }
-  // Image selection is major-only; partial .nvmrc versions are ranges, while
-  // exact versions must satisfy the engine's minor/patch bounds as declared.
-  const major = nvmMajor ?? [22, 24].find((candidate) =>
-    engineRange === undefined || intersects(String(candidate), engineRange));
+  // Images select majors; exact declarations still must satisfy declared minor/patch bounds.
+  const major = nvmMajor ?? [22, 24].find(candidate => engineRange === undefined || intersects(String(candidate), engineRange));
   if (major === undefined) throw new Error('Unsupported sandbox Node range in package.json engines.node');
   return `node:${major}`;
+}
+
+/** Choose a supported sandbox major from the repository's declared Node version. */
+export async function nodeImageRefForRepository(dir: string): Promise<string> {
+  const declarations: { nvmrc?: string; packageJson?: string } = {};
+  for (const [name, key, maximum] of [['.nvmrc', 'nvmrc', 64], ['package.json', 'packageJson', 1_048_576]] as const) {
+    try {
+      const path = join(dir, name);
+      const metadata = await lstat(path);
+      if (!metadata.isFile() || metadata.size > maximum) throw new Error(`Invalid ${name}`);
+      declarations[key] = await readFile(path, 'utf8');
+      // Preserve declaration validation order, including an invalid .nvmrc before package reads.
+      nodeImageRefForDeclarations(declarations);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+  return nodeImageRefForDeclarations(declarations);
 }
 
 const COREPACK_PACKAGE_MANAGER_COMMAND = /(?:^|[\s;&|()])(?:pnpm|yarn)(?=$|[\s;&|()<>])/u;

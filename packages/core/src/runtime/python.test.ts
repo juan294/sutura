@@ -11,6 +11,7 @@ import {
   PYTHON_RUNTIME,
   PythonDependencyError,
   validatePythonDependencyInputs,
+  validatePythonDependencyContents,
 } from './python.js';
 
 const roots: string[] = [];
@@ -226,5 +227,14 @@ describe('PYTHON_RUNTIME', () => {
   it('rejects a Python repository without a dependency lock input', async () => {
     const root = await fixture({});
     await expect(validatePythonDependencyInputs(root)).rejects.toThrow(/lock input is missing/u);
+  });
+});
+
+describe('pure Python dependency validation', () => {
+  it('preserves root-editable exemption and refusal without filesystem reads', () => {
+    const pyproject = '[project]\nname="fixture"\n';
+    expect(validatePythonDependencyContents({ pyproject, uvLock: 'version=1\n[[package]]\nname="fixture"\nsource={editable="."}\n' }).command)
+      .toBe('uv sync --frozen --no-install-project --no-build');
+    expect(() => validatePythonDependencyContents({ pyproject, uvLock: 'version=1\n[[package]]\nname="other"\nsource={editable="../other"}\n' })).toThrow(PythonDependencyError);
   });
 });

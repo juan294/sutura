@@ -161,6 +161,19 @@ export async function validatePythonDependencyInputs(
     optionalBoundedFile(root, 'requirements.txt', fileSystem),
     optionalBoundedFile(root, 'poetry.lock', fileSystem),
   ]);
+  return validatePythonDependencyContents({ pyproject, uvLock, requirements, poetryLock });
+}
+
+/** Shared bounded dependency metadata validation, without filesystem or provider effects. */
+export function validatePythonDependencyContents(input: {
+  pyproject?: string | null; uvLock?: string | null; requirements?: string | null; poetryLock?: string | null;
+}): DependencyPreparation {
+  const { pyproject = null, uvLock = null, requirements = null, poetryLock = null } = input;
+  for (const content of [pyproject, uvLock, requirements, poetryLock]) {
+    if (content !== null && (Buffer.byteLength(content, 'utf8') > MAX_DEPENDENCY_FILE_BYTES || content.includes('\0'))) {
+      throw new PythonDependencyError('Python dependency input is not bounded UTF-8 text');
+    }
+  }
   if (pyproject !== null) rejectUnsafePyproject(pyproject);
   if (poetryLock !== null) throw new PythonDependencyError('poetry.lock preparation is unsupported; use uv.lock');
   if (uvLock !== null) {

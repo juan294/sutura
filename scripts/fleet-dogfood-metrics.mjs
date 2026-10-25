@@ -1,12 +1,14 @@
 import { execFile as execFileCallback } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { collectRecoveryLedger, writeRecoveryLedger } from './fleet-recovery-ledger.mjs';
+import { sanitizeFleetSummary } from './fleet-public-summary.mjs';
+import { decodeSingleFileArtifact } from './fleet-artifact.mjs';
+import { collectNativeVerification } from './fleet-native-verification.mjs';
 
 const execFile = promisify(execFileCallback);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -76,10 +78,13 @@ function completePages(pages, field, capped = false) {
   }
   const count = pages.reduce((sum, page) => sum + page[field].length, 0);
   const expected = pages[0].total_count;
-  if ((capped && expected >= 1000) || count !== expected) {
+  const rows = pages.flatMap((page) => page[field]);
+  if ((capped && expected >= 1000) || expected < 0 || count !== expected ||
+      pages.some(page => page.total_count !== expected) ||
+      rows.some(row => !Number.isSafeInteger(row.id) || row.id <= 0) || new Set(rows.map(row => row.id)).size !== rows.length) {
     throw new Error(`${field} pagination is capped or incomplete`);
   }
-  return pages.flatMap((page) => page[field]);
+  return rows;
 }
 
 function exactNumber(pattern, html, label) {
@@ -506,7 +511,7 @@ export async function collectFleetMetrics(configInput, client, now = new Date(),
 }
 
 export function publicFleetSummary(summary) {
-  return structuredClone(summary);
+  return sanitizeFleetSummary(summary);
 }
 
 function freshness(observedAt, now, maxAgeSec) {
@@ -524,8 +529,8 @@ function reportSummary(summary, { recoverySummary = null, now = new Date(), maxA
   return { ...summary,
     delivery: {
       typedFixedOutcomes: summary.outcomes.fixed,
-      verifiedRepairPrs: recoverySummary?.verifiedRepairPrs ?? null,
-      integratedRecoveries: recoverySummary?.states?.['sutura-green'] ?? null,
+      verifiedRepairPrs: recoverySummary?.qualification?.verifiedRepairPrs ?? null,
+      integratedRecoveries: recoverySummary?.qualification?.integratedRecoveries ?? null,
       observedAt: recoverySummary?.observedAt ?? null,
     },
     evidence: {
@@ -546,7 +551,7 @@ function markdown(summary) {
 }
 
 export async function writeFleetMetrics(result, outputDirectory, options = {}) {
-  const summary = reportSummary(result.summary, options);
+  const summary = publicFleetSummary(reportSummary(result.summary, options));
   await mkdir(outputDirectory, { recursive: true });
   await writeFile(join(outputDirectory, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
   await writeFile(join(outputDirectory, 'summary.md'), markdown(summary));
@@ -555,7 +560,7 @@ export async function writeFleetMetrics(result, outputDirectory, options = {}) {
   const snapshotsPath = join(outputDirectory, 'snapshots.jsonl');
   let snapshots = [];
   try {
-    snapshots = (await readFile(snapshotsPath, 'utf8')).split(/\r?\n/u).filter(Boolean).map((line) => JSON.parse(line));
+    snapshots = (await readFile(snapshotsPath, 'utf8')).split(/\r?\n/u).filter(Boolean).map((line) => publicFleetSummary(JSON.parse(line)));
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
@@ -577,7 +582,7 @@ export class GhFleetClient {
 
   async api(path, options = []) {
     try {
-      const { stdout } = await execFile(this.gh, ['api', ...options, path], { maxBuffer: 64 * 1024 * 1024 });
+      const { stdout } = await execFile(this.gh, ['api', ...options, path], { maxBuffer: 64 * 1024 * 1024, timeout: 30_000 });
       return JSON.parse(stdout);
     } catch (error) {
       const detail = `${error?.stderr ?? ''}`;
@@ -614,7 +619,13 @@ export class GhFleetClient {
     try {
       monitor = await this.api(`repos/${identity}/actions/workflows/sutura.yml`);
     } catch (error) {
-      if (error?.status === 404) return { state: 'uninstalled', repositoryId: repo.id, workflows: [] };
+      if (error?.status === 404) {
+        const pages = await this.api(`repos/${identity}/actions/workflows?per_page=100`, ['--paginate', '--slurp']);
+        return { state: 'uninstalled', repositoryId: repo.id, defaultBranch: repo.default_branch, workflows: [],
+          inventoryComplete: true, observedAt: new Date().toISOString(),
+          allWorkflows: completePages(pages, 'workflows').map(({ id, name, path, state }) =>
+            ({ id, name, path, state, watched: false, disposition: 'not-watched-intent-unmeasured' })) };
+      }
       throw error;
     }
     const content = await this.api(`repos/${identity}/contents/.github/workflows/sutura.yml?ref=${encodeURIComponent(repo.default_branch)}`);
@@ -624,8 +635,9 @@ export class GhFleetClient {
       throw new Error('Monitor workflow has no supported exact CI workflow list');
     }
     const pages = await this.api(`repos/${identity}/actions/workflows?per_page=100`, ['--paginate', '--slurp']);
-    const workflows = completePages(pages, 'workflows')
-      .filter(({ name }) => names.includes(name)).map(({ id, name }) => ({ id, name }));
+    const allWorkflows = completePages(pages, 'workflows').map(({ id, name, path, state }) => ({ id, name, path, state,
+      watched: names.includes(name), disposition: names.includes(name) ? 'watched' : 'not-watched-intent-unmeasured' }));
+    const workflows = allWorkflows.filter(({ watched }) => watched);
     if (workflows.length !== names.length) throw new Error('Monitored CI workflow identity is unavailable');
     let disabledVariable = false;
     try {
@@ -635,6 +647,12 @@ export class GhFleetClient {
       if (error?.status !== 404) throw error;
     }
     return { repositoryId: repo.id, state: monitor.state === 'active' && !disabledVariable ? 'active' : 'disabled',
+      defaultBranch: repo.default_branch, monitorWorkflowId: monitor.id,
+      monitorPath: monitor.path ?? '.github/workflows/sutura.yml', monitorBlobSha: content.sha ?? null,
+      actionShas: [...new Set(Object.values(parsed.jobs ?? {}).flatMap(job => (job.steps ?? []).flatMap(step => {
+        const match = /^juan294\/sutura@([a-f0-9]{40})(?:\s|$)/u.exec(step.uses ?? ''); return match ? [match[1]] : [];
+      })))],
+      observedAt: new Date().toISOString(), inventoryComplete: true, allWorkflows,
       stateReason: disabledVariable ? 'repository-variable' : monitor.state,
       activationAt: this.activationAtByRepository[repository] ?? null,
       activationUpperBoundAt: this.activationEvidenceByRepository[repository]?.firstObservedMonitorRunAt ?? null,
@@ -684,6 +702,13 @@ export class GhFleetClient {
       conclusion: run.conclusion, createdAt: run.created_at, completedAt: run.updated_at,
       startedAt: run.run_started_at, attempt: run.run_attempt,
       url: run.html_url,
+      status: run.status ?? null, event: run.event ?? null,
+      actorId: Number.isSafeInteger(run.actor?.id) ? run.actor.id : null,
+      triggeringActorId: Number.isSafeInteger(run.triggering_actor?.id) ? run.triggering_actor.id : null,
+      workflowDefinition: { path: run.path ?? workflow.path ?? null, sha: null },
+      paginationComplete: true,
+      metadataComplete: Number.isSafeInteger(run.id) && Number.isSafeInteger(run.workflow_id) &&
+        Number.isSafeInteger(run.run_attempt) && SHA.test(run.head_sha ?? '') && typeof run.event === 'string',
     }));
   }
 
@@ -711,22 +736,65 @@ export class GhFleetClient {
     const diffSha = createHash('sha256').update(JSON.stringify(files.map(({ filename, status, patch }) =>
       ({ filename, status, patch })))).digest('hex');
     return { number: pr.number, sourceRunId: source.id, sourceSha: source.headSha,
+      repositoryId: pr.base?.repo?.id ?? null, sourceAttempt: null,
+      sourceParentSha: source.headSha, headBranch: pr.head.ref, baseSha: pr.base.sha ?? null,
+      // The legacy marker binds the run, not its attempt; never copy the loop attempt into proof.
       baseBranch: pr.base.ref, headSha: pr.head.sha, diffSha,
       merged: typeof pr.merged_at === 'string', integrationSha: pr.merge_commit_sha ?? null,
       url: pr.html_url ?? null };
   }
 
-  async downloadArtifact(repository, runId, artifact) {
+  async readJobLog(repository, jobId) {
     const identity = repositoryIdentity(this.owner, repository);
-    const directory = await mkdtemp(join(tmpdir(), 'sutura-fleet-artifact-'));
+    const maximum = 1024 * 1024;
+    let bytes, truncated = false;
     try {
-      await execFile(this.gh, ['run', 'download', String(runId), '--repo', identity, '--name', artifact.name, '--dir', directory], { maxBuffer: 8 * 1024 * 1024 });
-      const files = await readdir(directory, { recursive: true });
-      if (files.length !== 1) throw new Error('Sutura evidence artifact must contain exactly one file');
-      return readFile(join(directory, files[0]), 'utf8');
-    } finally {
-      await rm(directory, { recursive: true, force: true });
+      const { stdout } = await execFile(this.gh, ['api', `repos/${identity}/actions/jobs/${jobId}/logs`],
+        { maxBuffer: maximum, timeout: 30_000, encoding: 'buffer' });
+      bytes = Buffer.from(stdout);
+    } catch (error) {
+      if (error?.code !== 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') throw error;
+      bytes = Buffer.from(error.stdout ?? '').subarray(0, maximum); truncated = true;
     }
+    return { text: bytes.toString('utf8'), sha256: createHash('sha256').update(bytes).digest('hex'),
+      bytes: bytes.length, truncated };
+  }
+
+  async inspectFailedRun(repository, source) {
+    if (!Number.isSafeInteger(source.id) || !Number.isSafeInteger(source.attempt) || source.attempt < 1 || !SHA.test(source.headSha ?? '')) {
+      throw new Error('Failed-run detail requires exact run, attempt and source SHA');
+    }
+    const identity = repositoryIdentity(this.owner, repository);
+    const pages = await this.api(`repos/${identity}/actions/runs/${source.id}/attempts/${source.attempt}/jobs?per_page=100`, ['--paginate', '--slurp']);
+    const jobs = completePages(pages, 'jobs');
+    if (jobs.length > 1000 || jobs.some(job => job.run_id !== source.id || job.run_attempt !== source.attempt || job.head_sha !== source.headSha)) {
+      throw new Error('Failed-run job identity is unavailable or mismatched');
+    }
+    const failed = jobs.filter(job => ['failure', 'timed_out'].includes(job.conclusion));
+    const selected = failed.length === 1 ? failed[0] : null;
+    const steps = selected?.steps?.filter(step => ['failure', 'timed_out'].includes(step.conclusion)) ?? [];
+    const unique = selected && steps.length === 1;
+    const log = unique ? await this.readJobLog(repository, selected.id) : null;
+    return { complete: Boolean(unique && log && !log.truncated), selectedJobId: selected?.id ?? null,
+      selectedStepNumber: unique ? steps[0].number : null,
+      reason: unique ? log?.truncated ? 'source-log-truncated' : 'selected-step-observed' : 'selected-failure-ambiguous',
+      jobs: jobs.map(job => ({ id: job.id, name: job.name, conclusion: job.conclusion,
+        steps: (job.steps ?? []).map(step => ({ number: step.number, name: step.name, conclusion: step.conclusion })) })), log };
+  }
+
+  async collectNativeVerification(repository, source, monitor, repairPr, contract) {
+    return collectNativeVerification({ repository, source, monitor, repairPr, contract, client: this });
+  }
+
+  async downloadArtifact(repository, runId, artifact, { maximumBytes = 32 * 1024 * 1024 } = {}) {
+    const identity = repositoryIdentity(this.owner, repository);
+    if (!Number.isSafeInteger(runId) || runId <= 0 || !Number.isSafeInteger(artifact?.id) || artifact.id <= 0 ||
+        !Number.isSafeInteger(maximumBytes) || maximumBytes <= 0 || maximumBytes > 64 * 1024 * 1024 ||
+        (artifact.size_in_bytes !== undefined && (!Number.isSafeInteger(artifact.size_in_bytes) || artifact.size_in_bytes > maximumBytes)) ||
+        (artifact.workflow_run?.id !== undefined && artifact.workflow_run.id !== runId)) throw new Error('Evidence artifact identity or size is invalid');
+    const { stdout } = await execFile(this.gh, ['api', `repos/${identity}/actions/artifacts/${artifact.id}/zip`],
+      { maxBuffer: maximumBytes, timeout: 30_000, encoding: 'buffer' });
+    return decodeSingleFileArtifact(stdout, maximumBytes);
   }
 }
 

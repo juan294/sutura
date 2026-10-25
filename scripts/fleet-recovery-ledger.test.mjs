@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { sealIncidentEvidence, verificationContractDigest } from './fleet-incident-evidence.mjs';
 
 import {
   classifyFleetIncident, collectRecoveryLedger, mergeObservations, persistObservation,
@@ -35,6 +36,40 @@ const nextGreen = {
   completedAt: '2026-09-20T10:30:00.000Z',
 };
 const complete = { source, monitor, repairPr, repairCi, nextGreen };
+
+test('writer publishes companion qualification and revokes it without changing historical v2 labels', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sutura-qualified-writer-'));
+  try {
+    const exactSource = { repositoryId: 7, sourceRunId: 41, sourceAttempt: 1, sourceSha: SHA('a'), workflowId: 12, branch: 'develop' };
+    const jobs = [{ workflowId: 12, jobKey: 'checks' }];
+    const contract = { schemaVersion: 'sutura-native-verification-v1', repositoryId: 7, protected: true, fullRequired: true, baseBranch: 'develop',
+      policySource: { repositoryId: 7, ref: 'refs/heads/develop', sha: SHA('b'), path: '.github/native.json' },
+      stages: { proposal: { event: 'pull_request', branchRole: 'repair-head', requiredJobs: jobs },
+        integration: { event: 'push', branchRole: 'base', requiredJobs: jobs } } };
+    contract.policyDigest = verificationContractDigest(contract);
+    const record = { schemaVersion: 'sutura-incident-evidence-v1', source: exactSource, observedAt: '2026-09-21T00:00:00.000Z',
+      classificationRevision: 'v1', policyDigest: contract.policyDigest,
+      completeness: { collection: true, source: true, native: true, logs: false }, proof: {
+        monitor: { ...monitor, repositoryId: 7, runId: 51, attempt: 1, sourceAttempt: 1, sourceSha: SHA('a'), complete: true,
+          publication: { prNumber: 91, headSha: SHA('c'), diffDigest: DIGEST('d') } },
+        repairPr: { ...repairPr, repositoryId: 7, sourceAttempt: 1, sourceParentSha: SHA('a'), baseSha: SHA('b'),
+          headBranch: 'sutura/fix-41', diffDigest: DIGEST('d') },
+        native: ['proposal', 'integration'].map((stage, index) => ({ stage, repositoryId: 7, workflowId: 12, runId: 61 + index, attempt: 1,
+          event: index ? 'push' : 'pull_request', branch: index ? 'develop' : 'sutura/fix-41', headSha: index ? SHA('e') : SHA('c'),
+          testedSha: index ? SHA('e') : SHA('c'), status: 'completed', conclusion: 'success', jobsComplete: true,
+          policyDigest: contract.policyDigest, policySourceSha: SHA('b'),
+          jobs: [{ jobKey: 'checks', runId: 61 + index, attempt: 1, testedSha: index ? SHA('e') : SHA('c'), status: 'completed', conclusion: 'success' }] })),
+      } };
+    const result = { installations: [], incidents: [classifyFleetIncident(complete)], baselines: [], coverage: { complete: true },
+      verificationContracts: { 7: contract }, evidenceObservations: [sealIncidentEvidence(record)] };
+    const first = await writeRecoveryLedger(result, directory, record.observedAt);
+    assert.equal(first.delivery.verifiedRepairPrs, 1); assert.equal(first.delivery.integratedRecoveries, 1);
+    record.observedAt = '2026-09-22T00:00:00.000Z';
+    record.proof.native[1].jobs[0].conclusion = 'failure';
+    const second = await writeRecoveryLedger({ ...result, evidenceObservations: [sealIncidentEvidence(record)] }, directory, record.observedAt);
+    assert.equal(second.delivery.integratedRecoveries, 0); assert.equal(second.states['sutura-green'], 1);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
 
 test('recovery needs exact repair PR, passing repair CI, integration and same-workflow branch green', () => {
   assert.equal(classifyFleetIncident(complete).state, 'sutura-green');
@@ -135,6 +170,98 @@ test('public report excludes private identifiers, URLs and free text', () => {
     assert.equal(publicValue.includes(secret), false);
   }
   assert.equal(JSON.parse(publicValue).states['sutura-green'], 1);
+});
+
+test('v2 green labels remain historical and cannot populate current qualified delivery', () => {
+  const summary = summarizeRecovery([classifyFleetIncident(complete)]);
+  assert.equal(summary.states['sutura-green'], 1);
+  assert.equal(summary.verifiedRepairPrs, null);
+  assert.equal(summary.delivery.integratedRecoveries, null);
+  assert.equal(summary.qualification.unmeasured, 1);
+});
+test('public recovery export allows only fixed nested fields and numeric aggregates', () => {
+  const summary = summarizeRecovery([classifyFleetIncident(complete)]);
+  summary.states.privateSentinel = 'secret-value'; summary.delivery.privateSentinel = 'secret-value';
+  summary.actionCohorts.privateSentinel = 1; summary.causes['private-value'] = 1;
+  summary.costCoverage.privateSentinel = 'secret-value';
+  const result = JSON.stringify(publicRecoverySummary(summary));
+  assert.doesNotMatch(result, /secret-value|privateSentinel|private-value/u);
+});
+test('zero repository census is incomplete rather than vacuously green', async () => {
+  const result = await collectRecoveryLedger({ repositories: [], startedAt: '2026-09-13T00:00:00.000Z' }, {}, []);
+  assert.equal(result.coverage.complete, false);
+});
+test('collector preserves source metadata in a separate companion without changing the v2 incident schema', async () => {
+  const result = await collectRecoveryLedger({ repositories: ['alpha'], startedAt: '2026-09-13T00:00:00.000Z' }, {
+    async inspectRepository() { return { state: 'active', repositoryId: 7, workflows: [{ id: 12, name: 'CI' }] }; },
+    async listCiRuns() { return [{ ...source, attempt: 2, event: 'schedule', actorId: 9, triggeringActorId: 10, metadataComplete: true }]; },
+    async inspectFailedRun() { return { complete: true, selectedJobId: 81, selectedStepNumber: 4,
+      log: { text: 'synthetic assertion', sha256: DIGEST('a'), truncated: false }, jobs: [] }; },
+  }, [], new Date('2026-09-21T00:00:00.000Z'));
+  assert.equal(result.incidents[0].schemaVersion, 'sutura-fleet-incident-v2');
+  assert.equal(Object.hasOwn(result.incidents[0], 'trigger'), false);
+  assert.equal(result.evidenceObservations[0].trigger.event, 'schedule');
+  assert.equal(result.evidenceObservations[0].trigger.actorId, 9);
+  assert.equal(result.evidenceObservations[0].source.sourceAttempt, 2);
+  assert.equal(result.evidenceObservations[0].sourceEvidence.selectedStepNumber, 4);
+});
+test('corrupt companion history leaves the last good summary and original v2 journal bytes unchanged', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sutura-companion-summary-'));
+  try {
+    const result = { installations: [], incidents: [classifyFleetIncident(complete)], baselines: [],
+      coverage: { complete: true, unmeasuredRepositories: 0, actorProvenanceAvailable: false, baselineComplete: false } };
+    await writeRecoveryLedger(result, directory, '2026-09-20T11:00:00.000Z');
+    const before = await readFile(join(directory, 'recovery-summary.json'));
+    const { mkdir, writeFile } = await import('node:fs/promises');
+    const journal = join(directory, 'incident-evidence-v1'); await mkdir(journal, { recursive: true });
+    await writeFile(join(journal, `7-41-1-${DIGEST('a')}.json`), '{}');
+    await assert.rejects(writeRecoveryLedger(result, directory, '2026-09-21T11:00:00.000Z'), /integrity/u);
+    assert.deepEqual(await readFile(join(directory, 'recovery-summary.json')), before);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+test('invalid incoming companion cannot append v2 history before rejection', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sutura-incoming-integrity-'));
+  try {
+    const result = { installations: [], incidents: [classifyFleetIncident(complete)], baselines: [],
+      coverage: { complete: true, unmeasuredRepositories: 0, actorProvenanceAvailable: false, baselineComplete: false } };
+    await writeRecoveryLedger(result, directory, '2026-09-20T11:00:00.000Z');
+    const journal = join(directory, 'observations-v2');
+    const before = await readdir(journal), summary = await readFile(join(directory, 'recovery-summary.json'));
+    await assert.rejects(writeRecoveryLedger({ ...result, evidenceObservations: [{}] }, directory, '2026-09-21T11:00:00.000Z'));
+    assert.deepEqual(await readdir(journal), before);
+    assert.deepEqual(await readFile(join(directory, 'recovery-summary.json')), summary);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+test('missing monitor discloses incomplete scope without hiding previously observed incidents', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sutura-missing-monitor-'));
+  try {
+    const scope = { startedAt: '2026-09-13T00:00:00.000Z', repositories: [{ repository: 'alpha', repositoryId: 7, workflowIds: [12], activationAt: null }] };
+    await writeRecoveryLedger({ installations: [], incidents: [classifyFleetIncident(complete)], baselines: [], scope,
+      coverage: { complete: true, unmeasuredRepositories: 0, actorProvenanceAvailable: false, baselineComplete: false } }, directory);
+    const result = await collectRecoveryLedger({ repositories: ['alpha'], startedAt: scope.startedAt }, {
+      async inspectRepository() { return { state: 'uninstalled', repositoryId: 7, workflows: [], inventoryComplete: true,
+        allWorkflows: [{ id: 12, disposition: 'not-watched-intent-unmeasured' }] }; },
+    }, []);
+    assert.equal(result.coverage.complete, false);
+    assert.equal(result.coverage.baselineComplete, false);
+    await writeRecoveryLedger(result, directory);
+    const incidents = (await readFile(join(directory, 'incidents-v2.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+    assert.equal(incidents.length, 1);
+    assert.equal(incidents[0].sourceRunId, 41);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+test('conflicting incident identity is rejected even without native enrollment', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sutura-conflicting-identity-'));
+  try {
+    const incident = classifyFleetIncident(complete);
+    const record = sha => sealIncidentEvidence({ schemaVersion: 'sutura-incident-evidence-v1',
+      source: { repositoryId: 7, sourceRunId: 41, sourceAttempt: 1, sourceSha: sha, workflowId: 12, branch: 'develop' },
+      observedAt: '2026-09-20T11:00:00.000Z', classificationRevision: 'v1',
+      completeness: { collection: true, source: true, native: false, logs: false }, proof: {} });
+    await assert.rejects(writeRecoveryLedger({ installations: [], incidents: [incident], baselines: [],
+      evidenceObservations: [record(SHA('a')), record(SHA('c'))], coverage: { complete: false } }, directory), /integrity|identity/iu);
+    assert.deepEqual((await readdir(directory)).filter(name => name !== 'incident-evidence-v1'), []);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
 test('collector inventories every repository and keeps separate activation baselines', async () => {
@@ -377,6 +504,6 @@ test('delivery stages require native proposal and integration proof independentl
   const integrated = classifyFleetIncident(complete);
   const result = publicRecoverySummary(summarizeRecovery([fixedOnly, proposed, integrated]));
   assert.deepEqual(result.delivery, {
-    typedFixedOutcomes: 3, verifiedRepairPrs: 2, integratedRecoveries: 1,
+    typedFixedOutcomes: 3, verifiedRepairPrs: null, integratedRecoveries: null,
   });
 });

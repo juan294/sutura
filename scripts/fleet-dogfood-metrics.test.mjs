@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -320,8 +320,44 @@ test('public summary removes repository identities and daily snapshots are idemp
     const snapshots = (await readFile(join(directory, 'snapshots.jsonl'), 'utf8')).trim().split('\n');
     assert.equal(snapshots.length, 1);
     assert.equal((await readFile(join(directory, 'events.jsonl'), 'utf8')).includes('private-project'), true);
+    const old = { ...JSON.parse(snapshots[0]), collectedAt: '2026-09-12T12:00:00.000Z',
+      delivery: { privateSentinel: 'private-old-snapshot' } };
+    await writeFile(join(directory, 'snapshots.jsonl'), JSON.stringify(old) + '\n');
+    await writeFleetMetrics(result, directory);
+    const retained = await readFile(join(directory, 'snapshots.jsonl'), 'utf8');
+    assert.doesNotMatch(retained, /privateSentinel|private-old-snapshot/u);
+    assert.equal(retained.trim().split('\n').length, 2);
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('uninstalled monitor retains every discovered workflow disposition', async () => {
+  const client = new GhFleetClient('owner');
+  client.api = async path => {
+    if (path === 'repos/owner/alpha') return { id: 7, default_branch: 'main' };
+    if (path.includes('/actions/workflows?')) return [{ total_count: 1, workflows: [{ id: 12, name: 'CI', path: '.github/workflows/ci.yml', state: 'active' }] }];
+    if (path.endsWith('/actions/workflows/sutura.yml')) throw Object.assign(new Error('not found'), { status: 404 });
+    throw new Error(`Unexpected API ${path}`);
+  };
+  const result = await client.inspectRepository('alpha');
+  assert.equal(result.state, 'uninstalled');
+  assert.equal(result.defaultBranch, 'main');
+  assert.equal(result.inventoryComplete, true);
+  assert.deepEqual(result.allWorkflows, [{ id: 12, name: 'CI', path: '.github/workflows/ci.yml', state: 'active', watched: false, disposition: 'not-watched-intent-unmeasured' }]);
+});
+test('pagination rejects duplicate identities and changing totals before declaring completeness', async () => {
+  const client = new GhFleetClient('owner');
+  for (const pages of [
+    [{ total_count: 2, workflows: [{ id: 12 }] }, { total_count: 2, workflows: [{ id: 12 }] }],
+    [{ total_count: 2, workflows: [{ id: 12 }] }, { total_count: 3, workflows: [{ id: 13 }] }],
+  ]) {
+    client.api = async path => {
+      if (path === 'repos/owner/alpha') return { id: 7, default_branch: 'main' };
+      if (path.includes('/actions/workflows?')) return pages;
+      throw Object.assign(new Error('not found'), { status: 404 });
+    };
+    await assert.rejects(client.inspectRepository('alpha'), /pagination/u);
   }
 });
 
@@ -509,6 +545,7 @@ test('fleet report distinguishes captured fixed outcomes from verified delivery 
       now: new Date('2026-10-23T07:10:00.000Z'),
       recoverySummary: { observedAt: '2026-10-21T07:43:00.000Z', verifiedRepairPrs: 0,
         states: { 'sutura-green': 0 },
+        qualification: { verifiedRepairPrs: 0, integratedRecoveries: 0 },
         coverage: { complete: true, baselineComplete: false, actorProvenanceAvailable: false } },
     });
     const report = JSON.parse(await readFile(join(directory, 'summary.json'), 'utf8'));
@@ -547,4 +584,38 @@ test('fleet report with no current recovery ledger leaves delivery unavailable',
     assert.equal(report.evidence.freshness.recovery.status, 'unavailable');
     assert.match(await readFile(join(directory, 'summary.md'), 'utf8'), /Verified repair PRs \(native CI\) \| unavailable/u);
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('public fleet summaries discard nested identifiers and arbitrary failure-code keys', () => {
+  const result = publicFleetSummary({ schemaVersion: 'sutura-fleet-summary-v2', collectedAt: '2026-10-25T09:00:00.000Z',
+    startedAt: '2026-10-01T00:00:00.000Z', actionCommit: 'a'.repeat(40), fleetRepositories: 1,
+    privateRepository: 'private-value', outcomes: { fixed: 1, privateRepository: 'private-value' },
+    failureCauses: { 'private-value': 1, 'runtime-evidence-limit': 1 },
+    delivery: { typedFixedOutcomes: 1, verifiedRepairPrs: null, integratedRecoveries: null, privateValue: 'private-value' } });
+  assert.doesNotMatch(JSON.stringify(result), /private-value|privateRepository|privateValue/u);
+  assert.equal(result.failureCauses['runtime-evidence-limit'], 1);
+});
+test('CI records retain authenticated trigger metadata and workflow identity without inventing missing actors', async () => {
+  const client = new GhFleetClient('owner');
+  client.api = async () => [{ total_count: 1, workflow_runs: [{ id: 41, run_attempt: 1, workflow_id: 12,
+    repository: { id: 7 }, path: '.github/workflows/ci.yml', event: 'schedule', actor: { id: 9 },
+    triggering_actor: { id: 10 }, head_branch: 'integration', head_sha: 'a'.repeat(40),
+    conclusion: 'failure', updated_at: '2026-10-25T09:00:00Z' }] }];
+  const runs = await client.listCiRuns('alpha', { id: 12 }, '2026-10-01T00:00:00.000Z');
+  assert.equal(runs[0].event, 'schedule'); assert.equal(runs[0].actorId, 9);
+  assert.equal(runs[0].triggeringActorId, 10); assert.equal(runs[0].workflowDefinition.path, '.github/workflows/ci.yml');
+  assert.equal(runs[0].workflowDefinition.sha, null);
+  assert.equal(runs[0].paginationComplete, true);
+});
+test('failed-run evidence binds exact attempt and explicitly marks ambiguous failed steps', async () => {
+  const client = new GhFleetClient('owner'); let logCalls = 0;
+  client.api = async path => {
+    assert.match(path, /runs\/41\/attempts\/2\/jobs/u);
+    return [{ total_count: 1, jobs: [{ id: 81, run_id: 41, run_attempt: 2, head_sha: 'a'.repeat(40),
+      conclusion: 'failure', steps: [{ number: 3, name: 'Tests', conclusion: 'failure' }, { number: 4, name: 'Gate', conclusion: 'failure' }] }] }];
+  };
+  client.readJobLog = async () => { logCalls++; return { text: 'native-log', truncated: false }; };
+  const result = await client.inspectFailedRun('alpha', { id: 41, attempt: 2, headSha: 'a'.repeat(40) });
+  assert.equal(result.selectedStepNumber, null); assert.equal(result.complete, false);
+  assert.equal(logCalls, 0);
 });

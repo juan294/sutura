@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { nodeImageRefForRepository } from './node.js';
+import { nodeImageRefForRepository, nodeImageRefForDeclarations } from './node.js';
 
 describe('nodeImageRefForRepository', () => {
   let dir: string;
@@ -88,5 +88,13 @@ describe('nodeImageRefForRepository', () => {
   it('uses the package engine when .nvmrc is absent', async () => {
     await writeFile(join(dir, 'package.json'), JSON.stringify({ engines: { node: '>=24 <25' } }));
     await expect(nodeImageRefForRepository(dir)).resolves.toBe('node:24');
+  });
+});
+
+describe('pure Node declaration validation', () => {
+  it('uses the same version selection without filesystem reads', () => {
+    expect(nodeImageRefForDeclarations({ nvmrc: '24', packageJson: '{"engines":{"node":">=22"}}' })).toBe('node:24');
+    expect(() => nodeImageRefForDeclarations({ nvmrc: '24', packageJson: '{"engines":{"node":"<23"}}' })).toThrow(/conflict/u);
+    expect(() => nodeImageRefForDeclarations({ packageJson: '{' })).toThrow();
   });
 });
