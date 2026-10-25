@@ -1,4 +1,5 @@
 import { parseDocument } from 'yaml';
+import { assessPythonDeclarations } from './python-declarations.js';
 import { detectRuntime, RuntimeDetectionError } from '../runtime/detect.js';
 import { nodeImageRefForDeclarations } from '../runtime/node.js';
 import { PYTHON_IMAGE_REF, validatePythonDependencyContents } from '../runtime/python.js';
@@ -142,6 +143,13 @@ export function assessJobSupport(input: JobAssessmentInput): JobAssessmentRecord
   }
   record = { ...record, runtime: runtime.id };
   if (runtime.id === 'python') {
+    const declarationFit = assessPythonDeclarations(input.files['pyproject.toml'], input.files['uv.lock']);
+    if (declarationFit === 'unknown') {
+      return stop(record, 'unknown', 'python-runtime-declaration-unknown', 'unambiguous-python-declarations', 'Capture supported static project and lock requires-python declarations for the advertised interpreter.');
+    }
+    if (declarationFit === 'incompatible') {
+      return stop(record, 'unsupported', 'runtime-version-unsupported', 'supported-python-declarations', 'Select a job whose project and lock declarations admit the advertised Python interpreter; no runtime is changed automatically.');
+    }
     try {
       validatePythonDependencyContents({ pyproject: input.files['pyproject.toml'] ?? null, uvLock: input.files['uv.lock'] ?? null,
         requirements: input.files['requirements.txt'] ?? null, poetryLock: input.files['poetry.lock'] ?? null });

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { assessJobSupport } from './assess.js';
 import { classifyIncident } from './classify.js';
@@ -247,6 +248,86 @@ describe('explicit workspace metadata shapes', () => {
     const input = nodeInput(); input.files = { ...input.files, 'package.json': JSON.stringify({ name: 'fixture', workspaces }),
       'packages/app/package.json': '{"name":"app","dependencies":{"public-package":"1.0.0"}}' };
     input.paths = [...input.paths, 'packages/app/package.json'];
+    expect(assessJobSupport(input).support).toBe('candidate-supported');
+  });
+});
+
+describe('Python declarations against the advertised runtime', () => {
+  function declared(project: string, lock?: string): JobAssessmentInput {
+    const input = pythonInput();
+    input.files = { ...input.files, 'pyproject.toml': input.files['pyproject.toml'] + project };
+    if (lock !== undefined) input.files = { ...input.files, 'uv.lock': `${lock}\n${input.files['uv.lock']}` };
+    return input;
+  }
+  it.each(['>=3.14', '<3.13', '==3.13', '!=3.13.11', '>3.13.11', '<=3.13.10', '~=3.12.0', '==3.12.*', '!=3.13.*', '~=3.13.12'])('rejects incompatible stable declaration %s', range => {
+    expect(assessJobSupport(declared(`requires-python = "${range}"\n`))).toMatchObject({ support: 'unsupported', reason: 'runtime-version-unsupported', confidence: 'confirmed' });
+  });
+  it.each(['>=3.10,<3.14', '==3.13.11', '==3.13.11.0', '<=3.13.11', '>3.13.10', '~=3.13', '~=3.13.0', '~=3.13.11', '==3.*', '==3.13.*', '!=3.12.*', '>=3.013.011'])('retains candidate-only fit for %s', range => {
+    expect(assessJobSupport(declared(`requires-python = '${range}' # selected release\n`, `requires-python = "${range}"`))).toMatchObject({ support: 'candidate-supported', confidence: 'suspected', readiness: { prepared: 'unmeasured', reproduced: 'unmeasured' } });
+  });
+  it('requires both project and lock declarations to admit the pinned release', () => {
+    expect(assessJobSupport(declared('requires-python = ">=3.10"\n', 'requires-python = ">=3.14"'))).toMatchObject({ support: 'unsupported', reason: 'runtime-version-unsupported' });
+  });
+  it.each(['~=3', '>=3.13rc1', '===3.13.11', '>=3.10 || <3.14', '>=3.10,', '>=3.10,wat', '>=3.14,wat', '==3.13.*.0', '>=3.13.*', '1!3.13', '>=3.13; os_name == x', ''])('does not guess unhandled or malformed constraint %s', range => {
+    expect(assessJobSupport(declared(`requires-python = "${range}"\n`))).toMatchObject({ support: 'unknown', reason: 'python-runtime-declaration-unknown' });
+  });
+  it.each([
+    'requires-python = 314\n',
+    'requires-python = ">=3.10"\nrequires-python = ">=3.14"\n',
+    'requires-python = ">=3.10"\n[project]\nrequires-python = ">=3.14"\n',
+    'requires-python = """>=3.14"""\n',
+    'requires-python = ">=3.\\u00314"\n',
+    'dynamic = ["requires-python"]\n',
+    'dynamic = [,]\n',
+    'dynamic = "version"\n',
+    'requires-python\n',
+  ])('keeps ambiguous TOML declaration unknown: %s', text => {
+    expect(assessJobSupport(declared(text))).toMatchObject({ support: 'unknown', reason: 'python-runtime-declaration-unknown' });
+  });
+  it.each(['project.requires-python = ">=3.14"\n', 'project = { requires-python = ">=3.14" }\n'])('does not silently ignore alternative project construction: %s', prefix => {
+    const input = pythonInput(); input.files = { ...input.files, 'pyproject.toml': prefix + input.files['pyproject.toml'] };
+    expect(assessJobSupport(input)).toMatchObject({ support: 'unknown', reason: 'python-runtime-declaration-unknown' });
+  });
+  it('ignores commented and unrelated nested requirements without mistaking them for interpreter declarations', () => {
+    const input = declared('# requires-python = ">=3.14"\n[tool.example]\nrequires-python = ">=3.14"\n');
+    input.files = { ...input.files, 'uv.lock': input.files['uv.lock'] + 'requires-python = ">=3.14"\n' };
+    expect(assessJobSupport(input).support).toBe('candidate-supported');
+  });
+  it('accepts simple quoted declaration keys with comments', () => {
+    expect(assessJobSupport(declared('"requires-python" = ">=3.10" # permitted\n', "'requires-python' = '>=3.13'" )).support).toBe('candidate-supported');
+  });
+  it.each(['["project"]', "['project']", '[ project ]'])('recognizes simple project table spelling %s', table => {
+    const input = pythonInput(); input.files = { ...input.files, 'pyproject.toml': `${table}\nname="fixture"\nrequires-python=">=3.14"\n` };
+    expect(assessJobSupport(input)).toMatchObject({ support: 'unsupported', reason: 'runtime-version-unsupported' });
+  });
+  it('keeps escaped table spelling unknown', () => {
+    const input = pythonInput(); input.files = { ...input.files, 'pyproject.toml': '["pro\\u006aect"]\nrequires-python=">=3.14"\n' };
+    expect(assessJobSupport(input)).toMatchObject({ support: 'unknown', reason: 'python-runtime-declaration-unknown' });
+  });
+  it('does not let multiline strings spoof project scope', () => {
+    const input = pythonInput(); input.files = { ...input.files, 'pyproject.toml': 'description="""\n[project]\nrequires-python=">=3.10"\n"""\n[project]\nname="fixture"\nrequires-python=">=3.14"\n' };
+    expect(assessJobSupport(input)).toMatchObject({ support: 'unknown', reason: 'python-runtime-declaration-unknown' });
+  });
+
+});
+
+
+describe('Python declaration scanner on repository metadata', () => {
+  it('retains the existing public Placebo Python fixture', () => {
+    const input = pythonInput();
+    input.files = Object.fromEntries(['pyproject.toml', 'uv.lock'].map(name => [name,
+      readFileSync(new URL(`../../../placebo/corpus/python-repair-strip-suffix/fixture/${name}`, import.meta.url), 'utf8')]));
+    expect(assessJobSupport(input).support).toBe('candidate-supported');
+  });
+  it('reads actual evaluation lock wheel arrays before preserving its separate VCS dependency blocker', () => {
+    const input = pythonInput();
+    input.files = Object.fromEntries(['pyproject.toml', 'uv.lock'].map(name => [name,
+      readFileSync(new URL(`../../../evaluation/${name}`, import.meta.url), 'utf8')]));
+    expect(assessJobSupport(input)).toMatchObject({ support: 'unsupported', reason: 'python-dependencies-unsupported' });
+  });
+  it('permits unrelated dynamic version metadata with a static interpreter declaration', () => {
+    const input = pythonInput();
+    input.files = { ...input.files, 'pyproject.toml': '[project]\nname="fixture"\nrequires-python=">=3.13"\ndynamic = ["version", "description"]\n' };
     expect(assessJobSupport(input).support).toBe('candidate-supported');
   });
 });
