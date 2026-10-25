@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
-  createDefaultRepositoryPolicy, parseRepositoryPolicy, repairFailure,
+  classifyMechanically, createDefaultRepositoryPolicy, nativeFailureForCommand, parseRepositoryPolicy, repairFailure,
   type RepairFailureContext, type Diagnosis, type ChatMessage,
 } from '@sutura/core';
 import { applyPatch, createPortableTestRuntime, discoverCases } from '../corpus.js';
@@ -51,7 +51,9 @@ export async function runRecoveryControllerCase(caseId: string, options: { rewri
     const observedCommand = prepared.command;
     const observedLog = `Run ${observedCommand}\n${before.stdout}\n${before.stderr}`;
     const failedLog = options.modelRecovery ? observedLog.replace(/^.*❯.*$/gmu, '') : observedLog;
-    const initialClass: Diagnosis['class'] = caseId.includes('indexed-access') ? 'typecheck' : trap ? fixture.metadata.class : 'test-assertion';
+    const initialClass: Diagnosis['class'] = caseId === 'python-repair-await-result-preservation'
+      ? classifyMechanically(observedLog).class
+      : caseId.includes('indexed-access') ? 'typecheck' : trap ? fixture.metadata.class : 'test-assertion';
     const inferenceCalls: string[] = [];
     let rewrittenProposals = 0;
     const llm: RepairFailureContext['llm'] = {
@@ -116,6 +118,10 @@ export async function runRecoveryControllerCase(caseId: string, options: { rewri
     const caseFile = await repairFailure({
       runId: `local-recovery-${caseId}`, repo: `placebo/${caseId}`,
       failedLog,
+      nativeFailure: nativeFailureForCommand(observedCommand, observedLog, fixture.metadata.language === 'python' ? [] : [{
+        path: 'package.json', content: await readFile(join(prepared.directory, 'package.json'), 'utf8'),
+      }]),
+      baselineResult: before,
       failingImage: baseline, executor, llm,
       cost: { entries: [], totalUsd: () => 0 }, triageN: 2, raceK: 1,
       policy, runtime: executor.runtimeAdapter(fixture.metadata.language === 'python' ? 'python' : 'node'),

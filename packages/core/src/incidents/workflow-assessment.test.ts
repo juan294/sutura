@@ -1,7 +1,43 @@
 import { describe, expect, it } from 'vitest';
-import { extractAssessmentJobs, parseAssessmentWorkflow } from './workflow-assessment.js';
+import { extractAssessmentJobs, parseAssessmentWorkflow, selectAssessmentMetadata } from './workflow-assessment.js';
 
 const files = { 'package.json': JSON.stringify({ scripts: { test: 'vitest run' } }) };
+describe('workspace metadata admission guards', () => {
+  it.each(['null', '[]', '"package"'])('rejects a non-object root manifest: %s', manifest => {
+    expect(() => selectAssessmentMetadata({ 'package.json': manifest })).toThrow('manifest-object-required');
+  });
+  it.each(['packages/*', { packages: 'packages/*' }, {}])('rejects non-array package workspace declarations: %j', workspaces => {
+    expect(() => selectAssessmentMetadata({ 'package.json': JSON.stringify({ workspaces }) }))
+      .toThrow('workspace-format-unsupported');
+  });
+  it.each(['packages: packages/*', 'catalog: {}'])('rejects missing or non-array pnpm workspace packages: %s', workspace => {
+    expect(() => selectAssessmentMetadata({ ...files, 'pnpm-workspace.yaml': workspace }))
+      .toThrow('workspace-format-unsupported');
+  });
+  it.each(['../outside', '/outside', '!packages/private', 'packages/{a,b}', 'packages/partial*', 7])(
+    'rejects unsupported workspace patterns before admitting nested manifests: %j', pattern => {
+      expect(() => selectAssessmentMetadata({
+        'package.json': JSON.stringify({ workspaces: [pattern] }),
+        'packages/app/package.json': '{}',
+      })).toThrow('workspace-pattern-unsupported');
+    },
+  );
+  it('bounds workspace declarations while retaining valid scoped metadata at the limit', () => {
+    const workspaces = Array.from({ length: 256 }, (_, index) => `packages/app-${index}`);
+    const input = {
+      'package.json': JSON.stringify({ workspaces }),
+      'packages/app-255/package.json': '{"name":"selected"}',
+      'examples/unrelated/package.json': '{"name":"unrelated"}',
+    };
+    expect(selectAssessmentMetadata(input)).toEqual({
+      'package.json': input['package.json'],
+      'packages/app-255/package.json': input['packages/app-255/package.json'],
+    });
+    expect(() => selectAssessmentMetadata({ ...input,
+      'package.json': JSON.stringify({ workspaces: [...workspaces, 'packages/overflow'] }),
+    })).toThrow('workspace-pattern-unsupported');
+  });
+});
 describe('bounded workflow assessment data adapter', () => {
   it('preserves semantic on, permissions and custom job/step names', () => {
     const data = parseAssessmentWorkflow('on: [push]\npermissions: { contents: read }\njobs:\n  custom:\n    steps:\n      - run: pnpm test\n');

@@ -52,6 +52,8 @@ Independent collector review found and repaired pre-write validation ordering, r
 
 The full gate at `6e774d3421ac38a0fce3a16af6945c206d466d02` passed all workspace test suites, separate core/Action coverage and routing checks, but failed package installation: the new YAML dependency uses CommonJS Node built-ins inside the standalone ESM CLI bundle. A module-local `createRequire` banner repairs that boundary; an independently reviewed real startup regression passed after reproducing the failure. A separate static Python assessment correction compares project and lock declarations with the advertised interpreter, preserving unknown syntax as unknown. Review repaired ordinary lockfile-artifact and unrelated dynamic-metadata handling; 111 assessment cases passed, including existing repository fixtures. Both corrections remain subject to the final complete candidate gate; earlier failures are retained.
 
+Phase 3 local closure: the repaired clean candidate `45292806a2138dfbb207f7d2c408c7e3e6442ac0` passed the complete pinned local gate and coverage before the later product phases. The earlier installation and assessment failures above are historical, resolved attempts. Subsequent native producer preparation and collector integration are covered by phases 6–8. Consumer qualifications retain their individual limitations; no fleet-wide green result is inferred.
+
 ### Phase 3 adjustments
 
 - The plan referred to target Action/runtime identity. A provider-free first assessment also needs an exact packaged-runtime target before any Action exists. The tagged contract supports both and rejects mixed identities; a newer CLI still cannot certify an unknown older installed Action.
@@ -78,3 +80,9 @@ Stable publication, default-branch installation, 72-hour pilot/wave windows, del
 ## Final execution adjustment
 
 The owner explicitly required less redundant checking and faster completion. Disjoint phase 4–8 implementation proceeded together, followed by one combined final gate set; this departs from repeated full suites after each intermediate phase. Passing evidence is reused only for unchanged inputs. Independent reviews, confirmed repairs and final required gates remain recorded in the ignored handoff, including failed attempts. Secondary consumer verification is bounded: completed consumer gates are retained, newer integration changes receive affected checks, and an incomplete extended browser lane stays PARTIAL without restarting its service stack. Private details and final commit/check identities remain outside this public document.
+
+## Final local acceptance
+
+Local implementation through phase 8 and version 0.4.0 release preparation are complete. Final verification covers the full required local check selection, using retained passing inputs and focused corrections for test fixtures and uncovered guard cases. The full benchmark run is retained with its original failures; its recovery harness corrections preserve all existing outcome and security assertions. The guard scan passes 753/753. No additional production change was needed for those corrections.
+
+The immutable product and prepared pilot Action subject is `900b69d2227254504f40fef9aec9a9d5cc6836ee`; subsequent closure changes contain tests, test helpers and these notes only. Packed installation passed for that exact product. Local integration and owned-resource cleanup are authorized; publication, hosted activation and the external observation gates above remain separate. Exact final integration identities, review evidence, check receipts and individual consumer limitations are preserved in the private implementation handoff.

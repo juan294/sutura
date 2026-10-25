@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { cp, mkdir, mkdtemp, readFile, rm, symlink } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NODE_RUNTIME, PYTHON_RUNTIME, type Executor, type ImageId, type RunOptions, type RunResult, type RuntimeAdapter } from '@sutura/core';
@@ -129,7 +129,12 @@ export class LocalBranchExecutor implements Executor {
   }
   async importImage(): Promise<ImageId> { throw new Error('Local recovery tests seed a prepared fixture'); }
   async snapshot(): Promise<ImageId> { throw new Error('Local recovery tests seed a prepared fixture'); }
-  private process(cwd: string, command: string, options: RunOptions = {}): Promise<Omit<RunResult, 'imageId'>> {
+  private async process(cwd: string, command: string, options: RunOptions = {}): Promise<Omit<RunResult, 'imageId'>> {
+    // Emulate the sandbox's fixed source mount for this exact owned branch only.
+    const sourceRoots = [...new Set([cwd, await realpath(cwd)])].sort((left, right) => right.length - left.length);
+    const sourcePaths = (value: string) => sourceRoots.reduce(
+      (text, source) => text.replaceAll(source + '/', '/workspace/'), value,
+    );
     return new Promise((resolve, reject) => {
       const started = performance.now();
       let stdout = ''; let stderr = ''; let truncated = false;
@@ -147,7 +152,7 @@ export class LocalBranchExecutor implements Executor {
         clearTimeout(timer);
         if (options.operationId) this.active.delete(options.operationId);
         const exitCode = code ?? 1;
-        resolve({ exitCode, stdout, stderr, truncated, metrics: { elapsedTimeSec: (performance.now() - started) / 1000 }, ...(options.operationId === undefined ? {} : { operation: { operationId: options.operationId, terminal: this.cancelled.has(options.operationId) ? 'cancelled' : exitCode === 0 ? 'succeeded' : 'failed', cancellationRequested: this.cancelled.has(options.operationId) } }) });
+        resolve({ exitCode, stdout: sourcePaths(stdout), stderr: sourcePaths(stderr), truncated, metrics: { elapsedTimeSec: (performance.now() - started) / 1000 }, ...(options.operationId === undefined ? {} : { operation: { operationId: options.operationId, terminal: this.cancelled.has(options.operationId) ? 'cancelled' : exitCode === 0 ? 'succeeded' : 'failed', cancellationRequested: this.cancelled.has(options.operationId) } }) });
       });
     });
   }
