@@ -280,7 +280,7 @@ before enabling Sutura on confidential source.
 
 ## Install Sutura
 
-The 0.4.0 source in this branch is a local release candidate. It has not been published or activated by this implementation. The recorded public package and Case Lab evidence above remain v0.3.9. The following flow describes 0.4.0; use the candidate package locally, or `npx sutura@0.4.0` after publication.
+Version 0.4.0 adds repository assessment, guided setup and evidence-qualified recovery. The recorded Case Lab benchmark above remains v0.3.9 and does not measure 0.4.0 repair effectiveness. The following flow uses the 0.4.0 CLI; install it with `npx sutura@0.4.0` after publication, or use the packed candidate during release verification.
 
 Start from one repository clone with Node.js 22 or later. Assessment needs no provider account, GitHub authentication, source upload or script execution:
 

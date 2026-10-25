@@ -1,7 +1,7 @@
 # Sutura data boundaries
 
-Status: implementation contract refreshed against the local Sutura 0.4.0
-candidate on 2026-10-25. Publication and hosted activation remain pending.
+Status: implementation contract refreshed against Sutura 0.4.0 on 2026-10-25.
+Package publication alone does not establish consumer activation.
 Provider retention statements below retain their cited provider basis; this
 source review does not revalidate account settings or provider terms.
 

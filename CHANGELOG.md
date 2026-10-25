@@ -4,7 +4,7 @@
 
 ## [0.4.0] - 2026-10-25
 
-Local release candidate; publication and hosted activation remain pending.
+Repository assessment, guided setup and evidence-qualified CI recovery. Consumer activation and measured repair effectiveness remain separate from package publication.
 
 ### Added
 
@@ -17,6 +17,7 @@ Local release candidate; publication and hosted activation remain pending.
 
 - Breaking CLI migration: `init` previews by default. Apply the exact displayed plan digest with the same options; `--force` no longer overwrites a customized workflow. Environment credentials are used only when their names are explicitly selected.
 - Full and focused reproduction must match the selected native failure before repair inference proceeds. Mismatch or insufficient identity stops with consumed resources retained. Unsupported and setup stops remain non-repairs; admitted `require-fixed` remains strict.
+- Release policy no longer requires a pre-release pilot or a 72-hour wait. Reviewed local gates and exact-commit native CI remain required.
 
 ### Fixed
 
@@ -26,7 +27,7 @@ Local release candidate; publication and hosted activation remain pending.
 - Diagnosis no longer combines unrelated failed steps or accepts ungrounded model excerpts. Exact package-script provenance preserves supported Node and Python runner failures.
 - Recovery qualification requires the full native verification contract on the exact candidate and integration identity; a later green workflow alone cannot close an incident.
 
-Retired guidance: blind `init --force` workflow replacement and ambient credential upload. Historical release and benchmark records remain unchanged.
+Retired guidance: blind `init --force` workflow replacement, ambient credential upload, and the pre-release pilot/72-hour waiting prerequisite. Historical release and benchmark records remain unchanged.
 
 ## [0.3.9] - 2026-10-03
 

@@ -220,11 +220,11 @@ export async function installSutura(request: InitArguments, options: SetupOption
     ? prior.operations.filter(entry => entry.status === 'completed').map(entry => selected.operations.find(op => op.id === entry.id)!).filter(op => op.kind === 'secret-set' || op.kind === 'variable-set').map(op => op.name)
     : [];
   const missing = REQUIRED_NAMES.filter(name => !credentials.includes(name) && !configured.includes(name));
-  const result: SetupResult = { exitCode: 2, workflowPath: join(root, WORKFLOW_PATH), configured, missing, plan, lines: [
+  const result: SetupResult = { exitCode: 2, workflowPath: join(root, WORKFLOW_PATH), configured, missing, plan: selected, lines: [
     'Setup v1: init now previews; use the exact --apply digest after reviewing its scope. --force does not bypass review.',
     `CLI ${VERSION}; desired Action ${actionSha}; local workflow is not activated or repair-ready.`,
-    ...(plan.reconciliation ? ['Prior remote write outcome is unknown. This NEW plan explicitly replaces only its listed selected values; review it before applying. Historical receipts will be retained.'] : []),
-    ...blockers, `Next: ${plan.nextAction}`,
+    ...(selected.reconciliation ? ['Prior remote write outcome is unknown. This NEW plan explicitly replaces only its listed selected values; review it before applying. Historical receipts will be retained.'] : []),
+    ...selected.blockers, `Next: ${selected.nextAction}`,
   ] };
   if (!request.apply || request.plan) return result;
   if (request.apply !== selected.digest || selected.blockers.length || selected.root !== root ||
@@ -234,7 +234,6 @@ export async function installSutura(request: InitArguments, options: SetupOption
     result.lines.push('Plan digest or repository input drift; review a fresh plan before any effects.');
     return result;
   }
-  result.plan = selected;
   const receipt: SetupReceipt = prior?.planDigest === selected.digest ? prior : {
     schemaVersion: 1, planDigest: selected.digest, plan: selected,
     operations: selected.operations.map(op => ({ id: op.id, status: 'pending' })),

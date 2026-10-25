@@ -289,9 +289,19 @@ it('records and reconciles an interrupted local write without repeating remote c
   await installSutura({ ...request, apply: preview.plan!.digest }, options);
   const receipt = JSON.parse(await readFile(receiptPath(cwd), 'utf8'));
   receipt.operations[0].status = 'intent';
+  receipt.installation.workflowSha256 = null;
   await writeFile(receiptPath(cwd), JSON.stringify(receipt));
+  const workflowBefore = await readFile(join(cwd, '.github', 'workflows', 'sutura.yml'), 'utf8');
+  const freshPreview = await installSutura(request, options);
+  expect(freshPreview.plan?.blockers.join(' ')).toContain('not an unchanged owned installation');
   const resumed = await installSutura({ ...request, apply: preview.plan!.digest }, options);
   expect(resumed.receipt?.operations[0]?.status).toBe('completed');
+  expect(resumed.plan).toEqual(preview.plan);
+  expect(resumed.lines).toContain(`Next: ${preview.plan!.nextAction}`);
+  expect(resumed.lines.join(' ')).not.toMatch(/not an unchanged owned installation|Resolve the displayed scope\/ownership conflict/u);
+  expect(resumed.lines.join(' ')).toContain('Requested local/configuration operations completed');
+  expect(resumed.exitCode).toBe(2);
+  expect(await readFile(join(cwd, '.github', 'workflows', 'sutura.yml'), 'utf8')).toBe(workflowBefore);
   expect(options.run).not.toHaveBeenCalled();
 }));
 

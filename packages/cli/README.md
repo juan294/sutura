@@ -2,7 +2,7 @@
 
 Sutura verifies AI-generated CI repairs before it opens a pull request.
 
-The 0.4.0 candidate starts with one repository assessment. Node.js 22 or later is required; assessment needs no provider account and never runs repository scripts.
+Version 0.4.0 starts with one repository assessment. Node.js 22 or later is required; assessment needs no provider account and never runs repository scripts.
 
 ```bash
 sutura assess . --json
@@ -23,7 +23,7 @@ Doctor distinguishes installed and desired Action versions and static/configured
 
 `upgrade` changes reviewed pins without replacing App wiring or unrelated jobs. `pause`, `resume` and `remove` use the same plan/apply contract; removal requires an unchanged wholly owned workflow and retains credentials/evidence. Activation only occurs after the workflow reaches the default branch. No setup command activates a workflow or runs a paid smoke test.
 
-This source is a local 0.4.0 candidate. After publication, use `npx sutura@0.4.0` in place of `sutura`; local preparation is not registry publication.
+Use `npx sutura@0.4.0` in place of `sutura` after publication. Release verification uses the packed candidate before registry publication; installing the package alone does not activate a consumer workflow.
 
 Sutura handles pull request, push, scheduled, and manual CI failures. It records evidence on the pull request or failing commit and in one GitHub Check on the exact failing SHA.
 
