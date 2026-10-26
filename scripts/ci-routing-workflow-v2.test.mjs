@@ -26,7 +26,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 function checkoutFixture(installed, fn, { policy = true } = {}) {
  const root=mkdtempSync(join(tmpdir(),'sutura-protected-loader-'));
- const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('GIT_')));
+ const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('GIT_')&&!key.startsWith('GITHUB_')));
  const git=(...args)=>execFileSync('git',['-c','core.hooksPath=/dev/null',...args],{cwd:root,env,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
  try {
   git('init','-b','develop');git('config','user.email','test@example.invalid');git('config','user.name','Fixture');
