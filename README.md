@@ -280,7 +280,7 @@ before enabling Sutura on confidential source.
 
 ## Install Sutura
 
-Version 0.4.0 adds repository assessment, guided setup and evidence-qualified recovery. The recorded Case Lab benchmark above remains v0.3.9 and does not measure 0.4.0 repair effectiveness. The following flow uses the 0.4.1 CLI; install it with `npx sutura@0.4.1` after publication, or use the packed candidate during release verification.
+Version 0.4.1 includes repository assessment, guided setup and evidence-qualified recovery. The recorded Case Lab benchmark above remains v0.3.9 and does not measure 0.4.1 repair effectiveness. The following flow uses the 0.4.1 CLI; install it with `npx sutura@0.4.1` after publication, or use the packed candidate during release verification.
 
 Start from one repository clone with Node.js 22 or later. Assessment needs no provider account, GitHub authentication, source upload or script execution:
 

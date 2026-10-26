@@ -27,7 +27,7 @@ test('security docs distinguish ZDR inference from explicit Data Lab retention',
   const { version } = JSON.parse(await readFile('package.json', 'utf8'));
   assert.ok(readme.includes(`test-public-install.mjs --release ${version}`));
   assert.match(readme, /After publication, `node scripts\/test-public-install\.mjs/u);
-  assert.ok(readme.includes(`Version ${version} adds repository assessment`));
+  assert.ok(readme.includes(`Version ${version} includes repository assessment`));
   assert.match(readme, /recorded Case Lab benchmark[\s\S]{0,50}remains v0\.3\.9/u);
   assert.ok(readme.includes(`does not measure ${version} repair effectiveness`));
   assert.match(await readFile('docs/adoption/ws-3-marketplace-checklist.md', 'utf8'),

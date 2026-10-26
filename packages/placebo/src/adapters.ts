@@ -35,7 +35,7 @@ function failureCaseFile(reason: string, runtime: 'node' | 'python' = 'node'): C
     policy: { baseRef: 'local', baseSha: 'local', policySha: 'unavailable' },
     stages: [{
       stage: 'policy', attempt: 1, nodeId: 'node-001', metrics: {}, network: 'disabled',
-      note: 'Adapter stopped before provider execution',
+      note: 'Adapter failed; provider execution and cost are unavailable',
     }],
   };
 }
@@ -241,6 +241,7 @@ function parseCaseFile(result: ExecutionResult, runtime: 'node' | 'python'): Cas
     if (!value || typeof value.runId !== 'string' || typeof value.repo !== 'string' ||
         !validDiagnosis(value.diagnosis) || !validTriage(value.triage) || !validRace(value.race) ||
         !OUTCOMES.has(String(value.outcome)) || !validCost(value.cost) ||
+        (record(value.triage)?.stopReason === 'failure-identity' && value.outcome !== 'gave-up') ||
         value.runtime !== runtime ||
         !validPolicyEvidence(value.policy) || !validStages(value.stages) ||
         (audit !== undefined && !validAudit(audit)) ||

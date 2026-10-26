@@ -38,6 +38,17 @@ describe('CLI adapters', () => {
     ], expect.any(Object));
   });
 
+  it.each(['fixed', 'verified', 'flaky-no-patch', 'refused', 'infra-stop'])('rejects %s outcomes paired with a failure-identity stop', async (outcome) => {
+    const value = JSON.parse(VALID_CASE_FILE);
+    value.outcome = outcome;
+    value.triage = { ...notRunTriageVerdict(), stopReason: 'failure-identity',
+      reproduction: { version: 'sutura-failure-identity-v1', status: 'mismatch', parser: 'vitest', reason: 'Different failure' } };
+    const execute = vi.fn().mockResolvedValue({ stdout: JSON.stringify(value), stderr: '', exitCode: 0 });
+    const result = await new CliAdapter({ command: 'agent', execute }).heal('/tmp/case');
+    expect(result.runId).toBe('placebo-adapter-failure');
+    expect(result.stages?.[0]?.note).toBe('Adapter failed; provider execution and cost are unavailable');
+  });
+
   it.each([
     ['python', 'python'],
     ['javascript', 'node'],
