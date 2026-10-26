@@ -24,23 +24,23 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-function checkoutFixture(installed, fn) {
+function checkoutFixture(installed, fn, { policy = true } = {}) {
  const root=mkdtempSync(join(tmpdir(),'sutura-protected-loader-'));
  const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('GIT_')));
  const git=(...args)=>execFileSync('git',['-c','core.hooksPath=/dev/null',...args],{cwd:root,env,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
  try {
   git('init','-b','develop');git('config','user.email','test@example.invalid');git('config','user.name','Fixture');
   mkdirSync(join(root,'.github'));mkdirSync(join(root,'scripts'));
-  writeFileSync(join(root,'.github/ci-cadence.json'),JSON.stringify({schemaVersion:1,repository:'example/project',ownerId:42,owners:['owner'],integrationBranch:'develop',productionBranch:'main'}));
+  if(policy)writeFileSync(join(root,'.github/ci-cadence.json'),JSON.stringify({schemaVersion:1,repository:'example/project',ownerId:42,owners:['owner'],integrationBranch:'develop',productionBranch:'main'}));
   if(installed)writeFileSync(join(root,'scripts/ci-routing-v2.mjs'),readFileSync(fileURLToPath(new URL('./ci-routing-v2.mjs',import.meta.url))));
   writeFileSync(join(root,'app.txt'),'base');git('add','.');git('commit','-m','base');const base=git('rev-parse','HEAD');
   fn({root,env,git,base});
  }finally{rmSync(root,{recursive:true,force:true});}
 }
-function runLoader({root,env,base,git,eventName='push',payload}) {
+function runLoader({root,env,base,git,eventName='push',payload,policyChecks=false}) {
  const tested=git('rev-parse','HEAD'),event=join(root,'event.json'),output=join(root,'output');
  writeFileSync(event,JSON.stringify(payload??{repository:{full_name:'example/project',id:7},before:base,after:tested}));
- const run=spawnSync('bash',['-e','-c',protectedLoaderScript()],{cwd:root,env:{...env,GIT_DIR:'/unrelated/invalid/path',GITHUB_EVENT_PATH:event,GITHUB_EVENT_NAME:eventName,GITHUB_SHA:tested,GITHUB_REF:eventName==='push'?'refs/heads/develop':'refs/pull/1/merge',GITHUB_ACTOR:'owner',GITHUB_ACTOR_ID:'42',GITHUB_OUTPUT:output},encoding:'utf8'});
+ const run=spawnSync('bash',['-e','-c',protectedLoaderScript({policyChecks})],{cwd:root,env:{...env,GIT_DIR:'/unrelated/invalid/path',GITHUB_EVENT_PATH:event,GITHUB_EVENT_NAME:eventName,GITHUB_SHA:tested,GITHUB_REF:eventName==='push'?'refs/heads/develop':'refs/pull/1/merge',GITHUB_ACTOR:'owner',GITHUB_ACTOR_ID:'42',GITHUB_OUTPUT:output},encoding:'utf8'});
  return {...run,output:existsSync(output)?readFileSync(output,'utf8'):''};
 }
 test('real loader uses protected implementation; candidate helper cannot execute or grant fast',()=>checkoutFixture(true,fixture=>{
@@ -50,6 +50,62 @@ test('real loader uses protected implementation; candidate helper cannot execute
 test('first installation runs full without importing proposed candidate helper',()=>checkoutFixture(false,fixture=>{
  const {root,git}=fixture;writeFileSync(join(root,'scripts/ci-routing-v2.mjs'),"throw new Error('candidate executed');");git('add','.');git('commit','-m','first install');
  const run=runLoader(fixture);assert.equal(run.status,0,run.stderr);assert.match(run.output,/reason=installation-missing/);assert.match(run.output,/full=true/);assert.doesNotMatch(run.stderr,/candidate executed/);
+}));
+const classicFiles=['.github/ci-cadence.json','scripts/ci-fast.mjs','scripts/ci-cadence.mjs','scripts/ci-cadence-routing.mjs'];
+function writeCandidatePoison(root) {
+ for(const path of ['scripts/ci-routing-v2.mjs',...classicFiles])writeFileSync(join(root,path),"import {writeFileSync} from 'node:fs';writeFileSync('candidate-executed','yes');throw new Error('candidate executed');");
+}
+for(const eventName of ['push','pull_request'])test(`wholly absent protected classic installation selects full for ${eventName} without candidate imports`,()=>checkoutFixture(false,fixture=>{
+ const {root,git,base}=fixture;
+ if(eventName==='pull_request')git('checkout','-b','candidate');
+ writeCandidatePoison(root);git('add','.');git('commit','-m','candidate first installation');
+ let payload;
+ if(eventName==='pull_request'){
+  const head=git('rev-parse','HEAD');git('checkout','develop');
+  writeFileSync(join(root,'protected.txt'),'protected advance');git('add','.');git('commit','-m','protected advance');
+  git('merge','--no-ff','candidate','-m','physical PR merge');
+  payload={repository:{full_name:'example/project',id:7},pull_request:{head:{sha:head},base:{sha:base,ref:'main'}}};
+ }
+ const run=runLoader({...fixture,eventName,payload,policyChecks:true});
+ assert.equal(run.status,0,run.stderr);assert.match(run.output,/reason=installation-missing/);
+ assert.equal(run.output.trim().split('\n').filter(line=>line.startsWith('full=')).at(-1),'full=true');
+ assert.match(run.stdout,/policy checks are UNAVAILABLE/);assert.match(run.stdout,/full application proof.*required/i);
+ assert.equal(existsSync(join(root,'candidate-executed')),false);assert.doesNotMatch(run.stderr,/candidate executed/);
+},{policy:false}));
+test('partial protected classic installations fail full without candidate imports',()=>{
+ for(let mask=1;mask<15;mask++)checkoutFixture(false,fixture=>{
+  const paths=classicFiles.filter((_,index)=>mask&(1<<index));
+  const {root,git}=fixture;for(const path of paths)writeFileSync(join(root,path),'partial protected installation');git('add','.');git('commit','-m','partial protected installation');const base=git('rev-parse','HEAD');
+  writeCandidatePoison(root);git('add','.');git('commit','-m','candidate installation');
+  const run=runLoader({...fixture,base,policyChecks:true});
+  assert.notEqual(run.status,0,paths.join(','));assert.match(run.stderr,/incomplete.*classic.*installation/i,paths.join(','));
+  assert.equal(run.output.trim().split('\n').filter(line=>line.startsWith('full=')).at(-1),'full=true');
+  assert.doesNotMatch(run.stdout,/policy checks are UNAVAILABLE/);assert.equal(existsSync(join(root,'candidate-executed')),false);
+ },{policy:false});
+});
+test('nonexistent protected commit cannot be treated as an absent classic installation',()=>checkoutFixture(false,fixture=>{
+ const run=runLoader({...fixture,base:'f'.repeat(40),policyChecks:true});
+ assert.notEqual(run.status,0);assert.match(run.output,/full=true/);assert.doesNotMatch(run.stdout,/policy checks are UNAVAILABLE/);
+},{policy:false}));
+test('tree-object protected base fails before executing its routing helper',()=>checkoutFixture(false,fixture=>{
+ const {root,git}=fixture;writeCandidatePoison(root);git('add','.');git('commit','-m','poison tree fixture');
+ const base=git('rev-parse','HEAD^{tree}');
+ const run=runLoader({...fixture,base,policyChecks:true});
+ assert.notEqual(run.status,0);assert.match(run.output,/full=true/);
+ assert.match(run.stderr,/protected base commit unavailable/);
+ assert.equal(existsSync(join(root,'candidate-executed')),false);
+},{policy:false}));
+test('complete protected classic interface still executes every exported check without candidate imports',()=>checkoutFixture(false,fixture=>{
+ const {root,git}=fixture;
+ writeFileSync(join(root,'scripts/ci-fast.mjs'),"import {appendFileSync} from 'node:fs';const check=name=>()=>{appendFileSync('protected-checks',name+'\\n');return[];};export const defaultChecks={policyValidation:check('policy'),lockfileValidation:check('lockfile'),cadenceContracts:check('contracts')};");
+ writeFileSync(join(root,'scripts/ci-cadence-routing.mjs'),"export const loadPolicy=JSON.parse;export const blobAt=()=>()=>undefined;");
+ writeFileSync(join(root,'scripts/ci-cadence.mjs'),"export const validatePolicy=()=>({valid:true,errors:[]});");
+ git('add','.');git('commit','-m','protected classic interface');const base=git('rev-parse','HEAD');
+ writeCandidatePoison(root);git('add','.');git('commit','-m','candidate installation');
+ const run=runLoader({...fixture,base,policyChecks:true});
+ assert.equal(run.status,0,run.stderr);assert.match(run.stdout,/Protected policy, lockfile and frozen contracts passed/);
+ assert.equal(readFileSync(join(root,'protected-checks'),'utf8'),'policy\nlockfile\ncontracts\n');
+ assert.equal(existsSync(join(root,'candidate-executed')),false);
 }));
 test('corrected next ordinary owner event automatically selects fast',()=>checkoutFixture(true,fixture=>{
  writeFileSync(join(fixture.root,'app.txt'),'changed');fixture.git('add','.');fixture.git('commit','-m','ordinary app');
