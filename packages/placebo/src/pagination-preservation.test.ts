@@ -25,9 +25,9 @@ describe('versioned pagination preservation regression', () => {
       split: 'development',
       hiddenVerification: true,
     });
-    const committed = JSON.parse(await readFile(new URL('../../../docs/demo/placebo-v0.2-corpus.json', import.meta.url), 'utf8')) as { corpusHash: string };
-    // The frozen slice and its committed hash are what every historical score
-    // refers to; adding versioned cases must never move either.
+    const committed = JSON.parse(await readFile(new URL('../../../docs/demo/placebo-v0.2-initial-failure-v1-corpus.json', import.meta.url), 'utf8')) as { corpusHash: string };
+    // Adding preservation cases must not change the pinned initial-failure-v1
+    // selection. Historical manifests retain their original hashes.
     expect((await createCorpusManifest()).corpusHash).toBe(committed.corpusHash);
     expect((await createCorpusManifest(expanded)).cases).toHaveLength(100);
     expect((await createCorpusManifest(expanded)).corpusHash).not.toBe(committed.corpusHash);

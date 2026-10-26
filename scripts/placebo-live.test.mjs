@@ -31,7 +31,7 @@ const SUBJECT_SHA = 'a943ded4c734aed75c5c63f2b2dd63a2f44556c2';
 const PACKAGE_HASH = '999e189d91dc52383361e739f075056622308da6360b5d9187fea8f303330572';
 const PACKAGE_INTEGRITY = '6365ab9af9cfcef0cdfe1441b95c9de2ff504e2181e77fdf5669ff92eef3937f';
 const RECORDED_AT = '2026-08-31T12:00:00.000Z';
-const corpus = JSON.parse(await readFile('docs/demo/placebo-v0.2-corpus.json', 'utf8'));
+const corpus = JSON.parse(await readFile('docs/demo/placebo-v0.2-initial-failure-v1-corpus.json', 'utf8'));
 
 test('v0.2.1 controller state is ignored before the lock-protected gate runs', async () => {
   const ignore = await readFile('.gitignore', 'utf8');
@@ -553,14 +553,14 @@ test('finalizer requires all 51 cases and 55 retained evaluations', async () => 
 
 test('the expanded selection reaches versioned cases without widening the frozen one', async () => {
   const { readFileSync } = await import('node:fs');
-  const frozen = JSON.parse(readFileSync('docs/demo/placebo-v0.2-corpus.json', 'utf8'));
-  const expanded = JSON.parse(readFileSync('docs/demo/placebo-v0.2-expanded-corpus.json', 'utf8'));
+  const frozen = JSON.parse(readFileSync('docs/demo/placebo-v0.2-initial-failure-v1-corpus.json', 'utf8'));
+  const expanded = JSON.parse(readFileSync('docs/demo/placebo-v0.2-initial-failure-v1-expanded-corpus.json', 'utf8'));
 
   assert.equal(frozen.cases.length, 51);
-  assert.equal(frozen.corpusHash, '785cfc70359935a0f04a9a9cda39e8fb6ff4b05cc8fea3738fb24b70bcda101f');
+  assert.equal(frozen.corpusHash, '4ac82dfa6c8f495729eef8570d40d3d938ca808c3bbaed42582c2de38390623f');
   assert.equal(expanded.cases.length, 100);
   assert.notEqual(expanded.corpusHash, frozen.corpusHash);
-  assert.equal(expanded.corpusHash, 'd4757a557e3376b8610c7e0ecc3b6660f5f2ca10d2fbee43e04ebaa617e4d136');
+  assert.equal(expanded.corpusHash, '87b8e060baeb97dc888d24c61a7b403401ed5dc39cffaa626368b6cd73d0aa65');
 
   // The expanded selection contains every frozen case, so opting in adds and never replaces.
   const expandedIds = new Set(expanded.cases.map(({ id }) => id));

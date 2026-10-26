@@ -121,14 +121,36 @@ describe('Placebo v0.2 corpus', () => {
     expect(first.cases.filter(({ hiddenTestSetHash }) => hiddenTestSetHash !== undefined)).toHaveLength(15);
   });
 
-  it('keeps the frozen v0.2 corpus hash byte-identical to the committed manifest', async () => {
+  it('pins the initial-failure-v1 corpus revision to its committed manifest', async () => {
     const committed: unknown = JSON.parse(await readFile(
-      fileURLToPath(new URL('../../../docs/demo/placebo-v0.2-corpus.json', import.meta.url)),
+      fileURLToPath(new URL('../../../docs/demo/placebo-v0.2-initial-failure-v1-corpus.json', import.meta.url)),
       'utf8',
     ));
 
     expect((await createCorpusManifest()).corpusHash)
       .toBe((committed as { corpusHash: string }).corpusHash);
+  });
+
+  it('limits the initial-failure revision to flaky content while preserving historical identities', async () => {
+    const historical = JSON.parse(await readFile(
+      new URL('../../../docs/demo/placebo-v0.2-corpus.json', import.meta.url), 'utf8',
+    )) as Awaited<ReturnType<typeof createCorpusManifest>>;
+    const revised = await createCorpusManifest();
+    expect(historical.corpusHash).toBe('785cfc70359935a0f04a9a9cda39e8fb6ff4b05cc8fea3738fb24b70bcda101f');
+    expect(revised.corpusHash).not.toBe(historical.corpusHash);
+    expect(revised.cases.map(({ id }) => id)).toEqual(historical.cases.map(({ id }) => id));
+    const changed: string[] = [];
+    for (const current of revised.cases) {
+      const previous = historical.cases.find(({ id }) => id === current.id)!;
+      expect(current.metadata).toEqual(previous.metadata);
+      expect(current.hiddenTestSetHash).toBe(previous.hiddenTestSetHash);
+      if (current.contentHash !== previous.contentHash) changed.push(current.id);
+    }
+    expect(changed).toEqual([
+      'flaky-filesystem-visibility', 'flaky-order-cache', 'flaky-port-collision',
+      'flaky-port-worker', 'flaky-random-threshold', 'flaky-simulated-network',
+      'flaky-test-order', 'flaky-timer-race', 'flaky-timing-deadline',
+    ]);
   });
 
   it('keeps every corpus file public-safe and the network simulator outbound-free', async () => {
