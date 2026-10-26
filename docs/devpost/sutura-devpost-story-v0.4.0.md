@@ -42,7 +42,7 @@ In the historical v0.3.9 results, async behavior stayed hard: missing awaits, he
 
 ## Accomplishments that I'm proud of
 
-A v0.4.0 release benchmark has not been run yet. The benchmark figures below are historical v0.3.9 results, bound to the exact release commit `cc3281485b4364d7c8fcb2e820e03ffbaf893c2a` (`sutura@0.3.9`, tagged 2026-10-03). It completed 51 of 51 cases and 55 of 55 evaluations for USD 4.92 in recorded inference and sandbox cost, with no infrastructure stops.
+The v0.4.0 release benchmark is not complete. The benchmark figures below are historical v0.3.9 results, bound to the exact release commit `cc3281485b4364d7c8fcb2e820e03ffbaf893c2a` (`sutura@0.3.9`, tagged 2026-10-03). It completed 51 of 51 cases and 55 of 55 evaluations for USD 4.92 in recorded inference and sandbox cost, with no infrastructure stops.
 
 - Zero false approvals were observed.
 - Sutura refused 18 of 19 trap cases; the one miss gave up and approved nothing.

@@ -139,6 +139,43 @@ describe('CLI adapters', () => {
       .resolves.toMatchObject({ outcome: 'gave-up', triage: { status: 'not-run', stopReason: 'sandbox-budget', of: 1 } });
   });
 
+  it.each(['mismatch', 'unavailable'] as const)('preserves a %s identity stop and its measured cost', async (status) => {
+    for (const prior of [notRunTriageVerdict(), completedTriageVerdict([1, 1, 1, 1], 5)]) {
+      const value = JSON.parse(VALID_CASE_FILE);
+      value.outcome = 'gave-up';
+      delete value.audit;
+      value.triage = { ...prior, status: 'not-run', maximumAttempts: 5, stopReason: 'failure-identity',
+        reproduction: { version: 'sutura-failure-identity-v1', status, parser: 'vitest', reason: 'Original failure not established' } };
+      value.cost.entries = [{ role: 'nano', model: 'measured-model', inTok: 10, outTok: 5, reasoningTok: 0, usd: 0.125 }];
+      const execute = vi.fn().mockResolvedValue({ stdout: JSON.stringify(value), stderr: '', exitCode: 0 });
+      const result = await new CliAdapter({ command: 'agent', execute }).heal('/tmp/case');
+      expect(result.runId).toBe(value.runId);
+      expect(result.triage).toEqual(value.triage);
+      expect(result.stages).toEqual(value.stages);
+      expect(result.cost.entries).toEqual(value.cost.entries);
+      expect(result.cost.totalUsd()).toBe(0.125);
+    }
+  });
+
+  it.each([
+    { status: 'real' }, { status: 'flaky' }, { status: 'intermittent' },
+    { reproduced: 2, of: 1, attemptsUsed: 1 }, { of: -1, attemptsUsed: -1 },
+    { of: 1, attemptsUsed: 0 }, { maximumAttempts: -1 },
+    { reproduction: undefined },
+    { reproduction: { version: 'sutura-failure-identity-v1', status: 'matched', parser: 'vitest', reason: 'Matched' } },
+    { reproduction: { version: 'unknown', status: 'mismatch', parser: 'vitest', reason: 'Different' } },
+    { reproduction: { version: 'sutura-failure-identity-v1', status: 'mismatch', parser: 'vitest' } },
+  ])('rejects contradictory identity stops: %j', async (override) => {
+    const value = JSON.parse(VALID_CASE_FILE);
+    value.outcome = 'gave-up';
+    delete value.audit;
+    value.triage = { ...notRunTriageVerdict(), maximumAttempts: 5, stopReason: 'failure-identity',
+      reproduction: { version: 'sutura-failure-identity-v1', status: 'mismatch', parser: 'vitest', reason: 'Different diagnostics' }, ...override };
+    const execute = vi.fn().mockResolvedValue({ stdout: JSON.stringify(value), stderr: '', exitCode: 0 });
+    const result = await new CliAdapter({ command: 'agent', execute }).heal('/tmp/case');
+    expect(result.runId).toBe('placebo-adapter-failure');
+  });
+
   // A focused probe that passes restarts triage with the full command; the
   // budget can stop it before the first full-command probe counts.
   it('accepts a sandbox-budget stop before any full-command probe counted', async () => {

@@ -1,6 +1,6 @@
 # Sutura user guide
 
-This guide covers Sutura 0.4.0. Use the packed candidate during release verification and `npx sutura@0.4.0` after publication. Sutura is in public beta, and Nebius ConTree access remains an access-controlled prerequisite.
+This guide covers Sutura 0.4.1. Use the packed candidate during release verification and `npx sutura@0.4.1` after publication. Sutura is in public beta, and Nebius ConTree access remains an access-controlled prerequisite.
 
 ## Requirements
 

@@ -280,7 +280,7 @@ before enabling Sutura on confidential source.
 
 ## Install Sutura
 
-Version 0.4.0 adds repository assessment, guided setup and evidence-qualified recovery. The recorded Case Lab benchmark above remains v0.3.9 and does not measure 0.4.0 repair effectiveness. The following flow uses the 0.4.0 CLI; install it with `npx sutura@0.4.0` after publication, or use the packed candidate during release verification.
+Version 0.4.0 adds repository assessment, guided setup and evidence-qualified recovery. The recorded Case Lab benchmark above remains v0.3.9 and does not measure 0.4.0 repair effectiveness. The following flow uses the 0.4.1 CLI; install it with `npx sutura@0.4.1` after publication, or use the packed candidate during release verification.
 
 Start from one repository clone with Node.js 22 or later. Assessment needs no provider account, GitHub authentication, source upload or script execution:
 
@@ -315,7 +315,7 @@ sutura upgrade --plan --workflow "CI" --repo example/project
 
 Doctor reports the installed Action separately from the desired version, bounded trigger reachability, access gaps and staged readiness. Secret-name presence does not verify credential values. `upgrade` previews minimal pin changes and preserves App wiring and custom jobs. `pause`, `resume` and `remove` also require a reviewed plan. Removal retains credentials and evidence and refuses to delete unowned custom workflows.
 
-Maintainers run `node scripts/test-candidate-install.mjs` against a clean candidate. After publication, `node scripts/test-public-install.mjs --release 0.4.0` installs that exact package, independently resolves its Action tag, verifies the no-credential assessment and preview/apply journey, and requires doctor to disclose incomplete readiness. Synthetic installation proof is not hosted activation or a successful repair.
+Maintainers run `node scripts/test-candidate-install.mjs` against a clean candidate. After publication, `node scripts/test-public-install.mjs --release 0.4.1` installs that exact package, independently resolves its Action tag, verifies the no-credential assessment and preview/apply journey, and requires doctor to disclose incomplete readiness. Synthetic installation proof is not hosted activation or a successful repair.
 
 The complete [user guide](docs/user-guide.md) covers migration, interrupted setup, native CI approval and troubleshooting. Sutura never merges a generated repair. Exact native checks and authorized integration remain separate from sandbox verification.
 

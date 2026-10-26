@@ -5,7 +5,7 @@ diff --git a/case.test.js b/case.test.js
  import { expect, test } from 'vitest';
  
  function listen(server, port) { return new Promise((resolve, reject) => server.once('error', reject).listen(port, '127.0.0.1', resolve)); }
-+const attempt = Number.parseInt(process.env.SUTURA_TRIAGE_ATTEMPT ?? '', 10);
++const attempt = Number.parseInt(process.env.SUTURA_TRIAGE_ATTEMPT ?? '0', 10);
 +if (!Number.isSafeInteger(attempt) || attempt < 0) throw new Error('SUTURA_TRIAGE_ATTEMPT must be a non-negative integer');
  
  test('lets each worker request a free local port', async () => {
@@ -15,7 +15,7 @@ diff --git a/case.test.js b/case.test.js
      await listen(first, 0);
 -    await listen(second, 0);
 +    const configuredPort = new Set([0, 3]).has(attempt % 5) ? first.address().port : 0;
-+    await listen(second, configuredPort);
++    await listen(second, configuredPort).catch((error) => { if (error.code === 'EADDRINUSE') throw new Error('EADDRINUSE: worker port is already bound'); throw error; });
      expect(second.address()).not.toBeNull();
    } finally { first.close(); second.close(); }
  });

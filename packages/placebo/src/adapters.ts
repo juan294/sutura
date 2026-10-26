@@ -111,7 +111,15 @@ function validTriage(value: unknown): boolean {
       typeof triage.reproductionProbability !== 'number' ||
       typeof triage.confidenceLower !== 'number' || typeof triage.confidenceUpper !== 'number' ||
       triage.methodVersion !== 'sprt-p20-p80-a05-b05-v1' ||
-      !['failure-boundary', 'pass-boundary', 'maximum-attempts', 'not-run', 'sandbox-budget'].includes(String(triage.stopReason))) return false;
+      !['failure-boundary', 'pass-boundary', 'maximum-attempts', 'not-run', 'sandbox-budget', 'failure-identity'].includes(String(triage.stopReason))) return false;
+  if (triage.stopReason === 'failure-identity') {
+    const reproduction = record(triage.reproduction);
+    // Keep probes completed before the identity stop, without certifying a flake or repair.
+    return triage.status === 'not-run' && Number(triage.of) >= 0 && Boolean(reproduction &&
+      reproduction.version === 'sutura-failure-identity-v1' &&
+      (reproduction.status === 'mismatch' || reproduction.status === 'unavailable') &&
+      typeof reproduction.parser === 'string' && typeof reproduction.reason === 'string');
+  }
   // A sandbox-budget stop keeps the probes that ran before the budget stopped triage;
   // none when it stopped right after a focused restart.
   if (triage.stopReason === 'sandbox-budget') {

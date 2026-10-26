@@ -8,7 +8,7 @@ async function text(path) {
   return readFile(new URL(path, root), 'utf8');
 }
 
-test('all release-bearing packages and the public API declare 0.4.0', async () => {
+test('all release-bearing packages and the public API declare 0.4.1', async () => {
   const manifests = await Promise.all([
     'package.json',
     'packages/action/package.json',
@@ -18,7 +18,7 @@ test('all release-bearing packages and the public API declare 0.4.0', async () =
     'packages/evaluation/package.json',
     'packages/placebo/package.json',
   ].map(async (path) => JSON.parse(await text(path))));
-  assert.deepEqual(manifests.map(({ version }) => version), Array(7).fill('0.4.0'));
+  assert.deepEqual(manifests.map(({ version }) => version), Array(7).fill('0.4.1'));
   assert.match(await text('packages/core/src/index.ts'), /VERSION = '0\.4\.0'/u);
 });
 

@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-26
+
+### Fixed
+
+- Placebo accepts valid failure-identity stops from the repair engine without replacing their diagnostic evidence or measured costs.
+- Benchmark spending remains reserved when an adapter failure loses provider telemetry; a zero-valued fallback is not treated as measured zero expenditure.
+- Flaky benchmark fixtures reproduce their actual test failure on the initial run, while preserving their explicit numbered triage sequences and rejecting invalid attempt values. The revised corpus is separately identified; historical benchmark results remain unchanged.
+
+Retired guidance: none. Failure-identity checks, human merge authority and historical evidence remain intact.
+
 ## [0.4.0] - 2026-10-25
 
 Repository assessment, guided setup and evidence-qualified CI recovery. Consumer activation and measured repair effectiveness remain separate from package publication.
