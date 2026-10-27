@@ -55,7 +55,7 @@ Only an explicit `workflow_dispatch` run at attempt 1 can receive an allowance. 
 
 The pinned workflow directly maps required dispatch packet/digest inputs to `verification-packet`, `authorize-long-verification` and the selected source run. GitHub REST does not expose historical dispatch input values; the authenticated immutable mapping and runner-provided exact canonical strings supply that boundary.
 
-A durable dispatch marker and pending source account are recorded before paid work. Earlier claims, costs and receipts remain intact. A new explicit grant gets a distinct attempt/check/branch identity rather than deleting an old claim. Pending or corrupt history requires reconciliation. Supplied verification keeps source mutation and repair publication disabled; its v2 evidence separately reports authorized grant-bookkeeping status.
+A durable dispatch marker and pending source account are recorded before paid work. Successful dispatch publication binds the authenticated source/engine/caller to its distinct provenance-derived repair branch. The existing native collector validates that bounded dispatch receipt through its protected producer and exact native checks; a new dispatch workflow needs explicit targeted observation rather than assumed fleet discovery. Earlier claims, costs and receipts remain intact. A new explicit grant gets a distinct attempt/check/branch identity rather than deleting an old claim. Pending or corrupt history requires reconciliation. Supplied verification keeps source mutation and repair publication disabled; its v2 evidence separately reports authorized grant-bookkeeping status.
 
 ## Evidence and limits
 

@@ -265,7 +265,7 @@ export async function runAction(
       if (!publicationSource || publishedPrNumber === undefined || actionIdentity.sha === null) throw new Error('Fixed publication lacks authenticated receipt inputs');
       const monitorAttempt = Number(dependencies.environment.GITHUB_RUN_ATTEMPT);
       const receipt = await buildPublicationReceipt({ octokit: github.getOctokit(action.githubToken, { request: { fetch: inspectionFetch() } }), source: publicationSource, monitorRunId: Number(actionRunId), monitorAttempt,
-        actionSha: actionIdentity.sha, prNumber: publishedPrNumber });
+        actionSha: actionIdentity.sha, prNumber: publishedPrNumber, ...(longVerification ? { explicitAuthority: longVerification.authority } : {}) });
       const artifact = await new ActionTextArtifactPort(`${owner}/${repo}`, actionRunId, new DefaultArtifactClient()).uploadTextArtifact(
         `sutura-publication-v1-${actionRunId}-${monitorAttempt}`, JSON.stringify(receipt), 'json');
       core.setOutput('publication-receipt-url', artifact.url);
