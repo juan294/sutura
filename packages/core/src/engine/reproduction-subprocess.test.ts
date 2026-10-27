@@ -7,6 +7,9 @@ import { expect, it } from 'vitest';
 import { createDefaultRepositoryPolicy } from '../policy/load.js';
 import { reproductionProfile } from '../policy/reproduction-profile.test-helper.js';
 import { captureNodeDiagnostics } from './native-diagnostics.js';
+import { InMemoryExecutor } from '../executor/memory.js';
+import { verifyReproductionRuntime } from './reproduction-runtime.js';
+import type { ResolvedReproductionPlan } from './reproduction-plan.js';
 import { compareFailureIdentity } from './failure-identity.js';
 import { resolveReproductionAtSource } from './reproduction-source.js';
 
@@ -41,4 +44,10 @@ it('runs a real reviewed wrapper and its complete direct probe through the produ
     await writeFile(join(root, 'scripts/test-select.mjs'), 'changed');
     expect((await resolveReproductionAtSource(root, { policy: result.plan.policy, policySha256: 'b'.repeat(64), command, runtimeId: 'node', sourceSha: 'a'.repeat(40), native })).status).toBe('stopped');
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+it('rejects serialized runtime-plan authority before an executor call', async () => {
+  const executor = new InMemoryExecutor(() => ({ exitCode: 0, stdout: process.versions.node, stderr: '', truncated: false, metrics: {} }));
+  await expect(verifyReproductionRuntime(executor, 'base', { profile: reproductionProfile() } as ResolvedReproductionPlan)).rejects.toThrow('Captured protected reproduction plan required');
+  expect(executor.calls).toEqual([]);
 });

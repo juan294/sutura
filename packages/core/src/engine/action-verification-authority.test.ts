@@ -2,9 +2,10 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { canonicalJson } from '../replay/canonical-json.js';
 import { reproductionProfile } from '../policy/reproduction-profile.test-helper.js';
+import { InMemoryExecutor } from '../executor/memory.js';
 import type { VerificationPacket } from './verification-allowance.js';
 import {
-  authenticateActionVerification, isAuthenticatedActionAuthority,
+  authenticateActionVerification, isAuthenticatedActionAuthority, recordedActionReadAuthority,
   permitsActionPolicyRead, permitsActionSourceRead,
   type ActionAuthorityApi, type ActionAuthorityRun,
 } from './action-verification-authority.js';
@@ -136,4 +137,10 @@ describe('authenticated Action verification authority', () => {
     expect((await Promise.allSettled([a.reserveGrant(), b.reserveGrant()])).filter(r => r.status === 'fulfilled')).toHaveLength(1);
     expect(f.grants.size).toBe(1);
   });
+});
+
+it('rejects a live executor at the serialized read-authority boundary', () => {
+  const executor = new InMemoryExecutor(() => ({ exitCode: 0, stdout: '', stderr: '', truncated: false, metrics: {} }));
+  expect(() => recordedActionReadAuthority({ packet: fixture().packet, provenance: 'recorded-only', executor })).toThrow('Recorded read authority requires the owned offline executor');
+  expect(executor.calls).toEqual([]);
 });

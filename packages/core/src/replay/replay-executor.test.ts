@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EXECUTOR_CURSOR_OPTIONS, RecordedExecutor } from './replay-executor.js';
 import { describeMethodCall, RecordedCallCursor } from './recorded-call-cursor.js';
 import { ReplayMismatchError } from './replay-error.js';
+import type { RunOptions } from '../executor/types.js';
 import type { RecordedExecutorCall } from './bundle.js';
 
 function runRecord(sequence: number, parent: string, operationId: string, cmd = 'pnpm test'): RecordedExecutorCall {
@@ -211,4 +212,11 @@ describe('RecordedExecutor', () => {
 
     await expect(executor.snapshot('/tmp/replay-checkout', 'image-1', options)).resolves.toBe('image-2');
   });
+});
+
+it('rejects multiple full commands before consuming a recorded one-shot permit', () => {
+  const executor = new RecordedExecutor([]);
+  try {
+    expect(() => executor.runMany('base', ['node --test a.mjs', 'node --test b.mjs'], { verificationPermit: {} as NonNullable<RunOptions['verificationPermit']> })).toThrow('Final verification permits one full command');
+  } finally { executor.dispose(); }
 });

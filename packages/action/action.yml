@@ -129,6 +129,12 @@ inputs:
     description: Optional Nemotron adversarial-audit model override.
     required: false
 
+  verification-packet:
+    description: 'Canonical one-attempt long-verification packet; only an authenticated enrolled owner dispatch can authorize it.'
+    required: false
+  authorize-long-verification:
+    description: 'Separate SHA-256 of the canonical verification packet. Profiles and packet files alone grant no allowance.'
+    required: false
 outputs:
   outcome:
     description: Final Sutura outcome for the failed run, or already-attempted or repair-branch-skipped when Sutura did not start an attempt.

@@ -699,7 +699,6 @@ export function resolveAuditedCandidate(
 
 export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> {
   const controllerStartedAt = ctx.controllerStartedAt ?? Date.now();
-  ctx.replay?.bindControllerStart(controllerStartedAt);
   const clockNow = ctx.clockNow ?? (ctx.replay ? (domain: ControllerClockDomain) => ctx.replay!.clockNow(domain) : () => Date.now());
   const legacyRecorded = ctx.legacyRecordedExecution === true && ctx.evidenceMode === 'replay' && ctx.executor instanceof RecordedExecutor;
   if (ctx.legacyRecordedExecution && !legacyRecorded) throw new OrchestrationError('Legacy execution semantics require the owned offline replay executor');
@@ -758,6 +757,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
   if (target === null) {
     throw new AlreadyAttemptedError(run.runId);
   }
+  ctx.replay?.bindControllerStart(controllerStartedAt);
 
   const checkoutDir = await ctx.repository.checkoutHead(
     run.repo,
