@@ -23,6 +23,7 @@ export function planVerification({ policy, context, identity, changedPaths, inst
     || typeof policy.productionBranch !== 'string' || !policy.productionBranch
     || policy.productionBranch === policy.integrationBranch) throw new Error('invalid protected routing policy');
   if (!context || context.repository !== policy.repository || !numericId(context.repositoryId)) throw new Error('native repository identity does not match protected policy');
+  if (context.releaseIntent !== undefined && typeof context.releaseIntent !== 'boolean') throw new Error('release intent must be a boolean when provided');
   if (!identity || !['sourceSha', 'baseSha', 'testedSha', 'definitionSha'].every(key => sha(identity[key]))
     || identity.definitionSha !== identity.baseSha) throw new Error('invalid protected base/source/checkout identity');
   if (!Array.isArray(changedPaths) || changedPaths.some(path => typeof path !== 'string' || !path)) throw new Error('complete changed-path inventory required');
@@ -33,7 +34,8 @@ export function planVerification({ policy, context, identity, changedPaths, inst
   const integration = context.eventName === 'push' ? context.ref === `refs/heads/${policy.integrationBranch}` : context.baseRef === policy.integrationBranch;
   const reason = !installed ? 'installation-missing' : production ? 'production' : !owner ? 'untrusted'
     : !['push', 'pull_request'].includes(context.eventName) ? 'explicit-full'
-      : !integration ? 'other-branch' : changedPaths.some(controlPath) ? 'control-change' : 'owner-integration';
+      : !integration ? 'other-branch' : changedPaths.some(controlPath) ? 'control-change'
+        : context.eventName === 'push' && context.releaseIntent === true ? 'release-intent' : 'owner-integration';
   return { schemaVersion: 2, full: reason !== 'owner-integration', reason, trust: owner ? 'owner' : 'untrusted',
     identity: { ...identity }, allowPrivileged: false, allowDeploy: false };
 }
@@ -68,8 +70,10 @@ export function inspectCheckout({ root, native, base }) {
   } else if (base !== testedSha) {
     throw new Error('explicit full event must use its checked-out definition as base');
   }
+  // Read only the verified physical commit; payload head_commit text is not evidence.
+  const releaseIntent = native.eventName === 'push' && /^chore\(release\): \S/.test(git(root, ['show', '-s', '--format=%s', testedSha]));
   const pull = payload.pull_request ?? {};
-  const context = { eventName: native.eventName, repository: payload.repository?.full_name, repositoryId: payload.repository?.id,
+  const context = { eventName: native.eventName, releaseIntent, repository: payload.repository?.full_name, repositoryId: payload.repository?.id,
     actor: native.actor, actorId: native.actorId, ref: native.ref, baseRef: pull.base?.ref ?? native.baseRef,
     author: pull.user?.login, authorId: pull.user?.id, headRepository: pull.head?.repo?.full_name, headRepositoryId: pull.head?.repo?.id };
   const changedPaths = git(root, ['diff', '--name-only', '--no-renames', '-z', base, testedSha]).split('\0').filter(Boolean);
