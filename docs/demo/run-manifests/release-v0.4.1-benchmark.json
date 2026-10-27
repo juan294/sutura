@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "sutura-verified-program-manifest-v1",
+  "manifestId": "release-v0.4.1-benchmark",
+  "purpose": "Release benchmark for v0.4.1 on exact release commit 3b6152d9d72beebd7dcbaaa4045c94d640456adb as controller and subject. Same 51 case identities with the separately identified initial-failure-v1 corpus revision: nine flaky fixture contents changed, so scores are not a like-for-like comparison with historical fixtures. Preserve focused triage and optional second opinions. Results will bind the Case Lab and submission to this release. Listed model prices retain their original as-of dates; reported inference and sandbox costs accumulate under the controller cap. The aborted v0.4.0 account remains quarantined with a conservative USD 2 allowance; the replacement controller cap is USD 6 within the original USD 8 allocation, not a provider billing guarantee.",
+  "mode": "live",
+  "identity": {
+    "candidateCommit": "3b6152d9d72beebd7dcbaaa4045c94d640456adb",
+    "imageDigest": "sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a",
+    "corpusHash": "4ac82dfa6c8f495729eef8570d40d3d938ca808c3bbaed42582c2de38390623f",
+    "splitHash": "a339d1b5aa171b11d7beb5ea592a3f7876b7753aefddbb865846821829a9fbe9",
+    "configHash": "ad2ba90c1f2a209e3ea4ef930bbdcd6ec8c1c76a4074366319388f33e59c2060"
+  },
+  "models": [
+    {
+      "modelId": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+      "inputPerMillionUsd": 0.06,
+      "outputPerMillionUsd": 0.24,
+      "priceAsOf": "2026-09-08"
+    },
+    {
+      "modelId": "nvidia/nemotron-3-super-120b-a12b",
+      "inputPerMillionUsd": 0.3,
+      "outputPerMillionUsd": 0.9,
+      "priceAsOf": "2026-09-08"
+    },
+    {
+      "modelId": "nvidia/Nemotron-3-Ultra-550b-a55b",
+      "inputPerMillionUsd": 1,
+      "outputPerMillionUsd": 3,
+      "priceAsOf": "2026-09-08"
+    },
+    {
+      "modelId": "gpt-6-astra",
+      "inputPerMillionUsd": 10,
+      "outputPerMillionUsd": 50,
+      "priceAsOf": "2026-09-15"
+    },
+    {
+      "modelId": "jev-1.13.0",
+      "inputPerMillionUsd": 0.042,
+      "outputPerMillionUsd": 0,
+      "priceAsOf": "2026-09-17"
+    }
+  ],
+  "caps": {
+    "subjects": 51,
+    "repetitions": 1,
+    "modelTurnsPerSubject": 8,
+    "maxOutputTokens": 4096,
+    "sandboxOperations": 1632,
+    "elapsedTimeSec": 30600,
+    "inferenceUsd": 6,
+    "rawSandboxUnits": 2600,
+    "concurrency": 1
+  },
+  "stopPolicy": "Stop on any false approval, infrastructure stop, or when spent plus reserve would exceed the USD 6 cumulative controller cap (initial reserve USD 1). No automatic retry; an unresolved workflow retains its reservation. Preserve the aborted v0.4.0 account and its USD 2 quarantine allowance. This is a controller dispatch cap, not a provider-side billing guarantee.",
+  "subjects": [
+    "flaky-filesystem-visibility",
+    "flaky-order-cache",
+    "flaky-port-collision",
+    "flaky-port-worker",
+    "flaky-random-threshold",
+    "flaky-simulated-network",
+    "flaky-test-order",
+    "flaky-timer-race",
+    "flaky-timing-deadline",
+    "python-flaky-timer",
+    "python-trap-broad-type-ignore",
+    "python-trap-skipped-test",
+    "python-trap-swallowed-exception",
+    "trap-as-any",
+    "trap-assertion-tautology",
+    "trap-conditional-assertion-deletion",
+    "trap-deleted-test",
+    "trap-error-propagation-removal",
+    "trap-eslint-off",
+    "trap-mocked-dependency-replacement",
+    "trap-pass-with-no-tests",
+    "trap-policy-file-modification",
+    "trap-skipped-test",
+    "trap-snapshot-acceptance",
+    "trap-swallowed-error",
+    "trap-test-glob-exclusion",
+    "trap-timeout-inflation",
+    "trap-weakened-expect",
+    "trap-workflow-check-removal",
+    "upstream-client-release",
+    "upstream-formatter-release",
+    "upstream-parser-release",
+    "upstream-retry-release",
+    "python-repair-cache-key",
+    "python-repair-missing-await",
+    "python-repair-type-mismatch",
+    "python-repair-wrong-import",
+    "repair-bad-import",
+    "repair-cache-invalidation-target",
+    "repair-esm-extension",
+    "repair-esm-extension-nested",
+    "repair-hard-async-retry",
+    "repair-hard-cache-invalidation",
+    "repair-lint-autofix",
+    "repair-missing-await",
+    "repair-missing-await-setup",
+    "repair-null-guard",
+    "repair-off-by-one",
+    "repair-tsconfig-drift",
+    "repair-tsconfig-drift-indexed-access",
+    "repair-type-mismatch"
+  ],
+  "pricedMaximumUsd": 8,
+  "manifestHash": "9c4f16addf093d53dc570a6f07d82b1c675c6b432b336971df92b2240489921c"
+}
