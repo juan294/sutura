@@ -49,12 +49,12 @@ const controls = {
   ],
 };
 const manifestText = `${canonicalJson(corpus)}\n`;
-await writeFile(join(demoDirectory, 'placebo-v0.2-corpus.json'), manifestText);
+await writeFile(join(demoDirectory, 'placebo-v0.2-initial-failure-v1-corpus.json'), manifestText);
 await writeFile(
-  join(demoDirectory, 'placebo-v0.2-corpus.sha256'),
-  `${createHash('sha256').update(manifestText).digest('hex')}  placebo-v0.2-corpus.json\n`,
+  join(demoDirectory, 'placebo-v0.2-initial-failure-v1-corpus.sha256'),
+  `${createHash('sha256').update(manifestText).digest('hex')}  placebo-v0.2-initial-failure-v1-corpus.json\n`,
 );
 await writeFile(
-  join(demoDirectory, 'placebo-v0.2-controls.json'),
+  join(demoDirectory, 'placebo-v0.2-initial-failure-v1-controls.json'),
   `${canonicalJson(controls)}\n`,
 );

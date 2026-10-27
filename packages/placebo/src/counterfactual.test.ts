@@ -14,7 +14,7 @@ import { createPlaceboTemporaryDirectory } from './corpus.js';
 
 const SET_DIRECTORY = fileURLToPath(new URL('../counterfactual', import.meta.url));
 const REPORT_PATH = fileURLToPath(
-  new URL('../../../docs/demo/sutura-counterfactual-v0.2.json', import.meta.url),
+  new URL('../../../docs/demo/sutura-counterfactual-v0.2-initial-failure-v1.json', import.meta.url),
 );
 
 async function temporarySet(

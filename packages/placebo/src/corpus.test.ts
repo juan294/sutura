@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { execFile } from 'node:child_process';
-import { access, cp, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { access, cp, mkdtemp, readFile, readdir, realpath, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
+import { promisify, stripVTControlCharacters } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { runMechanicalChecks } from '@sutura/core';
+import { compareFailureIdentity, nativeFailureForCommand, runMechanicalChecks } from '@sutura/core';
 
 import { applyPatch, createCorpusManifest, createPortableTestRuntime, discoverBenchmarkCases, discoverCases, installFixture, prepareFixture, runFixtureSuite, selfCheckCorpus, verifyCandidateWithHiddenTests } from './corpus.js';
 import type { CaseKind, CorpusCase } from './types.js';
@@ -121,14 +121,36 @@ describe('Placebo v0.2 corpus', () => {
     expect(first.cases.filter(({ hiddenTestSetHash }) => hiddenTestSetHash !== undefined)).toHaveLength(15);
   });
 
-  it('keeps the frozen v0.2 corpus hash byte-identical to the committed manifest', async () => {
+  it('pins the initial-failure-v1 corpus revision to its committed manifest', async () => {
     const committed: unknown = JSON.parse(await readFile(
-      fileURLToPath(new URL('../../../docs/demo/placebo-v0.2-corpus.json', import.meta.url)),
+      fileURLToPath(new URL('../../../docs/demo/placebo-v0.2-initial-failure-v1-corpus.json', import.meta.url)),
       'utf8',
     ));
 
     expect((await createCorpusManifest()).corpusHash)
       .toBe((committed as { corpusHash: string }).corpusHash);
+  });
+
+  it('limits the initial-failure revision to flaky content while preserving historical identities', async () => {
+    const historical = JSON.parse(await readFile(
+      new URL('../../../docs/demo/placebo-v0.2-corpus.json', import.meta.url), 'utf8',
+    )) as Awaited<ReturnType<typeof createCorpusManifest>>;
+    const revised = await createCorpusManifest();
+    expect(historical.corpusHash).toBe('785cfc70359935a0f04a9a9cda39e8fb6ff4b05cc8fea3738fb24b70bcda101f');
+    expect(revised.corpusHash).not.toBe(historical.corpusHash);
+    expect(revised.cases.map(({ id }) => id)).toEqual(historical.cases.map(({ id }) => id));
+    const changed: string[] = [];
+    for (const current of revised.cases) {
+      const previous = historical.cases.find(({ id }) => id === current.id)!;
+      expect(current.metadata).toEqual(previous.metadata);
+      expect(current.hiddenTestSetHash).toBe(previous.hiddenTestSetHash);
+      if (current.contentHash !== previous.contentHash) changed.push(current.id);
+    }
+    expect(changed).toEqual([
+      'flaky-filesystem-visibility', 'flaky-order-cache', 'flaky-port-collision',
+      'flaky-port-worker', 'flaky-random-threshold', 'flaky-simulated-network',
+      'flaky-test-order', 'flaky-timer-race', 'flaky-timing-deadline',
+    ]);
   });
 
   it('keeps every corpus file public-safe and the network simulator outbound-free', async () => {
@@ -339,6 +361,67 @@ describe('Placebo v0.2 corpus', () => {
 
     expect(passed, 'these flakes pass their first reproduction and read as infra-stop').toEqual([]);
   }, 900_000);
+
+  it('reproduces each flaky fixture’s actual failure before preserving its numbered sequence', async () => {
+    const cases = (await discoverCases(undefined, { includeVersionedCases: true }))
+      .filter(({ id, metadata }) => metadata.kind === 'flaky' && (metadata.language === 'javascript' || id === 'python-flaky-timer'));
+    expect(cases).toHaveLength(11);
+    const runtime = await createPortableTestRuntime();
+    try {
+      for (const benchmarkCase of cases) {
+        const root = await mkdtemp(join(tmpdir(), `placebo-flaky-${benchmarkCase.id}-`));
+        try {
+          await cp(benchmarkCase.fixtureDirectory, root, { recursive: true });
+          await symlink(runtime.nodeModules, join(root, 'node_modules'), 'dir');
+          await applyPatch(root, benchmarkCase.breakPatch);
+          // The real sandbox reports /workspace; normalize only this owned local fixture root.
+          const roots = [...new Set([await realpath(root), root])].sort((a, b) => b.length - a.length);
+          const output = (stdout = '', stderr = '') => roots.reduce((log, path) =>
+            log.replaceAll(`${path}/`, '/workspace/'), stripVTControlCharacters(`${stdout}\n${stderr}`));
+          const run = async (attempt?: string) => {
+            // Match the sandbox environment; host CI reporters change diagnostic output.
+            const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, CI: '1' };
+            if (attempt !== undefined) env.SUTURA_TRIAGE_ATTEMPT = attempt;
+            try {
+              const python = benchmarkCase.metadata.language === 'python';
+              const result = await promisify(execFile)(python ? 'python3' : process.execPath,
+                python ? ['-B', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py']
+                  : [join(runtime.nodeModules, 'vitest/vitest.mjs'), 'run', '--maxWorkers=1'],
+                { cwd: root, env, timeout: 30_000, maxBuffer: 1024 * 1024 });
+              return { exitCode: 0, log: output(result.stdout, result.stderr) };
+            } catch (error) {
+              const result = error as { code?: unknown; stdout?: string; stderr?: string };
+              if (typeof result.code !== 'number') throw error;
+              return { exitCode: result.code, log: output(result.stdout, result.stderr) };
+            }
+          };
+          const initial = await run();
+          expect(initial.exitCode, benchmarkCase.id).toBe(1);
+          expect(initial.log, benchmarkCase.id).not.toContain('Error: SUTURA_TRIAGE_ATTEMPT must');
+          const native = nativeFailureForCommand(benchmarkCase.metadata.language === 'python'
+            ? "python3 -B -m unittest discover -s tests -p 'test_*.py'" : 'vitest run', initial.log);
+          const exits: number[] = [];
+          for (let attempt = 0; attempt < 5; attempt += 1) {
+            const result = await run(String(attempt));
+            exits.push(result.exitCode);
+            if (result.exitCode !== 0) {
+              const identity = compareFailureIdentity(native, result);
+              expect(identity, `${benchmarkCase.id} attempt ${attempt}`).toMatchObject({ status: 'matched' });
+            }
+          }
+          expect(exits, benchmarkCase.id).toEqual(benchmarkCase.metadata.triageExitCodes);
+          const invalid = await run('');
+          expect(invalid.exitCode, benchmarkCase.id).toBe(1);
+          expect(invalid.log, benchmarkCase.id).toContain(benchmarkCase.metadata.language === 'python'
+            ? 'ValueError: invalid literal for int()' : 'Error: SUTURA_TRIAGE_ATTEMPT must');
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
+      }
+    } finally {
+      await runtime.cleanup();
+    }
+  }, 180_000);
 
   it('proves every break patch is red and every clean fixture is green', async () => {
     const emptyStore = await mkdtemp(join(tmpdir(), 'placebo-empty-store-'));

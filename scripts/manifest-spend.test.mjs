@@ -72,6 +72,23 @@ for (const totalUsd of [0, 0.2]) test(`infrastructure-stop telemetry (${totalUsd
   await assert.rejects(withManifestSpend(options, () => assert.fail('must not redispatch')), /unsettled/);
 });
 
+test('adapter-failure replacement cannot settle lost provider telemetry as zero', async (t) => {
+  const options = await fixture(t);
+  await assert.rejects(withManifestSpend(options, async (pending) => {
+    await pending.checkpointRun('123');
+    return { artifact: {
+      githubRunId: '123', totalUsd: 0,
+      results: [{ caseFile: { outcome: 'gave-up',
+        diagnosis: { class: 'infra', signals: ['adapter-failure'] }, cost: { entries: [] } } }],
+    } };
+  }), /Adapter-failure cost requires reconciliation/);
+  const account = JSON.parse(await readFile(join(options.directory, `${manifest.manifestId}.json`), 'utf8'));
+  assert.deepEqual(account.entries, []);
+  assert.equal(account.pending.runId, '123');
+  assert.equal(account.pending.reserveMicroUsd, 400000);
+  await assert.rejects(withManifestSpend(options, () => assert.fail('must not redispatch')), /unsettled/);
+});
+
 test('recovery reuses a durable job and reserve without allocating another dispatch', async (t) => {
   const options = await fixture(t);
   let previous;

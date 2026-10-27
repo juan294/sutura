@@ -26,13 +26,13 @@ const ALL_CASES = ['repair-missing-await', 'repair-missing-await-setup', 'python
 const CONTROLLER_CASES = [...new Set([...ALL_CASES, ...STAGE3_V8_REPLAYS.records.map(({ caseId }) => caseId)])];
 
 describe('recovery fixture execution with immutable local branches', () => {
-  it('keeps the legacy corpus immutable and gives every new control development lineage', async () => {
+  it('keeps recovery controls outside the pinned corpus revision with development lineage', async () => {
     const expanded = await discoverCases(undefined, { includeVersionedCases: true });
     expect(expanded.filter(({ id }) => NEW_CASES.includes(id))).toHaveLength(4);
     for (const fixture of expanded.filter(({ id }) => NEW_CASES.includes(id))) {
       expect(fixture.metadata).toMatchObject({ evaluationRevision: 'recovery-v1', split: 'development', lineage: { rootCaseId: expect.any(String), family: expect.any(String) } });
     }
-    const historical = JSON.parse(await readFile(new URL('../../../docs/demo/placebo-v0.2-corpus.json', import.meta.url), 'utf8'));
+    const historical = JSON.parse(await readFile(new URL('../../../docs/demo/placebo-v0.2-initial-failure-v1-corpus.json', import.meta.url), 'utf8'));
     expect((await createCorpusManifest()).corpusHash).toBe(historical.corpusHash);
   });
 

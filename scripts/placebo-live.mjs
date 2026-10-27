@@ -20,22 +20,21 @@ import { runWithTerminalAlert, createCommandDelivery, readAlert, deliverAlert, a
 
 const execFileAsync = promisify(execFile);
 const ROOT = resolve(import.meta.dirname, '..');
-const CORPUS_PATH = resolve(ROOT, 'docs/demo/placebo-v0.2-corpus.json');
+const CORPUS_PATH = resolve(ROOT, 'docs/demo/placebo-v0.2-initial-failure-v1-corpus.json');
 /**
- * The expanded selection: the frozen 51 plus every versioned case. It is a
- * separate committed manifest with its own hash, so opting into it can never
- * change what the frozen slice means or what a historical score refers to.
+ * The expanded selection adds versioned cases to the initial-failure-v1 slice.
+ * Both have separately pinned manifests; historical manifests remain unchanged.
  */
-const EXPANDED_CORPUS_PATH = resolve(ROOT, 'docs/demo/placebo-v0.2-expanded-corpus.json');
-const LEDGER_PATH = resolve(ROOT, '.sutura/placebo-v0.4.0-live-ledger.json');
-const LOCK_PATH = resolve(ROOT, '.sutura/placebo-v0.4.0-live.lock');
-const ARTIFACT_ROOT = resolve(ROOT, '.sutura/placebo-v0.4.0-live-artifacts');
+const EXPANDED_CORPUS_PATH = resolve(ROOT, 'docs/demo/placebo-v0.2-initial-failure-v1-expanded-corpus.json');
+const LEDGER_PATH = resolve(ROOT, '.sutura/placebo-v0.4.1-live-ledger.json');
+const LOCK_PATH = resolve(ROOT, '.sutura/placebo-v0.4.1-live.lock');
+const ARTIFACT_ROOT = resolve(ROOT, '.sutura/placebo-v0.4.1-live-artifacts');
 const MAX_ARTIFACT_BYTES = 10 * 1024 * 1024;
 const OUTCOMES = new Set(['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop']);
 const KIND_ORDER = new Map([['flaky', 0], ['trap', 1], ['upstream', 2], ['repairable', 3]]);
 const RELEASE_TAG = /^v(\d+\.\d+\.\d+)$/u;
-const CORPUS_HASH = '785cfc70359935a0f04a9a9cda39e8fb6ff4b05cc8fea3738fb24b70bcda101f';
-const EXPANDED_CORPUS_HASH = 'd4757a557e3376b8610c7e0ecc3b6660f5f2ca10d2fbee43e04ebaa617e4d136';
+const CORPUS_HASH = '4ac82dfa6c8f495729eef8570d40d3d938ca808c3bbaed42582c2de38390623f';
+const EXPANDED_CORPUS_HASH = '87b8e060baeb97dc888d24c61a7b403401ed5dc39cffaa626368b6cd73d0aa65';
 const FROZEN_CASE_COUNT = 51;
 const EXPANDED_CASE_COUNT = 100;
 const PUBLIC_REDACTION = Object.freeze({
@@ -945,7 +944,7 @@ export async function main(args = process.argv.slice(2), dependencies = {}) {
     const artifacts = await Promise.all(artifactFiles.map(async (name) =>
       JSON.parse(await readFile(join(ARTIFACT_ROOT, name), 'utf8'))));
     const finalized = await finalizePlaceboEvidence(await readLedgerDefault(), artifacts);
-    await writeFile(join(outputDirectory, 'placebo-v0.4.0-live.json'), `${canonicalJson(finalized)}\n`, {
+    await writeFile(join(outputDirectory, 'placebo-v0.4.1-live.json'), `${canonicalJson(finalized)}\n`, {
       encoding: 'utf8', flag: 'wx',
     });
     return finalized;

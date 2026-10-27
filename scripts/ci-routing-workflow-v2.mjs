@@ -27,6 +27,17 @@ SUTURA_GATE`;
 
 export function protectedLoaderScript({ policyChecks = false } = {}) {
   const bridge = policyChecks ? `
+classic_present=0
+for file in .github/ci-cadence.json scripts/ci-fast.mjs scripts/ci-cadence.mjs scripts/ci-cadence-routing.mjs; do
+  if git_read cat-file -e "$base:$file" 2>/dev/null; then classic_present=$((classic_present + 1)); fi
+done
+if [ "$classic_present" -eq 0 ]; then
+  printf 'full=true\\n' >> "$GITHUB_OUTPUT"
+  echo 'Sutura protected classic policy checks are UNAVAILABLE: classic installation absent. Full application proof is required; no candidate policy or helper was loaded.'
+elif [ "$classic_present" -ne 4 ]; then
+  echo 'Sutura: incomplete protected classic policy installation; full verification remains required. Bring this run to Sutura.' >&2
+  exit 1
+else
 for file in ci-fast.mjs ci-cadence.mjs ci-cadence-routing.mjs; do
   git_read show "$base:scripts/$file" > "$protected/$file"
 done
@@ -53,6 +64,7 @@ for (const name of ['policyValidation', 'lockfileValidation', 'cadenceContracts'
 if (failed) process.exit(1);
 console.log('Protected policy, lockfile and frozen contracts passed. Application proof is supplied by required CI Verification gates.');
 SUTURA_POLICY
+fi
 ` : '';
   return `set -euo pipefail
 # Ignore ambient Git redirection and never execute a candidate routing helper.
@@ -70,7 +82,8 @@ case "$GITHUB_EVENT_NAME" in
   *) base=$(git_read rev-parse HEAD) ;;
 esac
 [[ "$base" =~ ^[0-9a-f]{40}$ && "$base" != 0000000000000000000000000000000000000000 ]] || { echo 'Sutura: protected base unavailable; full verification remains required. Bring this run to Sutura.' >&2; exit 1; }
-protected=$(mktemp -d)
+${policyChecks ? `git_read cat-file -e "$base^{commit}" || { echo 'Sutura: protected base commit unavailable; full verification remains required. Bring this run to Sutura.' >&2; exit 1; }
+` : ''}protected=$(mktemp -d)
 trap 'status=$?; if [ "$status" -ne 0 ]; then printf "full=true\\n" >> "$GITHUB_OUTPUT"; fi; rm -rf "$protected"; exit "$status"' EXIT
 if git_read cat-file -e "$base:scripts/ci-routing-v2.mjs" 2>/dev/null; then
   git_read show "$base:scripts/ci-routing-v2.mjs" > "$protected/ci-routing-v2.mjs"

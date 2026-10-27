@@ -2,6 +2,17 @@
 
 Each manifest binds one measurement to its candidate, configuration, subjects and finite caps. Authorization is separate and specific to that manifest. Historical runs do not authorize a new run or leave a reusable balance.
 
+The v0.4.1 runner pins the `initial-failure-v1` fixture revision in
+[`placebo-v0.2-initial-failure-v1-corpus.json`](../placebo-v0.2-initial-failure-v1-corpus.json)
+and its separately hashed expanded selection. The schema remains v0.2 and the
+51 benchmark case identities are unchanged. Nine JavaScript flaky cases now
+reproduce their native failure before numbered triage; their numbered sequences,
+metadata and hidden-test hashes are unchanged. The shared-counter fixture, which
+appears only in the expanded selection, has the same correction. Two port fixtures retain real socket failures
+with stable `EADDRINUSE` messages. Historical corpus manifests and results retain
+their original hashes. New measurements must name this revision and must not be
+presented as a like-for-like comparison with the old fixtures.
+
 ## Current result
 
 [Stage 3 v8](development-validation-v8-evidence.md) is the current clean
