@@ -122,14 +122,28 @@ export interface ContreeExecutorConfig {
   cancelTimeoutMs?: number;
 }
 
+export interface ContreeErrorMetadata {
+  code?: 'provider-disk-exhausted';
+  stage?: 'provider-operation';
+  details?: Readonly<{ providerOperationId?: string }>;
+}
+
 export class ContreeError extends Error {
+  readonly code?: ContreeErrorMetadata['code'];
+  readonly stage?: ContreeErrorMetadata['stage'];
+  readonly details?: ContreeErrorMetadata['details'];
+
   constructor(
     message: string,
     readonly status?: number,
     readonly body?: string,
+    metadata?: ContreeErrorMetadata,
   ) {
     super(message);
     this.name = 'ContreeError';
+    if (metadata?.code !== undefined) this.code = metadata.code;
+    if (metadata?.stage !== undefined) this.stage = metadata.stage;
+    if (metadata?.details !== undefined) this.details = Object.freeze({ ...metadata.details });
   }
 }
 
@@ -393,6 +407,7 @@ export class ContreeExecutor implements Executor {
               : '';
           throw new ContreeError(
             `ConTree operation ended with ${String(operation.status)}${detail}`,
+            undefined, undefined, providerDiskFailure(operation, operationUrl),
           );
         }
 
@@ -1392,4 +1407,15 @@ function optionalProcessState(state: InstanceResultResponse['state']): { process
     if (state.signal !== -1) processState.signal = state.signal;
   }
   return { processState };
+}
+
+/** Classify only the provider's exact errno-bearing failure shape, never log prose. */
+function providerDiskFailure(operation: OperationResponse, operationUrl: string): ContreeErrorMetadata | undefined {
+  if (operation.status !== 'FAILED' || operation.error !== "RemoteCallError('OSError', '28', 'No space left on device (os error 28)')") return undefined;
+  const providerOperationId = new URL(operationUrl).pathname.split('/').at(-1);
+  return {
+    code: 'provider-disk-exhausted', stage: 'provider-operation',
+    details: providerOperationId !== undefined && /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u.test(providerOperationId)
+      ? { providerOperationId } : {},
+  };
 }

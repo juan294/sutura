@@ -688,3 +688,12 @@ test('collector selects the failed step and records diagnostic identity without 
   assert.equal(incomplete.complete, false);
   assert.equal(incomplete.classification.cause, 'unknown');
 });
+
+test('typed recovery detail stays bounded private telemetry and cannot establish delivery', () => {
+  const input = { schemaVersion: 'sutura-terminal-failure-v2', outcome: 'infra-stop', failure: { code: 'provider-disk-exhausted', stage: 'provider-operation', class: 'ContreeError' }, recovery: { code: 'provider-disk-exhausted', stage: 'provider-operation', nextAction: 'Inspect provider capacity; retained operation evidence is private.' } };
+  assert.equal(parseTerminalFailureJson(JSON.stringify(input)).recoveryAction, input.recovery.nextAction);
+  input.recovery.nextAction = 'x'.repeat(1001);
+  assert.equal(parseTerminalFailureJson(JSON.stringify(input)).recoveryAction, undefined);
+  input.recovery = { code: 'invented', stage: 'provider-operation', nextAction: 'pretend fixed' };
+  assert.equal(parseTerminalFailureJson(JSON.stringify(input)).recoveryAction, undefined);
+});

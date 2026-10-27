@@ -48,10 +48,23 @@ export interface GitRepositoryOptions {
   run?: CommandRunner;
 }
 
+export interface RepositoryErrorOptions extends ErrorOptions {
+  code?: 'exact-source-unavailable';
+  stage?: 'source-checkout';
+  details?: Readonly<{ sourceSha: string; attemptedRefCount: number }>;
+}
+
 export class RepositoryError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
+  readonly code?: RepositoryErrorOptions['code'];
+  readonly stage?: RepositoryErrorOptions['stage'];
+  readonly details?: RepositoryErrorOptions['details'];
+
+  constructor(message: string, options?: RepositoryErrorOptions) {
     super(message, options);
     this.name = 'RepositoryError';
+    if (options?.code !== undefined) this.code = options.code;
+    if (options?.stage !== undefined) this.stage = options.stage;
+    if (options?.details !== undefined) this.details = Object.freeze({ ...options.details });
   }
 }
 
@@ -199,7 +212,10 @@ export class GitRepository implements RepositoryPort {
         // Try only the validated same-repository PR refs supplied by the core.
       }
     }
-    if (!fetched) throw new RepositoryError('Could not fetch the exact failing SHA');
+    if (!fetched) throw new RepositoryError('Could not fetch the exact failing SHA', {
+      code: 'exact-source-unavailable', stage: 'source-checkout',
+      details: { sourceSha: sha, attemptedRefCount: refs.length },
+    });
     await this.run('git', gitArgs(['checkout', '--quiet', '--detach', sha]), { cwd: checkoutDir, env });
     return checkoutDir;
   }

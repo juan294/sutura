@@ -1,3 +1,4 @@
+import { admitNativeCommand } from './engine/native-command-admission.js';
 import { processSucceeded } from './executor/types.js';
 import { freezeRepositorySource } from './replay/source-snapshot.js';
 import type { FrozenVerificationSource } from './heal.js';
@@ -32,6 +33,7 @@ import {
   AllowlistedExecutor,
   StageLedger,
   noReproductionCaseFile,
+  nativeCommandAdmissionCaseFile,
   prepareSandbox,
   preparationFailureCaseFile,
   missingSandboxPrerequisite,
@@ -765,6 +767,15 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       'runtime-detection',
     );
   }
+  const stopForAdmission = async (): Promise<CaseFile | undefined> => {
+    const admission = admitNativeCommand(mechanical.failingCmd);
+    if (!admission) return undefined;
+    const file = nativeCommandAdmissionCaseFile({ runId: run.runId, repo: run.repo, cost: ctx.cost, policyEvidence, stageLedger, traceRecorder, runtime }, mechanical.failingCmd, admission);
+    await publishReport(ctx.github, run, file, marker, target, checkoutDir, ctx.replay);
+    return file;
+  };
+  const admissionStop = await stopForAdmission();
+  if (admissionStop) return admissionStop;
   const executionRecorder = loadedPolicy.policy.verification?.mode === 'required'
     ? new VerificationExecutionRecorder({ executor: ctx.executor, llm: ctx.llm, mode: ctx.evidenceMode ?? 'local' }) : undefined;
   const executor = new AllowlistedExecutor(executionRecorder?.executor ?? ctx.executor);
@@ -840,6 +851,8 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       chosenStep = next.index;
       failedLog = next.log;
       mechanical = next.diagnosis;
+      const fallbackStop = await stopForAdmission();
+      if (fallbackStop) return fallbackStop;
       reproduction = await reproduce(2);
     }
   }

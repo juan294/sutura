@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ContreeError, RuntimeDetectionError } from '@sutura/core';
 import { ActionInputError } from './input.js';
 
-import { expectedActionStop, reportOutcome, requiredOutcomeFailure } from './acceptance.js';
+import { caseTerminalDetail, expectedActionStop, reportOutcome, requiredOutcomeFailure } from './acceptance.js';
 
 describe('required action outcome', () => {
   it('does not fail ordinary advisory runs', () => {
@@ -83,4 +83,23 @@ it.each(['flaky-no-patch', 'already-attempted', 'repair-branch-skipped'] as cons
   reportOutcome(outcome, false, reporter);
   expect(reporter.setOutput).toHaveBeenCalledWith('next-action', expect.any(String));
   expect(reporter.setFailed).not.toHaveBeenCalled();
+});
+
+it('reports native admission separately while preserving require-fixed', () => {
+  const file = { outcome: 'gave-up', reproduction: { parser: 'native-command-admission' }, diagnosis: { signals: ['native-command-admission:ci-control'] } } as unknown as import('@sutura/core').CaseFile;
+  const detail = caseTerminalDetail(file);
+  expect(detail).toMatchObject({ reason: 'native-command-admission', stage: 'admission' });
+  const reporter = { setOutput: vi.fn(), setFailed: vi.fn() };
+  reportOutcome('gave-up', true, reporter, detail);
+  expect(reporter.setFailed).toHaveBeenCalledWith('Sutura required fixed but produced gave-up');
+});
+
+it('keeps newly typed source/resource failures red rather than expanding advisory stops', async () => {
+  const { RepositoryError } = await import('./repository.js');
+  for (const error of [new RepositoryError('exact unavailable', { code: 'exact-source-unavailable', stage: 'source-checkout', details: { sourceSha: 'a'.repeat(40), attemptedRefCount: 1 } }), new ContreeError('disk unavailable', undefined, undefined, { code: 'provider-disk-exhausted', stage: 'provider-operation' })]) {
+    expect(expectedActionStop(error)).toBeUndefined();
+    const reporter = { setOutput: vi.fn(), setFailed: vi.fn() };
+    reportOutcome('infra-stop', false, reporter);
+    expect(reporter.setFailed).toHaveBeenCalled();
+  }
 });

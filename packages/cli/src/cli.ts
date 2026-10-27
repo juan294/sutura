@@ -1,4 +1,4 @@
-import { notRunTriageVerdict, type AuditFile, type CaseFile, type CostLedger } from '@sutura/core';
+import { describeTerminalRecovery, notRunTriageVerdict, type AuditFile, type CaseFile, type CostLedger } from '@sutura/core';
 
 import {
   CliUsageError,
@@ -77,7 +77,8 @@ async function infraStop(
   error: unknown,
   configuredRuntime?: 'node' | 'python',
 ): Promise<CaseFile> {
-  const reason = publicError(error);
+  const recovery = describeTerminalRecovery(error);
+  const reason = publicError(`${error instanceof Error ? error.message : String(error)}${recovery ? ` ${recovery.nextAction}` : ''}`);
   const caseName = caseDir.split(/[\\/]/u).filter(Boolean).at(-1) ?? 'case';
   const runtime = configuredRuntime ?? await detectLocalRuntimeId(caseDir).catch(() => 'node' as const);
   return {
@@ -87,7 +88,7 @@ async function infraStop(
     diagnosis: {
       class: 'infra',
       confidence: 1,
-      signals: ['cli-runtime-failure'],
+      signals: ['cli-runtime-failure', ...(recovery ? [recovery.code] : [])],
       failingCmd: 'pnpm test',
       errorExcerpt: diagnosticExcerpt(reason),
     },

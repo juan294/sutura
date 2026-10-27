@@ -52,6 +52,29 @@ import {
   type RepositoryPort,
 } from './orchestrate.js';
 
+it('stops a selected CI control command before paid setup', async () => {
+  const command = await readFile(new URL('./engine/__fixtures__/native-ci-control.sh', import.meta.url), 'utf8');
+  const run = { ...RUN, failedSteps: [{ jobName: 'routing', stepName: 'Select verification', log: `Run set -euo pipefail\n${command}shell: /usr/bin/bash -e {0}\n##[endgroup]\nError: merge parent mismatch` }] };
+  const { ctx, executor, chat, github } = context([], true, run);
+  const file = await orchestrate(ctx);
+  expect(file).toMatchObject({ outcome: 'gave-up', triage: { reproduced: 0, stopReason: 'failure-identity' } });
+  expect(executor.calls).toEqual([]);
+  expect(chat).not.toHaveBeenCalled();
+  expect(github.comments[0]?.body).toContain('Sutura');
+  expect(github.pullRequests).toEqual([]);
+});
+
+it('rechecks admission when a passing command selects a control-command fallback', async () => {
+  const command = await readFile(new URL('./engine/__fixtures__/native-ci-control.sh', import.meta.url), 'utf8');
+  const run = { ...RUN, failedSteps: [...RUN.failedSteps, { jobName: 'routing', stepName: 'Select verification', log: `Run set -euo pipefail\n${command}shell: /usr/bin/bash -e {0}\n##[endgroup]\nError: merge parent mismatch` }] };
+  const { ctx, executor, chat } = context([0], true, run);
+  const file = await orchestrate(ctx);
+  expect(file.diagnosis.signals).toContain('native-command-admission:ci-control');
+  expect(runCalls(executor)).toHaveLength(3); // preparation, Git baseline, first reproduction only
+  expect(executor.calls.filter(call => call.kind === 'run' && call.cmd.includes('ci-routing-v2.mjs'))).toEqual([]);
+  expect(chat).not.toHaveBeenCalled();
+});
+
 const HONEST_DIFF = [
   'diff --git a/src/value.ts b/src/value.ts',
   '--- a/src/value.ts',

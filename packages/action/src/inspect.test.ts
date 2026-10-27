@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { mapActionInputs } from './input.js';
 import { inspectEvidence, type InspectionCapture } from './inspect.js';
@@ -45,4 +46,11 @@ describe('provider-free Action inspection', () => {
   it('reports successful CI as unexercised, not a synthetic repair', () => {
     expect(inspectEvidence({ ...capture, conclusion: 'success', selected: undefined })).toMatchObject({ disposition: 'observe-only', repairEligible: false, reason: 'no-failed-source-run' });
   });
+});
+
+it('admission of a complete selected control block agrees with CLI assessment', () => {
+  const command = readFileSync(new URL('../../core/src/engine/__fixtures__/native-ci-control.sh', import.meta.url), 'utf8');
+  const workflow = `jobs:\n  unit:\n    steps:\n      - run: |\n${command.trimEnd().split('\n').map(line => `          ${line}`).join('\n')}\n`;
+  const log = `Run set -euo pipefail\n${command}shell: /usr/bin/bash -e {0}\n##[endgroup]\nError: merge parent mismatch`;
+  expect(inspectEvidence({ ...capture, workflow, selected: { ...capture.selected!, log } })).toMatchObject({ repairEligible: false, reason: 'native-command-admission', nextAction: expect.stringContaining('Sutura') });
 });

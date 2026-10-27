@@ -38,6 +38,16 @@ import { createDefaultRepositoryPolicy } from './policy/load.js';
 import { repairProposalReply } from './testing/repair-proposal.test-helper.js';
 import { TraceRecorder } from './trace/recorder.js';
 
+it('stops a known native CI control command before every executor/model operation', async () => {
+  const command = await readFile(new URL('./engine/__fixtures__/native-ci-control.sh', import.meta.url), 'utf8');
+  const { ctx, executor, chat } = context('repair-off-by-one', [], 'test-assertion', { runtimeId: 'node', failureCommand: command });
+  const file = await healCase(ctx);
+  expect(file).toMatchObject({ outcome: 'gave-up', diagnosis: { signals: ['native-command-admission:ci-control'] }, triage: { status: 'not-run', stopReason: 'failure-identity', reproduced: 0 }, race: [] });
+  expect(file.reproduction?.reason).toContain('Sutura');
+  expect(executor.calls).toEqual([]);
+  expect(chat).not.toHaveBeenCalled();
+});
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'placebo', 'corpus');
 const HONEST_DIFF = [
   'diff --git a/page-count.js b/page-count.js',

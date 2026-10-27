@@ -214,12 +214,18 @@ export function parseTerminalFailureJson(content) {
   const sandboxOperations = Number.isSafeInteger(execution.sandboxOperations) && execution.sandboxOperations >= 0
     ? execution.sandboxOperations : null;
   const failureDetails = boundedFailureDetails(failure.details);
+  const recovery = value.recovery;
+  const recoveryAction = recovery && recovery.code === failure.code && recovery.stage === failure.stage &&
+    ['exact-source-unavailable', 'provider-disk-exhausted'].includes(recovery.code) &&
+    typeof recovery.nextAction === 'string' && recovery.nextAction.length > 0 && recovery.nextAction.length <= 1_000 &&
+    !/[\u0000-\u001f\u007f]/u.test(recovery.nextAction) ? recovery.nextAction : undefined;
   return {
     ...base,
     failureCode: boundedTelemetryString(failure.code, 'unknown-error'),
     failureStage: boundedTelemetryString(failure.stage, 'unknown'),
     errorClass: boundedTelemetryString(failure.class, 'UnknownError'),
     ...(failureDetails === undefined ? {} : { failureDetails }),
+    ...(recoveryAction === undefined ? {} : { recoveryAction }),
     sourceRunId: boundedTelemetryString(fixture.targetRunId),
     sourceCommit: SHA.test(fixture.fixtureCommit ?? '') ? fixture.fixtureCommit : null,
     pullRequestNumber: Number.isSafeInteger(fixture.pullRequestNumber) && fixture.pullRequestNumber > 0
@@ -318,7 +324,7 @@ export function mergeMonitorEvents(previous, current) {
       (value.costStatus === 'measured' ? 10 : 0) +
       ['replayComplete', 'replayEvidenceError', 'providerInvocations', 'runtime',
         'runtimeEvidenceSource', 'runtimeEvidenceCount', 'runtimeVisitedEntries',
-        'claimState', 'searchStarted', 'triageStopReason'].filter((field) =>
+        'claimState', 'searchStarted', 'triageStopReason', 'recoveryAction'].filter((field) =>
         Object.hasOwn(value, field) && value[field] !== null).length;
     if (!prior || quality(event) >= quality(prior)) events.set(key, event);
   }

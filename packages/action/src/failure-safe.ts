@@ -1,4 +1,4 @@
-import { RepairBranchRunError, type ReplayRecorder } from '@sutura/core';
+import { describeTerminalRecovery, RepairBranchRunError, type ReplayRecorder } from '@sutura/core';
 
 import {
   createTerminalFailureEvidence,
@@ -23,8 +23,9 @@ export async function withFailureSafeCheck<T>(
     // A refused repair branch is an expected skip that claimed nothing.
     if (error instanceof RepairBranchRunError) throw error;
     try {
+      const recovery = describeTerminalRecovery(error);
       await githubPort.completeUnexpectedFailure(
-        error instanceof Error ? error.message : 'Sutura stopped unexpectedly',
+        `${error instanceof Error ? error.message : 'Sutura stopped unexpectedly'}${recovery ? ` ${recovery.nextAction}` : ''}`,
       );
     } catch {
       warn('Sutura could not complete its GitHub check after an unexpected failure.');

@@ -1,3 +1,4 @@
+import { admitNativeCommand } from '../engine/native-command-admission.js';
 import { isAlias, parseDocument, visit } from 'yaml';
 import { nativeExecutionCommand, nativeFailureForCommand } from '../engine/failure-identity.js';
 import { ASSESSMENT_BOUNDS } from './assess.js';
@@ -70,6 +71,7 @@ export function extractAssessmentJobs(workflow: Record<string, unknown>, files: 
   const sources = Object.entries(files).filter(([path]) => path === 'package.json' || path.endsWith('/package.json')).map(([path, content]) => ({ path, content }));
   return Object.entries(jobs).map(([jobKey, value]) => {
     const source = object(value) ?? {}, commands: string[] = [];
+    let nativeControlCommand: string | undefined;
     const job: JobAssessmentInput['job'] = { command: '', services: source.services === undefined ? 'absent' : 'present',
       applicationSecrets: 'absent', nativePreparation: source.container === undefined ? 'absent' : 'present', privateDependencies: 'absent',
       dynamicConfiguration: 'absent', workspaceEvidenceComplete: true };
@@ -107,6 +109,7 @@ export function extractAssessmentJobs(workflow: Record<string, unknown>, files: 
       }
       if (step.run === undefined) continue;
       if (typeof step.run !== 'string') { job.dynamicConfiguration = 'unknown'; continue; }
+      if (admitNativeCommand(step.run)) { nativeControlCommand = step.run.trim(); continue; }
       for (const line of step.run.split(/\r?\n/u).map(item => item.trim()).filter(item => item && !item.startsWith('#'))) {
         if (NATIVE.test(line)) job.nativePreparation = 'present';
         if (PREPARE.test(line)) continue;
@@ -129,7 +132,7 @@ export function extractAssessmentJobs(workflow: Record<string, unknown>, files: 
     if (runtimes.size === 1) job.configuredRuntime = [...runtimes][0]!;
     else if (runtimes.size > 1) job.dynamicConfiguration = 'unknown';
     if (!commands.length) job.dynamicConfiguration = 'unknown';
-    job.command = commands.join(' && ');
+    job.command = nativeControlCommand ?? commands.join(' && ');
     return { jobKey, job };
   });
 }

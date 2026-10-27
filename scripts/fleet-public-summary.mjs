@@ -7,7 +7,7 @@ export function counts(value, keys) {
   return Object.fromEntries(keys.filter(key => value?.[key] !== undefined).map(key => [key, count(value[key])]));
 }
 export const OUTCOMES = ['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop', 'unknown'];
-const FAILURE_CODES = ['runtime-evidence-limit', 'runtime-evidence-escape', 'runtime-evidence-changed',
+const FAILURE_CODES = ['exact-source-unavailable', 'provider-disk-exhausted', 'runtime-evidence-limit', 'runtime-evidence-escape', 'runtime-evidence-changed',
   'runtime-not-detected', 'runtime-ambiguous', 'runtime-detection-failed', 'replay-snapshot-limit',
   'snapshot-file-limit', 'snapshot-source-limit', 'snapshot-archive-limit', 'snapshot-input-invalid',
   'missing-sandbox-prerequisite', 'dependency-preparation-failed', 'unknown-error', 'unstructured', 'unknown'];

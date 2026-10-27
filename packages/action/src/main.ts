@@ -5,6 +5,7 @@ import * as core from '@actions/core';
 import * as github from '@actions/github';
 import {
   AlreadyAttemptedError,
+  describeTerminalRecovery,
   ContreeExecutor,
   RepairBranchRunError,
   OpenAiClient,
@@ -292,8 +293,10 @@ export async function runAction(
       return;
     }
     core.setOutput('outcome', 'monitor-failed');
-    core.setOutput('terminal-reason', 'unexpected-exception');
-    core.setOutput('next-action', 'Inspect the exact failed Action run and retained terminal diagnostics before a new authorized event.');
+    const recovery = describeTerminalRecovery(error);
+    core.setOutput('terminal-reason', recovery?.code ?? 'unexpected-exception');
+    if (recovery) core.setOutput('failing-stage', recovery.stage);
+    core.setOutput('next-action', recovery?.nextAction ?? 'Inspect the exact failed Action run and retained terminal diagnostics before a new authorized event.');
     dependencies.setFailed(error instanceof Error ? error.message : String(error));
   }
 }

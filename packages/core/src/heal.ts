@@ -1,3 +1,4 @@
+import { admitNativeCommand, type NativeCommandAdmission } from './engine/native-command-admission.js';
 import { processCompletedNormally, processSucceeded } from './executor/types.js';
 import { VerificationExecutionRecorder } from './verification/execution-record.js';
 import { GeneratedVerificationRecorder } from './verification/generated-record.js';
@@ -497,6 +498,18 @@ function noReproductionDiagnosis(mechanical: Diagnosis): Diagnosis {
     signals: [...mechanical.signals, 'reproduction:passed'],
     errorExcerpt: 'The failing command passed in a clean sandbox reproduction.',
   };
+}
+
+export function nativeCommandAdmissionCaseFile(
+  ctx: Pick<HealCaseContext, 'runId' | 'repo' | 'cost' | 'policyEvidence' | 'stageLedger' | 'traceRecorder' | 'runtime'>,
+  command: string,
+  admission: NativeCommandAdmission,
+): CaseFile {
+  const reproduction = { version: 'sutura-failure-identity-v1' as const, status: 'unavailable' as const, parser: 'native-command-admission',
+    reason: `${admission.reason}: protected CI control command is outside application repair. ${admission.nextAction}` };
+  return makeCaseFile({ ...ctx, reproduction }, {
+    class: 'infra', confidence: 1, signals: ['native-command-admission:ci-control'], failingCmd: command, errorExcerpt: reproduction.reason,
+  }, { ...notRunTriageVerdict(), stopReason: 'failure-identity', reproduction }, [], 'gave-up');
 }
 
 export function noReproductionCaseFile(
@@ -1800,6 +1813,8 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
   if (runtime.id === 'python' && ctx.imageRef !== undefined && ctx.imageRef !== runtime.imageRef) {
     throw new HealCaseError('Python runtime image must use the verified exact digest');
   }
+  const admission = admitNativeCommand(command);
+  if (admission) return nativeCommandAdmissionCaseFile(fullContext, command, admission);
   const executor = new AllowlistedExecutor(ctx.executor);
   const imageRef = ctx.imageRef ?? (runtime.id === 'node'
     ? await nodeImageRefForRepository(ctx.caseDir)

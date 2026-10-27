@@ -648,3 +648,7 @@ export { validatePythonDependencyContents } from './runtime/python.js';
 
 export { rankFailedSteps, diagnosisLog } from './orchestrate.js';
 export { selectFailedStepLog } from './github/adapter.js';
+
+export { admitNativeCommand, CI_CONTROL_NEXT_ACTION } from './engine/native-command-admission.js';
+
+export { describeTerminalRecovery } from './report/terminal-recovery.js';

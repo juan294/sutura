@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  ContreeError,
   completedTriageVerdict,
   createCompleteReplayBundleForTest,
   notRunTriageVerdict,
@@ -239,4 +240,13 @@ describe('executed verification exit status', () => {
   it('returns zero only for a verified supplied patch', async () => {
     expect(await runCli(argv, { write: () => {} }, { verify: async () => ({ status: 'verified-supplied-patch' }) })).toBe(0);
   });
+});
+
+it('includes typed provider recovery in CLI evidence without declaring a repair', async () => {
+  let output = '';
+  await runCli(['heal', '--case-dir', '/tmp/example', '--format', 'json'], { write: value => { output += value; } }, { heal: async () => { throw new ContreeError('provider failed', undefined, undefined, { code: 'provider-disk-exhausted', stage: 'provider-operation' }); } });
+  const file = JSON.parse(output);
+  expect(file.outcome).toBe('infra-stop');
+  expect(file.diagnosis.errorExcerpt).toContain('ENOSPC');
+  expect(file.stages[0].note).toContain('cost are unavailable');
 });

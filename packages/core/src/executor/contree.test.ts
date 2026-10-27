@@ -253,6 +253,45 @@ describe('ContreeExecutor', { timeout: 30_000 }, () => {
         .rejects.toThrow(new RegExp(`${status}: synthetic detail`, 'u'));
     },
   );
+  it('tags positive provider ENOSPC at the FAILED operation boundary without retrying', async () => {
+    const operation = await fixture('operation-provider-disk-exhausted.json');
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({}, 201, { Location: '/sandboxes/v1/operations/disk-operation' }))
+      .mockResolvedValueOnce(jsonResponse(operation));
+    const executor = new ContreeExecutor(config(fetch));
+    await expect(executor.run('parent', 'true', { operationId: 'caller-operation' })).rejects.toMatchObject({
+      name: 'ContreeError', code: 'provider-disk-exhausted', stage: 'provider-operation',
+      details: { providerOperationId: 'disk-operation' },
+      message: expect.stringContaining("RemoteCallError('OSError', '28', 'No space left on device (os error 28)')"),
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(executor.completions).toEqual([{ operationId: 'caller-operation', terminal: 'failed', cancellationRequested: false }]);
+    const recovered = new ContreeExecutor(config(vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({}, 201, { Location: '/sandboxes/v1/operations/recovered-operation' }))
+      .mockResolvedValueOnce(jsonResponse(await fixture('operation-success.json')))));
+    await expect(recovered.run('parent', 'true')).resolves.toMatchObject({ exitCode: 0 });
+  });
+
+  it.each([
+    ['FAILED', 'No space left on device (os error 28)'],
+    ['FAILED', "remote log mentions RemoteCallError('OSError', '28', 'No space left on device (os error 28)')"],
+    ['FAILED', "RemoteCallError('OSError', '29', 'No space left on device (os error 28)')"],
+    ['FAILED', "RemoteCallError('RuntimeError', '28', 'No space left on device (os error 28)')"],
+    ['CANCELLED', "RemoteCallError('OSError', '28', 'No space left on device (os error 28)')"],
+  ])('keeps generic or lookalike %s provider errors untyped', async (status, error) => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({}, 201, { Location: '/sandboxes/v1/operations/generic' }))
+      .mockResolvedValueOnce(jsonResponse({ status, error }));
+    await expect(new ContreeExecutor(config(fetch)).run('parent', 'true')).rejects.toMatchObject({
+      code: undefined, stage: undefined, details: undefined,
+      message: `ConTree operation ended with ${status}: ${error}`,
+    });
+  });
+
+  it('preserves the ContreeError positional constructor contract', () => {
+    expect(new ContreeError('legacy', 429, 'original body')).toMatchObject({ message: 'legacy', status: 429, body: 'original body' });
+  });
+
   it('maps run options to the documented request and decodes the result fixture', async () => {
     const pending = await fixture('operation-pending.json');
     const success = await fixture('operation-success.json');

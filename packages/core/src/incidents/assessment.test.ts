@@ -22,6 +22,13 @@ function pythonInput(): JobAssessmentInput {
 }
 
 describe('shared static job assessment', () => {
+  it('reports the same positively evidenced native control blocker before dynamic syntax inference', () => {
+    const input = nodeInput();
+    input.job.command = readFileSync(new URL('../engine/__fixtures__/native-ci-control.sh', import.meta.url), 'utf8');
+    input.job.dynamicConfiguration = 'unknown';
+    expect(assessJobSupport(input)).toMatchObject({ support: 'unsupported', reason: 'native-command-admission', nextAction: expect.stringContaining('Sutura') });
+  });
+
   it('assesses a package-script Node job without claiming preparation, reproduction or execution authority', () => {
     const input = nodeInput(), before = structuredClone(input);
     const result = assessJobSupport(input);
