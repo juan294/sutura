@@ -29,3 +29,25 @@ export async function diagnoseRun(request: DiagnoseArguments, run: CommandRunner
     diagnosis: { class: diagnosis.class, confidence: diagnosis.confidence, commandObserved: diagnosis.failingCmd !== 'unknown' },
     logHandling: 'Untrusted selected-step data; raw logs and command text are not returned or executed.' };
 }
+
+/** Read-only exact-attempt native evidence for an explicitly approved local packet. */
+export async function readNativeFailureForVerification(binding: import('@sutura/core').DiagnosticBinding, command: string, run: CommandRunner = runCommand): Promise<import('@sutura/core').NativeFailureEvidence> {
+  const { nodeRuntimeFromJobLog } = await import('@sutura/core');
+  if (!/^[\w.-]+\/[\w.-]+$/u.test(binding.repository) || !Number.isSafeInteger(Number(binding.runId)) || Number(binding.runId) <= 0 || !Number.isSafeInteger(binding.attempt) || binding.attempt < 1) throw new Error('Exact native source identity required');
+  const api = (path: string) => run('gh', ['api', '--hostname', 'github.com', `repos/${binding.repository}/${path}`], { timeoutMs: 15_000, maxOutputBytes: 4 * 1024 * 1024 });
+  const source = JSON.parse(await api(`actions/runs/${binding.runId}/attempts/${binding.attempt}`)) as SourceRun & { head_repository?: { full_name: string } | null; path?: string };
+  if (source.id !== Number(binding.runId) || source.run_attempt !== binding.attempt || source.head_sha !== binding.sourceSha || source.repository?.full_name.toLowerCase() !== binding.repository.toLowerCase() || source.head_repository?.full_name.toLowerCase() !== binding.repository.toLowerCase() || source.path !== binding.workflowPath || !['failure', 'timed_out'].includes(source.conclusion)) throw new Error('Authenticated native run/source/workflow differs from the approved packet');
+  const inventory = JSON.parse(await api(`actions/runs/${binding.runId}/attempts/${binding.attempt}/jobs?per_page=100`)) as { total_count: number; jobs: Job[] };
+  if (!Array.isArray(inventory.jobs) || inventory.jobs.length > 100 || inventory.total_count !== inventory.jobs.length) throw new Error('Complete bounded native job inventory required');
+  if (inventory.jobs.some(job => job.run_id !== Number(binding.runId) || job.run_attempt !== binding.attempt || job.head_sha !== binding.sourceSha || !Array.isArray(job.steps))) throw new Error('Authenticated native job/source attempt differs');
+  const jobs = inventory.jobs.filter(job => job.id === binding.jobId && job.name === binding.jobName);
+  const job = jobs.length === 1 ? jobs[0] : undefined;
+  const steps = job?.steps.filter(step => step.number === binding.stepNumber && step.name === binding.stepName) ?? [];
+  const step = steps.length === 1 ? steps[0] : undefined;
+  if (!job || !step || job.conclusion !== 'failure' || step.conclusion !== 'failure') throw new Error('Authenticated native selected job/step is unavailable or abnormal');
+  const log = await api(`actions/jobs/${job.id}/logs`), runtimeVersion = nodeRuntimeFromJobLog(log);
+  if (runtimeVersion === undefined || runtimeVersion !== binding.runtimeVersion) throw new Error('Authenticated native Node runtime differs or is unavailable');
+  const selected = selectFailedStepLog(log, { name: step.name, startedAt: step.started_at, completedAt: step.completed_at }, { binding, completion: source.conclusion === 'failure' ? 'normal' : 'abnormal' });
+  if (!selected.diagnostics?.complete) throw new Error(`Complete authenticated native diagnostics required: ${selected.diagnostics?.reason ?? 'unsupported capture'}`);
+  return { command, log: selected.log, truncated: selected.truncated, diagnostics: selected.diagnostics };
+}

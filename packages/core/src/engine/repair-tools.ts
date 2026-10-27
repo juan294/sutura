@@ -105,6 +105,7 @@ export interface RepairToolRuntimeOptions {
   policy: RepositoryPolicy;
   budget: RepairBudget;
   trustedCommands: Readonly<Record<string, string>>;
+  testRunOptions?: Readonly<Record<string, { cwd: string; timeoutSec: number }>>;
   sourceContext: RepairSourceContext;
   authorization?: RepairAuthorizationContext;
   signal?: AbortSignal;
@@ -166,6 +167,7 @@ export class RepairToolRuntime {
     command: string,
     parent = this.current.editableImageId,
     maximumTimeoutSec = MAX_TOOL_TIMEOUT_SEC,
+    cwd = '/workspace',
   ): Promise<RunResult> {
     this.options.budget.reserveSandboxOperation();
     const timeoutSec = Math.min(
@@ -176,7 +178,7 @@ export class RepairToolRuntime {
     const operationId = `${this.options.operationIdPrefix ?? `repair-${randomUUID()}`}-op-${String(this.operationIndex).padStart(3, '0')}`;
     this.options.onOperationStart?.(operationId);
     return withinRecoveryDeadline(timeoutSec, this.options.signal, () => this.options.executor.run(parent, command, {
-      cwd: '/workspace', timeoutSec, operationId, network: 'disabled',
+      cwd, timeoutSec, operationId, network: 'disabled',
     }), async () => this.options.executor.cancel(operationId));
   }
 
@@ -373,7 +375,7 @@ export class RepairToolRuntime {
     const command = this.options.trustedCommands[args.commandId];
     if (command === undefined) return failure('policy', 'run_test commandId is not trusted');
     delete this.current.latestTest;
-    const result = await this.run(command, this.current.editableImageId, MAX_TEST_TIMEOUT_SEC);
+    const result = await this.run(command, this.current.editableImageId, this.options.testRunOptions?.[args.commandId]?.timeoutSec ?? MAX_TEST_TIMEOUT_SEC, this.options.testRunOptions?.[args.commandId]?.cwd ?? '/workspace');
     const combined = [result.stdout, result.stderr].filter(Boolean).join('\n');
     const outputTruncated = result.truncated || Buffer.byteLength(combined, 'utf8') > MAX_TOOL_OUTPUT_BYTES;
     const output = bounded(combined);

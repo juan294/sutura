@@ -1,3 +1,4 @@
+import type { VerificationOperationPermit } from '../engine/verification-allowance.js';
 export type ImageId = string;
 export const SNAPSHOT_CWD = '/workspace';
 
@@ -13,6 +14,10 @@ export interface SnapshotOptions {
 export interface RunOptions {
   env?: Readonly<Record<string, string>>;
   timeoutSec?: number;
+  /** Opaque controller permit; serialized records carry evidence only. */
+  verificationPermit?: VerificationOperationPermit;
+  /** Controller annotation; never grants a clock or provider permit. */
+  verificationKind?: 'full' | 'policy' | 'challenge';
   cwd?: string;
   network?: 'disabled' | 'enabled';
   operationId?: string;

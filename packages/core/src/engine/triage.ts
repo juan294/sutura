@@ -1,3 +1,4 @@
+import { isResolvedReproductionPlan } from './reproduction-plan.js';
 import { processCompletedNormally } from '../executor/types.js';
 import type { TriageVerdict } from '../domain.js';
 import {
@@ -72,7 +73,7 @@ export async function triage(
         (_, offset) =>
           `SUTURA_TRIAGE_ATTEMPT=${shellQuote(String(firstAttempt + offset))} sh -lc ${shellQuote(failingCmd)}`,
       ),
-      { cwd: SNAPSHOT_CWD },
+      { cwd: isResolvedReproductionPlan(native?.reproductionPlan) ? native.reproductionPlan.cwd : SNAPSHOT_CWD, ...(isResolvedReproductionPlan(native?.reproductionPlan) ? { timeoutSec: native.reproductionPlan.profile.probeTimeoutSec } : {}) },
     );
     if (results.length !== batchSize) throw new Error('executor returned an unexpected triage result count');
     // Every result was already executed, even if another result invalidates this batch.
@@ -229,7 +230,7 @@ export async function boundedTriage(
     const results = await executor.runMany(
       failingImage,
       [`SUTURA_TRIAGE_ATTEMPT=${shellQuote(String(attempt))} sh -lc ${shellQuote(command)}`],
-      { cwd: SNAPSHOT_CWD },
+      { cwd: isResolvedReproductionPlan(native?.reproductionPlan) ? native.reproductionPlan.cwd : SNAPSHOT_CWD, ...(isResolvedReproductionPlan(native?.reproductionPlan) ? { timeoutSec: native.reproductionPlan.profile.probeTimeoutSec } : {}) },
     );
     const result = results[0];
     if (results.length !== 1 || result === undefined) throw new Error('executor returned an unexpected triage result count');

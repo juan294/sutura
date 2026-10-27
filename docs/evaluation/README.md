@@ -58,7 +58,7 @@ The [architecture cards](architecture.md) connect each claim to code and tests.
 
 [Generated repairs](../../packages/core/src/heal.ts), [supplied patches](../../packages/core/src/verification/external.ts) and counterfactuals share production verification gates. A separate baseline-only challenge-generation call freezes a bounded set before candidate work. The controller qualifies baseline observations, checks each candidate with repeated probes, then applies policy, mechanical audit, clean rerun and adjudication before search admission. Required contracts bind a frozen source manifest. Default healing remains optional; external verification requires assurance.
 
-The [CLI](../../packages/cli/src/verify.ts) and [read-only Action](../../packages/action/src/verify-execution.ts) retain canonical evidence and artifact bytes. The Action authenticates the exact same-repository failed run and source SHA; fork sources are refused. [Evidence v2](../../packages/core/src/verification/types.ts) records the actual executor baseline image ID separately from an unavailable OCI digest, with observed model, operation and cost records. This implementation shipped in v0.3.0 and later releases (see the [changelog](../../CHANGELOG.md)). Its measured quality is only what the benchmark and development results below report.
+The [CLI](../../packages/cli/src/verify.ts) and [supplied-patch Action](../../packages/action/src/verify-execution.ts) retain canonical evidence and artifact bytes. The Action authenticates the exact same-repository failed run and source SHA; fork sources are refused. [Evidence v2](../../packages/core/src/verification/types.ts) records the actual executor baseline image ID separately from an unavailable OCI digest, with observed model, operation and cost records. This implementation shipped in v0.3.0 and later releases (see the [changelog](../../CHANGELOG.md)). Its measured quality is only what the benchmark and development results below report.
 
 Remaining work includes remediation of the development misses, a separately
 authorized held-out measurement, a Data Lab batch run (the upload is done, the dispatch was rejected), and
@@ -160,3 +160,5 @@ repair quality. Current publication evidence follows the [v0.4.1 release record]
 On refresh, review changed source bytes and update inspected references. Keep
 reviewed source, historical benchmark subject, and demo Action identity separate;
 a documentation commit cannot contain its own final hash.
+
+The local [protected Node reproduction candidate](../reproduction-profiles.md) adds complete native failure sets, reviewed wrapper profiles and a separately approved one-use final-verification allowance. It retains the original full audit and existing default budgets. Synthetic/subprocess and replay regressions are local evidence; native delivery and integration remain separately measured outcomes.

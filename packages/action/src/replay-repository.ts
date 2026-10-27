@@ -4,6 +4,7 @@ import { resolve, sep } from 'node:path';
 
 import {
   MAX_POLICY_BYTES,
+  policyAllowsSourceRead,
   isSensitiveRepositoryPath,
   loadRepositoryPolicy,
   recordedErrorResult,
@@ -83,7 +84,7 @@ async function boundedSnapshotFile(
   }
 }
 
-async function checkoutSnapshot(checkoutDir: string): Promise<{
+async function checkoutSnapshot(checkoutDir: string, declaredProfileInputs: readonly string[]): Promise<{
   runtimeEvidencePaths: string[];
   files: Array<{ path: string; content: string }>;
 }> {
@@ -94,7 +95,7 @@ async function checkoutSnapshot(checkoutDir: string): Promise<{
     : loadRepositoryPolicy(policyContent).policy.runtime;
   const files: Array<{ path: string; content: string }> = [];
   let totalBytes = 0;
-  for (const path of SNAPSHOT_CONTENT_PATHS) {
+  for (const path of new Set([...SNAPSHOT_CONTENT_PATHS, ...declaredProfileInputs])) {
     if (isSensitiveRepositoryPath(path)) continue;
     const content = path === '.sutura.json'
       ? policyContent
@@ -121,6 +122,7 @@ export function recordingRepositoryPort(
   port: RepositoryPort,
   recorder: ReplayRecorder,
 ): RepositoryPort {
+  let declaredProfileInputs: string[] = [];
   const record = async <T>(
     method: keyof RepositoryPort,
     args: unknown[],
@@ -154,17 +156,20 @@ export function recordingRepositoryPort(
   };
 
   return {
-    readPolicyAtSha(repo, sha) {
-      return record('readPolicyAtSha', [repo, sha], () =>
-        port.readPolicyAtSha(repo, sha),
-      );
+    async readPolicyAtSha(repo, sha) {
+      const content = await record('readPolicyAtSha', [repo, sha], () => port.readPolicyAtSha(repo, sha));
+      try {
+        const policy = loadRepositoryPolicy(content).policy;
+        declaredProfileInputs = [...new Set(policy.reproductionProfiles?.flatMap(profile => profile.sourceInputs.filter(item => policyAllowsSourceRead(item.path, policy)).map(item => item.path)) ?? [])];
+      } catch { declaredProfileInputs = []; } // The caller owns validation; recording preserves the exact RPC result.
+      return content;
     },
     checkoutHead(repo, sha, headRef, prNumber) {
       return record('checkoutHead', [repo, sha, headRef, prNumber], () =>
         port.checkoutHead(repo, sha, headRef, prNumber),
       async (checkoutDir) => ({
         checkoutId: recorder.registerCheckoutPath(checkoutDir),
-        snapshot: await checkoutSnapshot(checkoutDir),
+        snapshot: await checkoutSnapshot(checkoutDir, declaredProfileInputs),
       }),
       (checkoutDir, error) => ({
         checkoutId: recorder.registerCheckoutPath(checkoutDir),

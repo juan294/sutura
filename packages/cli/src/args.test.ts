@@ -173,3 +173,10 @@ describe('parseArgs counterfactual alternatives', () => {
     expect(USAGE).toContain('--alternatives-file <file>');
   });
 });
+it('requires an explicit packet path and separate canonical authorization digest for long healing', () => {
+  const prefix = ['heal', '--case-dir', '/tmp/project', '--format', 'json'];
+  expect(() => parseArgs([...prefix, '--verification-packet', '/tmp/packet.json'])).toThrow();
+  expect(() => parseArgs([...prefix, '--authorize-long-verification', 'a'.repeat(64)])).toThrow();
+  expect(parseArgs([...prefix, '--verification-packet', '/tmp/packet.json', '--authorize-long-verification', 'a'.repeat(64)])).toMatchObject({ verificationPacket: '/tmp/packet.json', authorizeLongVerification: 'a'.repeat(64) });
+  expect(() => parseArgs([...prefix, '--verification-packet', '/tmp/packet.json', '--authorize-long-verification', 'bad'])).toThrow();
+});

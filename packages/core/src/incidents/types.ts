@@ -2,7 +2,7 @@ import type { FailureClass, CaseFile } from '../domain.js';
 import type { RuntimeId } from '../runtime/types.js';
 
 export const INCIDENT_ASSESSMENT_VERSION = 'sutura-job-assessment-v1' as const;
-export const RUNTIME_SUPPORT_CONTRACT = 'sutura-runtime-support-v1' as const;
+export const RUNTIME_SUPPORT_CONTRACT = 'sutura-runtime-support-v2' as const;
 type Outcome = CaseFile['outcome'];
 export type Confidence = 'confirmed' | 'suspected' | 'unknown';
 export type SupportVerdict = 'candidate-supported' | 'unsupported' | 'unknown';

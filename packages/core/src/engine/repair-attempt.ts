@@ -663,6 +663,7 @@ export async function runControlledRepairAttempt(
     policy: ctx.policy,
     budget: ctx.budget,
     trustedCommands: ctx.trustedCommands,
+    ...(ctx.testRunOptions === undefined ? {} : { testRunOptions: ctx.testRunOptions }),
     sourceContext: ctx.sourceContext,
     ...(ctx.authorization === undefined ? {} : { authorization: ctx.authorization }),
     ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),

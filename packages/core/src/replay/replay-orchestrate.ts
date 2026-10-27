@@ -1,3 +1,7 @@
+import { canonicalJson } from './canonical-json.js';
+import { ReplayControllerClock } from './controller-clock.js';
+import { recordedActionReadAuthority } from '../engine/action-verification-authority.js';
+import { authorizeRecordedVerification } from '../engine/verification-allowance.js';
 import { createTokenFactoryClient } from '../llm/token-factory.js';
 import { OpenAiClient } from '../llm/openai.js';
 import { TypeSafeClient } from '../llm/typesafe.js';
@@ -107,10 +111,15 @@ export async function replayBundle(
     ? new RecordedExecutor(validated.executor, (args) => repository.normalizeArgs(args), executorCursor, options.executorOrdering)
     : undefined;
   const executor = options.executor ?? recordedExecutor!;
+  const long = validated.configuration.longVerification;
+  const clock = validated.configuration.controllerClock ? new ReplayControllerClock(validated.configuration.controllerClock) : undefined;
+  if (long && !recordedExecutor) throw new ReplayValidationError('bundle.configuration.longVerification', 'recorded approval cannot authorize a custom/live executor');
+  const readAuthority = long ? recordedActionReadAuthority({ packet: long.packet, provenance: long.provenance, executor: recordedExecutor }) : undefined;
   const github = new GitHubAdapter(githubReplay.api, {
     owner,
     repo,
     runId: validated.runId,
+    ...(readAuthority === undefined ? {} : { explicitAuthority: readAuthority }),
     artifact: options.artifact ?? new ReplayTextArtifactPort(validated),
   });
   const llm = createTokenFactoryClient({
@@ -145,6 +154,15 @@ export async function replayBundle(
       const caseFile = await orchestrate({
         runId: validated.runId,
         evidenceMode: 'replay',
+        ...(clock ? { controllerStartedAt: clock.startedAt, clockNow: domain => clock.now(domain) } : {}),
+        ...(validated.configuration.operationDeadlines === undefined && recordedExecutor ? { legacyRecordedExecution: true } : {}),
+        ...(readAuthority === undefined ? {} : { explicitAuthority: readAuthority }),
+        ...(long?.controllerWallTimeSec === undefined ? {} : { recordedControllerWallTimeSec: long.controllerWallTimeSec }),
+        ...(long === undefined ? {} : { authorizeVerification: async plan => {
+          if (!long.admitted) throw new Error('Recorded long-verification allowance was not admitted');
+          return authorizeRecordedVerification({ packet: long.packet, plan, executor: recordedExecutor, ...(clock ? { now: () => clock.now('verification') } : {}) });
+        } }),
+        ...(long ? { onFinalVerification: frame => { if (!long.finalPhase || canonicalJson(frame) !== canonicalJson(long.finalPhase)) throw new ReplayValidationError('bundle.configuration.longVerification.finalPhase', 'consumed candidate or shared budget differs'); } } : {}),
         github,
         repository,
         executor,
@@ -176,6 +194,7 @@ export async function replayBundle(
       });
       rethrowEarliestMismatch(cursors);
       for (const cursor of cursors) cursor.assertConsumed();
+      clock?.assertConsumed();
       return { caseFile, mutations: githubReplay.mutations };
     } catch (error) {
       rethrowEarliestMismatch(cursors);

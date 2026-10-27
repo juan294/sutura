@@ -1417,3 +1417,22 @@ describe('repository overlay shell contract', () => {
     },
   );
 });
+it('checks the protected reviewed account limit before long execution without creating an operation', async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>(async () => jsonResponse({ limits: { reviewed_timeout_limit: 3600 } }));
+  const executor = new ContreeExecutor(config(fetch));
+  await expect(executor.verifyDeadlineSupport(undefined, 1800)).rejects.toThrow(/review/);
+  expect(fetch).not.toHaveBeenCalled();
+  await expect(executor.verifyDeadlineSupport('reviewed_timeout_limit', 1800)).resolves.toBe(3600);
+  expect(fetch.mock.calls[0]?.[1]?.method).toBe('GET');
+  expect(String(fetch.mock.calls[0]?.[0])).toContain('/whoami');
+  await expect(executor.verifyDeadlineSupport('reviewed_timeout_limit', 3601)).rejects.toThrow(/below/);
+  await expect(executor.verifyDeadlineSupport('unavailable_limit', 1800)).rejects.toThrow(/unavailable/);
+  expect(fetch.mock.calls.every(([, init]) => init?.method === 'GET')).toBe(true);
+});
+it('retains an unresolved remote terminal state after a client polling failure', async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => init?.method === 'POST' ? jsonResponse({}, 202, { location: 'operations/unresolved' }) : init?.method === 'DELETE' ? new Response(null, { status: 204 }) : jsonResponse({ error: 'service unavailable' }, 503));
+  const executor = new ContreeExecutor(config(fetch));
+  await expect(executor.run('base', 'probe', { operationId: 'unresolved-operation', timeoutSec: 120 })).rejects.toThrow();
+  expect(executor.completions).toEqual([]);
+  expect(await executor.cancel('unresolved-operation')).not.toHaveProperty('terminal');
+});

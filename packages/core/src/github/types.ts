@@ -1,6 +1,9 @@
+import type { ActionReadAuthority } from '../engine/action-verification-authority.js';
 import type { CaseFile } from '../domain.js';
 
 export interface WorkflowRunRecord {
+  runAttempt?: number;
+  path?: string;
   id: number;
   headSha: string;
   repository: string;
@@ -84,6 +87,7 @@ export interface TextArtifactPort {
 }
 
 export interface GitHubAdapterOptions {
+  explicitAuthority?: ActionReadAuthority;
   owner: string;
   repo: string;
   runId: string;

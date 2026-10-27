@@ -357,3 +357,42 @@ describe('verified admission', () => {
     expect(admit).not.toHaveBeenCalled();
   });
 });
+it.each([true, false])('consumes one final phase, drains siblings and never selects another candidate after audit accepted=%s', async accepted => {
+  const events: string[] = [];
+  let provisional = 0; let audit = 0;
+  const expand = vi.fn(async ({ branch, signal }: { branch: number; signal: AbortSignal }) => {
+    if (branch === 1) return expansion('first', 0);
+    await new Promise<void>(resolve => { if (signal.aborted) resolve(); else signal.addEventListener('abort', () => resolve(), { once: true }); });
+    events.push('sibling-drained'); return expansion('second', 0);
+  });
+  const result = await adaptiveSearch({ baselineImageId: 'base', initialBranches: 3, maximumDepth: 3, maximumTotalBranches: 6, availableBranches: () => 6, concurrencyCapacity: () => 2,
+    singleFinalVerification: true, onProvisional: () => { provisional++; events.push('consumed'); },
+    cancel: async () => { events.push('cancel'); return true; }, expand,
+    admit: async () => { audit++; events.push('audit'); expect(events).toContain('sibling-drained'); return { accepted }; } });
+  expect(provisional).toBe(1); expect(audit).toBe(1); expect(expand).toHaveBeenCalledTimes(2);
+  expect(events.indexOf('consumed')).toBeLessThan(events.indexOf('sibling-drained'));
+  expect(result.candidates).toHaveLength(accepted ? 1 : 0);
+});
+it('consumes but refuses the final audit when sibling cancellation remains unresolved', async () => {
+  let consumed = 0; const admit = vi.fn(async () => ({ accepted: true }));
+  const result = await adaptiveSearch({ baselineImageId: 'base', initialBranches: 2, maximumTotalBranches: 2, availableBranches: () => 2, concurrencyCapacity: () => 2,
+    singleFinalVerification: true, onProvisional: () => { consumed++; }, cancel: async () => false,
+    expand: async ({ branch }) => expansion(`candidate-${branch}`, 0), admit });
+  expect(consumed).toBe(1); expect(admit).not.toHaveBeenCalled(); expect(result.candidates).toHaveLength(0);
+  expect(result.nodes[0]?.verificationReason).toContain('cancellation');
+});
+it('ends the consumed attempt when a sibling ignores cancellation beyond its bounded drain', async () => {
+  vi.useFakeTimers();
+  try {
+    const admit = vi.fn(async () => ({ accepted: true }));
+    const pending = adaptiveSearch({ baselineImageId: 'base', initialBranches: 2, maximumTotalBranches: 2, availableBranches: () => 2, concurrencyCapacity: () => 2,
+      singleFinalVerification: true, onProvisional: () => 1, cancel: async () => false,
+      expand: async ({ branch }) => branch === 1 ? expansion('selected', 0) : new Promise(() => {}), admit });
+    const observed = pending.then(result => result);
+    await vi.advanceTimersByTimeAsync(1001);
+    const result = await observed;
+    expect(admit).not.toHaveBeenCalled(); expect(result.candidates).toHaveLength(0);
+    expect(result.nodes[0]?.verificationReason).toContain('cancellation');
+    expect(result.nodes[1]?.terminalReason).toBe('policy');
+  } finally { vi.useRealTimers(); }
+});

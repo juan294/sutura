@@ -1,3 +1,4 @@
+import { prepareCliVerificationAuthorization } from './verification-authorization.js';
 
 import {
   ContreeExecutor,
@@ -109,6 +110,8 @@ export interface VerifyExecutionResult {
   challengeAssurance: boolean;
   /** Always false: verification never authors or applies a replacement. */
   generatedReplacement: false;
+  recovery?: ExternalVerificationResult['recovery'];
+  configuration?: ExternalVerificationResult['configuration'];
 }
 
 export interface VerifyRuntime {
@@ -129,11 +132,16 @@ export async function executeVerify(
   request: VerifyArguments,
   runtime: VerifyRuntime,
 ): Promise<VerifyExecutionResult> {
+  const controllerStartedAt = Date.now();
+  const authorization = request.verificationPacket === undefined ? undefined : await prepareCliVerificationAuthorization({ caseDir: request.caseDir, envelopePath: request.verificationPacket, operatorDigest: request.authorizeLongVerification });
+  if (authorization && (request.sourceSha !== authorization.sourceIdentity.sourceSha || request.policyBaseSha !== authorization.sourceIdentity.policyBaseSha)) throw new VerifyInputError('Verification source/policy differs from approved packet');
   const prepared = await prepareVerify(request);
+  if (authorization && prepared.request.failingCommand !== authorization.failureCommand) throw new VerifyInputError('Verification command differs from approved packet');
   const snapshot = await snapshotCleanSourceAt(request.caseDir, request.sourceSha);
   try {
     const executed = await executeExternalVerification({
-      request: prepared.request, policy: prepared.policy,
+      request: prepared.request, policy: prepared.policy, controllerStartedAt,
+      ...(authorization === undefined ? {} : { nativeFailure: authorization.nativeFailure, authorizeVerification: async plan => { if (runtime.mode === 'live') { if (!(runtime.executor instanceof ContreeExecutor)) throw new VerifyInputError('Authenticated provider preflight is unavailable'); await runtime.executor.verifyDeadlineSupport(plan.profile.providerTimeoutLimitKey, authorization.packet.providerMaxTimeoutSec); } return authorization.authorizeVerification(plan); } }),
       executor: runtime.executor, llm: runtime.llm, sourceDir: snapshot.dir,
       snapshotSha256: snapshot.snapshotSha256, policySha256: prepared.policySha,
       mode: runtime.mode ?? 'local',
@@ -158,6 +166,8 @@ export async function executeVerify(
       blockingGate: outcome.blockingGate,
       challengeAssurance: outcome.challengeAssurance,
       generatedReplacement: false,
+      ...(executed.recovery === undefined ? {} : { recovery: executed.recovery }),
+      ...(executed.configuration === undefined ? {} : { configuration: executed.configuration }),
     };
   } finally {
     await snapshot.cleanup();

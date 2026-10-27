@@ -107,6 +107,7 @@ describe('domain model', () => {
       totalUsd(): number;
     }>();
     expectTypeOf<CaseFile>().toEqualTypeOf<{
+      controllerWallTimeSec?: number;
       runId: string;
       repo: string;
       runtime: 'node' | 'python';

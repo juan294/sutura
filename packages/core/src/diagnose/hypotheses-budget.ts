@@ -1,3 +1,4 @@
+import { consumeVerificationAllowance, verificationOperationPermit, type FinalVerificationPhase, type VerificationAllowance } from '../engine/verification-allowance.js';
 import { randomUUID } from 'node:crypto';
 import { BudgetExceededError, type RepairBudget, type RepairCapacityReservation } from '../engine/repair-budget.js';
 import type { Executor, RunOptions } from '../executor/types.js';
@@ -25,8 +26,20 @@ interface BudgetedPortsInput {
 }
 
 export interface RecoveryAuditPorts {
+  finalVerification?: boolean;
   executor: Executor;
   llm: HealLlm;
+  beginAdjudication?(): void;
+  finishAdjudication?(): void;
+  remainingAdjudicationTimeSec?(): number;
+  cancellationTimeSec?(): number;
+  beginFinalVerification?(candidate: { imageId: string; diffSha256: string }): void;
+  vetoBudget?: {
+    reserveSecondOpinion: RepairBudget['reserveSecondOpinion']; settleSecondOpinion: RepairBudget['settleSecondOpinion'];
+    reserveTypeSafeAudit: RepairBudget['reserveTypeSafeAudit']; settleTypeSafeAudit: RepairBudget['settleTypeSafeAudit'];
+    remainingElapsedTimeSec(): number;
+  };
+  remainingTimeSec(): number;
   finish(): void;
 }
 
@@ -62,10 +75,18 @@ export async function withinRecoveryDeadline<T>(
   }
 }
 
-function ports(input: BudgetedPortsInput, reservation?: RepairCapacityReservation): { executor: Executor; llm: HealLlm } {
+interface FinalAuditControl {
+  allowance: VerificationAllowance;
+  phase(): FinalVerificationPhase | undefined;
+  operation(kind: RunOptions['verificationKind']): { remaining: number; maximum: number };
+  modelRemaining(): number;
+}
+
+function ports(input: BudgetedPortsInput, reservation?: RepairCapacityReservation, final?: FinalAuditControl): { executor: Executor; llm: HealLlm } {
   const delegate = input.llm as TierLlm<ModelTier>;
   const operationIdPrefix = input.operationIdPrefix ?? `recovery-${randomUUID()}`;
   let operationIndex = 0;
+  let fullOperationStarted = false;
   const executor: Executor = {
     importImage: (ref) => input.executor.importImage(ref),
     snapshot: (dir, base, options) => input.executor.snapshot(dir, base, options),
@@ -75,8 +96,11 @@ function ports(input: BudgetedPortsInput, reservation?: RepairCapacityReservatio
       if (input.signal?.aborted) throw new Error('Recovery was cancelled');
       input.budget.reserveSandboxOperation(reservation);
       const operationId = options?.operationId ?? `${operationIdPrefix}-op-${String(++operationIndex).padStart(3, '0')}`;
-      const remaining = input.budget.remainingElapsedTimeSec(reservation);
-      const operationLimit = options?.timeoutSec ?? 120;
+      const phase = final?.phase();
+      if (final && !phase) throw new Error('Final verification is not active');
+      const allocation = final?.operation(options?.verificationKind);
+      const remaining = allocation?.remaining ?? input.budget.remainingElapsedTimeSec(reservation);
+      const operationLimit = Math.min(options?.timeoutSec ?? 120, allocation?.maximum ?? Infinity);
       const seconds = Math.min(operationLimit, remaining);
       // Preserve the same catch/stop path while naming the limit that fired.
       const timeoutError = operationLimit < remaining
@@ -84,8 +108,11 @@ function ports(input: BudgetedPortsInput, reservation?: RepairCapacityReservatio
           message: `Sandbox operation ${operationId} exceeded its per-operation deadline of ${seconds} seconds`,
           operationId, timeoutSec: seconds,
         }) : undefined;
+      const permit = phase && !fullOperationStarted
+        ? verificationOperationPermit(phase, parent, command, seconds) : undefined;
+      if (phase) fullOperationStarted = true;
       return withinRecoveryDeadline(seconds, input.signal, () => input.executor.run(parent, command, {
-        ...options, operationId, network: 'disabled', timeoutSec: seconds,
+        ...options, ...(permit === undefined ? {} : { verificationPermit: permit }), operationId, network: 'disabled', timeoutSec: seconds,
       }), () => input.executor.cancel(operationId), timeoutError);
     },
     async runMany(parent, commands, options) {
@@ -99,6 +126,7 @@ function ports(input: BudgetedPortsInput, reservation?: RepairCapacityReservatio
     ...(delegate.modelId ? { modelId: (tier: ModelTier) => delegate.modelId!(tier) } : {}),
     ...(delegate.capacitySnapshot ? { capacitySnapshot: () => delegate.capacitySnapshot!() } : {}),
     async chat(tier, messages: readonly ChatMessage[], options?: ChatOptions) {
+      if (final && (!final.phase() || final.modelRemaining() <= 0)) throw new BudgetExceededError('elapsedTimeSec');
       const signals = [input.signal, options?.signal].filter((value): value is AbortSignal => value !== undefined);
       const signal = signals.length ? AbortSignal.any(signals) : undefined;
       if (signal?.aborted) throw new Error('Recovery was cancelled');
@@ -122,7 +150,7 @@ function ports(input: BudgetedPortsInput, reservation?: RepairCapacityReservatio
       const quote = selected === undefined ? undefined : Object.freeze({ ...selected, price: Object.freeze({ ...selected.price }) });
       if (!quote) throw new Error('Model price quote is unavailable');
       const turn = input.budget.reserveModelTurn(modelReservationUsd(bytes, tokens, quote.price), reservation);
-      const reply = await withinRecoveryDeadline(input.budget.remainingElapsedTimeSec(reservation), signal,
+      const reply = await withinRecoveryDeadline(final?.modelRemaining() ?? input.budget.remainingElapsedTimeSec(reservation), signal,
         (boundedSignal) => delegate.chat(tier, messages, { ...options, maxTokens: tokens, quotedRoute: quote, signal: boundedSignal }));
       if ((reply.usd ?? turn.reservedUsd) > turn.reservedUsd) throw new BudgetExceededError('inferenceCostUsd');
       input.budget.settleModelTurn(turn, reply.usd ?? turn.reservedUsd);
@@ -136,14 +164,64 @@ export function budgetedRecoveryPorts(input: BudgetedPortsInput): { executor: Ex
   return ports(input);
 }
 
-export function reserveRecoveryAudit(input: BudgetedPortsInput & { policy: RepositoryPolicy }): RecoveryAuditPorts {
+export function reserveRecoveryAudit(input: BudgetedPortsInput & { policy: RepositoryPolicy; verificationAllowance?: VerificationAllowance }): RecoveryAuditPorts {
   const quote = input.llm.modelQuote?.('ultra', [], { maxTokens: AUDIT_OUTPUT_TOKENS });
   if (!quote) throw new Error('Audit model price quote is unavailable');
   const perTurn = modelReservationUsd(AUDIT_REQUEST_BYTES, AUDIT_OUTPUT_TOKENS, quote.price);
-  const reservation = input.budget.reserveCapacity({ modelTurns: 2, sandboxOperations: 1 + input.policy.requiredCommands.length * 2 + (input.policy.verification?.mode === 'disabled' ? 0 : ((input.policy.verification?.contracts.length ?? 0) > 0 ? 6 : 0)), inferenceCostUsd: perTurn * 2, elapsedTimeSec: 60 });
+  const reservation = input.budget.reserveCapacity({ modelTurns: 2, sandboxOperations: 1 + input.policy.requiredCommands.length * 2 + (input.policy.verification?.mode === 'disabled' ? 0 : ((input.policy.verification?.contracts.length ?? 0) > 0 ? 6 : 0)), inferenceCostUsd: perTurn * 2, elapsedTimeSec: input.verificationAllowance ? 0 : 60 });
   let active = true;
+  let phase: FinalVerificationPhase | undefined;
+  const allowance = input.verificationAllowance;
+  const remaining = () => input.budget.remainingElapsedTimeSec(reservation);
+  let policyCalls = input.policy.requiredCommands.length * 2;
+  let challengeCalls = input.policy.verification?.mode !== 'disabled' && (input.policy.verification?.contracts.length ?? 0) > 0 ? 6 : 0;
+  let fullStarted = false;
+  let adjudication: 'pending' | 'active' | 'complete' = 'pending';
+  let adjudicationStartRemaining = 0;
+  const modelRemaining = () => allowance && adjudication === 'active' ? Math.max(0, Math.min(
+    allowance.packet.adjudicationSec - (adjudicationStartRemaining - remaining()),
+    remaining() - policyCalls * allowance.packet.policyTimeoutSec,
+  )) : 0;
+  const final: FinalAuditControl | undefined = allowance ? { allowance, phase: () => phase, modelRemaining,
+    operation(kind) {
+      const packet = allowance.packet;
+      if (kind === 'full' && !fullStarted && adjudication === 'pending') fullStarted = true;
+      else if (kind === 'challenge' && fullStarted && adjudication === 'pending' && challengeCalls > 0) challengeCalls--;
+      else if (kind === 'policy' && adjudication === 'complete' && policyCalls > 0) policyCalls--;
+      else throw new BudgetExceededError('sandboxOperations');
+      const hold = policyCalls * packet.policyTimeoutSec + (adjudication === 'pending' ? packet.adjudicationSec + challengeCalls * packet.challengeTimeoutSec : 0);
+      return { remaining: Math.max(0, remaining() - hold), maximum: kind === 'full' ? packet.fullTimeoutSec : kind === 'challenge' ? packet.challengeTimeoutSec : packet.policyTimeoutSec };
+    },
+  } : undefined;
   return {
-    ...ports({ ...input, operationIdPrefix: `${input.operationIdPrefix ?? `recovery-${randomUUID()}`}-audit` }, reservation),
+    ...ports({ ...input, operationIdPrefix: `${input.operationIdPrefix ?? `recovery-${randomUUID()}`}-audit` }, reservation, final),
+    ...(final === undefined ? {} : {
+      finalVerification: true,
+      beginAdjudication() {
+        if (!fullStarted || adjudication !== 'pending') throw new BudgetExceededError('elapsedTimeSec');
+        adjudication = 'active'; challengeCalls = 0; adjudicationStartRemaining = remaining();
+        if (modelRemaining() <= 0) throw new BudgetExceededError('elapsedTimeSec');
+      },
+      finishAdjudication() {
+        const valid = modelRemaining() > 0;
+        adjudication = 'complete';
+        if (!valid) throw new BudgetExceededError('elapsedTimeSec');
+      },
+      remainingAdjudicationTimeSec: modelRemaining,
+      cancellationTimeSec: () => Math.min(final.allowance.packet.cancellationSec, remaining()),
+      beginFinalVerification(candidate: { imageId: string; diffSha256: string }) {
+        phase = consumeVerificationAllowance(final.allowance, candidate);
+        input.budget.transferToFinalVerification(reservation, phase);
+      },
+      vetoBudget: {
+        reserveSecondOpinion: (usd: number) => input.budget.reserveSecondOpinion(usd, reservation),
+        settleSecondOpinion: input.budget.settleSecondOpinion.bind(input.budget),
+        reserveTypeSafeAudit: (usd: number) => input.budget.reserveTypeSafeAudit(usd, reservation),
+        settleTypeSafeAudit: input.budget.settleTypeSafeAudit.bind(input.budget),
+        remainingElapsedTimeSec: () => input.budget.remainingElapsedTimeSec(reservation),
+      },
+    }),
+    remainingTimeSec: () => input.budget.remainingElapsedTimeSec(reservation),
     finish() {
       if (active) {
         input.budget.releaseCapacity(reservation);

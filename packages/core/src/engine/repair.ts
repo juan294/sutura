@@ -625,6 +625,7 @@ export async function race(
   candidates: readonly Candidate[],
   failingCmd: string,
   observe?: (result: RunResult, attempt: number) => string,
+  testRunOptions?: { cwd: string; timeoutSec: number },
 ): Promise<RaceResult[]> {
   if (candidates.length > MAX_RACE_CANDIDATES) {
     throw new RangeError(
@@ -643,7 +644,7 @@ export async function race(
     // Visible commands may mutate their child image. All subsequent audit gates
     // must start from the immutable applied source, never those side effects.
     const tested = processSucceeded(patch)
-      ? await executor.run(patch.imageId, `sh -lc ${shellQuote(failingCmd)}`, { cwd: SNAPSHOT_CWD, network: 'disabled' })
+      ? await executor.run(patch.imageId, `sh -lc ${shellQuote(failingCmd)}`, { cwd: SNAPSHOT_CWD, ...testRunOptions, network: 'disabled' })
       : patch;
     results.push({
       candidate: candidates[index] as Candidate,

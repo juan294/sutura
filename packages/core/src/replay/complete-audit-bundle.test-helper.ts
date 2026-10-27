@@ -205,6 +205,7 @@ export async function createAuditPathReplayBundleForTest(): Promise<ReplayBundle
   });
   try {
     const caseFile = await orchestrate({
+      replay: recorder,
       runId: RUN_ID,
       github: new GitHubAdapter(recordingGitHubApi(githubApi({
         logLines: [

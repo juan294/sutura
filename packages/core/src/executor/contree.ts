@@ -1,4 +1,5 @@
 /// <reference types="node" />
+import { authorizedOperationTimeout } from '../engine/verification-allowance.js';
 
 import { processSucceeded, type ProcessState } from './types.js';
 
@@ -124,12 +125,14 @@ export interface ContreeExecutorConfig {
 
 export interface ContreeErrorMetadata {
   code?: 'provider-disk-exhausted';
+  providerTerminal?: 'failed' | 'cancelled';
   stage?: 'provider-operation';
   details?: Readonly<{ providerOperationId?: string }>;
 }
 
 export class ContreeError extends Error {
   readonly code?: ContreeErrorMetadata['code'];
+  readonly providerTerminal?: ContreeErrorMetadata['providerTerminal'];
   readonly stage?: ContreeErrorMetadata['stage'];
   readonly details?: ContreeErrorMetadata['details'];
 
@@ -142,6 +145,7 @@ export class ContreeError extends Error {
     super(message);
     this.name = 'ContreeError';
     if (metadata?.code !== undefined) this.code = metadata.code;
+    if (metadata?.providerTerminal !== undefined) this.providerTerminal = metadata.providerTerminal;
     if (metadata?.stage !== undefined) this.stage = metadata.stage;
     if (metadata?.details !== undefined) this.details = Object.freeze({ ...metadata.details });
   }
@@ -182,6 +186,15 @@ export class ContreeExecutor implements Executor {
     this.operationTimeoutMs =
       config.operationTimeoutMs ?? DEFAULT_OPERATION_TIMEOUT_MS;
     this.cancelTimeoutMs = config.cancelTimeoutMs ?? DEFAULT_CANCEL_TIMEOUT_MS;
+  }
+
+  /** Authenticated read-only account evidence. The limit key is reviewed protected policy data. */
+  async verifyDeadlineSupport(limitKey: string | undefined, requestedSeconds: number): Promise<number> {
+    if (!limitKey || !/^[a-z][a-z0-9_]{0,63}$/u.test(limitKey)) throw new ContreeError('Provider timeout-limit key requires protected profile review before execution');
+    const account = await this.requestJson<{ limits?: Record<string, unknown> }>('whoami', { method: 'GET', headers: this.headers() }, 20_000);
+    const maximum = account.limits?.[limitKey];
+    if (typeof maximum !== 'number' || !Number.isSafeInteger(maximum) || maximum < requestedSeconds) throw new ContreeError('Authenticated provider deadline limit is unavailable or below the approved packet');
+    return maximum;
   }
 
   async importImage(ref: string): Promise<ImageId> {
@@ -265,6 +278,12 @@ export class ContreeExecutor implements Executor {
     cmd: string,
     opts: RunOptions = {},
   ): Promise<RunResult> {
+    const timeoutSec = opts.timeoutSec ?? 120;
+    if (!Number.isFinite(timeoutSec) || timeoutSec <= 0) throw new ContreeError('ConTree operation deadline must be positive');
+    if (timeoutSec > 600 && !opts.verificationPermit) throw new ContreeError('Long operation authority is required');
+    const pollTimeoutMs = opts.verificationPermit
+      ? authorizedOperationTimeout(opts.verificationPermit, parent, cmd, timeoutSec)
+      : Math.min(this.operationTimeoutMs, timeoutSec * 1000 + 15_000);
     const body: SpawnBody = {
       image: parent,
       command: cmd,
@@ -272,7 +291,7 @@ export class ContreeExecutor implements Executor {
       networking: { enabled: opts.network === 'enabled' },
     };
     if (opts.env !== undefined) body.env = opts.env;
-    if (opts.timeoutSec !== undefined) body.timeout = opts.timeoutSec;
+    body.timeout = timeoutSec;
     if (opts.cwd !== undefined) body.cwd = opts.cwd;
 
     const operationId = opts.operationId;
@@ -282,7 +301,7 @@ export class ContreeExecutor implements Executor {
     if (operationId) {
       this.operations.set(operationId, { cancellationRequested: false, started: false });
     }
-    return this.instanceLimit(() => this.spawn(body, operationId));
+    return this.instanceLimit(() => this.spawn(body, operationId, pollTimeoutMs));
   }
 
   async runMany(
@@ -290,6 +309,7 @@ export class ContreeExecutor implements Executor {
     cmds: string[],
     opts?: RunOptions,
   ): Promise<RunResult[]> {
+    if (opts?.verificationPermit && cmds.length !== 1) throw new ContreeError('Final verification permits one full command');
     return Promise.all(cmds.map((cmd) => this.run(parent, cmd, opts)));
   }
 
@@ -323,7 +343,7 @@ export class ContreeExecutor implements Executor {
     return { operationId, requested: true };
   }
 
-  private async spawn(body: SpawnBody, operationId?: string): Promise<RunResult> {
+  private async spawn(body: SpawnBody, operationId?: string, pollTimeoutMs?: number): Promise<RunResult> {
     const tracked = operationId === undefined ? undefined : this.operations.get(operationId);
     if (tracked?.terminal === 'cancelled') {
       throw new ContreeError(`ConTree operation ${operationId} was cancelled before it started`);
@@ -345,12 +365,10 @@ export class ContreeExecutor implements Executor {
     }
     let operation: OperationResponse;
     try {
-      operation = await this.poll(operationUrl);
+      operation = await this.poll(operationUrl, pollTimeoutMs);
     } catch (error) {
-      if (tracked && operationId && !tracked.terminal) {
-        tracked.terminal = error instanceof ContreeError && /ended with CANCELLED/u.test(error.message)
-          ? 'cancelled'
-          : 'failed';
+      if (tracked && operationId && !tracked.terminal && error instanceof ContreeError && error.providerTerminal !== undefined) {
+        tracked.terminal = error.providerTerminal;
         this.completions.push({ operationId, terminal: tracked.terminal, cancellationRequested: tracked.cancellationRequested });
       }
       throw error;
@@ -382,9 +400,9 @@ export class ContreeExecutor implements Executor {
     return runResult;
   }
 
-  private async poll(location: string): Promise<OperationResponse> {
+  private async poll(location: string, timeoutMs = this.operationTimeoutMs): Promise<OperationResponse> {
     const operationUrl = this.resolveOperationLocation(location);
-    const deadline = Date.now() + this.operationTimeoutMs;
+    const deadline = Date.now() + timeoutMs;
     let pollIntervalMs = this.pollIntervalMs;
 
     try {
@@ -407,7 +425,7 @@ export class ContreeExecutor implements Executor {
               : '';
           throw new ContreeError(
             `ConTree operation ended with ${String(operation.status)}${detail}`,
-            undefined, undefined, providerDiskFailure(operation, operationUrl),
+            undefined, undefined, { ...providerDiskFailure(operation, operationUrl), providerTerminal: operation.status === 'FAILED' ? 'failed' : 'cancelled' },
           );
         }
 
@@ -420,7 +438,7 @@ export class ContreeExecutor implements Executor {
       if (!(error instanceof RequestTimeoutError)) throw error;
     }
 
-    return this.throwOperationTimeout(operationUrl);
+    return this.throwOperationTimeout(operationUrl, timeoutMs);
   }
 
   private async cancelRemote(operationUrl: string): Promise<void> {
@@ -436,7 +454,7 @@ export class ContreeExecutor implements Executor {
     });
   }
 
-  private async throwOperationTimeout(operationUrl: string): Promise<never> {
+  private async throwOperationTimeout(operationUrl: string, timeoutMs = this.operationTimeoutMs): Promise<never> {
     let cancellation = '';
     try {
       await this.cancelRemote(operationUrl);
@@ -444,7 +462,7 @@ export class ContreeExecutor implements Executor {
       cancellation = `; cancellation attempt failed: ${errorMessage(error)}`;
     }
     throw new ContreeError(
-      `ConTree operation timed out after ${this.operationTimeoutMs}ms${cancellation}`,
+      `ConTree operation timed out after ${timeoutMs}ms${cancellation}`,
     );
   }
 

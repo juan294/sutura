@@ -353,3 +353,9 @@ describe('Python declaration scanner on repository metadata', () => {
     expect(assessJobSupport(input).support).toBe('candidate-supported');
   });
 });
+it('requests protected wrapper evidence and an explicit budget rather than claiming static repair readiness', () => {
+  const input = nodeInput(); input.job.command = 'node scripts/test-select.mjs run terminal:rest';
+  expect(assessJobSupport(input)).toMatchObject({ support: 'unknown', reason: 'reproduction-profile-required', executionAuthorized: false });
+  input.target.runtimeContractVersion = 'sutura-runtime-support-v1';
+  expect(assessJobSupport(input).reason).toBe('target-contract-unavailable');
+});

@@ -159,6 +159,8 @@ export interface PolicyEvidence {
 }
 
 export interface CaseFile {
+  /** Actual controller case clock, including preparation and drain; never summed operation durations. */
+  controllerWallTimeSec?: number;
   runId: string;
   repo: string;
   runtime: 'node' | 'python';

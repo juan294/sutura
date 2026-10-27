@@ -12,6 +12,8 @@ export type InputReader = (name: string) => string;
 export interface ActionConfiguration {
   mode?: 'verify' | 'inspect';
   githubToken: string;
+  verificationPacket?: string;
+  authorizeLongVerification?: string;
   runId: string;
   triageN: number;
   requireFixed: boolean;
@@ -94,6 +96,8 @@ export function mapActionInputs(read: InputReader): ActionConfiguration {
   if (mode === 'inspect') return { mode, githubToken: required(read, 'github-token'), runId,
     triageN: 0, requireFixed: false, captureReplay: false, environment: {} };
   const requireFixed = booleanInput(read('require-fixed'), false, 'require-fixed');
+  const verificationPacket = read('verification-packet').trim(), authorizeLongVerification = read('authorize-long-verification').trim();
+  if (Boolean(verificationPacket) !== Boolean(authorizeLongVerification) || (authorizeLongVerification && !/^[a-f0-9]{64}$/u.test(authorizeLongVerification)) || Buffer.byteLength(verificationPacket) > 16_384) throw new ActionInputError('Long verification requires a bounded canonical packet and separate exact SHA-256 authorization digest', requireFixed, runId, mode);
   const triageN = boundedInteger(read('triage-n'), 5, MAX_TRIAGE_RUNS, 'triage-n');
   const environment: Record<string, string> = {
     NEBIUS_API_KEY: required(read, 'nebius-api-key', requireFixed, runId, mode),
@@ -128,6 +132,7 @@ export function mapActionInputs(read: InputReader): ActionConfiguration {
   return {
     ...(mode === 'verify' ? { mode: 'verify' as const } : {}),
     githubToken: required(read, 'github-token'),
+    ...(verificationPacket ? { verificationPacket, authorizeLongVerification } : {}),
     runId,
     triageN,
     requireFixed,

@@ -1,3 +1,4 @@
+import { needsNodeReproductionProfile } from '../engine/reproduction-admission.js';
 import { admitNativeCommand } from '../engine/native-command-admission.js';
 import { parseDocument } from 'yaml';
 import { assessPythonDeclarations } from './python-declarations.js';
@@ -110,6 +111,7 @@ export function assessJobSupport(input: JobAssessmentInput): JobAssessmentRecord
   if (!input.observation.complete || input.observation.truncated || !input.snapshot.complete) {
     return stop(record, 'unknown', 'incomplete-evidence', 'complete-selected-job-evidence', 'Repeat the bounded metadata capture and disclose any remaining truncation.');
   }
+  if (needsNodeReproductionProfile(input.job.command)) return stop(record, 'unknown', 'reproduction-profile-required', 'reviewed-protected-reproduction-profile', 'Review the exact Node wrapper/source/runtime profile, complete native failure set and explicit full-verification budget before paid preparation. Static assessment does not grant execution authority.');
   const admission = admitNativeCommand(input.job.command);
   if (admission) return stop(record, 'unsupported', admission.reason, 'coordinator-source-evidence', admission.nextAction);
   if (CAPABILITIES.some(key => input.job[key] === 'present')) {

@@ -1,3 +1,6 @@
+import type { ControllerClockDomain, ControllerClockSample } from './controller-clock.js';
+import { isVerificationAllowance, canonicalPacketDigest, type VerificationPacket, type VerificationAllowance } from '../engine/verification-allowance.js';
+import type { RepairBudgetSnapshot } from '../engine/repair-budget.js';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 
@@ -120,6 +123,9 @@ export interface RecordedExecutorCall {
 }
 
 export interface ReplayOrchestrationConfig {
+  operationDeadlines?: 'sutura-operation-deadlines-v1';
+  controllerClock?: ControllerClockSample[];
+  longVerification?: { packet: VerificationPacket; provenance: string; admitted: boolean; controllerWallTimeSec?: number; finalPhase?: { imageId: string; diffSha256: string; sharedBudget: RepairBudgetSnapshot } };
   triageN: number;
   raceK: number;
   repairBudgets?: RepairBudgetOverrides;
@@ -394,6 +400,7 @@ export class ReplayRecorder {
   private readonly repository: RecordedRepositoryCall[] = [];
   private readonly executor: RecordedExecutorCall[] = [];
   private readonly configuration: ReplayOrchestrationConfig;
+  private controllerStartedAt: number | undefined;
   private runtimeDetection: RuntimeDetectionObservation | undefined;
   private readonly checkoutPaths = new Map<string, string>();
   private readonly overflowedBoundaries = new Set<ReplayOverflowBoundary>();
@@ -423,11 +430,41 @@ export class ReplayRecorder {
       configuration,
       this.secrets,
     );
-    this.configuration = safeConfig.value as ReplayOrchestrationConfig;
+    this.configuration = { operationDeadlines: 'sutura-operation-deadlines-v1', ...(safeConfig.value as ReplayOrchestrationConfig) };
     if (safeConfig.lossy) this.markOverflow('configuration');
     this.runId = redactScalar(runId, this.secrets);
     this.repo = redactScalar(repo, this.secrets);
     this.actionSha = redactScalar(actionSha, this.secrets);
+  }
+
+  bindControllerStart(startedAt: number): void {
+    if (this.controllerStartedAt !== undefined || !Number.isFinite(startedAt) || startedAt > Date.now()) throw new Error('Controller clock capture start is invalid or repeated');
+    this.controllerStartedAt = startedAt;
+    this.configuration.controllerClock = [];
+  }
+
+  clockNow(domain: ControllerClockDomain): number {
+    const now = Date.now(), samples = this.configuration.controllerClock;
+    if (this.controllerStartedAt === undefined || !samples || samples.length >= 8192) {
+      this.markOverflow('configuration'); throw new Error('Controller clock capture is unavailable or exceeds its bound');
+    }
+    samples.push({ domain, elapsedMs: now - this.controllerStartedAt }); return now;
+  }
+
+  recordVerificationAdmission(capability: VerificationAllowance): void {
+    const configured = this.configuration.longVerification;
+    if (!isVerificationAllowance(capability) || !configured || configured.admitted || configured.provenance !== capability.provenance || canonicalPacketDigest(configured.packet) !== canonicalPacketDigest(capability.packet)) throw new Error('Recorded long-verification admission differs from configured authority');
+    configured.admitted = true;
+  }
+
+  recordFinalVerification(input: { imageId: string; diffSha256: string; sharedBudget: RepairBudgetSnapshot }): void {
+    const configured = this.configuration.longVerification;
+    if (!configured?.admitted || configured.finalPhase || !input.imageId || !/^[a-f0-9]{64}$/u.test(input.diffSha256)) throw new Error('Recorded final phase is unadmitted, repeated or invalid');
+    configured.finalPhase = structuredClone(input);
+  }
+
+  recordControllerWallTime(seconds: number | undefined): void {
+    if (seconds !== undefined && this.configuration.longVerification && Number.isFinite(seconds) && seconds >= 0) this.configuration.longVerification.controllerWallTimeSec = seconds;
   }
 
   reserveHttpSequence(boundary: RecordedHttpBoundary): number | null {
@@ -641,7 +678,7 @@ export class ReplayRecorder {
       repository: this.repository.toSorted((left, right) => left.sequence - right.sequence),
       executor: this.executor.toSorted((left, right) => left.sequence - right.sequence),
       http: this.http.toSorted((left, right) => left.sequence - right.sequence),
-      configuration: this.configuration,
+      configuration: structuredClone(this.configuration),
       completeness: {
         complete,
         overflowedBoundaries,

@@ -43,3 +43,40 @@ The plan called for a narrow structural control-script recognizer. Marker-line m
 A read of the provider's [limits and usage documentation](https://docs.tokenfactory.nebius.com/sandboxes/operate/limits-retention-and-usage) confirmed operation `duration` as seconds, while raw resource units require separate confirmation. The original saved response contains top-level duration 60.6; the first synthetic structural fixture had incorrectly placed it in metadata. Preserve that earlier fixture/hash as history, add a corrected current fixture, map wallTimeSec from top-level duration, and leave absent historical wall duration unknown instead of deriving it from raw monotonic_time. RED covers both the corrected value and unknown historical duration. This changes the decoder only; retained raw elapsed/cost fields and termination evidence remain intact.
 
 The complete P2 ci:local gate passed at 73783346b543e3b9e108e0214d6d31406993e05f, including the 20-minute local corpus check and 758/758 guard coverage. The decoder correction invalidates its focused executor tests, Core coverage/source static checks, bundles and exact candidate-install identity. Those checks are rerun; unchanged corpus, native contract and Action-source evidence is retained. No second corpus run is needed for this provider-only mapping correction.
+
+### Phase 2 acceptance
+
+Accepted locally at `dc47a3674283e51c246368ddf9326b39dfd78508` (P2 implementation at 73783346b543e3b9e108e0214d6d31406993e05f, followed by the documented provider-only duration correction). Independent reviewers approved all source findings. Full ci:local passed at the P2 implementation candidate. Updated Core coverage passed 2,377 active tests with 11 explicit skips; retained Action coverage passed 217 tests. Updated guard coverage passed 758/758. Rebuilt Action, root typecheck/lint through the normal commit hook, clean bundle identity and exact candidate install all passed after the correction. The corpus and unrelated contract checks retain their passing unchanged-input receipts. No paid execution, publication or hosted activation occurred. Phase 3 may begin.
+
+### P3 protected policy for an explicitly approved historical source
+
+- **Expected:** an authenticated one-attempt grant can select an unresolved old source after the pilot profile is enrolled.
+- **Found:** ordinary push admission requires the failing source to remain the branch tip and policy is read at that source. A newly enrolled protected policy necessarily has a different commit.
+- **Chose:** retain ordinary automatic admission unchanged; the explicit adapter grant separately binds the historical source SHA and the newer protected policy SHA/ref, verified from authenticated protected-ref evidence. It cannot substitute branch HEAD for the source or use candidate policy.
+- **Why:** this implements the approved explicit retry boundary without erasing old claims or granting automatic historical retries. It does not authorize any live attempt.
+
+### P3 complete diagnostics and profile unit
+
+- Full selected-step Node diagnostics precede the display cap. Two-failure fixtures and actual local Node wrapper/probe execution agree on the complete identity set; clipped, killed, missing/changed/extra failures and JSON trust claims are rejected.
+- Independent review identified native completion inferred from GitHub failure conclusions and undeclared loader/environment inputs. Both corrected: the selected step requires one normal exit-1 footer, and the initial profile rejects environment files/output destinations while requiring digested safe loader inputs.
+- Protected profile resolution occurs before provider import in Action and local healing; stale/missing evidence returns a named review action. Ordinary profiles/policies remain optional. The original full command is retained separately from the complete focused probe.
+- Focused integration receipt `p3-profile-integration.log`: 298 tests passed in eight files. Actual subprocess receipt: `p3-profile-subprocess.log`. Phase 3 remains unaccepted pending execution/authorization, review and full gates.
+
+### P3 provider deadline preflight adjustment
+
+- **Expected:** verify the authenticated account's provider timeout maximum before an approved long execution.
+- **Found:** the primary provider documentation specifies a `limits` map from read-only `GET /v1/whoami`, but does not publish a stable timeout-limit key. Guessing a key or treating a packet's numeric maximum as provider evidence would be unsound.
+- **Chose:** add optional protected-profile `providerTimeoutLimitKey`. A live adapter requires this reviewed key and checks its numeric account-effective value against the approved packet through authenticated GET before issuing/reserving the grant. Missing/unknown/insufficient metadata stops before provider operations. Synthetic tests explicitly use synthetic limit keys; they do not assert actual account support.
+- **Why:** the owner reviews the semantic key together with the protected pilot profile. Product code validates actual returned account metadata without introducing a default provider maximum or a paid capability probe. Pricing remains an explicitly approved reservation, not an invoice ceiling; raw operation cost is not billing reconciliation.
+- Primary reference: https://docs.tokenfactory.nebius.com/sandboxes/operate/limits-retention-and-usage (read 2026-10-27). No actual provider endpoint has been invoked in this implementation session.
+
+### P3 execution unit and independent findings
+
+- Added opaque packet/candidate/operation capabilities, explicit CLI digest + common-Git append-only account/reconciliation, protected authenticated owner-dispatch authority, source/policy read separation and a shared long-operation poller. All four live entry points now receive profile/final-budget wiring; supplied paths retain the original request/full audit separately from focused probes.
+- One-shot search consumes the selected image/diff before cancel/drain and rejects competing candidates. Fake-clock full production audit stack beyond 600 seconds passes with reserved model capacity, unchanged command and all duplicate baseline/candidate policy checks; ordinary ports stay closed. New isolated modules and old focused suites pass; this is synthetic local verification, not a real repair win.
+- Independent execution review found: per-category challenge deadline must be clamped; transport errors must not become provider terminal proof; adjudication's time hold must be released before later policy checks and adjudication itself bounded cumulatively; cancellation/drain must have a bounded terminal exit. All four findings are resolved and their focused regression receipts pass. Deadline-faithful replay additionally records controller clock inputs and consumes the same operation permits. The reviewer approved the completed source; the final hostname binding pins new authenticated CLI reads to github.com. Full phase gates now follow on the stable source.
+- Core production build initially failed after a new import accidentally preceded `contree.ts`'s triple-slash Node type reference. Restoring the reference to the first line fixes the normal build; no TS configuration workaround is needed. All failed receipts remain retained.
+
+### P3 simplify and source-review closeout
+
+Independent source review approved the final source after the explicit GitHub hostname regression passed. Three simplify passes covered reuse, quality and efficiency. Reuse: shared environment, process and deadline helpers preserve one implementation across entry points; no further abstraction is needed. Quality: the normal compiler directive is restored and obsolete interim findings above are resolved. Efficiency: bounded diagnostic reads, clock recording and single-candidate verification avoid repeated execution; no speculative rewrite was applied. CLI clean-build inputs include the consumed package tsconfigs. Added the append-only account regression to the standard release-contract command so it remains an automatic gate. No new source behavior was introduced during this closeout.

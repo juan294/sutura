@@ -592,3 +592,12 @@ describe('RepairToolRuntime', () => {
     expect(options).toMatchObject({ timeoutSec: 0.25 });
   });
 });
+it('uses the protected probe cwd/deadline while keeping repository edits at the root', async () => {
+  const run = vi.fn<Executor['run']>(async () => runResult('next'));
+  const tools = new RepairToolRuntime({ executor: executorFor(run), initialImageId: 'baseline', diagnosis,
+    policy: createDefaultRepositoryPolicy(), budget: new RepairBudget(), trustedCommands: { diagnosed: 'node --test test/a.mjs' },
+    testRunOptions: { diagnosed: { cwd: '/workspace/packages/app', timeoutSec: 240 } }, sourceContext: { sources: [] } });
+  expect(await tools.execute('run_test', { commandId: 'diagnosed' })).toMatchObject({ ok: true });
+  expect(run).toHaveBeenLastCalledWith('baseline', 'node --test test/a.mjs', expect.objectContaining({ cwd: '/workspace/packages/app', timeoutSec: expect.any(Number) }));
+  expect(run.mock.calls[0]?.[2]?.timeoutSec).toBeGreaterThan(120);
+});

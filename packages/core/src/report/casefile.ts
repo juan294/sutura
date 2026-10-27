@@ -52,7 +52,7 @@ function renderSandboxEvidence(caseFile: CaseFile): string {
         <div><dt>Base SHA</dt><dd><code>${escapeHtml(caseFile.policy.baseSha)}</code></dd></div>
         <div><dt>Policy SHA</dt><dd><code>${escapeHtml(caseFile.policy.policySha)}</code></dd></div>
       </dl>
-      <p class="micro-label">Sandbox totals</p>
+      ${caseFile.controllerWallTimeSec === undefined ? '' : `<p class="micro-label">Controller wall time</p><p>${caseFile.controllerWallTimeSec.toFixed(3)} s, including preparation, waits and cancellation/drain.</p>\n      `}<p class="micro-label">Sandbox totals</p>
       <p>${totals.operationCount} operations · ${totals.elapsedTimeSec.toFixed(3)} s elapsed · ${totals.cpuTimeSec.toFixed(3)} s CPU · ${totals.maxRssKb.toLocaleString('en-US')} KB peak RSS · ${formatUsd(totals.sandboxCostUsd)} sandbox cost</p>
       <div class="table-wrap"><table class="ledger">
         <thead><tr><th>Stage</th><th>Attempt</th><th>Node</th><th>Parent</th><th>Exit</th>${hasProcessEvidence ? '<th>Process termination</th><th>Wall s</th>' : ''}<th>Elapsed s</th><th>Max RSS KB</th><th>Cost USD</th>${hasOperationEvidence ? '<th>Operation</th><th>Terminal</th><th>Cancel requested</th>' : ''}<th>Network</th><th>Note</th></tr></thead>

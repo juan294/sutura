@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { AuditVerdict, Candidate, CostLedger, Diagnosis } from './domain.js';
 import { DEFAULT_MODELS, MAX_STAGE_EVIDENCE_ENTRIES } from './config.js';
+import { reproductionProfile } from './policy/reproduction-profile.test-helper.js';
 import { nativeFailureForCommand } from './engine/failure-identity.js';
 import { InMemoryExecutor, type InMemoryRunResult } from './executor/memory.js';
 import {
@@ -44,6 +45,17 @@ it('stops a known native CI control command before every executor/model operatio
   const file = await healCase(ctx);
   expect(file).toMatchObject({ outcome: 'gave-up', diagnosis: { signals: ['native-command-admission:ci-control'] }, triage: { status: 'not-run', stopReason: 'failure-identity', reproduced: 0 }, race: [] });
   expect(file.reproduction?.reason).toContain('Sutura');
+  expect(executor.calls).toEqual([]);
+  expect(chat).not.toHaveBeenCalled();
+});
+
+it('stops a profiled wrapper without complete native evidence before paid preparation', async () => {
+  const profile = reproductionProfile();
+  const { ctx, executor, chat } = context('repair-off-by-one', [], 'test-assertion', { runtimeId: 'node', failureCommand: profile.nativeCommand,
+    policy: { ...createDefaultRepositoryPolicy(), reproductionProfiles: [profile] } });
+  const file = await healCase(ctx);
+  expect(file.outcome).toBe('gave-up');
+  expect(file.reproduction?.reason).toContain('native-diagnostics-incomplete');
   expect(executor.calls).toEqual([]);
   expect(chat).not.toHaveBeenCalled();
 });

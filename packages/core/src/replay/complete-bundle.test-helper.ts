@@ -131,6 +131,7 @@ export async function createCompleteReplayBundleForTest(): Promise<ReplayBundle>
   });
   try {
     const caseFile = await orchestrate({
+      replay: recorder,
       runId: RUN_ID,
       github: new GitHubAdapter(recordingGitHubApi(githubApi({
         logLines: [

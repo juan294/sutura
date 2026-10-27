@@ -136,6 +136,7 @@ function renderDischarge(caseFile: CaseFile): string[] {
     `**Policy:** base <code>${escapeHtml(caseFile.policy.baseRef)}</code> at <code>${escapeHtml(caseFile.policy.baseSha)}</code> · policy <code>${escapeHtml(caseFile.policy.policySha)}</code>`,
     '',
     `**Runtime:** <code>${escapeHtml(caseFile.runtime)}</code>`,
+    ...(caseFile.controllerWallTimeSec === undefined ? [] : [`**Controller wall time:** ${caseFile.controllerWallTimeSec.toFixed(3)} s, including preparation, waits and cancellation/drain.`]),
     ...caseFile.stages.filter(entry => entry.processState !== undefined || entry.metrics.wallTimeSec !== undefined).map(entry => `**Process evidence (${escapeMarkdown(entry.stage)} ${entry.attempt}):** ${escapeMarkdown(entry.processState === undefined ? 'termination unknown' : JSON.stringify(entry.processState))}; wall ${entry.metrics.wallTimeSec ?? 'unknown'} s. Review the command deadline before a new authorized attempt.`),
   ];
 }

@@ -1,9 +1,11 @@
+import { prepareActionVerificationAuthorization } from './verification-authorization.js';
 import { runActionVerification, type ActionVerificationContext, type ActionVerificationOutcome } from './verify-execution.js';
 import { mapVerifyInputs, type ActionVerifyInputs } from './verify.js';
 import { DefaultArtifactClient } from '@actions/artifact';
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import {
+  authorizeActionVerification,
   AlreadyAttemptedError,
   describeTerminalRecovery,
   ContreeExecutor,
@@ -76,6 +78,7 @@ export async function runAction(
   overrides: Partial<RunActionDependencies> = {},
 ): Promise<void> {
   const dependencies = { ...DEFAULT_DEPENDENCIES, ...overrides };
+  const controllerStartedAt = Date.now();
   let requireFixed = false;
   let actionMode: 'heal' | 'verify' | 'inspect' = 'heal';
   let selectedRunId: string | undefined;
@@ -100,7 +103,8 @@ export async function runAction(
     }
     if (action.mode === 'verify') {
       const result = await dependencies.verify(dependencies.readVerification(), {
-        owner, repo, runId: action.runId, githubToken: action.githubToken, config,
+        owner, repo, runId: action.runId, githubToken: action.githubToken, config, controllerStartedAt, engineSha: resolveActionIdentity(dependencies.environment).sha ?? '',
+        ...(action.verificationPacket ? { verificationPacket: action.verificationPacket, authorizeLongVerification: action.authorizeLongVerification!, callerRunId: Number(actionRunId) } : {}),
       });
       if (result.status !== 'verified-supplied-patch') {
         dependencies.setFailed(`Sutura verification: ${result.status}`);
@@ -112,6 +116,8 @@ export async function runAction(
       throw new Error('capture-replay requires Sutura to be pinned to an exact Action commit SHA');
     }
     const octokit = github.getOctokit(action.githubToken);
+    const longVerification = action.verificationPacket ? await prepareActionVerificationAuthorization({ octokit, owner, repo, callerRunId: Number(actionRunId), packetInput: action.verificationPacket, packetDigestInput: action.authorizeLongVerification! }) : undefined;
+    if (longVerification && (longVerification.packet.runId !== action.runId || longVerification.packet.engineSha !== actionIdentity.sha)) throw new Error('Selected source or engine differs from authenticated dispatch packet');
     const orchestrationOptions = {
       triageN: config.triageN,
       raceK: config.raceK,
@@ -134,6 +140,8 @@ export async function runAction(
           actionIdentity.sha ?? '',
           {
             ...orchestrationOptions,
+            operationDeadlines: 'sutura-operation-deadlines-v1',
+            ...(longVerification ? { longVerification: { packet: longVerification.packet, provenance: longVerification.authority.provenance, admitted: false } } : {}),
             models: config.models,
             routingProfileId: config.routingProfileId,
             maxOps: config.maxOps,
@@ -177,7 +185,7 @@ export async function runAction(
       : undefined;
     let publicationSource: AuthenticatedSourceRun | undefined;
     let publishedPrNumber: number | undefined;
-    const baseGithubApi = createGitHubApi(octokit, owner, repo, { onSourceRun: source => {
+    const baseGithubApi = createGitHubApi(octokit, owner, repo, { ...(longVerification ? { sourceAttempt: longVerification.authority.actual.attempt } : {}), onSourceRun: source => {
       if (source.runId !== Number(action.runId) || source.repository.toLowerCase() !== `${owner}/${repo}`.toLowerCase() ||
         !Number.isSafeInteger(source.attempt) || source.attempt < 1 || !Number.isSafeInteger(source.repositoryId) || source.repositoryId < 1 ||
         !Number.isSafeInteger(source.workflowId) || source.workflowId < 1 || !/^[a-f0-9]{40}$/u.test(source.sha) || !source.branch) throw new Error('Publication source identity unavailable');
@@ -197,6 +205,7 @@ export async function runAction(
         owner,
         repo,
         runId: action.runId,
+        ...(longVerification ? { explicitAuthority: longVerification.authority } : {}),
         actionRunId,
         artifact: new DefaultArtifactClient(),
       },
@@ -232,6 +241,8 @@ export async function runAction(
 
     const result = await withFailureSafeCheck(adapter, () => orchestrate({
       evidenceMode: 'live',
+      controllerStartedAt,
+      ...(longVerification ? { explicitAuthority: longVerification.authority, authorizeVerification: async plan => { await baseExecutor.verifyDeadlineSupport(plan.profile.providerTimeoutLimitKey, longVerification.packet.providerMaxTimeoutSec); const capability = await authorizeActionVerification({ packet: longVerification.packet, plan, authority: longVerification.authority, ...(recorder ? { now: () => recorder!.clockNow('verification') } : {}) }); recorder?.recordVerificationAdmission(capability); return capability; } } : {}),
       runId: action.runId,
       github: adapter,
       repository,

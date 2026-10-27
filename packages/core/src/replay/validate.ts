@@ -1,3 +1,4 @@
+import { parseVerificationPacket } from '../engine/verification-allowance.js';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 
@@ -483,6 +484,28 @@ export function parseReplayBundle(value: unknown): ReplayBundle {
   });
 
   const config = object(bundle.configuration, 'bundle.configuration');
+  if (config.controllerClock !== undefined) {
+    let previous = -1;
+    for (const [index, value] of array(config.controllerClock, 'bundle.configuration.controllerClock', 8192).entries()) {
+      const sample = object(value, `bundle.configuration.controllerClock[${index}]`);
+      if (Object.keys(sample).some(key => key !== 'domain' && key !== 'elapsedMs') || !['preparation', 'repair', 'verification'].includes(String(sample.domain)) || typeof sample.elapsedMs !== 'number' || !Number.isSafeInteger(sample.elapsedMs) || sample.elapsedMs < previous || sample.elapsedMs > 86_400_000) throw new ReplayValidationError('bundle.configuration.controllerClock', 'bounded ordered clock inputs required');
+      previous = sample.elapsedMs;
+    }
+  }
+  if (config.operationDeadlines !== undefined && config.operationDeadlines !== 'sutura-operation-deadlines-v1') throw new ReplayValidationError('bundle.configuration.operationDeadlines', 'unknown deadline contract');
+  if (config.longVerification !== undefined) {
+    const long = object(config.longVerification, 'bundle.configuration.longVerification');
+    try { const packet = parseVerificationPacket(long.packet); if (packet.engineSha !== bundle.actionSha || packet.repository !== bundle.repo || packet.runId !== bundle.runId) throw new Error('packet identity differs'); } catch { throw new ReplayValidationError('bundle.configuration.longVerification.packet', 'invalid bounded packet'); }
+    if (typeof long.provenance !== 'string' || !long.provenance || long.provenance.length > 1024 || typeof long.admitted !== 'boolean') throw new ReplayValidationError('bundle.configuration.longVerification', 'invalid authority evidence');
+    if (long.controllerWallTimeSec !== undefined && (typeof long.controllerWallTimeSec !== 'number' || !Number.isFinite(long.controllerWallTimeSec) || long.controllerWallTimeSec < 0 || long.controllerWallTimeSec > 86_400)) throw new ReplayValidationError('bundle.configuration.longVerification.controllerWallTimeSec', 'invalid recorded case clock');
+    if (long.finalPhase !== undefined) {
+      const final = object(long.finalPhase, 'bundle.configuration.longVerification.finalPhase');
+      if (long.admitted !== true || typeof final.imageId !== 'string' || !final.imageId || final.imageId.length > 256 || typeof final.diffSha256 !== 'string' || !SHA256.test(final.diffSha256)) throw new ReplayValidationError('bundle.configuration.longVerification.finalPhase', 'invalid consumed candidate');
+      const shared = object(final.sharedBudget, 'bundle.configuration.longVerification.finalPhase.sharedBudget');
+      for (const [key, value] of Object.entries(shared)) if (!(key in DEFAULT_REPAIR_BUDGET_LIMITS) || typeof value !== 'number' || !Number.isFinite(value) || value < 0 || (key !== 'elapsedTimeSec' && value > DEFAULT_REPAIR_BUDGET_LIMITS[key as keyof typeof DEFAULT_REPAIR_BUDGET_LIMITS])) throw new ReplayValidationError('bundle.configuration.longVerification.finalPhase.sharedBudget', 'invalid shared counter');
+    }
+  }
+
   positiveInteger(config.triageN, 'bundle.configuration.triageN');
   positiveInteger(config.raceK, 'bundle.configuration.raceK');
   positiveInteger(config.maxOps, 'bundle.configuration.maxOps');

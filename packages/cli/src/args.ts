@@ -12,6 +12,7 @@ export const USAGE = [
   '  sutura <upgrade|pause|resume|remove> --plan | --apply <plan-digest>',
   '  sutura doctor [--repo <owner/repo>] [--action-sha <commit>]',
   '  sutura heal --case-dir <dir> --format json [--candidate-diff <diff>] [--alternatives-file <file>] [--routing-profile <id>] [--runtime <auto|node|python>] [--no-tavily]',
+  '  Long verification: add --verification-packet <private-envelope-file> --authorize-long-verification <canonical-packet-sha256>; separate approved spending is required.',
   '  sutura verify --case-dir <dir> --source-sha <commit> --policy-base-sha <commit> --candidate-diff <file> --failing-command <id> [--runtime <auto|node|python>] --format json',
   '  sutura audit --case-dir <dir> --candidate-diff <file> --before-log <file> --after-log <file> --format json',
   '  sutura replay --bundle <file> --format json [--runtime <auto|node|python>]',
@@ -39,6 +40,8 @@ export interface DiagnoseArguments {
 
 export interface HealArguments {
   command: 'heal';
+  verificationPacket?: string;
+  authorizeLongVerification?: string;
   caseDir: string;
   format: 'json';
   candidateDiff?: string;
@@ -81,6 +84,8 @@ export interface InitArguments {
  */
 export interface VerifyArguments {
   command: 'verify';
+  verificationPacket?: string;
+  authorizeLongVerification?: string;
   caseDir: string;
   sourceSha: string;
   policyBaseSha: string;
@@ -192,6 +197,11 @@ function validateFailingCommand(value: string): string {
   return trimmed;
 }
 
+function validateLongVerificationArguments(packet: string | undefined, digest: string | undefined): void {
+  if ((packet === undefined) !== (digest === undefined)) throw new CliUsageError('--verification-packet and --authorize-long-verification must be supplied together');
+  if (digest !== undefined && !/^[a-f0-9]{64}$/u.test(digest)) throw new CliUsageError('--authorize-long-verification must be the exact canonical packet SHA-256');
+}
+
 function parseHeal(args: readonly string[]): HealArguments {
   let caseDir: string | undefined;
   let format: string | undefined;
@@ -201,11 +211,12 @@ function parseHeal(args: readonly string[]): HealArguments {
   let routingProfile: string | undefined;
   let runtime: 'node' | 'python' | undefined;
   let tavilyEnabled = true;
+  let verificationPacket: string | undefined, authorizeLongVerification: string | undefined;
   const seen = new Set<string>();
 
   for (let index = 1; index < args.length; index += 1) {
     const flag = args[index];
-    if (!flag || !['--case-dir', '--format', '--candidate-diff', '--alternatives-file', '--failing-command', '--routing-profile', '--runtime', '--no-tavily'].includes(flag)) {
+    if (!flag || !['--case-dir', '--format', '--candidate-diff', '--alternatives-file', '--failing-command', '--routing-profile', '--runtime', '--no-tavily', '--verification-packet', '--authorize-long-verification'].includes(flag)) {
       throw new CliUsageError(`Unknown argument: ${flag ?? '(missing)'}`);
     }
     if (seen.has(flag)) throw new CliUsageError(`Duplicate argument: ${flag}`);
@@ -222,11 +233,14 @@ function parseHeal(args: readonly string[]): HealArguments {
     else if (flag === '--alternatives-file') alternativesFile = value;
     else if (flag === '--failing-command') failingCommand = validateFailingCommand(value);
     else if (flag === '--routing-profile') routingProfile = value;
+    else if (flag === '--verification-packet') verificationPacket = value;
+    else if (flag === '--authorize-long-verification') authorizeLongVerification = value;
     else if (value === 'auto') runtime = undefined;
     else if (value === 'node' || value === 'python') runtime = value;
     else throw new CliUsageError('--runtime must be auto, node, or python');
   }
 
+  validateLongVerificationArguments(verificationPacket, authorizeLongVerification);
   if (!caseDir) throw new CliUsageError('--case-dir is required');
   if (format !== 'json') throw new CliUsageError('--format must be json');
   if (
@@ -237,6 +251,7 @@ function parseHeal(args: readonly string[]): HealArguments {
   }
   return {
     command: 'heal',
+    ...(verificationPacket === undefined ? {} : { verificationPacket, authorizeLongVerification: authorizeLongVerification! }),
     caseDir,
     format: 'json',
     ...(candidateDiff === undefined ? {} : { candidateDiff }),
@@ -312,7 +327,7 @@ function parseInit(args: readonly string[]): InitArguments {
 function parseVerify(args: readonly string[]): VerifyArguments {
   const values = new Map<string, string>();
   const required = ['--case-dir', '--source-sha', '--policy-base-sha', '--candidate-diff', '--failing-command', '--format'];
-  const allowed = new Set([...required, '--runtime']);
+  const allowed = new Set([...required, '--runtime', '--verification-packet', '--authorize-long-verification']);
   for (let index = 1; index < args.length; index += 2) {
     const flag = args[index];
     if (!flag || !allowed.has(flag)) throw new CliUsageError(`Unknown argument: ${flag ?? '(missing)'}`);
@@ -329,6 +344,7 @@ function parseVerify(args: readonly string[]): VerifyArguments {
       throw new CliUsageError(`${flag} must be an exact lowercase 40-character commit`);
     }
   }
+  validateLongVerificationArguments(values.get('--verification-packet'), values.get('--authorize-long-verification'));
   const runtimeValue = values.get('--runtime');
   if (runtimeValue !== undefined && !['auto', 'node', 'python'].includes(runtimeValue)) {
     throw new CliUsageError('--runtime must be auto, node, or python');
@@ -338,6 +354,7 @@ function parseVerify(args: readonly string[]): VerifyArguments {
     : runtimeValue as 'node' | 'python';
   return {
     command: 'verify',
+    ...(values.has('--verification-packet') ? { verificationPacket: values.get('--verification-packet')!, authorizeLongVerification: values.get('--authorize-long-verification')! } : {}),
     caseDir: values.get('--case-dir') as string,
     sourceSha: values.get('--source-sha') as string,
     policyBaseSha: values.get('--policy-base-sha') as string,

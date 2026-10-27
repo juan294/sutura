@@ -588,3 +588,9 @@ it('renders retained initial diagnosis, alternatives and controller grants with 
     expect(report).toContain('live repair quality');
   }
 });
+it('reports the actual controller clock separately from overlapping operation durations', async () => {
+  const file = await loadFixture('gave-up'); file.controllerWallTimeSec = 1500;
+  file.stages.push({ stage: 'audit', attempt: 1, nodeId: 'long', exitCode: 0, metrics: { wallTimeSec: 1300 }, network: 'disabled' });
+  expect(renderCaseFile(file)).toContain('Controller wall time');
+  expect(renderComment(file)).toContain('1500.000 s, including preparation');
+});

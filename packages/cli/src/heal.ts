@@ -1,3 +1,4 @@
+import { prepareCliVerificationAuthorization } from './verification-authorization.js';
 import { constants } from 'node:fs';
 import { lstat, open, realpath, stat } from 'node:fs/promises';
 import { basename, resolve, sep } from 'node:path';
@@ -405,8 +406,11 @@ export async function healWithRuntime(
   request: HealArguments,
   runtime: HealRuntime,
 ): Promise<CaseFile> {
+  const controllerStartedAt = Date.now();
   const caseDir = await canonicalCaseDirectory(request.caseDir);
-  const loadedPolicy = loadRepositoryPolicy(await readLocalPolicy(caseDir));
+  const authorization = request.verificationPacket === undefined ? undefined : await prepareCliVerificationAuthorization({ caseDir, envelopePath: request.verificationPacket, operatorDigest: request.authorizeLongVerification });
+  if (authorization && request.failingCommand !== undefined && request.failingCommand !== authorization.failureCommand) throw new CliConfigError('Explicit command differs from the approved packet');
+  const loadedPolicy = authorization ? { policy: authorization.policy, sha: authorization.policyEvidence.policySha } : loadRepositoryPolicy(await readLocalPolicy(caseDir));
   const dependencyHints = await readDependencyHints(caseDir);
   const counterfactuals = request.alternativesFile === undefined
     ? undefined
@@ -414,8 +418,10 @@ export async function healWithRuntime(
   const caseName = basename(caseDir).replace(/[^A-Za-z0-9_.-]+/gu, '-') || 'case';
   return healCase({
     evidenceMode: runtime.evidenceMode ?? 'local',
-    runId: `local-${caseName}`,
-    repo: `local/${caseName}`,
+    runId: authorization?.nativeFailure.diagnostics?.binding.runId ?? `local-${caseName}`,
+    repo: authorization?.nativeFailure.diagnostics?.binding.repository ?? `local/${caseName}`,
+    controllerStartedAt,
+    ...(authorization === undefined ? {} : { nativeFailure: authorization.nativeFailure, sourceIdentity: authorization.sourceIdentity, authorizeVerification: async plan => { if (runtime.evidenceMode === 'live') { if (!(runtime.executor instanceof ContreeExecutor)) throw new CliConfigError('Authenticated provider preflight is unavailable'); await runtime.executor.verifyDeadlineSupport(plan.profile.providerTimeoutLimitKey, authorization.packet.providerMaxTimeoutSec); } return authorization.authorizeVerification(plan); } }),
     caseDir,
     executor: runtime.executor,
     llm: runtime.llm,
@@ -436,7 +442,7 @@ export async function healWithRuntime(
       competingClasses,
     ),
     policy: loadedPolicy.policy,
-    policyEvidence: {
+    policyEvidence: authorization?.policyEvidence ?? {
       baseRef: 'local',
       baseSha: 'local',
       policySha: loadedPolicy.sha,
@@ -446,7 +452,7 @@ export async function healWithRuntime(
     ...(runtime.runtimeId ? { runtimeId: runtime.runtimeId } : {}),
     ...(dependencyHints.length === 0 ? {} : { dependencyHints }),
     ...(request.candidateDiff === undefined ? {} : { candidateDiff: request.candidateDiff }),
-    ...(request.failingCommand === undefined ? {} : { failureCommand: request.failingCommand }),
+    ...(authorization ? { failureCommand: authorization.failureCommand } : request.failingCommand === undefined ? {} : { failureCommand: request.failingCommand }),
     ...(counterfactuals === undefined ? {} : { counterfactuals }),
   });
 }

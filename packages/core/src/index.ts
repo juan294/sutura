@@ -652,3 +652,14 @@ export { selectFailedStepLog } from './github/adapter.js';
 export { admitNativeCommand, CI_CONTROL_NEXT_ACTION } from './engine/native-command-admission.js';
 
 export { describeTerminalRecovery } from './report/terminal-recovery.js';
+
+export { captureNodeDiagnostics, type DiagnosticBinding, type NativeDiagnostics } from './engine/native-diagnostics.js';
+
+export { resolveReproductionAtSource } from './engine/reproduction-source.js';
+export { resolveReproductionPlan, type ResolvedReproductionPlan } from './engine/reproduction-plan.js';
+export { authorizeCliVerification, canonicalPacketDigest, parseVerificationPacket, validateVerificationPacket, type VerificationPacket, type VerificationBinding, type VerificationAllowance } from './engine/verification-allowance.js';
+
+export { authenticateActionVerification, isAuthenticatedActionAuthority, type AuthenticatedActionAuthority, type ActionAuthorityApi, type ActionGrantBinding } from './engine/action-verification-authority.js';
+export { authorizeActionVerification } from './engine/verification-allowance.js';
+
+export { nodeRuntimeFromJobLog } from './github/adapter.js';

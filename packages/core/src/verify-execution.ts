@@ -1,3 +1,6 @@
+import { verifyReproductionRuntime } from './engine/reproduction-runtime.js';
+import { isResolvedReproductionPlan, type ResolvedReproductionPlan } from './engine/reproduction-plan.js';
+import { compareNodeDiagnostics } from './engine/native-diagnostics.js';
 import { processCompletedNormally, processSucceeded } from './executor/types.js';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
@@ -40,6 +43,7 @@ export interface VerifyExecutionPorts {
   sourceDir: string;
   runtime?: RuntimeAdapter;
   stages?: StageLedger;
+  reproductionPlan?: ResolvedReproductionPlan;
 }
 
 function digest(value: string): string {
@@ -64,10 +68,11 @@ export async function prepareAndReproduce(
   ports: VerifyExecutionPorts,
 ): Promise<VerifyReproduction> {
   const runtime = ports.runtime ?? NODE_RUNTIME;
+  const plan = isResolvedReproductionPlan(ports.reproductionPlan) ? ports.reproductionPlan : undefined;
   const executor = new AllowlistedExecutor(ports.executor);
   let baseImage: ImageId;
   try {
-    const imageRef = ports.baseImageRef ?? (runtime.id === 'node'
+    const imageRef = plan?.profile.imageRef ?? ports.baseImageRef ?? (runtime.id === 'node'
       ? await nodeImageRefForRepository(ports.sourceDir)
       : runtime.imageRef);
     baseImage = await ports.executor.importImage(imageRef);
@@ -82,12 +87,13 @@ export async function prepareAndReproduce(
     return { status: 'infra-stop', exitCodes: [], failedCommand: prepared.command };
   }
 
+  if (plan && !(await verifyReproductionRuntime(ports.executor, prepared.imageId, plan)).ok) return { status: 'infra-stop', exitCodes: [], baselineImage: prepared.imageId, failedCommand: 'exact-profile-runtime' };
   const exitCodes: number[] = [];
   let output = '';
   for (let attempt = 1; attempt <= VERIFY_REPRODUCTION_RUNS; attempt += 1) {
     let result: RunResult;
     try {
-      result = await ports.executor.run(prepared.imageId, request.failingCommand, { cwd: SNAPSHOT_CWD });
+      result = await ports.executor.run(prepared.imageId, plan?.probeCommand ?? request.failingCommand, { cwd: plan?.cwd ?? SNAPSHOT_CWD, timeoutSec: plan?.profile.probeTimeoutSec ?? 120 });
     } catch (error) {
     if (error instanceof BudgetExceededError) throw error;
       return {
@@ -103,6 +109,7 @@ export async function prepareAndReproduce(
       parentImageId: prepared.imageId,
       note: 'Observed failing command on the untouched baseline',
     });
+    if (plan && compareNodeDiagnostics(plan.native, `${result.stdout}\n${result.stderr}`, result).status !== 'matched') return { status: 'infra-stop', exitCodes: [...exitCodes, result.exitCode], baselineImage: prepared.imageId, failedCommand: plan.probeCommand, output: 'Complete native failure identity did not match; retain original evidence and review the protected profile/deadline' };
     output = boundedTail(`${result.stdout}\n${result.stderr}`, { maxLines: 100, maxCharacters: 4000, maxBytes: 4000 });
     exitCodes.push(result.exitCode);
     if (!processCompletedNormally(result)) return { status: 'infra-stop', exitCodes, baselineImage: prepared.imageId, failedCommand: request.failingCommand, output };
@@ -137,11 +144,12 @@ export async function applyAndRun(
   baselineImage: ImageId,
   ports: VerifyExecutionPorts,
 ): Promise<VerifyVisibleResult> {
+  const plan = isResolvedReproductionPlan(ports.reproductionPlan) ? ports.reproductionPlan : undefined;
   const encoded = Buffer.from(request.candidateDiff, 'utf8').toString('base64');
   const apply = `printf '%s' ${shellQuote(encoded)} | base64 --decode | git apply -`;
   let applied: RunResult;
   try {
-    applied = await ports.executor.run(baselineImage, apply, { cwd: SNAPSHOT_CWD });
+    applied = await ports.executor.run(baselineImage, apply, { cwd: SNAPSHOT_CWD, timeoutSec: 30 });
   } catch (error) {
     if (error instanceof BudgetExceededError) throw error;
     return { status: 'infra-stop', applyExitCode: -1, testExitCode: null, output: '' };
@@ -165,7 +173,7 @@ export async function applyAndRun(
 
   let tested: RunResult;
   try {
-    tested = await ports.executor.run(applied.imageId, request.failingCommand, { cwd: SNAPSHOT_CWD });
+    tested = await ports.executor.run(applied.imageId, plan?.probeCommand ?? request.failingCommand, { cwd: plan?.cwd ?? SNAPSHOT_CWD, timeoutSec: plan?.profile.probeTimeoutSec ?? 120 });
   } catch (error) {
     if (error instanceof BudgetExceededError) throw error;
     return {

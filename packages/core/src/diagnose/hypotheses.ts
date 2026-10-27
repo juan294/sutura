@@ -1,3 +1,4 @@
+import type { VerificationAllowance } from '../engine/verification-allowance.js';
 import { processCompletedNormally } from '../executor/types.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Diagnosis, FailureClass } from '../domain.js';
@@ -41,6 +42,7 @@ export interface RecoveryInput {
   baseline: ControllerBaselineBinding; policy: RepositoryPolicy; executor: Executor; llm: HealLlm;
   budget: RepairBudget; trustedCommand: string; repairReservationUsd: number; signal?: AbortSignal;
   operationIdPrefix?: string;
+  verificationAllowance?: VerificationAllowance;
   observe(input: { result?: RunResult; parentImageId: string; note: string }): void;
 }
 export interface RecoveryResult {

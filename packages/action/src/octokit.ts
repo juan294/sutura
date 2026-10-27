@@ -24,19 +24,17 @@ export function createGitHubApi(
   octokit: Octokit,
   owner: string,
   repo: string,
-  options: { onSourceRun?: (run: AuthenticatedSourceRun) => void } = {},
+  options: { onSourceRun?: (run: AuthenticatedSourceRun) => void; sourceAttempt?: number } = {},
 ): GitHubApi {
   return {
     async getWorkflowRun(runId): Promise<WorkflowRunRecord> {
-      const { data } = await octokit.rest.actions.getWorkflowRun({
-        owner,
-        repo,
-        run_id: runId,
-      });
+      const { data } = options.sourceAttempt === undefined ? await octokit.rest.actions.getWorkflowRun({ owner, repo, run_id: runId }) : await octokit.rest.actions.getWorkflowRunAttempt({ owner, repo, run_id: runId, attempt_number: options.sourceAttempt });
       options.onSourceRun?.({ repositoryId: data.repository.id, repository: data.repository.full_name,
         runId: data.id, attempt: data.run_attempt ?? 0, workflowId: data.workflow_id, sha: data.head_sha, branch: data.head_branch ?? '' });
       return {
         id: data.id,
+        ...(data.run_attempt === undefined ? {} : { runAttempt: data.run_attempt }),
+        ...(data.path === undefined ? {} : { path: data.path }),
         headSha: data.head_sha,
         repository: data.repository.full_name,
         event: data.event,
@@ -67,10 +65,7 @@ export function createGitHubApi(
     },
 
     async listJobsForWorkflowRun(runId): Promise<WorkflowJobRecord[]> {
-      const jobs = await octokit.paginate(
-        octokit.rest.actions.listJobsForWorkflowRun,
-        { owner, repo, run_id: runId, filter: 'latest', per_page: 100 },
-      );
+      const jobs = options.sourceAttempt === undefined ? await octokit.paginate(octokit.rest.actions.listJobsForWorkflowRun, { owner, repo, run_id: runId, filter: 'latest', per_page: 100 }) : await octokit.paginate(octokit.rest.actions.listJobsForWorkflowRunAttempt, { owner, repo, run_id: runId, attempt_number: options.sourceAttempt, per_page: 100 });
       return jobs.map((job) => ({
         id: job.id,
         name: job.name,

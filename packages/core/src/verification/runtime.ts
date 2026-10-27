@@ -1,3 +1,4 @@
+import { withinRecoveryDeadline } from '../diagnose/hypotheses-budget.js';
 import { processSucceeded } from '../executor/types.js';
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '../replay/canonical-json.js';
@@ -32,7 +33,13 @@ export interface RuntimeCandidateInput {
   baselineImage: ImageId;
   diagnosis: Diagnosis;
   beforeLog: string;
+  remainingTimeSec?(): number;
+  finalVerification?: boolean;
+  beginAdjudication?(): void;
+  finishAdjudication?(): void;
+  remainingAdjudicationTimeSec?(): number;
   suiteCommand: string;
+  suiteRunOptions?: { cwd: string; timeoutSec: number };
   policy: RepositoryPolicy;
   prepared: PreparedRuntimeChallenges;
   authorization?: RepairAuthorizationContext;
@@ -47,6 +54,7 @@ export interface RuntimeCandidateResult {
 /** All candidate origins use this ordered production stack. Supplied callers validate reproduction first. */
 export async function evaluateRuntimeCandidate(input: RuntimeCandidateInput): Promise<RuntimeCandidateResult> {
   let verdict: AuditVerdict = { approved: true, checks: [], reasoning: 'All executed gates passed' };
+  const kindExecutor = (kind: 'policy' | 'challenge'): Executor => input.finalVerification ? { ...input.executor, run: (parent, command, options) => input.executor.run(parent, command, { ...options, verificationKind: kind }) } : input.executor;
   let afterLog = '';
   let afterExitCode: number | undefined;
   let challenges: ChallengeRunResult | null = null;
@@ -56,6 +64,7 @@ export async function evaluateRuntimeCandidate(input: RuntimeCandidateInput): Pr
     ...(input.prepared.mode === 'optional' && input.prepared.set === null && input.prepared.reason === 'missing-contract' ? { unsupportedGates: { challenges: 'missing-contract' as const } } : {}),
     runGate: async (gate): Promise<VerificationGateResult> => {
       try {
+        if (input.remainingTimeSec && input.remainingTimeSec() <= 0) throw new BudgetExceededError('elapsedTimeSec');
         switch (gate) {
           case 'reproduction': return { ...passed, artifacts: artifact('reproduction', { baselineImage: input.baselineImage, beforeLog: input.beforeLog }) };
           case 'policy': {
@@ -75,7 +84,7 @@ export async function evaluateRuntimeCandidate(input: RuntimeCandidateInput): Pr
           case 'audit': {
             if (!input.suiteCommand.trim())
               return { status: 'insufficient', reasons: ['not-executed'] };
-            const result = await input.executor.run(input.winner.imageId, input.suiteCommand, { cwd: '/workspace', network: 'disabled' });
+            const result = await input.executor.run(input.winner.imageId, input.suiteCommand, { cwd: '/workspace', ...input.suiteRunOptions, ...(input.finalVerification ? { verificationKind: 'full' as const } : {}), network: 'disabled' });
             input.observe?.(result, input.winner.imageId, 'Fresh suite rerun');
             afterLog = boundedTail(`${result.stdout}\n${result.stderr}`, { maxLines: 100, maxCharacters: 2000, maxBytes: 2000 });
             afterExitCode = result.exitCode;
@@ -88,15 +97,26 @@ export async function evaluateRuntimeCandidate(input: RuntimeCandidateInput): Pr
             return { ...(processSucceeded(result) ? passed : { status: 'failed' as const, reasons: ['command-failed' as const] }), artifacts: artifact('fresh-suite', { command: input.suiteCommand, parentImage: input.winner.imageId, result }) };
           }
           case 'challenges': {
-            challenges = await runRuntimeChallenges(input.prepared, input.executor, input.winner.imageId, (result, parent) => input.observe?.(result, parent, 'Frozen candidate challenge'));
+            challenges = await runRuntimeChallenges(input.prepared, kindExecutor('challenge'), input.winner.imageId, (result, parent) => input.observe?.(result, parent, 'Frozen candidate challenge'));
             return { status: challenges.status, reasons: challenges.status === 'passed' ? [] : [challenges.status === 'failed' ? 'assertion-failed' : 'invalid-probe'], ...(input.prepared.set === null ? {} : { artifacts: [{ id: 'challenge-set', sha256: input.prepared.set.setHash }] }) };
           }
           case 'adjudication': {
+            input.beginAdjudication?.();
+            try {
             if (afterExitCode === undefined) return { status: 'insufficient', reasons: ['not-executed'] };
             const adjudicationContext = { diagnosis: input.diagnosis, diff: input.winner.candidate.diff, beforeLog: input.beforeLog, afterLog, afterCommand: input.suiteCommand, afterExitCode, ...(challenges === null ? {} : { challengeEvidence: { setHash: input.prepared.set?.setHash ?? null, status: challenges.status, observations: challenges.observations } }) };
             const result = await adjudicate(input.llm, adjudicationContext);
-            const second = await secondOpinion(input.secondOpinion, adjudicationContext, input.secondOpinionBudget);
-            const third = await typesafeAudit(input.typesafeAudit, adjudicationContext, input.typesafeAuditBudget);
+            const boundedSecond: AuditLlm | undefined = input.secondOpinion && input.remainingTimeSec ? {
+              chat: (tier, messages, options) => withinRecoveryDeadline((input.remainingAdjudicationTimeSec ?? input.remainingTimeSec)!(), options?.signal,
+                signal => input.secondOpinion!.chat(tier, messages, { ...options, signal })),
+            } : input.secondOpinion;
+            const boundedThird: TypeSafeAuditClient | undefined = input.typesafeAudit && input.remainingTimeSec ? {
+              modelId: () => input.typesafeAudit!.modelId(),
+              decide: (state, questions, options) => withinRecoveryDeadline((input.remainingAdjudicationTimeSec ?? input.remainingTimeSec)!(), options?.signal,
+                signal => input.typesafeAudit!.decide(state, questions, { ...options, signal })),
+            } : input.typesafeAudit;
+            const second = await secondOpinion(boundedSecond, adjudicationContext, input.secondOpinionBudget);
+            const third = await typesafeAudit(boundedThird, adjudicationContext, input.typesafeAuditBudget);
             const { rows, vetoedBy } = vetoVoiceRows(second, third);
             const approved = result.approved && vetoedBy === undefined;
             verdict.checks.push({ name: 'llm-adjudication', passed: result.approved, evidence: result.reasoning }, ...rows);
@@ -104,9 +124,10 @@ export async function evaluateRuntimeCandidate(input: RuntimeCandidateInput): Pr
               ? result.reasoning
               : `REFUSED by ${vetoedBy.label} (${vetoedBy.model}): ${vetoedBy.reasoning}`;
             return { ...(approved ? passed : { status: 'failed' as const, reasons: ['audit-refused' as const] }), artifacts: artifact('adjudication', { nemotron: result, secondOpinion: second, typesafeAudit: third }) };
+            } finally { input.finishAdjudication?.(); }
           }
           case 'repository-policy': {
-            verdict = await enforceRepositoryPolicy({ executor: input.executor, baselineImageId: input.baselineImage, policy: input.policy, ...(input.runtime === undefined ? {} : { runtime: input.runtime }), observe: o => input.observe?.(o.result, o.parentImageId, o.note) }, input.winner, verdict);
+            verdict = await enforceRepositoryPolicy({ executor: kindExecutor('policy'), baselineImageId: input.baselineImage, policy: input.policy, ...(input.runtime === undefined ? {} : { runtime: input.runtime }), observe: o => input.observe?.(o.result, o.parentImageId, o.note) }, input.winner, verdict);
             return { ...(verdict.checks.some(c => c.name === 'policy-required-command' && !c.passed) ? { status: 'failed' as const, reasons: ['command-failed' as const] } : passed), artifacts: artifact('required-commands', verdict.checks.filter(check => check.name === 'policy-required-command')) };
           }
           case 'resources': return { ...(verdict.checks.some(c => c.name === 'policy-resource-limit' && !c.passed) ? { status: 'failed' as const, reasons: ['resource-limit' as const] } : passed), artifacts: artifact('resource-checks', verdict.checks.filter(check => check.name === 'policy-resource-limit')) };
