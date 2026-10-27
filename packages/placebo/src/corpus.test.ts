@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { access, cp, mkdtemp, readFile, readdir, realpath, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
+import { promisify, stripVTControlCharacters } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { compareFailureIdentity, nativeFailureForCommand, runMechanicalChecks } from '@sutura/core';
 
@@ -377,10 +377,10 @@ describe('Placebo v0.2 corpus', () => {
           // The real sandbox reports /workspace; normalize only this owned local fixture root.
           const roots = [...new Set([await realpath(root), root])].sort((a, b) => b.length - a.length);
           const output = (stdout = '', stderr = '') => roots.reduce((log, path) =>
-            log.replaceAll(`${path}/`, '/workspace/'), `${stdout}\n${stderr}`);
+            log.replaceAll(`${path}/`, '/workspace/'), stripVTControlCharacters(`${stdout}\n${stderr}`));
           const run = async (attempt?: string) => {
-            const env = { ...process.env };
-            delete env.SUTURA_TRIAGE_ATTEMPT;
+            // Match the sandbox environment; host CI reporters change diagnostic output.
+            const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, CI: '1' };
             if (attempt !== undefined) env.SUTURA_TRIAGE_ATTEMPT = attempt;
             try {
               const python = benchmarkCase.metadata.language === 'python';
