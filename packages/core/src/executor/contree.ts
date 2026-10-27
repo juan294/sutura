@@ -64,7 +64,6 @@ interface StreamResponse {
 interface InstanceResources {
   cost?: unknown;
   elapsed_time?: unknown;
-  monotonic_time?: unknown;
   max_rss?: unknown;
   system_cpu_time?: unknown;
   user_cpu_time?: unknown;
@@ -82,6 +81,7 @@ interface InstanceResultResponse {
 }
 
 interface OperationResponse {
+  duration?: unknown;
   status?: unknown;
   error?: unknown;
   result_image_uuid?: unknown;
@@ -369,7 +369,7 @@ export class ContreeExecutor implements Executor {
       stderr: decodeStream(result.stderr, 'stderr'),
       truncated:
         result.stdout?.truncated === true || result.stderr?.truncated === true,
-      metrics: mapMetrics(result.resources),
+      metrics: mapMetrics(result.resources, operation.duration),
       ...optionalProcessState(result.state),
     };
     if (tracked && operationId) {
@@ -631,13 +631,13 @@ function decodeStream(stream: StreamResponse | undefined, label: string): string
   throw new ContreeError(`ConTree ${label} has unsupported encoding`);
 }
 
-function mapMetrics(resources: InstanceResources | undefined): RunMetrics {
-  if (!resources) return {};
+function mapMetrics(resources: InstanceResources | undefined, duration: unknown): RunMetrics {
   const metrics: RunMetrics = {};
-  if (resources.monotonic_time !== undefined) {
-    if (typeof resources.monotonic_time !== 'number' || !Number.isFinite(resources.monotonic_time) || resources.monotonic_time < 0) throw new ContreeError('ConTree wall duration must be finite and nonnegative');
-    metrics.wallTimeSec = resources.monotonic_time;
+  if (duration !== undefined) {
+    if (typeof duration !== 'number' || !Number.isFinite(duration) || duration < 0) throw new ContreeError('ConTree operation duration must be finite nonnegative seconds');
+    metrics.wallTimeSec = duration;
   }
+  if (!resources) return metrics;
   if (typeof resources.cost === 'number') metrics.cost = resources.cost;
   if (typeof resources.elapsed_time === 'number') {
     metrics.elapsedTimeSec = resources.elapsed_time;

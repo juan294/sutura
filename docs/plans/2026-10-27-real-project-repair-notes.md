@@ -37,3 +37,9 @@ Simplify reviewed reuse (one recovery helper), quality (full-script recognition 
 ### Phase 2 implementation adjustment
 
 The plan called for a narrow structural control-script recognizer. Marker-line matching also recognized a harmless heredoc that printed the script. Use the complete reviewed script fingerprint after indentation normalization instead. This deliberately recognizes only that confirmed script; new variants stay unknown until reviewed. This is a bounded admission rule, not a generic shell interpreter or new authorization mechanism.
+
+### Documented wall-duration correction
+
+A read of the provider's [limits and usage documentation](https://docs.tokenfactory.nebius.com/sandboxes/operate/limits-retention-and-usage) confirmed operation `duration` as seconds, while raw resource units require separate confirmation. The original saved response contains top-level duration 60.6; the first synthetic structural fixture had incorrectly placed it in metadata. Preserve that earlier fixture/hash as history, add a corrected current fixture, map wallTimeSec from top-level duration, and leave absent historical wall duration unknown instead of deriving it from raw monotonic_time. RED covers both the corrected value and unknown historical duration. This changes the decoder only; retained raw elapsed/cost fields and termination evidence remain intact.
+
+The complete P2 ci:local gate passed at 73783346b543e3b9e108e0214d6d31406993e05f, including the 20-minute local corpus check and 758/758 guard coverage. The decoder correction invalidates its focused executor tests, Core coverage/source static checks, bundles and exact candidate-install identity. Those checks are rerun; unchanged corpus, native contract and Action-source evidence is retained. No second corpus run is needed for this provider-only mapping correction.

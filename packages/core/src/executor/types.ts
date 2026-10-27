@@ -44,7 +44,7 @@ export interface ProcessState {
 }
 
 export interface RunMetrics {
-  /** Provider-reported monotonic wall duration; absent historical evidence is unknown. */
+  /** Provider operation duration in seconds; absent historical duration is unknown. */
   wallTimeSec?: number;
   cost?: number;
   elapsedTimeSec?: number;
