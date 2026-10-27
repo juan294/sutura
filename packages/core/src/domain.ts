@@ -1,7 +1,7 @@
 import type { RuntimeCandidateEvidence } from './verification/runtime-evidence.js';
 import type { ChallengePreparationDiagnostics } from './challenges/runtime.js';
 import type { CounterfactualEvidence } from './counterfactual/types.js';
-import type { RunMetrics } from './executor/types.js';
+import type { ProcessState, RunMetrics } from './executor/types.js';
 import type { TraceEvent } from './trace/types.js';
 import type { VerificationArtifact, VerificationEvidence } from './verification/types.js';
 import type { DiagnosisRecoveryEvidence } from './diagnose/hypotheses.js';
@@ -72,6 +72,7 @@ export interface RaceResult {
   imageId: string;
   nodeId: string;
   exitCode: number;
+  processState?: ProcessState;
   held: boolean;
   note?: string;
 }
@@ -129,6 +130,7 @@ export interface StageEvidence {
   nodeId: string;
   parentNodeId?: string;
   exitCode?: number;
+  processState?: ProcessState;
   metrics: RunMetrics;
   network: 'disabled' | 'enabled';
   note?: string;

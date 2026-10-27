@@ -301,6 +301,7 @@ describe('ContreeExecutor', { timeout: 30_000 }, () => {
     expect(result).toEqual({
       imageId: 'image-child',
       exitCode: 0,
+      processState: { timedOut: false },
       stdout: 'hello\n',
       stderr: 'warning\n',
       truncated: true,

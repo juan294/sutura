@@ -168,7 +168,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
   </section>
     <section class="sheet triage" aria-labelledby="triage-title">
     <div class="section-label"><span>T</span><h2 id="triage-title">Triage</h2></div>
-    <div class="section-body"><p class="triage-reading">Reproduced 4/4 (maximum 5); probability 100.0% (95% Wilson 51.0–100.0%); sprt-p20-p80-a05-b05-v1; failure-boundary — real.</p></div>
+    <div class="section-body"><p class="triage-reading" data-sutura-stop-reason="failure-boundary">Reproduced 4/4 (maximum 5); probability 100.0% (95% Wilson 51.0–100.0%); sprt-p20-p80-a05-b05-v1; failure-boundary — real.</p></div>
   </section>
     <section class="sheet procedure" aria-labelledby="procedure-title">
     <div class="section-label"><span>P</span><h2 id="procedure-title">Procedure</h2></div>
@@ -579,7 +579,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
   </section>
     <section class="sheet triage" aria-labelledby="triage-title">
     <div class="section-label"><span>T</span><h2 id="triage-title">Triage</h2></div>
-    <div class="section-body"><p class="triage-reading">Reproduced 0/4 (maximum 5); probability 0.0% (95% Wilson 0.0–49.0%); sprt-p20-p80-a05-b05-v1; pass-boundary — flaky. No patch proposed.</p></div>
+    <div class="section-body"><p class="triage-reading" data-sutura-stop-reason="pass-boundary">Reproduced 0/4 (maximum 5); probability 0.0% (95% Wilson 0.0–49.0%); sprt-p20-p80-a05-b05-v1; pass-boundary — flaky. No patch proposed.</p></div>
   </section>
     <section class="sheet discharge" aria-labelledby="discharge-title">
     <div class="section-label"><span>D</span><h2 id="discharge-title">Discharge</h2></div>
@@ -850,7 +850,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
   </section>
     <section class="sheet triage" aria-labelledby="triage-title">
     <div class="section-label"><span>T</span><h2 id="triage-title">Triage</h2></div>
-    <div class="section-body"><p class="triage-reading">Reproduced 4/4 (maximum 5); probability 100.0% (95% Wilson 51.0–100.0%); sprt-p20-p80-a05-b05-v1; failure-boundary — real.</p></div>
+    <div class="section-body"><p class="triage-reading" data-sutura-stop-reason="failure-boundary">Reproduced 4/4 (maximum 5); probability 100.0% (95% Wilson 51.0–100.0%); sprt-p20-p80-a05-b05-v1; failure-boundary — real.</p></div>
   </section>
     <section class="sheet procedure" aria-labelledby="procedure-title">
     <div class="section-label"><span>P</span><h2 id="procedure-title">Procedure</h2></div>
@@ -1186,7 +1186,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
   </section>
     <section class="sheet triage" aria-labelledby="triage-title">
     <div class="section-label"><span>T</span><h2 id="triage-title">Triage</h2></div>
-    <div class="section-body"><p class="triage-reading">Sandbox dependency preparation failed. Sutura stopped before reproduction and inference.</p></div>
+    <div class="section-body"><p class="triage-reading" data-sutura-stop-reason="not-run">Sandbox dependency preparation failed. Sutura stopped before reproduction and inference.</p></div>
   </section>
     <section class="sheet discharge" aria-labelledby="discharge-title">
     <div class="section-label"><span>D</span><h2 id="discharge-title">Discharge</h2></div>
@@ -1450,7 +1450,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
   </section>
     <section class="sheet triage" aria-labelledby="triage-title">
     <div class="section-label"><span>T</span><h2 id="triage-title">Triage</h2></div>
-    <div class="section-body"><p class="triage-reading">Reproduced 4/4 (maximum 5); probability 100.0% (95% Wilson 51.0–100.0%); sprt-p20-p80-a05-b05-v1; failure-boundary — real.</p></div>
+    <div class="section-body"><p class="triage-reading" data-sutura-stop-reason="failure-boundary">Reproduced 4/4 (maximum 5); probability 100.0% (95% Wilson 51.0–100.0%); sprt-p20-p80-a05-b05-v1; failure-boundary — real.</p></div>
   </section>
     <section class="sheet procedure" aria-labelledby="procedure-title">
     <div class="section-label"><span>P</span><h2 id="procedure-title">Procedure</h2></div>
@@ -1803,7 +1803,7 @@ blockquote { margin: 26px 0 0; padding: 22px 26px; border-left: 6px solid var(--
   </section>
     <section class="sheet triage" aria-labelledby="triage-title">
     <div class="section-label"><span>T</span><h2 id="triage-title">Triage</h2></div>
-    <div class="section-body"><p class="triage-reading">Reproduced 1/1 (maximum 5); probability 100.0% (95% Wilson 20.7–100.0%); sprt-p20-p80-a05-b05-v1; sandbox-budget — not decided: the triage sandbox budget stopped it. Triage stopped after 1 probe(s), 231.3 sandbox-s: 4 more at up to 231.3 s each make about 1157 s, over the 240 s budget (raise triage-sandbox-seconds or SUTURA_TRIAGE_SANDBOX_SEC, or narrow the CI test command).</p></div>
+    <div class="section-body"><p class="triage-reading" data-sutura-stop-reason="sandbox-budget">Reproduced 1/1 (maximum 5); probability 100.0% (95% Wilson 20.7–100.0%); sprt-p20-p80-a05-b05-v1; sandbox-budget — not decided: the triage sandbox budget stopped it. Triage stopped after 1 probe(s), 231.3 sandbox-s: 4 more at up to 231.3 s each make about 1157 s, over the 240 s budget (raise triage-sandbox-seconds or SUTURA_TRIAGE_SANDBOX_SEC, or narrow the CI test command).</p></div>
   </section>
     <section class="sheet discharge" aria-labelledby="discharge-title">
     <div class="section-label"><span>D</span><h2 id="discharge-title">Discharge</h2></div>

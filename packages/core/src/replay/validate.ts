@@ -182,6 +182,15 @@ function validateRunResult(value: unknown, path: string): void {
   boolean(result.truncated, `${path}.truncated`);
   const metrics = object(result.metrics, `${path}.metrics`);
   for (const [key, metric] of Object.entries(metrics)) nonnegativeNumber(metric, `${path}.metrics.${key}`);
+  if (result.processState !== undefined) {
+    const state = object(result.processState, `${path}.processState`);
+    if (Object.keys(state).some(key => !['timedOut', 'signal'].includes(key))) throw new ReplayValidationError(`${path}.processState`, 'contains unknown fields');
+    if (state.timedOut !== undefined) boolean(state.timedOut, `${path}.processState.timedOut`);
+    if (state.signal !== undefined) {
+      integer(state.signal, `${path}.processState.signal`);
+      if ((state.signal as number) < 0 || (state.signal as number) > 255) throw new ReplayValidationError(`${path}.processState.signal`, 'must be between 0 and 255');
+    }
+  }
   if (result.operation !== undefined) {
     const operation = object(result.operation, `${path}.operation`);
     string(operation.operationId, `${path}.operation.operationId`);

@@ -1,3 +1,4 @@
+import { processCompletedNormally, processSucceeded } from './executor/types.js';
 import { VerificationExecutionRecorder } from './verification/execution-record.js';
 import { GeneratedVerificationRecorder } from './verification/generated-record.js';
 import type { VerificationMode } from './verification/types.js';
@@ -244,7 +245,7 @@ export class StageLedger {
       attempt: input.attempt,
       nodeId,
       ...(parentNodeId === undefined ? {} : { parentNodeId }),
-      ...(input.result === undefined ? {} : { exitCode: input.result.exitCode }),
+      ...(input.result === undefined ? {} : { exitCode: input.result.exitCode, ...(input.result.processState === undefined ? {} : { processState: { ...input.result.processState } }) }),
       ...(operation === undefined ? {} : {
         operationId: operation.operationId,
         ...(operation.terminal === undefined ? {} : { operationTerminal: operation.terminal }),
@@ -723,7 +724,7 @@ async function prepareSandboxFromSource(
     parentImageId: dependencyImage,
     note: `${runtime.id} dependencies prepared without repository hooks`,
   });
-  if (preparation.exitCode !== 0) {
+  if (!processSucceeded(preparation)) {
     return {
       ok: false,
       command: DEPENDENCY_INSTALL_COMMAND.test(observedCommand)
@@ -758,7 +759,7 @@ async function prepareSandboxFromSource(
     parentImageId: sourceImage,
     note: 'Hook-disabled Git baseline initialized',
   });
-  if (initialized.exitCode !== 0) {
+  if (!processSucceeded(initialized)) {
     return { ok: false, command: INITIALIZE_REPOSITORY_COMMAND, result: initialized };
   }
   return { ok: true, imageId: initialized.imageId };
@@ -792,7 +793,7 @@ export function focusedTriageProbe(
   if (!('focus' in focus)) return undefined;
   return {
     command: wrap(focus.focus.command),
-    sameFailure: (result) => sameFailure(focus.focus, `${result.stdout}\n${result.stderr}`, result.exitCode),
+    sameFailure: (result) => processCompletedNormally(result) && sameFailure(focus.focus, `${result.stdout}\n${result.stderr}`, result.exitCode),
   };
 }
 
@@ -1062,9 +1063,9 @@ async function repairFailureWithinBudget(
     sandboxExecutableCommand(mechanical.failingCmd, ctx.runtime ?? NODE_RUNTIME), { cwd: SNAPSHOT_CWD, network: 'disabled' });
   if (ctx.baselineResult === undefined) ledger.record({ stage: 'reproduction', attempt: 1,
     network: 'disabled', result: baseline, parentImageId: ctx.failingImage, note: 'Original failure identity probe' });
-  if (baseline.exitCode === 0) return noReproductionCaseFile(fullContext, mechanical);
+  if (processSucceeded(baseline)) return noReproductionCaseFile(fullContext, mechanical);
   const identity = compareFailureIdentity(native, { log: `${baseline.stdout}\n${baseline.stderr}`,
-    exitCode: baseline.exitCode, truncated: baseline.truncated });
+    exitCode: baseline.exitCode, truncated: baseline.truncated, ...(baseline.processState === undefined ? {} : { processState: baseline.processState }) });
   ctx.reproduction = identity;
   fullContext.reproduction = identity;
   if (identity.status !== 'matched') {
@@ -1416,7 +1417,7 @@ async function repairFailureWithinBudget(
               ...(fullContext.secondOpinion === undefined ? {} : { secondOpinion: fullContext.secondOpinion, secondOpinionBudget: budget }),
               ...(fullContext.typesafeAudit === undefined ? {} : { typesafeAudit: fullContext.typesafeAudit, typesafeAuditBudget: budget }),
               winner: {candidate, imageId: expansion.imageId, nodeId,
-                held: true, exitCode: expansion.testEvidence.exitCode},
+                held: true, exitCode: expansion.testEvidence.exitCode, ...(expansion.testEvidence.processState === undefined ? {} : { processState: expansion.testEvidence.processState })},
               diagnosis: target.diagnosis, beforeLog: providerLog, suiteCommand: verificationCommand,
               ...(target.authorization === undefined ? {} : {authorization: target.authorization}),
               runtime,
@@ -1593,7 +1594,7 @@ async function repairFailureWithinBudget(
       }
       const raceResults: RaceResult[] = result.candidates.map((node) => ({
         candidate: node.candidate!, imageId: node.imageId, nodeId: node.id,
-        exitCode: node.testEvidence.exitCode, held: true,
+        exitCode: node.testEvidence.exitCode, held: true, ...(node.testEvidence.processState === undefined ? {} : { processState: node.testEvidence.processState }),
         note: `Adaptive search passed at depth ${node.depth}`,
       }));
       const winner = raceResults[0]!;
@@ -1838,7 +1839,7 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     note: 'Observed failing command reproduction',
   });
   const failedLog = failureLog(command, reproduction);
-  if (reproduction.exitCode === 0) {
+  if (processSucceeded(reproduction)) {
     const mechanical = classifyMechanically(failedLog);
     return noReproductionCaseFile(fullContext, mechanical);
   }

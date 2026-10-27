@@ -36,6 +36,17 @@ describe('parseReplayBundle', () => {
     complete = await createCompleteReplayBundleForTest();
   });
 
+  it('round-trips optional termination and wall evidence without completing an incomplete replay', () => {
+    const value = clone(PARTIAL);
+    value.executor = [{ sequence: 1, method: 'run', args: ['baseline', 'test', null], result: { imageId: 'killed', exitCode: -1, stdout: '', stderr: '', truncated: false, metrics: { wallTimeSec: 60.1, cost: 0.01 }, processState: { timedOut: true, signal: 9 } } }];
+    expect(parseReplayBundle(value)).toEqual(value);
+    expect(parseReplayBundle(value).completeness.complete).toBe(false);
+    (value.executor[0]!.result as Record<string, unknown>).processState = { trusted: true };
+    expect(() => parseReplayBundle(value)).toThrow(/unknown fields/u);
+    (value.executor[0]!.result as Record<string, unknown>).processState = { signal: -1 };
+    expect(() => parseReplayBundle(value)).toThrow(/signal/u);
+  });
+
   it('accepts valid partial and complete bundles', () => {
     expect(parseReplayBundle(PARTIAL)).toEqual(PARTIAL);
     expect(parseReplayBundle(complete)).toEqual(complete);

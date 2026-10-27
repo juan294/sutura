@@ -186,12 +186,12 @@ describe('recorded live repair failures at the serialized provider boundary', ()
     expect(sandbox.calls).toHaveLength(0);
   });
 
-  it('replays live run 7: trusted-test exit -1 remains checkpoint evidence', async () => {
+  it('replays live run 7: trusted-test exit -1 stops without admitting a checkpoint', async () => {
     capturedLiveRun(7, '33246383946');
     const value = provider([{ content: JSON.stringify({ replacement: FIXED_SOURCE }) }]);
     await expect(attempt(value.client, executor(-1))).resolves.toMatchObject({
-      status: 'checkpoint',
-      test: { exitCode: -1 },
+      status: 'gave-up',
+      failureKind: 'sandbox',
     });
     expect(value.fetch).toHaveBeenCalledOnce();
   });

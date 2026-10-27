@@ -63,6 +63,33 @@ function runtime(
   return { run, tools: toolsFor(executorFor(run), policy) };
 }
 
+it('does not submit a timed-out test or reuse an earlier passing test', async () => {
+  const { tools } = runtime([runResult('patched', diff), runResult('passed', 'passed'), { ...runResult('killed', 'passed'), processState: { timedOut: true, signal: 9 } }]);
+  expect(await tools.execute('apply_patch', { diff })).toMatchObject({ ok: true });
+  expect(await tools.execute('run_test', { commandId: 'diagnosed' })).toMatchObject({ ok: true });
+  expect(await tools.execute('run_test', { commandId: 'diagnosed' })).toMatchObject({ ok: false, kind: 'sandbox' });
+  expect(tools.state().latestTest).toBeUndefined();
+  expect(await tools.execute('submit_candidate', { id: 'candidate', rationale: 'repair' })).toMatchObject({ ok: false });
+});
+
+it('invalidates an earlier pass before a thrown test execution', async () => {
+  const run = vi.fn().mockResolvedValueOnce(runResult('patched', diff)).mockResolvedValueOnce(runResult('passed', 'passed')).mockRejectedValueOnce(new Error('deadline expired'));
+  const tools = toolsFor(executorFor(run));
+  await tools.execute('apply_patch', { diff });
+  await tools.execute('run_test', { commandId: 'diagnosed' });
+  expect(await tools.execute('run_test', { commandId: 'diagnosed' })).toMatchObject({ ok: false, kind: 'sandbox', message: 'deadline expired' });
+  expect(tools.state().latestTest).toBeUndefined();
+  expect(await tools.execute('submit_candidate', { id: 'candidate', rationale: 'repair' })).toMatchObject({ ok: false });
+});
+
+it('retains failed patch termination and cost in stage observations', async () => {
+  const killed = { ...runResult('killed', '', 0), processState: { timedOut: true }, metrics: { wallTimeSec: 30, cost: 0.01 } };
+  const observe = vi.fn(() => 'patch-node');
+  const tools = new RepairToolRuntime({ executor: executorFor(vi.fn(async () => killed)), initialImageId: 'base', diagnosis, policy: createDefaultRepositoryPolicy(), budget: new RepairBudget(), trustedCommands: { diagnosed: 'pnpm test' }, sourceContext: { sources: [] }, observe });
+  expect(await tools.execute('apply_patch', { diff })).toMatchObject({ ok: false });
+  expect(observe).toHaveBeenCalledWith(expect.objectContaining({ result: killed }));
+});
+
 describe('RepairToolRuntime', () => {
   it('locally stops an ignored executor deadline while preserving reserved audit time', async () => {
     vi.useFakeTimers();

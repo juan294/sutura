@@ -1,3 +1,4 @@
+import { processSucceeded } from '../executor/types.js';
 import type {
   AuditVerdict,
   Diagnosis,
@@ -74,7 +75,7 @@ export async function audit(
     };
   }
 
-  if (!winner.held || winner.exitCode !== 0) {
+  if (!winner.held || !processSucceeded(winner)) {
     return {
       approved: false,
       checks: [
@@ -104,7 +105,7 @@ export async function audit(
   });
   observe?.(rerun);
   const afterLog = outputExcerpt(rerun.stdout, rerun.stderr);
-  if (rerun.exitCode !== 0) {
+  if (!processSucceeded(rerun)) {
     const detail = afterLog ? `: ${afterLog}` : '';
     return {
       approved: false,

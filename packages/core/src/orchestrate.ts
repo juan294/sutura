@@ -1,3 +1,4 @@
+import { processSucceeded } from './executor/types.js';
 import { freezeRepositorySource } from './replay/source-snapshot.js';
 import type { FrozenVerificationSource } from './heal.js';
 import { VerificationExecutionRecorder } from './verification/execution-record.js';
@@ -824,7 +825,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     return result;
   };
   let reproduction = await reproduce(1);
-  if (reproduction.exitCode === 0) {
+  if (processSucceeded(reproduction)) {
     // One more candidate, not a loop: the next-earliest failed step whose
     // observed command differs, for a chosen step that was flaky or only
     // reflected another job's failure.
@@ -843,7 +844,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     }
   }
 
-  if (reproduction.exitCode === 0) {
+  if (processSucceeded(reproduction)) {
     const caseFile = noReproductionCaseFile(
       {
         runId: run.runId,

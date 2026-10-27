@@ -1,3 +1,4 @@
+import { processSucceeded } from '../executor/types.js';
 import { Buffer } from 'node:buffer';
 
 import type {
@@ -641,7 +642,7 @@ export async function race(
   for (const [index, patch] of applied.entries()) {
     // Visible commands may mutate their child image. All subsequent audit gates
     // must start from the immutable applied source, never those side effects.
-    const tested = patch.exitCode === 0
+    const tested = processSucceeded(patch)
       ? await executor.run(patch.imageId, `sh -lc ${shellQuote(failingCmd)}`, { cwd: SNAPSHOT_CWD, network: 'disabled' })
       : patch;
     results.push({
@@ -649,7 +650,8 @@ export async function race(
       imageId: patch.imageId,
       nodeId: observe?.(tested, index + 1) ?? `candidate-${index + 1}`,
       exitCode: tested.exitCode,
-      held: patch.exitCode === 0 && tested.exitCode === 0,
+      ...(tested.processState === undefined ? {} : { processState: tested.processState }),
+      held: processSucceeded(patch) && processSucceeded(tested),
     });
   }
   return results;

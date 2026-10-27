@@ -1,3 +1,4 @@
+import { processSucceeded } from './types.js';
 import type { RunResult } from './types.js';
 
 const DEFAULT_OUTPUT_LIMIT = 8_000;
@@ -7,7 +8,7 @@ export function assertSuccessfulRun(
   result: RunResult,
   outputLimit = DEFAULT_OUTPUT_LIMIT,
 ): void {
-  if (result.exitCode === 0) return;
+  if (processSucceeded(result)) return;
 
   throw new Error(
     [

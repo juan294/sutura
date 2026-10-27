@@ -1,3 +1,4 @@
+import { processSucceeded } from '../executor/types.js';
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '../replay/canonical-json.js';
 import type { AuditVerdict, Diagnosis, RaceResult } from '../domain.js';
@@ -70,7 +71,7 @@ export async function evaluateRuntimeCandidate(input: RuntimeCandidateInput): Pr
             verdict.checks.push(...checks);
             return { ...(checks.every(c => c.passed) ? passed : { status: 'failed' as const, reasons: ['policy-denied' as const] }), artifacts: artifact('mechanical-checks', checks) };
           }
-          case 'visible': return { ...(input.winner.held && input.winner.exitCode === 0 ? passed : { status: 'failed' as const, reasons: ['assertion-failed' as const] }), artifacts: artifact('visible-result', { image: input.winner.imageId, exitCode: input.winner.exitCode, diff: input.winner.candidate.diff }) };
+          case 'visible': return { ...(input.winner.held && processSucceeded(input.winner) ? passed : { status: 'failed' as const, reasons: ['assertion-failed' as const] }), artifacts: artifact('visible-result', { image: input.winner.imageId, exitCode: input.winner.exitCode, diff: input.winner.candidate.diff }) };
           case 'audit': {
             if (!input.suiteCommand.trim())
               return { status: 'insufficient', reasons: ['not-executed'] };
@@ -78,13 +79,13 @@ export async function evaluateRuntimeCandidate(input: RuntimeCandidateInput): Pr
             input.observe?.(result, input.winner.imageId, 'Fresh suite rerun');
             afterLog = boundedTail(`${result.stdout}\n${result.stderr}`, { maxLines: 100, maxCharacters: 2000, maxBytes: 2000 });
             afterExitCode = result.exitCode;
-            if (result.exitCode !== 0) {
+            if (!processSucceeded(result)) {
               verdict.reasoning = `REFUSED: fresh suite rerun exited ${result.exitCode}: ${afterLog}`;
               verdict.checks.push({ name: 'llm-adjudication', passed: false, evidence: 'Not run: the fresh suite rerun failed' });
               verdict.checks.push({ name: 'second-opinion', passed: false, evidence: 'Not run: the fresh suite rerun failed' });
               verdict.checks.push({ name: 'typesafe-audit', passed: false, evidence: 'Not run: the fresh suite rerun failed' });
             }
-            return { ...(result.exitCode === 0 ? passed : { status: 'failed' as const, reasons: ['command-failed' as const] }), artifacts: artifact('fresh-suite', { command: input.suiteCommand, parentImage: input.winner.imageId, result }) };
+            return { ...(processSucceeded(result) ? passed : { status: 'failed' as const, reasons: ['command-failed' as const] }), artifacts: artifact('fresh-suite', { command: input.suiteCommand, parentImage: input.winner.imageId, result }) };
           }
           case 'challenges': {
             challenges = await runRuntimeChallenges(input.prepared, input.executor, input.winner.imageId, (result, parent) => input.observe?.(result, parent, 'Frozen candidate challenge'));

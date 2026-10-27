@@ -1,3 +1,4 @@
+import { processSucceeded } from '../executor/types.js';
 import { Buffer } from 'node:buffer';
 import { isDeepStrictEqual } from 'node:util';
 import { SNAPSHOT_CWD, type Executor, type ImageId, type RunResult } from '../executor/types.js';
@@ -121,8 +122,8 @@ function assertUniqueObjectKeys(json: string): void {
   }
 }
 
-export function decodeObservation(result: Pick<RunResult, 'stdout' | 'stderr' | 'exitCode' | 'truncated'>): TypedValue {
-  if (result.exitCode !== 0) throw new Error('observation command has a nonzero exit code');
+export function decodeObservation(result: Pick<RunResult, 'stdout' | 'stderr' | 'exitCode' | 'truncated' | 'processState'>): TypedValue {
+  if (!processSucceeded(result)) throw new Error('observation command has a nonzero exit code');
   if (result.truncated) throw new Error('observation output was truncated');
   if (Buffer.byteLength(result.stdout) > MAX_OBSERVATION_BYTES || Buffer.byteLength(result.stderr) > MAX_OBSERVATION_BYTES) throw new Error('observation exceeds byte limit');
   let parsed: unknown;

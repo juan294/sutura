@@ -1,3 +1,4 @@
+import { processCompletedNormally, type ProcessState } from '../executor/types.js';
 import { createHash } from 'node:crypto';
 import { vitestRunner } from './focus/vitest.js';
 import { jestRunner } from './focus/jest.js';
@@ -309,9 +310,10 @@ function parseEvidence(log: string, evidence: NativeFailureEvidence, tools: read
 }
 
 /** A nonzero exit is necessary, but never sufficient, evidence of original reproduction. */
-export function compareFailureIdentity(native: NativeFailureEvidence | undefined, sandbox: { log: string; exitCode: number; truncated?: boolean }): FailureIdentityEvidence {
+export function compareFailureIdentity(native: NativeFailureEvidence | undefined, sandbox: { log: string; exitCode: number; truncated?: boolean; processState?: ProcessState }): FailureIdentityEvidence {
   const base = { version: 'sutura-failure-identity-v1' as const, parser: 'unavailable', ...(native?.selectedStep ? { selectedStep: native.selectedStep } : {}) };
   const unavailable = (reason: string): FailureIdentityEvidence => ({ ...base, status: 'unavailable', reason });
+  if (!processCompletedNormally(sandbox)) return unavailable('Sandbox process did not complete normally; review retained timeout/signal evidence before a newly authorized probe');
   if (!native) return unavailable('Native selected-step evidence is required');
   if (sandbox.exitCode === 0) return unavailable('A passing probe is not failure reproduction');
   if (native.truncated || sandbox.truncated || native.log.length > 1_000_000 || sandbox.log.length > 1_000_000 || !native.log.trim()) return unavailable('Complete native and sandbox diagnostic logs are required');

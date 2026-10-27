@@ -1,3 +1,4 @@
+import { processSucceeded } from '../executor/types.js';
 import type { Candidate, StageEvidence } from '../domain.js';
 import type { ImageId, RunMetrics } from '../executor/types.js';
 import type { RepairTestEvidence } from './repair-tools.js';
@@ -148,7 +149,7 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
         });
         settled[index] = true;
         const provisional = expansion.policyEvidence.valid &&
-          expansion.testEvidence.exitCode === 0 &&
+          processSucceeded(expansion.testEvidence) &&
           expansion.candidate !== undefined;
         // A provisional branch is verified before it may cancel anything. Only a
         // fully accepted result ends the race; a refused one keeps its reason and
@@ -172,7 +173,7 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
       const fingerprint = `${diffFingerprint(expansion.cumulativeDiff)}:${errorFingerprint(expansion.testEvidence.output)}`;
       const repeated = visited.has(fingerprint);
       visited.add(fingerprint);
-      const provisional = expansion.testEvidence.exitCode === 0 && expansion.candidate !== undefined;
+      const provisional = processSucceeded(expansion.testEvidence) && expansion.candidate !== undefined;
       const terminalReason = !expansion.policyEvidence.valid
         ? 'policy' as const
         : provisional

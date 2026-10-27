@@ -452,6 +452,7 @@ export type {
   Executor,
   ImageId,
   RunMetrics,
+  ProcessState,
   RunOptions,
   RunResult,
   SnapshotMode,

@@ -10,6 +10,14 @@ const CONFIG = {
   routingProfileId: 'test', maxOps: 1,
 } as const;
 
+it('records and replays termination without losing measured cost or wall duration', async () => {
+  const result = { imageId: 'killed', exitCode: -1, stdout: 'partial', stderr: '', truncated: false, processState: { timedOut: true, signal: 9 }, metrics: { wallTimeSec: 60.1, cost: 0.01 } };
+  const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+  await recordingExecutor({ run: async () => result } as unknown as Executor, recorder).run('base', 'test');
+  const { RecordedExecutor } = await import('./replay-executor.js');
+  expect(await new RecordedExecutor(recorder.finish('gave-up').executor).run('base', 'test')).toEqual(result);
+});
+
 describe('recordingExecutor', () => {
   it('records every logical executor operation and preserves exact results', async () => {
     const runResult = {

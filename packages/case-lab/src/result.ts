@@ -365,7 +365,14 @@ export function validateCaseLabCaseFile(value: unknown, expectedOutcome: CaseLab
     const stage = record(entry, `caseFile.stages[${index}]`);
     text(stage.stage, `caseFile.stages[${index}].stage`, 32);
     text(stage.nodeId, `caseFile.stages[${index}].nodeId`, 128);
-    record(stage.metrics, `caseFile.stages[${index}].metrics`);
+    const metrics = record(stage.metrics, `caseFile.stages[${index}].metrics`);
+    if (metrics.wallTimeSec !== undefined && (typeof metrics.wallTimeSec !== 'number' || !Number.isFinite(metrics.wallTimeSec) || metrics.wallTimeSec < 0)) throw new CaseLabResultError('stage wallTimeSec must be finite and nonnegative');
+    if (stage.processState !== undefined) {
+      const state = record(stage.processState, `caseFile.stages[${index}].processState`);
+      if (Object.keys(state).some(key => !['timedOut', 'signal'].includes(key))) throw new CaseLabResultError('stage processState contains unknown fields');
+      if (state.timedOut !== undefined) boolean(state.timedOut, 'stage.processState.timedOut');
+      if (state.signal !== undefined && (!Number.isInteger(state.signal) || (state.signal as number) < 0 || (state.signal as number) > 255)) throw new CaseLabResultError('stage signal must be between 0 and 255');
+    }
     if (stage.network !== 'disabled' && stage.network !== 'enabled') {
       throw new CaseLabResultError(`caseFile.stages[${index}].network must be disabled or enabled`);
     }

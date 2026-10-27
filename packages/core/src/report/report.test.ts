@@ -8,6 +8,17 @@ import type { CaseFile, CostLedger, GreenwashCheck } from '../domain.js';
 import { renderCaseFile } from './casefile.js';
 import { renderComment } from './markdown.js';
 
+it('renders explicit identity-stop metadata and preserved process evidence', async () => {
+  const file = await loadFixture('gave-up');
+  file.triage.stopReason = 'failure-identity';
+  file.triage.reproduction = { version: 'sutura-failure-identity-v1', status: 'unavailable', parser: 'unavailable', reason: 'Process timed out; review deadline before a new authorized probe' };
+  file.stages.push({ stage: 'reproduction', attempt: 1, nodeId: 'timeout', exitCode: -1, processState: { timedOut: true, signal: 9 }, metrics: { wallTimeSec: 60.1, cost: 0.01 }, network: 'disabled' });
+  expect(renderCaseFile(file)).toContain('data-sutura-stop-reason="failure-identity"');
+  expect(renderCaseFile(file)).toContain('Wall s');
+  expect(renderComment(file)).toContain('timedOut');
+  expect(renderComment(file)).toContain('60.1');
+});
+
 const FIXTURES = ['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop', 'triage-budget'] as const;
 const ARTIFACT_URL = 'https://github.com/acme/repo/actions/runs/42/artifacts/7';
 

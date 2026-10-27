@@ -1,0 +1,13 @@
+{
+  "status": "SUCCESS",
+  "result_image_uuid": "sanitized-timeout-image",
+  "metadata": {
+    "duration": 60.6,
+    "result": {
+      "state": { "exit_code": -1, "signal": 9, "timed_out": true },
+      "stdout": { "value": "Selected test/terminal-a.test.mjs test/terminal-b.test.mjs\n", "encoding": "ascii", "truncated": false },
+      "stderr": { "value": "", "encoding": "ascii", "truncated": false },
+      "resources": { "elapsed_time": 0.001125, "monotonic_time": 60.069018668, "cost": 0.0125 }
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import { processCompletedNormally } from '../executor/types.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Diagnosis, FailureClass } from '../domain.js';
 import type { Executor, RunResult } from '../executor/types.js';
@@ -220,6 +221,7 @@ export async function recoverDiagnosis(input: RecoveryInput): Promise<RecoveryRe
         observation.probeOutputSha256 = digest(output);
         const matches = [...executed.stdout.matchAll(/^SUTURA_SOURCE_SHA256=([a-f0-9]{64})$/gmu)];
         if (executed.truncated || Buffer.byteLength(output) > 16_384 || matches.length !== 1 || matches[0]?.[1] !== hypothesis.sourceSha256) { observation.status = 'insufficient'; observation.reason = 'source-identity-mismatch'; continue; }
+        if (!processCompletedNormally(executed)) { observation.status = 'insufficient'; observation.reason = 'process-terminated'; continue; }
         if (executed.exitCode === 0) { observation.status = 'insufficient'; observation.reason = 'failure-not-reproduced'; continue; }
         if (stopped()) { observation.status = 'insufficient'; observation.reason = 'cancelled'; continue; }
         const session = createRepairAuthorizationSession({ baseline: input.baseline, failingCommand: input.initialDiagnosis.failingCmd, policy: input.policy, sources });
@@ -235,7 +237,7 @@ export async function recoverDiagnosis(input: RecoveryInput): Promise<RecoveryRe
           pythonLine === pythonUnittestStackLine(output, source.path) &&
           await controllerPythonAwaitReplacement(source.content, source.path, pythonLine) !== undefined;
         const stackLine = stackConfirmed ? controllerSelection!.line : pythonStackConfirmed ? pythonLine : undefined;
-        const grant = await deriveRepairAuthorization(session, { kind: hypothesis.intent as RepairAuthorizationKind, path: source.path, evidenceReferences: [hypothesis.signal, `source:${hypothesis.sourceSha256}`, ...(stackLine === undefined ? [] : [`controller-stack-line:${stackLine}`])], controllerProbe: { id: hypothesis.probeId!, imageId: input.baseline.baselineImageId, exitCode: executed.exitCode, output: output.replace(/^SUTURA_SOURCE_SHA256=.*\n/u, ''), sourceSha256: matches[0]![1]!, failingCommand: input.initialDiagnosis.failingCmd }, ...(hypothesis.intent === 'restore-strict-config' ? { strictKey } : {}) });
+        const grant = await deriveRepairAuthorization(session, { kind: hypothesis.intent as RepairAuthorizationKind, path: source.path, evidenceReferences: [hypothesis.signal, `source:${hypothesis.sourceSha256}`, ...(stackLine === undefined ? [] : [`controller-stack-line:${stackLine}`])], controllerProbe: { id: hypothesis.probeId!, imageId: input.baseline.baselineImageId, exitCode: executed.exitCode, ...(executed.processState === undefined ? {} : { processState: executed.processState }), output: output.replace(/^SUTURA_SOURCE_SHA256=.*\n/u, ''), sourceSha256: matches[0]![1]!, failingCommand: input.initialDiagnosis.failingCmd }, ...(hypothesis.intent === 'restore-strict-config' ? { strictKey } : {}) });
         if (!grant.ok) { observation.status = 'insufficient'; observation.reason = grant.reason; continue; }
         observation.status = 'passed'; observation.reason = 'narrow-grant-issued';
         result.attempts.push({ hypothesisId: hypothesis.id, diagnosis: { ...input.initialDiagnosis, class: hypothesis.class, signals: [...input.initialDiagnosis.signals, `recovery:${hypothesis.id}`] }, authorization: { session, baseline: input.baseline } });

@@ -27,13 +27,14 @@ function renderRecovery(caseFile: CaseFile): string {
 
 function renderSandboxEvidence(caseFile: CaseFile): string {
   const totals = aggregateStageEvidence(caseFile);
+  const hasProcessEvidence = caseFile.stages.some(entry => entry.processState !== undefined || entry.metrics.wallTimeSec !== undefined);
   const hasOperationEvidence = caseFile.stages.some((entry) => entry.operationId !== undefined);
   const rows = caseFile.stages.map((entry) => `<tr>
         <th scope="row">${escapeHtml(entry.stage)}</th>
         <td>${entry.attempt}</td>
         <td><code>${escapeHtml(entry.nodeId)}</code></td>
         <td>${entry.parentNodeId ? `<code>${escapeHtml(entry.parentNodeId)}</code>` : '—'}</td>
-        <td>${entry.exitCode ?? '—'}</td>
+        <td>${entry.exitCode ?? '—'}</td>${hasProcessEvidence ? `<td>${escapeHtml(entry.processState === undefined ? 'unknown' : JSON.stringify(entry.processState))}</td><td>${entry.metrics.wallTimeSec ?? '—'}</td>` : ''}
         <td>${entry.metrics.elapsedTimeSec ?? '—'}</td>
         <td>${entry.metrics.maxRssKb ?? '—'}</td>
         <td>${entry.metrics.cost ?? '—'}</td>${hasOperationEvidence ? `
@@ -54,7 +55,7 @@ function renderSandboxEvidence(caseFile: CaseFile): string {
       <p class="micro-label">Sandbox totals</p>
       <p>${totals.operationCount} operations · ${totals.elapsedTimeSec.toFixed(3)} s elapsed · ${totals.cpuTimeSec.toFixed(3)} s CPU · ${totals.maxRssKb.toLocaleString('en-US')} KB peak RSS · ${formatUsd(totals.sandboxCostUsd)} sandbox cost</p>
       <div class="table-wrap"><table class="ledger">
-        <thead><tr><th>Stage</th><th>Attempt</th><th>Node</th><th>Parent</th><th>Exit</th><th>Elapsed s</th><th>Max RSS KB</th><th>Cost USD</th>${hasOperationEvidence ? '<th>Operation</th><th>Terminal</th><th>Cancel requested</th>' : ''}<th>Network</th><th>Note</th></tr></thead>
+        <thead><tr><th>Stage</th><th>Attempt</th><th>Node</th><th>Parent</th><th>Exit</th>${hasProcessEvidence ? '<th>Process termination</th><th>Wall s</th>' : ''}<th>Elapsed s</th><th>Max RSS KB</th><th>Cost USD</th>${hasOperationEvidence ? '<th>Operation</th><th>Terminal</th><th>Cancel requested</th>' : ''}<th>Network</th><th>Note</th></tr></thead>
         <tbody>${rows || `<tr><td colspan="${hasOperationEvidence ? 13 : 10}">No sandbox operations recorded</td></tr>`}</tbody>
       </table></div>
     </div>`;
@@ -102,7 +103,7 @@ function renderDiagnosis(caseFile: CaseFile): string {
 function renderTriage(caseFile: CaseFile): string {
   return `<section class="sheet triage" aria-labelledby="triage-title">
     <div class="section-label"><span>T</span><h2 id="triage-title">Triage</h2></div>
-    <div class="section-body"><p class="triage-reading">${escapeHtml(triageSentence(caseFile))}</p></div>
+    <div class="section-body"><p class="triage-reading" data-sutura-stop-reason="${escapeHtml(caseFile.triage.stopReason)}">${escapeHtml(triageSentence(caseFile))}</p></div>
   </section>`;
 }
 

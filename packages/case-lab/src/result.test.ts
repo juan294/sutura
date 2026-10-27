@@ -65,6 +65,16 @@ function recordedBase(overrides: Overrides = {}): CaseLabResultBase {
 }
 
 describe('CaseLabResult', () => {
+  it('preserves bounded optional process evidence and rejects corrupt termination', () => {
+    const base = recordedBase();
+    const stage = base.caseFile!.stages[0]!;
+    Object.assign(stage, { processState: { timedOut: true, signal: 9 } });
+    Object.assign(stage.metrics, { wallTimeSec: 60.1 });
+    expect(validateCaseLabResult(createCaseLabResult(base)).caseFile!.stages[0]).toMatchObject({ processState: { timedOut: true, signal: 9 }, metrics: { wallTimeSec: 60.1 } });
+    Object.assign(stage, { processState: { signal: -1 } });
+    expect(() => createCaseLabResult(base)).toThrow(/signal/u);
+  });
+
   it('round-trips through create and validate with a content hash', () => {
     const result = createCaseLabResult(recordedBase());
     expect(result.resultHash).toBe(contentHash({ ...result, resultHash: undefined }));

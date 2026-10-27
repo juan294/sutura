@@ -66,6 +66,7 @@ describe('domain model', () => {
       imageId: string;
       nodeId: string;
       exitCode: number;
+      processState?: { timedOut?: boolean; signal?: number };
       held: boolean;
       note?: string;
     }>();

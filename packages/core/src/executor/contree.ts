@@ -1,5 +1,7 @@
 /// <reference types="node" />
 
+import { processSucceeded, type ProcessState } from './types.js';
+
 import { spawn } from 'node:child_process';
 import { createReadStream } from 'node:fs';
 import { lstat, mkdtemp, readdir, readFile, readlink, realpath, rm, stat, writeFile } from 'node:fs/promises';
@@ -62,6 +64,7 @@ interface StreamResponse {
 interface InstanceResources {
   cost?: unknown;
   elapsed_time?: unknown;
+  monotonic_time?: unknown;
   max_rss?: unknown;
   system_cpu_time?: unknown;
   user_cpu_time?: unknown;
@@ -70,6 +73,8 @@ interface InstanceResources {
 interface InstanceResultResponse {
   state?: {
     exit_code?: unknown;
+    timed_out?: unknown;
+    signal?: unknown;
   };
   stdout?: StreamResponse;
   stderr?: StreamResponse;
@@ -233,7 +238,7 @@ export class ContreeExecutor implements Executor {
         },
       }),
     );
-    if (result.exitCode !== 0) {
+    if (!processSucceeded(result)) {
       throw new ContreeError(
         `ConTree snapshot extraction failed with exit code ${result.exitCode}: ${result.stderr}`,
       );
@@ -351,9 +356,11 @@ export class ContreeExecutor implements Executor {
       truncated:
         result.stdout?.truncated === true || result.stderr?.truncated === true,
       metrics: mapMetrics(result.resources),
+      ...optionalProcessState(result.state),
     };
     if (tracked && operationId) {
-      tracked.terminal = runResult.exitCode === 0 ? 'succeeded' : 'failed';
+      // pollOperation returned provider SUCCESS; process termination is retained separately.
+      tracked.terminal = 'succeeded';
       const completion = { operationId, terminal: tracked.terminal, cancellationRequested: tracked.cancellationRequested } satisfies OperationCompletion;
       this.completions.push(completion);
       return { ...runResult, operation: completion };
@@ -612,6 +619,10 @@ function decodeStream(stream: StreamResponse | undefined, label: string): string
 function mapMetrics(resources: InstanceResources | undefined): RunMetrics {
   if (!resources) return {};
   const metrics: RunMetrics = {};
+  if (resources.monotonic_time !== undefined) {
+    if (typeof resources.monotonic_time !== 'number' || !Number.isFinite(resources.monotonic_time) || resources.monotonic_time < 0) throw new ContreeError('ConTree wall duration must be finite and nonnegative');
+    metrics.wallTimeSec = resources.monotonic_time;
+  }
   if (typeof resources.cost === 'number') metrics.cost = resources.cost;
   if (typeof resources.elapsed_time === 'number') {
     metrics.elapsedTimeSec = resources.elapsed_time;
@@ -1366,4 +1377,19 @@ async function runProcess(
     });
     child.stdin.end(input);
   });
+}
+
+function optionalProcessState(state: InstanceResultResponse['state']): { processState?: ProcessState } {
+  if (state?.timed_out === undefined && state?.signal === undefined) return {};
+  const processState: ProcessState = {};
+  if (state.timed_out !== undefined) {
+    if (typeof state.timed_out !== 'boolean') throw new ContreeError('ConTree timed_out must be boolean');
+    processState.timedOut = state.timed_out;
+  }
+  if (state.signal !== undefined) {
+    if (typeof state.signal !== 'number' || !Number.isSafeInteger(state.signal) || state.signal < -1 || state.signal > 255) throw new ContreeError('ConTree signal must be a bounded nonnegative integer');
+    // Provider -1 is its no-signal sentinel, not a terminating signal.
+    if (state.signal !== -1) processState.signal = state.signal;
+  }
+  return { processState };
 }

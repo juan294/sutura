@@ -1,3 +1,4 @@
+import { processCompletedNormally, processSucceeded } from './executor/types.js';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 
@@ -104,6 +105,7 @@ export async function prepareAndReproduce(
     });
     output = boundedTail(`${result.stdout}\n${result.stderr}`, { maxLines: 100, maxCharacters: 4000, maxBytes: 4000 });
     exitCodes.push(result.exitCode);
+    if (!processCompletedNormally(result)) return { status: 'infra-stop', exitCodes, baselineImage: prepared.imageId, failedCommand: request.failingCommand, output };
   }
 
   const failed = exitCodes.filter((code) => code !== 0).length;
@@ -152,7 +154,7 @@ export async function applyAndRun(
     parentImageId: baselineImage,
     note: 'Supplied candidate patch applied',
   });
-  if (applied.exitCode !== 0) {
+  if (!processSucceeded(applied)) {
     return {
       status: 'not-applicable',
       applyExitCode: applied.exitCode,
@@ -180,7 +182,7 @@ export async function applyAndRun(
     note: 'Failing command rerun with the supplied patch applied',
   });
   return {
-    status: tested.exitCode === 0 ? 'passed' : 'failed',
+    status: processSucceeded(tested) ? 'passed' : 'failed',
     applyExitCode: 0,
     testExitCode: tested.exitCode,
     candidateImage: applied.imageId,

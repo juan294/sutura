@@ -94,6 +94,21 @@ function exactNumber(pattern, html, label) {
   return finiteNonnegative(Number(match[1].replaceAll(',', '')), label);
 }
 
+const TRIAGE_STOP_REASONS = new Set(['failure-boundary', 'pass-boundary', 'maximum-attempts', 'not-run', 'sandbox-budget', 'failure-identity']);
+function parseTriageStopReason(html) {
+  const reading = /<p class="triage-reading"([^>]{0,8192})>([^<]{0,8192})<\/p>/u.exec(html);
+  if (reading) {
+    // Only the writer's bounded single attribute is accepted. Malformed,
+    // nested and duplicate attributes must not manufacture a trusted stop.
+    if (!/^(?: data-sutura-stop-reason="[a-z-]{1,64}")?$/u.test(reading[1])) return null;
+    const metadata = / data-sutura-stop-reason="([a-z-]{1,64})"/u.exec(reading[1]);
+    if (metadata) return TRIAGE_STOP_REASONS.has(metadata[1]) ? metadata[1] : null;
+    if (/^Original failure reproduction (?:unavailable|mismatch): .+\. Repair stopped; consumed probe resources remain recorded\.$/u.test(reading[2])) return 'failure-identity';
+  }
+  // Historical SPRT paragraphs predate the dedicated triage class.
+  return /<p(?: class="triage-reading")?>Reproduced [^<]{0,4096}sprt-[a-z0-9-]+; (failure-boundary|pass-boundary|maximum-attempts|not-run|sandbox-budget) —[^<]*<\/p>/u.exec(html)?.[1] ?? null;
+}
+
 export function parseCaseFileHtml(html) {
   if (typeof html !== 'string' || Buffer.byteLength(html) > 4 * 1024 * 1024) {
     throw new Error('Case file must be bounded HTML text');
@@ -108,7 +123,7 @@ export function parseCaseFileHtml(html) {
     sandboxElapsedTimeSec: exactNumber(/operations · ([0-9,.]+) s elapsed ·/u, html, 'sandbox elapsed time'),
     providerInvoked: null,
     searchStarted: outcome === 'fixed' ? true : null,
-    triageStopReason: /sprt-[a-z0-9-]+; (failure-boundary|pass-boundary|maximum-attempts|not-run|sandbox-budget) —/u.exec(html)?.[1] ?? null,
+    triageStopReason: parseTriageStopReason(html),
   };
 }
 

@@ -32,6 +32,15 @@ function jevClient(decision: TypeSafeDecision): TypeSafeAuditClient {
   return { modelId: () => decision.model, decide: async () => decision };
 }
 const diff = 'diff --git a/src/pages.js b/src/pages.js\n--- a/src/pages.js\n+++ b/src/pages.js\n@@ -1 +1 @@\n-export const pages = n => n;\n+export const pages = n => Math.ceil(n / 10);\n';
+it('refuses a timed-out fresh audit even when its exit code contradictorily says success', async () => {
+  const executor = { run: vi.fn(async () => ({ imageId: 'result', exitCode: 0, stdout: 'passed', stderr: '', truncated: false, metrics: {}, processState: { timedOut: true, signal: 9 } })) } as unknown as Executor;
+  const llm = { chat: vi.fn(async () => ({ text: '{"approved":true,"reasoning":"Looks green"}' })) } as unknown as HealLlm;
+  const policy = createDefaultRepositoryPolicy();
+  const prepared = await prepareRuntimeChallenges({ executor, llm, policy, baselineImage: 'baseline', policyBaseSha: '', policyHash: '', baselineSnapshotHash: '', failureExcerpt: 'failed', baselineSources: [] });
+  const result = await evaluateRuntimeCandidate({ executor, llm, policy, prepared, baselineImage: 'baseline', winner: { candidate: { id: 'candidate', diff, rationale: 'repair' }, imageId: 'candidate', nodeId: 'candidate', held: true, exitCode: 0 }, diagnosis: { class: 'test-assertion', confidence: 1, signals: [], failingCmd: 'npm test', errorExcerpt: 'assertion' }, beforeLog: 'failed', suiteCommand: 'npm test' });
+  expect(result.verdict.approved).toBe(false);
+  expect(llm.chat).not.toHaveBeenCalled();
+});
 it('runs full audit and policy before admitting a provisional candidate', async () => {
   const calls: string[] = [];
   const executor = { run: vi.fn(async (_image: string, command: string) => { calls.push(command); return { imageId: 'result', exitCode: 0, stdout: 'passed', stderr: '', metrics: {} }; }) } as unknown as Executor;

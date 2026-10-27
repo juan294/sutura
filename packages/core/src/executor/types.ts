@@ -38,7 +38,14 @@ export interface OperationCompletion {
   cancellationRequested: boolean;
 }
 
+export interface ProcessState {
+  timedOut?: boolean;
+  signal?: number;
+}
+
 export interface RunMetrics {
+  /** Provider-reported monotonic wall duration; absent historical evidence is unknown. */
+  wallTimeSec?: number;
   cost?: number;
   elapsedTimeSec?: number;
   maxRssKb?: number;
@@ -54,6 +61,7 @@ export interface RunResult {
   truncated: boolean;
   metrics: RunMetrics;
   operation?: OperationCompletion;
+  processState?: ProcessState;
 }
 
 export interface Executor {
@@ -71,4 +79,14 @@ export interface Executor {
   ): Promise<RunResult[]>;
   operationCapacity(): OperationCapacity;
   cancel(operationId: string): Promise<CancellationResult>;
+}
+
+/** Process termination and provider-operation completion are separate facts. */
+export function processCompletedNormally(result: { exitCode: number; processState?: ProcessState }): boolean {
+  return result.exitCode >= 0 && result.processState?.timedOut !== true &&
+    (result.processState?.signal === undefined || result.processState.signal === 0);
+}
+
+export function processSucceeded(result: { exitCode: number; processState?: ProcessState }): boolean {
+  return result.exitCode === 0 && processCompletedNormally(result);
 }
