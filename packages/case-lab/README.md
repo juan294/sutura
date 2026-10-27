@@ -12,6 +12,12 @@ Every case has a deterministic result labeled `Deterministic replay` or
 `Live run`. The label is the `mode` field of the result document and is
 rendered in the page title and header.
 
+The source catalog binds v0.4.1 Action `3b6152d9d72beebd7dcbaaa4045c94d640456adb` to the
+completed 2026-10-27 release benchmark. Expectations below remain strict; the
+recorded Python and upstream cases gave up and did not meet those expectations.
+See the [release record](../../docs/release/v0.4.1-case-lab-record.md) for the
+hosted-publication proof link.
+
 ## Architecture
 
 ```

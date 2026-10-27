@@ -24,6 +24,6 @@ Rules:
 
 When no fixture exists for a case, the Case Lab falls back to the committed
 live benchmark result named by `RECORDED_RESULT_FILE` in `../src/evidence.ts`
-(currently `docs/demo/placebo-v0.3.9-live-2026-10-03.json`), labeled
+(currently `docs/demo/placebo-v0.4.1-live-2026-10-27.json`), labeled
 `Recorded live result`. No fixture is committed today, so every case page uses
 that fallback.

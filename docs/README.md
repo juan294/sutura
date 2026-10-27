@@ -27,14 +27,14 @@
 
 ## Evidence and security
 
-- [Current release benchmark](demo/sutura-v0.3.9-release-benchmark-evidence.md):
-  the v0.3.9 release commit, its complete 51-case denominator, and every
+- [Current release benchmark](demo/sutura-v0.4.1-release-benchmark-evidence.md):
+  the v0.4.1 release commit, its complete 51-case denominator, and every
   retained failure.
 - [Development/validation measurement](demo/run-manifests/development-validation-v8-evidence.md):
   the earlier 80-case Stage 3 result on a separate corpus; the held-out split
   remains sealed.
 - [v0.2.1 repair-quality benchmark](demo/sutura-v0.2.1-repair-quality-evidence.md):
-  historical evidence with retained failed gates, not v0.3.9 release acceptance.
+  historical evidence with retained failed gates, not current release acceptance.
 - [Historical release evidence](demo/sutura-v0.2.0-phase-0-evidence.md): benchmark,
   external matrices, and dogfood records for the earlier release.
 - [Replay provenance](../packages/case-lab/replay/README.md): deterministic bundles

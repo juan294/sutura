@@ -69,8 +69,8 @@ Run verification sequentially with `;` or `&&`, never as parallel Bash calls.
 The repair artifact is a GitHub Action + CLI; releases are tagged from `main`.
 The hosted [Case Lab](packages/case-lab/README.md) presents labeled demo results;
 live dispatch has a separate authorization gate. Demo assets (video, sample runs)
-live in `docs/demo/`. See [`docs/release/v0.3.9-case-lab-record.md`](docs/release/v0.3.9-case-lab-record.md)
-for the most recent deployment check and its outcome.
+live in `docs/demo/`. See [`docs/release/v0.4.1-case-lab-record.md`](docs/release/v0.4.1-case-lab-record.md)
+for package and benchmark evidence and the hosted-publication proof link.
 
 Rules load from `.claude/rules/` and `.claude/skills/` automatically.
 

@@ -13,7 +13,15 @@ with stable `EADDRINUSE` messages. Historical corpus manifests and results retai
 their original hashes. New measurements must name this revision and must not be
 presented as a like-for-like comparison with the old fixtures.
 
-## Current result
+## Current release result
+
+[v0.4.1](../sutura-v0.4.1-release-benchmark-evidence.md) completed 51/51 cases
+and 55/55 evaluations on `3b6152d9d72beebd7dcbaaa4045c94d640456adb` for USD 4.99103270.
+All 51 reservations settled with no automatic paid retry. The aborted v0.4.0
+account remains quarantined: exact old billing is UNAVAILABLE and reconciliation
+is PARTIAL; reported zero was not measured zero.
+
+## Current development result
 
 [Stage 3 v8](development-validation-v8-evidence.md) is the current clean
 development/validation measurement. Exact candidate
