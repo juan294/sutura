@@ -125,6 +125,8 @@ export interface RecordedExecutorCall {
 }
 
 export interface ReplayOrchestrationConfig {
+  /** Absent historical bundles retain their original outbound audit row presentation. */
+  auditPresentation?: 'typed-status-v1';
   /** Exact opt-in local decision configuration; absence disables all new roles. */
   semantic?: SemanticConfig;
   semanticBudget?: { maxUsd: number; attempts: number; reservedUsd: number; actualUsd: number };
@@ -435,7 +437,7 @@ export class ReplayRecorder {
       configuration,
       this.secrets,
     );
-    this.configuration = { operationDeadlines: 'sutura-operation-deadlines-v1', ...(safeConfig.value as ReplayOrchestrationConfig) };
+    this.configuration = { operationDeadlines: 'sutura-operation-deadlines-v1', auditPresentation: 'typed-status-v1', ...(safeConfig.value as ReplayOrchestrationConfig) };
     if (safeConfig.lossy) this.markOverflow('configuration');
     this.runId = redactScalar(runId, this.secrets);
     this.repo = redactScalar(repo, this.secrets);

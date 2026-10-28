@@ -132,7 +132,7 @@ class AuditPathReplayExecutor implements Executor {
  * with a content-aware executor and a source excerpt that lets the repair
  * proposal construct a real diff instead of a supplied one.
  */
-export async function createAuditPathReplayBundleForTest(): Promise<ReplayBundle> {
+export async function createAuditPathReplayBundleForTest(legacyAuditPresentation = false): Promise<ReplayBundle> {
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'sutura-audit-replay-'));
   const checkoutDir = join(temporaryRoot, 'checkout');
   await mkdir(checkoutDir);
@@ -206,6 +206,7 @@ export async function createAuditPathReplayBundleForTest(): Promise<ReplayBundle
   try {
     const caseFile = await orchestrate({
       replay: recorder,
+      legacyAuditPresentation,
       runId: RUN_ID,
       github: new GitHubAdapter(recordingGitHubApi(githubApi({
         logLines: [
@@ -246,6 +247,7 @@ export async function createAuditPathReplayBundleForTest(): Promise<ReplayBundle
     if (bundle.schemaVersion !== REPLAY_BUNDLE_SCHEMA_VERSION || !bundle.completeness.complete) {
       throw new Error(`Audit-path replay fixture capture did not record every boundary: ${JSON.stringify(bundle.completeness)}`);
     }
+    if (legacyAuditPresentation) delete bundle.configuration.auditPresentation;
     return bundle;
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });

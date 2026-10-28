@@ -126,6 +126,15 @@ describe('replayBundle', () => {
     ]);
   });
 
+  it.each([false, true])('retains exact synthetic outbound audit bytes with legacy presentation=%s', async (legacy) => {
+    const bundle = await createAuditPathReplayBundleForTest(legacy);
+    expect(bundle.configuration.auditPresentation).toBe(legacy ? undefined : 'typed-status-v1');
+    expect(recordedReport(bundle)).toContain(`| typesafe-audit | **${legacy ? 'PASS' : 'APPROVED'}** |`);
+    const result = await replayBundle(bundle);
+    expect(result.caseFile.audit?.checks).toContainEqual(expect.objectContaining({ name: 'typesafe-audit', passed: true, metadata: expect.objectContaining({ status: 'approved' }) }));
+    expect(result.caseFile.outcome).toBe('fixed');
+  }, 30_000);
+
   it('replays a bundle recorded with an openai second-opinion and a typesafe calibrated-audit exchange', async () => {
     const bundle = await createAuditPathReplayBundleForTest();
 

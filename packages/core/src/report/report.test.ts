@@ -19,6 +19,21 @@ it('renders explicit identity-stop metadata and preserved process evidence', asy
   expect(renderComment(file)).toContain('60.1');
 });
 
+it('uses explicit legacy audit presentation only for recorded outbound report compatibility', async () => {
+  const file = await loadFixture('fixed');
+  file.audit = { approved: true, checks: [{ name: 'typesafe-audit', passed: true, evidence: 'legacy evidence bytes', metadata: { status: 'skipped', requestedModel: 'jev-latest', policyVersion: 'legacy-v1', policyHash: 'a'.repeat(64) } }], reasoning: 'unchanged authority' };
+  const current = renderComment(file, ARTIFACT_URL);
+  expect(current).toContain('| typesafe-audit | **SKIPPED** |');
+  expect(current).toContain('requested model=');
+  expect(current).toContain('Optional voice status');
+  const legacy = renderComment(file, ARTIFACT_URL, { legacyAuditPresentation: true });
+  expect(legacy).toContain('| typesafe-audit | **PASS** | legacy evidence bytes |');
+  expect(legacy).not.toContain('requested model=');
+  expect(legacy).not.toContain('Optional voice status');
+  expect(file.audit.checks[0]?.metadata?.status).toBe('skipped');
+  expect(file.audit.checks[0]?.passed).toBe(true);
+});
+
 const FIXTURES = ['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop', 'triage-budget'] as const;
 const ARTIFACT_URL = 'https://github.com/acme/repo/actions/runs/42/artifacts/7';
 

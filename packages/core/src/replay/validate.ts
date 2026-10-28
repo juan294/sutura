@@ -485,6 +485,7 @@ export function parseReplayBundle(value: unknown): ReplayBundle {
   });
 
   const config = object(bundle.configuration, 'bundle.configuration');
+  if (config.auditPresentation !== undefined && config.auditPresentation !== 'typed-status-v1') throw new ReplayValidationError('bundle.configuration.auditPresentation', 'unknown presentation contract; use the original compatible bundle or regenerate a recording');
   if (config.semantic !== undefined) {
     try {
       const semantic = object(config.semantic, 'bundle.configuration.semantic');

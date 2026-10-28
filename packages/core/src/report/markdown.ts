@@ -79,7 +79,7 @@ function renderProcedure(caseFile: CaseFile): string[] {
   return lines;
 }
 
-function renderPathology(caseFile: CaseFile): string[] {
+function renderPathology(caseFile: CaseFile, legacyAuditPresentation = false): string[] {
   const lines = ['### Pathology', ''];
   if (!caseFile.audit) {
     lines.push('**NOT RUN** — no candidate survived for adversarial audit.');
@@ -94,11 +94,11 @@ function renderPathology(caseFile: CaseFile): string[] {
   );
   for (const check of caseFile.audit.checks) {
     lines.push(
-      `| ${escapeMarkdown(check.name)} | **${auditCheckLabel(check)}** | ${escapeMarkdown(auditCheckEvidence(check))} |`,
+      `| ${escapeMarkdown(check.name)} | **${legacyAuditPresentation ? (check.passed ? 'PASS' : 'FAIL') : auditCheckLabel(check)}** | ${escapeMarkdown(legacyAuditPresentation ? (check.evidence ?? 'No evidence recorded') : auditCheckEvidence(check))} |`,
     );
   }
   const disclosure = auditVoiceDisclosure(caseFile.audit.checks);
-  if (disclosure) lines.push('', disclosure);
+  if (disclosure && !legacyAuditPresentation) lines.push('', disclosure);
   lines.push('', `> ${escapeMarkdown(caseFile.audit.reasoning)}`);
   return lines;
 }
@@ -163,7 +163,7 @@ function renderFooter(caseFile: CaseFile, artifactUrl?: string): string[] {
   ];
 }
 
-export function renderComment(caseFile: CaseFile, artifactUrl?: string): string {
+export function renderComment(caseFile: CaseFile, artifactUrl?: string, options: { legacyAuditPresentation?: boolean } = {}): string {
   const sections = [
     `## Sutura — Surgical Report`,
     '',
@@ -185,7 +185,7 @@ export function renderComment(caseFile: CaseFile, artifactUrl?: string): string 
       '',
       ...renderProcedure(caseFile),
       '',
-      ...renderPathology(caseFile),
+      ...renderPathology(caseFile, options.legacyAuditPresentation),
     );
   }
 

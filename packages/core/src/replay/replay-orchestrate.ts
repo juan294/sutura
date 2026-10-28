@@ -163,6 +163,7 @@ export async function replayBundle(
       const caseFile = await orchestrate({
         runId: validated.runId,
         evidenceMode: 'replay',
+        legacyAuditPresentation: validated.configuration.auditPresentation === undefined,
         ...(clock ? { controllerStartedAt: clock.startedAt, clockNow: domain => clock.now(domain) } : {}),
         ...(validated.configuration.operationDeadlines === undefined && recordedExecutor ? { legacyRecordedExecution: true } : {}),
         ...(readAuthority === undefined ? {} : { explicitAuthority: readAuthority }),

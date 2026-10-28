@@ -30,6 +30,15 @@ function clone(bundle: ReplayBundle): ReplayBundle {
 }
 
 describe('parseReplayBundle', () => {
+  it('accepts absent legacy or explicit typed audit presentation and rejects unknown versions', () => {
+    const value = clone(PARTIAL);
+    expect(parseReplayBundle(value).configuration).not.toHaveProperty('auditPresentation');
+    Object.assign(value.configuration, { auditPresentation: 'typed-status-v1' });
+    expect(parseReplayBundle(value).configuration.auditPresentation).toBe('typed-status-v1');
+    Object.assign(value.configuration, { auditPresentation: 'future-status' });
+    expect(() => parseReplayBundle(value)).toThrow(/configuration.auditPresentation/u);
+  });
+
   it('preserves exact semantic configuration and rejects invalid new fields with recovery text', () => {
     const value = clone(PARTIAL);
     value.configuration.semantic = { schemaVersion: 'sutura-semantic-config-v1', model: 'jev-1.14.0', policyVersion: 'semantic-v1', maxUsd: 0.01, modes: { ranking: 'assist', grounding: 'off', classification: 'off', recovery: 'off' } };
