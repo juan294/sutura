@@ -1,4 +1,4 @@
-import { describeTerminalRecovery, notRunTriageVerdict, type AuditFile, type CaseFile, type CostLedger } from '@sutura/core';
+import { describeTerminalRecovery, notRunTriageVerdict, type AuditFile, type CaseFile, type CostLedger, type EvidenceAnswer } from '@sutura/core';
 
 import {
   CliUsageError,
@@ -22,6 +22,7 @@ import { runEvaluationCommand } from './eval.js';
 import { replayFromFile } from './replay.js';
 import { executeVerify, verifyRuntimeFromEnvironment } from './verify.js';
 import { assessRepository, type RepositoryAssessment } from './assess.js';
+import { explainFromFile, explainExitCode, renderEvidenceAnswer } from './explain.js';
 
 export interface CliIo {
   write?: (value: string) => void;
@@ -131,6 +132,15 @@ export async function runCli(
   if (request.command === 'version') {
     write(`${VERSION}\n`);
     return 0;
+  }
+  if (request.command === 'explain') {
+    let answer: EvidenceAnswer;
+    try { answer = await explainFromFile(request, { writeError }); }
+    catch {
+      answer = { schemaVersion: 'sutura-evidence-answer-v1', status: 'unavailable', mode: request.semantic ? 'semantic' : 'lexical', reason: 'navigation-unavailable', results: [], nextAction: 'Retry this local evidence query after resolving the unavailable navigation service; no repair or command was run.' };
+    }
+    write(`${renderEvidenceAnswer(answer, request.json)}\n`);
+    return explainExitCode(answer);
   }
   if (request.command === 'diagnose') {
     try {

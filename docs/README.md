@@ -14,7 +14,7 @@
 - [User guide](user-guide.md): prerequisites, repository setup, activation,
   upgrades, disabling, removal, and troubleshooting.
 - [CLI](../packages/cli/README.md): assessment, diagnosis, guided setup, doctor,
-  audit, and replay commands.
+  audit, replay, and local evidence navigation commands.
 - [Contributor setup](../README.md#contributor-setup): prerequisites, build, and local checks.
 - [Case Lab](../packages/case-lab/README.md): fixed cases, result modes, and dispatch boundaries.
 - [Placebo](../packages/placebo/README.md): benchmark corpus, scoring, and execution.

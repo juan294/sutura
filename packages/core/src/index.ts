@@ -669,3 +669,6 @@ export * from './decisions/call.js';
 export * from './decisions/evidence.js';
 export * from './decisions/grounding-evidence.js';
 export type { JsonValue, TypeSafeQuestion, TypeSafeAnswer } from './llm/typesafe.js';
+export * from './explain/types.js';
+export { parseEvidenceCase, validateEvidenceQuery } from './explain/projection.js';
+export { lexicalEvidence, navigatorRequest, explainEvidence } from './explain/select.js';

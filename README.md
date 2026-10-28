@@ -587,6 +587,37 @@ configurable Action inputs. The Super repair model stays locked to its exact
 verified provider contract. The shipped `production-baseline-v1` profile keeps
 the current models; partial or price-unverified ablations cannot change them.
 
+## Local evidence navigation
+
+After building this checkout, select evidence from a completed local case file:
+
+```text
+node packages/cli/dist/bin.js explain --case-file packages/case-lab/src/__fixtures__/live-36975022285-python-repair-fixed-case-file.json --query "coroutine assertion" --json
+```
+
+`explain` returns up to three redacted source excerpts with exact JSON locators.
+Its default lexical selection makes no provider request and executes no repair,
+replay or repository command. It accepts a plain serialized case or supported
+Case Lab result envelope, with a 4 MiB stable regular-file limit and 2 KiB query
+limit. Missing historical assurance remains unavailable.
+
+Optional `--semantic --max-usd 0.002` sends the redacted query and bounded
+candidate excerpts to TypeSafe using the existing `TYPESAFE_API_KEY`. It permits
+one pinned-model request, with no retry, and can select only supplied evidence
+IDs. The CLI discloses this transmission. It returns existing evidence and fixed
+recovery wording; it does not generate a causal explanation. Provider failure
+can retain lexical results while reporting unavailable and exit 1. Matched and
+no-match results exit 0; invalid input exits 2.
+
+Local healing also has explicit `--jev-ranking`, `--jev-grounding`,
+`--jev-classification` and `--jev-recovery` modes (`off`, `shadow`, `assist`),
+with a shared `--jev-budget-usd` cap up to 0.02. All new healing modes default to
+off. Shadow captures bounded redacted local inputs without inline inference;
+assist requires an explicit cap and existing key. These roles cannot skip
+reproduction or executable verification. Hosted Action/setup/Case Lab inputs
+retain their existing defaults. See the [local evaluation guide](docs/evaluation/jev-decisions.md)
+for data handling, provenance, fallbacks and unmeasured live acceptance.
+
 ## Placebo
 
 Build and run the standalone benchmark from the repository checkout:

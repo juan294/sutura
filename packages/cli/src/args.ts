@@ -18,6 +18,8 @@ export const USAGE = [
   '  sutura verify --case-dir <dir> --source-sha <commit> --policy-base-sha <commit> --candidate-diff <file> --failing-command <id> [--runtime <auto|node|python>] --format json',
   '  sutura audit --case-dir <dir> --candidate-diff <file> --before-log <file> --after-log <file> --format json',
   '  sutura replay --bundle <file> --format json [--runtime <auto|node|python>]',
+  '  sutura explain --case-file <path> --query <text> [--semantic --max-usd <amount>] [--json]',
+  '  Explain reads one stable local JSON file without running repairs. --semantic requires a positive cap up to USD 0.002 and sends only the redacted query and bounded evidence candidates to TypeSafe using the existing TYPESAFE_API_KEY.',
   '  sutura eval validate --manifest <file>',
   '  sutura eval export --manifest <file> --format <atif|jsonl> --output <file> [--force]',
   '  sutura --help',
@@ -114,6 +116,15 @@ export interface ReplayArguments {
   runtime?: 'node' | 'python';
 }
 
+export interface ExplainArguments {
+  command: 'explain';
+  caseFile: string;
+  query: string;
+  semantic: boolean;
+  maxUsd?: number;
+  json: boolean;
+}
+
 export interface DoctorArguments {
   command: 'doctor';
   repository?: string;
@@ -148,6 +159,7 @@ export type CliArguments =
   | VerifyArguments
   | AuditArguments
   | ReplayArguments
+  | ExplainArguments
   | InitArguments
   | DoctorArguments
   | EvalValidateArguments
@@ -436,6 +448,29 @@ function parseReplay(args: readonly string[]): ReplayArguments {
   };
 }
 
+function parseExplain(args: readonly string[]): ExplainArguments {
+  const values = new Map<string, string>();
+  const seen = new Set<string>();
+  const allowed = new Set(['--case-file', '--query', '--semantic', '--max-usd', '--json']);
+  for (let index = 1; index < args.length; index++) {
+    const flag = args[index];
+    if (!flag || !allowed.has(flag) || seen.has(flag)) throw new CliUsageError('Unknown or duplicate explain argument');
+    seen.add(flag);
+    if (flag === '--semantic' || flag === '--json') continue;
+    values.set(flag, nonEmptyValue(args, index, flag));
+    index++;
+  }
+  const caseFile = values.get('--case-file'), query = values.get('--query');
+  if (!caseFile?.trim()) throw new CliUsageError('--case-file must name the actual stable regular JSON file');
+  if (!query?.trim() || Buffer.byteLength(query, 'utf8') > 2048) throw new CliUsageError('--query must be nonempty and at most 2 KiB in UTF-8');
+  const semantic = seen.has('--semantic');
+  const rawCap = values.get('--max-usd');
+  if (!semantic && rawCap !== undefined) throw new CliUsageError('--max-usd requires --semantic');
+  const maxUsd = rawCap === undefined ? undefined : Number(rawCap);
+  if (semantic && (maxUsd === undefined || !Number.isFinite(maxUsd) || maxUsd <= 0 || maxUsd > .002)) throw new CliUsageError('--semantic requires a positive --max-usd at most 0.002');
+  return { command: 'explain', caseFile, query, semantic, json: seen.has('--json'), ...(maxUsd === undefined ? {} : { maxUsd }) };
+}
+
 function parseDoctor(args: readonly string[]): DoctorArguments {
   let repository: string | undefined;
   let actionSha: string | undefined;
@@ -503,6 +538,7 @@ export function parseArgs(args: readonly string[]): CliArguments {
   if (args[0] === 'verify') return parseVerify(args);
   if (args[0] === 'audit') return parseAudit(args);
   if (args[0] === 'replay') return parseReplay(args);
+  if (args[0] === 'explain') return parseExplain(args);
   if (args[0] === 'init') return parseInit(args);
   if (['upgrade', 'pause', 'resume', 'remove'].includes(args[0] ?? '')) {
     return { ...parseInit(['init', ...args.slice(1)]), operation: args[0] as 'upgrade' | 'pause' | 'resume' | 'remove' };
