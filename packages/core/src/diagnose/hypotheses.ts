@@ -1,3 +1,5 @@
+import { chooseRecovery } from '../decisions/recovery.js';
+import type { DecisionSession } from '../decisions/call.js';
 import type { VerificationAllowance } from '../engine/verification-allowance.js';
 import { processCompletedNormally } from '../executor/types.js';
 import { createHash, randomUUID } from 'node:crypto';
@@ -42,6 +44,7 @@ export interface RecoveryInput {
   baseline: ControllerBaselineBinding; policy: RepositoryPolicy; executor: Executor; llm: HealLlm;
   budget: RepairBudget; trustedCommand: string; repairReservationUsd: number; signal?: AbortSignal;
   operationIdPrefix?: string;
+  decisionSession?: DecisionSession;
   verificationAllowance?: VerificationAllowance;
   observe(input: { result?: RunResult; parentImageId: string; note: string }): void;
 }
@@ -190,23 +193,33 @@ export async function recoverDiagnosis(input: RecoveryInput): Promise<RecoveryRe
     const controllerSelection = await controllerPromiseHypotheses({ signals, sources }, input.failedLog);
     let hypotheses = controllerSelection?.hypotheses ?? [];
     if (hypotheses.length === 0) {
-      const messages = redactExternalMessages([
-        { role: 'system' as const, content: 'Investigate at most two alternative diagnoses. Return exactly {"hypotheses":[{"signalIndex":0,"sourceIndex":0,"intent":"await-operation","probeId":"async-completion"}]}. Choose only supplied source and observed signal indices. Intents: await-operation, await-setup (probe async-completion), restore-strict-config (probe strict-json). Do not supply commands, paths, grants, expected values or replacement code. Use an empty array when evidence does not support these narrow repairs.' },
-        { role: 'user' as const, content: JSON.stringify({ initialClass: input.initialDiagnosis.class, signals, sources: sources.map((source, sourceIndex) => ({ sourceIndex, ...source })) }) },
-      ]);
-      const options = hypothesisOptions();
-      let reply: Awaited<ReturnType<HealLlm['chat']>>;
-      try {
-        reply = await recoveryPorts.llm.chat('super', messages, options);
-      } catch (error) {
-        Object.assign(evidence, recoveryFailure(error, stopped(), 'hypothesis-provider-failed'));
-        return result;
+      const semantic = input.decisionSession;
+      const selected = semantic?.options.config.modes.recovery === 'assist'
+        ? await chooseRecovery(semantic, { signals, sources }, value => validateHypotheses(value, { signals, sources }))
+        : undefined;
+      if (selected !== undefined) hypotheses = selected;
+      else {
+        const messages = redactExternalMessages([
+          { role: 'system' as const, content: 'Investigate at most two alternative diagnoses. Return exactly {"hypotheses":[{"signalIndex":0,"sourceIndex":0,"intent":"await-operation","probeId":"async-completion"}]}. Choose only supplied source and observed signal indices. Intents: await-operation, await-setup (probe async-completion), restore-strict-config (probe strict-json). Do not supply commands, paths, grants, expected values or replacement code. Use an empty array when evidence does not support these narrow repairs.' },
+          { role: 'user' as const, content: JSON.stringify({ initialClass: input.initialDiagnosis.class, signals, sources: sources.map((source, sourceIndex) => ({ sourceIndex, ...source })) }) },
+        ]);
+        const options = hypothesisOptions();
+        let reply: Awaited<ReturnType<HealLlm['chat']>>;
+        try {
+          reply = await recoveryPorts.llm.chat('super', messages, options);
+        } catch (error) {
+          Object.assign(evidence, recoveryFailure(error, stopped(), 'hypothesis-provider-failed'));
+          return result;
+        }
+        if (stopped()) { evidence.status = 'insufficient'; evidence.reason = 'cancelled'; return result; }
+        try {
+          if (reply.finishReason === 'length' || Buffer.byteLength(reply.text) > 16_000) throw new Error('Truncated recovery proposal');
+          hypotheses = validateHypotheses(JSON.parse(reply.text), { signals, sources });
+        } catch { evidence.status = 'insufficient'; evidence.reason = 'invalid-hypotheses'; return result; }
+        if (semantic?.options.config.modes.recovery === 'shadow') {
+          await chooseRecovery(semantic, { signals, sources }, value => validateHypotheses(value, { signals, sources }), hypotheses);
+        }
       }
-      if (stopped()) { evidence.status = 'insufficient'; evidence.reason = 'cancelled'; return result; }
-      try {
-        if (reply.finishReason === 'length' || Buffer.byteLength(reply.text) > 16_000) throw new Error('Truncated recovery proposal');
-        hypotheses = validateHypotheses(JSON.parse(reply.text), { signals, sources });
-      } catch { evidence.status = 'insufficient'; evidence.reason = 'invalid-hypotheses'; return result; }
     }
     result.hypotheses.push(...hypotheses);
     evidence.status = hypotheses.length ? 'insufficient' : 'not-run'; evidence.reason = hypotheses.length ? 'no-authorized-recovery' : 'no-supported-hypothesis';

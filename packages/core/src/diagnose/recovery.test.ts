@@ -1,3 +1,8 @@
+import { DecisionSession } from '../decisions/call.js';
+import { semanticConfig } from '../decisions/config.js';
+import { TypeSafeClient, type TypeSafeQuestion } from '../llm/typesafe.js';
+import { Ledger } from '../llm/cost.js';
+import type { NebiusFetch } from '../llm/nebius.js';
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { recoverDiagnosis } from './hypotheses.js';
@@ -22,7 +27,7 @@ function setup(overrides: Partial<RecoveryInput> = {}) {
     initialDiagnosis: { class: 'test-assertion', confidence: 0.4, signals: ['mechanical:test-assertion', 'llm:test-bug'], failingCmd: 'pnpm test', errorExcerpt: 'Expected Promise to be ADA' },
     failedLog: 'AssertionError: expected Promise to be ADA\n ❯ case.test.js:2:22', sourceContext: { sources: [{ path: 'case.test.js', startLine: 1, content: source, truncated: false }] },
     baseline: { kind: 'local-snapshot', sourceSha: null, policyBaseSha: null, policySha256: 'a'.repeat(64), baselineImageId: 'baseline', snapshotSha256: null },
-    policy: createDefaultRepositoryPolicy(), executor, llm, budget: new RepairBudget(), trustedCommand: 'pnpm test', repairReservationUsd: 0.05, observe: vi.fn(), ...overrides,
+    policy: createDefaultRepositoryPolicy(), executor, llm, budget: new RepairBudget(), trustedCommand: 'pnpm test', repairReservationUsd: 0.05, operationIdPrefix: 'test-recovery', observe: vi.fn(), ...overrides,
   };
   return { input, run, chat };
 }
@@ -253,4 +258,62 @@ describe('diagnosis recovery scheduling', () => {
     await recoverDiagnosis(input);
     expect(chat).toHaveBeenCalledTimes(1);
   });
+});
+
+function semanticRecovery(mode: 'assist' | 'shadow', fail = false) {
+  const capture = vi.fn();
+  const fetch = vi.fn(async (_url: string, request: Parameters<NebiusFetch>[1]) => {
+    if (fail) throw new Error('provider unavailable');
+    const { questions } = JSON.parse(request!.body as string) as { questions: Record<string, TypeSafeQuestion> };
+    const answers = Object.fromEntries(Object.entries(questions).map(([id, q]) => {
+      if (q.type === 'noul') return [id, { type: 'noul', noul: .99 }];
+      const keys = Object.keys(q.criteria), selected = id === 'first' ? keys.find(k => k.startsWith('await-operation_source-0'))! : 'none';
+      return [id, { type: 'choice', choice: selected, confidence: .99, probabilities: Object.fromEntries(keys.map(key => [key, keys.length === 1 ? 1 : key === selected ? .99 : .01 / (keys.length - 1)])) }];
+    }));
+    return new Response(JSON.stringify({ model: 'jev-1.14.0', answers, usage: { input_tokens: 100, output_tokens: 0 } }));
+  });
+  const session = new DecisionSession({ config: semanticConfig({ modes: { recovery: mode }, maxUsd: .02 }, true), deadline: Date.now() + 60_000, capture,
+    client: new TypeSafeClient({ apiKey: 'test', model: 'jev-1.14.0', ledger: new Ledger({}) }, { fetch }) });
+  return { session, capture, fetch };
+}
+function ambiguousRecovery() {
+  const value = setup();
+  value.input.sourceContext.sources.push({ path: 'other.test.js', startLine: 1, content: "test('other', async () => { expect(other()).toBe('BEE'); });\n", truncated: false });
+  value.input.failedLog += '\n ❯ other.test.js:1:37';
+  return value;
+}
+it.each(['assist', 'shadow'] as const)('keeps deterministic recovery before semantic %s selection', async mode => {
+  const value = setup(), semantic = semanticRecovery(mode);
+  const result = await recoverDiagnosis({ ...value.input, decisionSession: semantic.session });
+  expect(result.evidence.status).toBe('passed'); expect(result.attempts[1]?.authorization).toBeDefined();
+  expect(semantic.fetch).not.toHaveBeenCalled(); expect(semantic.capture).not.toHaveBeenCalled(); expect(value.chat).not.toHaveBeenCalled();
+});
+it.each(['assist', 'shadow'] as const)('uses semantic %s only at the existing generative fallback boundary', async mode => {
+  const baseline = ambiguousRecovery(); const original = await recoverDiagnosis(baseline.input);
+  const value = ambiguousRecovery(), semantic = semanticRecovery(mode);
+  const result = await recoverDiagnosis({ ...value.input, decisionSession: semantic.session });
+  expect(result.hypotheses).toEqual(original.hypotheses);
+  expect(result.evidence.hypotheses).toEqual(original.evidence.hypotheses);
+  expect(result.evidence.authorizations.map(a => a.kind)).toEqual(original.evidence.authorizations.map(a => a.kind));
+  expect(value.run.mock.calls).toEqual(baseline.run.mock.calls);
+  expect(value.chat).toHaveBeenCalledTimes(mode === 'assist' ? 0 : 1);
+  expect(semantic.fetch).toHaveBeenCalledTimes(mode === 'assist' ? 1 : 0);
+  expect(semantic.capture).toHaveBeenCalledTimes(mode === 'shadow' ? 1 : 0);
+  expect(semantic.session.records[0]).toMatchObject({ role: 'recovery', mode });
+});
+it('retains charged generative recovery after semantic outage', async () => {
+  const value = ambiguousRecovery(), semantic = semanticRecovery('assist', true);
+  const result = await recoverDiagnosis({ ...value.input, decisionSession: semantic.session });
+  expect(value.chat).toHaveBeenCalledOnce(); expect(value.run).toHaveBeenCalledOnce();
+  expect(result.hypotheses).toHaveLength(2); expect(semantic.session.records[0]?.outcome).toBe('unavailable');
+});
+it('does not let semantic selection bypass source identity or patch policy', async () => {
+  for (const refusal of ['hash', 'policy'] as const) {
+    const value = ambiguousRecovery(), semantic = semanticRecovery('assist');
+    if (refusal === 'hash') value.run.mockResolvedValue({ imageId: 'child', exitCode: 1, stdout: 'SUTURA_SOURCE_SHA256=' + 'f'.repeat(64), stderr: '', truncated: false, metrics: {} });
+    else value.input.policy.allowedPaths = [];
+    const result = await recoverDiagnosis({ ...value.input, decisionSession: semantic.session });
+    expect(result.evidence.authorizations).toEqual([]); expect(result.attempts).toHaveLength(1);
+    expect(result.evidence.hypotheses[1]?.reason).toBe(refusal === 'hash' ? 'source-identity-mismatch' : 'policy-denied');
+  }
 });

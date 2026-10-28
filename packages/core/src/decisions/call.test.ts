@@ -140,3 +140,13 @@ it('rechecks ordinary time before retrying an explicit overload response',async(
  const recovered=new DecisionSession({config:config(),client:client(vi.fn().mockResolvedValue(response())),deadline:Date.now()+5000,remainingMs:()=>5000});
  expect((await recovered.judge('ranking',{},questions,'baseline')).outcome).toBe('answered');
 });
+
+it.each(['assist','shadow'] as const)('records a controller-known missing-input fallback without sends/capture in %s',async mode=>{
+ const fetch=vi.fn().mockResolvedValue(response()),capture=vi.fn();
+ const session=new DecisionSession({config:semanticConfig({modes:{classification:mode},maxUsd:.02},true),client:client(fetch),capture,deadline:Date.now()+5000});
+ const result=await session.judge('classification',{},questions,'existing-classifier',[],[],'missing-evidence');
+ expect(result).toMatchObject({outcome:'unavailable',reason:'missing-evidence',fallback:'existing-classifier',attempts:0,reservedUsd:0});
+ expect(fetch).not.toHaveBeenCalled();expect(capture).not.toHaveBeenCalled();
+ const next=await session.judge('classification',{},questions,'existing-classifier');
+ expect(next.reason).toBe(mode==='assist'?'usable':'shadow-captured');
+});

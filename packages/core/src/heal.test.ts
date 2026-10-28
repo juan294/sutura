@@ -2153,3 +2153,32 @@ it.each(['shadow', 'assist'] as const)('uses %s grounding after retrieval and ke
   expect(JSON.stringify(file.diagnosis.grounding)).toContain('EXCLUDED_PUBLIC_EVIDENCE');
   expect(semanticFetch).toHaveBeenCalledTimes(mode === 'assist' ? 1 : 0); expect(capture).toHaveBeenCalledTimes(mode === 'shadow' ? 1 : 0);
 });
+
+it.each(['shadow', 'assist'] as const)('uses %s classification after reproduction and still requires final execution', async mode => {
+  const fetch = vi.fn(async (_url: string, request: Parameters<NebiusFetch>[1]) => {
+    const { questions } = JSON.parse(request.body!) as { questions: Record<string, TypeSafeQuestion> };
+    const answers = Object.fromEntries(Object.entries(questions).map(([id, question]) => {
+      if (question.type === 'noul') return [id, { type: 'noul', noul: .99 }];
+      const keys = Object.keys(question.criteria), selected = id === 'failure_class' ? 'test-assertion' : keys[0]!;
+      return [id, { type: 'choice', choice: selected, confidence: .99, probabilities: Object.fromEntries(keys.map(key => [key, keys.length === 1 ? 1 : key === selected ? .99 : .01 / (keys.length - 1)])) }];
+    }));
+    return new Response(JSON.stringify({ model: 'jev-1.14.0', answers, usage: { input_tokens: 100, output_tokens: 0 } }));
+  });
+  const capture = vi.fn();
+  const value = context('repair-off-by-one', [1, 1, 1, 1, 1, 0, 0], 'test-assertion', {
+    semantic: { config: semanticConfig({ modes: { classification: mode }, maxUsd: .02 }, true), capture,
+      client: new TypeSafeClient({ apiKey: 'test', model: 'jev-1.14.0', ledger: new Ledger({}) }, { fetch }) },
+  });
+  const file = await healCase(value.ctx);
+  expect(file.outcome).toBe('fixed'); expect(file.reproduction?.status).toBe('matched');
+  expect(file.diagnosis.failingCmd).toBe('pnpm test');
+  expect(value.executor.calls.length).toBeGreaterThan(5); expect(file.audit?.approved).toBe(true);
+  expect(fetch).toHaveBeenCalledTimes(mode === 'assist' ? 1 : 0); expect(capture).toHaveBeenCalledTimes(mode === 'shadow' ? 1 : 0);
+  expect(file.semanticDecisions?.records[0]).toMatchObject({ reason: mode === 'assist' ? 'classification-applied' : 'shadow-captured' });
+  expect(value.chat.mock.calls.filter(([tier]) => tier === 'nano')).toHaveLength(mode === 'assist' ? 0 : 1);
+  expect(file.semanticDecisions?.records[0]).toMatchObject({ role: 'classification', mode, reason: mode === 'assist' ? 'classification-applied' : 'shadow-captured' });
+  if (mode === 'assist') expect(file.diagnosis.confidence).toBe(.65 + 2 * .1);
+  const before = fetch.mock.calls.length;
+  const stopped = await repairFailure({ ...value.ctx, failingImage: 'baseline', failedLog: `Run pnpm test\n${FAILURE_LOG}`, baselineResult: { ...result(0), imageId: 'baseline' } });
+  expect(stopped.outcome).toBe('infra-stop'); expect(fetch.mock.calls).toHaveLength(before);
+});

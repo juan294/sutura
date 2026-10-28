@@ -19,6 +19,7 @@ export interface ShadowInput {
 }
 export interface SemanticPort { config:SemanticConfig; client?:TypeSafeAuditClient; capture?(input:ShadowInput):Promise<void>|void }
 export interface DecisionSessionOptions extends SemanticPort { deadline:number; now?:()=>number; remainingMs?:()=>number }
+export type DecisionInputIssue = 'missing-evidence' | 'invalid-candidates';
 export function noul(answer: TypeSafeAnswer | undefined): boolean | undefined {
  if(answer?.type!=='noul'||!Number.isFinite(answer.noul)||answer.noul<0||answer.noul>1)return undefined;
  return answer.noul>=.8?true:answer.noul<=.2?false:undefined;
@@ -53,7 +54,7 @@ export class DecisionSession {
  private readonly now:()=>number;
  constructor(readonly options:DecisionSessionOptions){this.now=options.now??Date.now;}
  snapshot(){return {maxUsd:this.options.config.maxUsd,attempts:this.attempts,reservedUsd:this.reservedUsd,actualUsd:this.actualUsd};}
- async judge(role:DecisionRole,state:JsonValue,questions:Record<string,TypeSafeQuestion>,fallback:string,candidateIds:string[]=[],baseline:string[]=candidateIds):Promise<DecisionEvidence>{
+ async judge(role:DecisionRole,state:JsonValue,questions:Record<string,TypeSafeQuestion>,fallback:string,candidateIds:string[]=[],baseline:string[]=candidateIds,inputIssue?:DecisionInputIssue):Promise<DecisionEvidence>{
   const started=this.now();const mode=role==='navigator'||role==='audit-v2'?'assist':this.options.config.modes[role as SemanticRole];
   // Redact before hashing/capture/transmission; no raw state enters public evidence.
   let safeState:JsonValue = null;
@@ -72,6 +73,7 @@ export class DecisionSession {
   const finish=(outcome:DecisionEvidence['outcome'],reason:string)=>{evidence.outcome=outcome;evidence.reason=reason;evidence.latencyMs=Math.max(0,this.now()-started);if(this.records.length<100)this.records.push(evidence);return evidence;};
   if(mode==='off')return finish('disabled','role-off');
   if(invalidInput)return finish('unavailable',invalidInput);
+  if(inputIssue!==undefined)return finish('unavailable',inputIssue);
   const serialized=JSON.stringify({state:safeState,questions});const bytes=Buffer.byteLength(serialized,'utf8');
   if(bytes>24*1024)return finish('unavailable','input-too-large');
   if(candidateIds.length>32||new Set(candidateIds).size!==candidateIds.length||Object.values(questions).some(q=>q.type==='choice'&&(Object.keys(q.criteria).length<1||Object.keys(q.criteria).length>255)))return finish('unavailable','invalid-candidates');

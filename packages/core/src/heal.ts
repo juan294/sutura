@@ -1,3 +1,4 @@
+import { classifyWithSemantic } from './decisions/classify.js';
 import { DecisionSession, type SemanticPort } from './decisions/call.js';
 import { rankRepairFrontier } from './decisions/rank-frontier.js';
 import { selectGrounding } from './decisions/select-grounding.js';
@@ -1130,7 +1131,9 @@ async function repairFailureWithinBudget(
       { ...notRunTriageVerdict(), maximumAttempts: ctx.triageN, stopReason: 'failure-identity', reproduction: identity }, [], 'gave-up');
   }
   const chargedContext = { ...fullContext, ...charged, ...(ctx.verificationAllowance === undefined ? {} : { counterfactuals: [] }) };
-  let diagnosis = await classify(charged.llm, providerLog);
+  let diagnosis = fullContext.decisionSession && fullContext.decisionSession.options.config.modes.classification !== 'off'
+    ? await classifyWithSemantic(fullContext.decisionSession, charged.llm, providerLog)
+    : await classify(charged.llm, providerLog);
   progress.diagnosis = diagnosis;
   diagnosis = promoteUpstreamDependencyDiagnosis(diagnosis, ctx.dependencyHints);
   const retrievedGrounding = await withinRecoveryDeadline(budget.remainingElapsedTimeSec(), undefined, () => ground(
@@ -1290,6 +1293,7 @@ async function repairFailureWithinBudget(
       trustedCommand: executableCommand,
       operationIdPrefix: `repair-${ctx.runId}-recovery`,
       repairReservationUsd,
+      ...(fullContext.decisionSession ? { decisionSession: fullContext.decisionSession } : {}),
       ...(ctx.verificationAllowance === undefined ? {} : { verificationAllowance: ctx.verificationAllowance }),
       observe: ({ result, parentImageId, note }) => {
         ledger.record({

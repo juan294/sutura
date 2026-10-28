@@ -89,6 +89,18 @@ function withCurrentGitBaseline(recorded: ReplayBundle): ReplayBundle {
 }
 
 describe('replayBundle', () => {
+  it.each(['assist', 'shadow'] as const)('replays enabled %s classification and recovery through full orchestration', async mode => {
+    for (const role of ['classification', 'recovery'] as const) {
+      const bundle = await createAuditPathReplayBundleForTest(false, undefined, undefined, role === 'classification' ? mode : undefined, role === 'recovery' ? mode : undefined);
+      expect(bundle.configuration.semantic?.modes[role]).toBe(mode);
+      const result = await replayBundle(bundle);
+      expect(result.caseFile.outcome).toBe('fixed');
+      expect(result.caseFile.semanticDecisions?.records[0]).toMatchObject({ role, mode, reason: mode === 'shadow' ? 'shadow-captured' : role === 'classification' ? 'classification-applied' : 'recovery-none-supported' });
+      expect(result.caseFile.semanticDecisions?.budget).toEqual(bundle.configuration.semanticBudget);
+      expect(result.caseFile.audit?.approved).toBe(true);
+    }
+  }, 30_000);
+
   it.each(['assist', 'shadow'] as const)('replays enabled %s grounding with original provenance and selected prompt sources', async mode => {
     const bundle = await createAuditPathReplayBundleForTest(false, undefined, mode);
     expect(bundle.configuration.semantic?.modes.grounding).toBe(mode);
