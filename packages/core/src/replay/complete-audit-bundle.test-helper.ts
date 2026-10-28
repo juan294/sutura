@@ -46,6 +46,7 @@ const PACKAGE_JSON = '{"scripts":{"test":"tsc --noEmit"}}\n';
 const SOURCE_PATH = 'src/value.ts';
 const SOURCE_BEFORE = 'export const value: string = 1;\n';
 const HONEST_REPLACEMENT = 'export const value: string = "1";\n';
+const BUILD_FAILURE = 'src/value.ts(1,14): error TS2322: Type number is not assignable to type string\nBuild failed: Failed to compile source value';
 
 function chatCompletion(content: string): unknown {
   return {
@@ -80,7 +81,12 @@ function runResult(imageId: string, exitCode: number): RunResult {
 class AuditPathReplayExecutor implements Executor {
   private snapshotCount = 0;
   private plainTestRuns = 0;
-  constructor(private readonly ranking = false) {}
+  constructor(private readonly ranking = false, private readonly grounding = false) {}
+  private result(imageId: ImageId, exitCode: number): RunResult {
+    const result = runResult(imageId, exitCode);
+    if (this.grounding && exitCode !== 0) result.stderr = BUILD_FAILURE;
+    return result;
+  }
 
   importImage(): Promise<ImageId> {
     return Promise.resolve('image-1');
@@ -93,20 +99,20 @@ class AuditPathReplayExecutor implements Executor {
 
   private resolve(command: string): RunResult {
     if (command.includes('SUTURA_TRIAGE_ATTEMPT')) {
-      return runResult('image-triage', 1);
+      return this.result('image-triage', 1);
     }
     if (command.includes('git apply')) {
       // Mirrors the real `printf '%s' <base64> | base64 --decode | git apply - && git diff ...`
       // tool command: the tool runtime reads the applied diff back from stdout.
       const encoded = command.match(/printf '%s' '?([A-Za-z0-9+/=]+)'? \|/u)?.[1] ?? '';
       const decoded = Buffer.from(encoded, 'base64').toString('utf8');
-      return { ...runResult('image-applied', 0), stdout: decoded };
+      return { ...this.result('image-applied', 0), stdout: decoded };
     }
     if (command.includes('command -v git') || command.includes('git init')) {
-      return runResult('image-preparation', 0);
+      return this.result('image-preparation', 0);
     }
     this.plainTestRuns += 1;
-    const result = runResult(`image-test-${this.plainTestRuns}`, this.plainTestRuns <= (this.ranking ? 3 : 1) ? 1 : 0);
+    const result = this.result(`image-test-${this.plainTestRuns}`, this.plainTestRuns <= (this.ranking ? 3 : 1) ? 1 : 0);
     if (this.ranking && this.plainTestRuns === 3) result.stderr = Array.from({ length: 20 }, (_, index) => `TypeError: new observed failure ${String.fromCharCode(65 + index)}`).join('\n');
     return result;
   }
@@ -137,7 +143,7 @@ class AuditPathReplayExecutor implements Executor {
  * with a content-aware executor and a source excerpt that lets the repair
  * proposal construct a real diff instead of a supplied one.
  */
-export async function createAuditPathReplayBundleForTest(legacyAuditPresentation = false, ranking?: 'assist' | 'shadow'): Promise<ReplayBundle> {
+export async function createAuditPathReplayBundleForTest(legacyAuditPresentation = false, ranking?: 'assist' | 'shadow', grounding?: 'assist' | 'shadow'): Promise<ReplayBundle> {
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'sutura-audit-replay-'));
   const checkoutDir = join(temporaryRoot, 'checkout');
   await mkdir(checkoutDir);
@@ -161,11 +167,11 @@ export async function createAuditPathReplayBundleForTest(legacyAuditPresentation
       nebiusCall += 1;
       if (nebiusCall === 1) {
         return bytesResponse(chatCompletion(JSON.stringify({
-          class: 'typecheck',
+          class: grounding ? 'build' : 'typecheck',
           confidence: 0.98,
-          signals: ['TS2322'],
+          signals: grounding ? ['build-failed'] : ['TS2322'],
           failingCmd: 'pnpm test',
-          errorExcerpt: 'TS2322: Type number is not assignable to type string',
+          errorExcerpt: grounding ? BUILD_FAILURE : 'TS2322: Type number is not assignable to type string',
         })));
       }
       if (nebiusCall === 2 || ranking && nebiusCall <= 4) {
@@ -206,11 +212,13 @@ export async function createAuditPathReplayBundleForTest(legacyAuditPresentation
   // rather than 'disabled').
   const tavily = new TavilyClient('capture-only', {
     fetch: recordingTavilyFetch(recorder, async () => {
-      throw new Error('Tavily should not be called for this diagnosis class');
+      if (!grounding) throw new Error('Tavily should not be called for this diagnosis class');
+      return bytesResponse({ results: [{ title: 'Compiler source', url: 'https://example.com/compiler', content: 'Selected public source: export value must be a string.' },
+        { title: 'Unrelated source', url: 'https://example.com/unrelated', content: 'Excluded public source about another package.' }] });
     }),
   });
-  const semantic = ranking ? {
-    config: semanticConfig({ modes: { ranking }, maxUsd: .02 }, true),
+  const semantic = ranking || grounding ? {
+    config: semanticConfig({ modes: { ...(ranking ? { ranking } : {}), ...(grounding ? { grounding } : {}) }, maxUsd: .02 }, true),
     capture: async () => { await new Promise(resolve => setTimeout(resolve, 20)); },
     client: new TypeSafeClient({ apiKey: 'capture-only', model: 'jev-1.14.0', ledger: llm.ledger }, {
       fetch: recordingTypeSafeFetch(recorder, async (_url, request) => {
@@ -218,8 +226,8 @@ export async function createAuditPathReplayBundleForTest(legacyAuditPresentation
         const { questions } = JSON.parse(request.body!) as { questions: Record<string, TypeSafeQuestion> };
         const answers: Record<string, TypeSafeAnswer> = {};
         for (const [id, question] of Object.entries(questions)) {
-          if (question.type === 'noul') answers[id] = { type: 'noul', noul: id.endsWith('sufficient') || id === 'node_0_original' ? .95 : .05 };
-          else { const selected = id.startsWith('node_0_') ? 'same_failure' : 'original_resolved_new_failure';
+          if (question.type === 'noul') answers[id] = { type: 'noul', noul: id.endsWith('sufficient') || id === 'node_0_original' || id === 'citation_0_relevance' ? .95 : .05 };
+          else { const selected = id.startsWith('citation_') ? id.startsWith('citation_0_') ? 'supports' : 'insufficient' : id.startsWith('node_0_') ? 'same_failure' : 'original_resolved_new_failure';
             answers[id] = { type: 'choice', choice: selected, confidence: .95, probabilities: Object.fromEntries(Object.keys(question.criteria).map(key => [key, key === selected ? .9 : .05])) }; }
         }
         return bytesResponse({ model: 'jev-1.14.0', answers, usage: { input_tokens: 100, output_tokens: 0 } });
@@ -235,7 +243,7 @@ export async function createAuditPathReplayBundleForTest(legacyAuditPresentation
         logLines: [
           '2026-09-17T10:00:00Z ##[group]Run pnpm test',
           '2026-09-17T10:00:00Z Run pnpm test',
-          '2026-09-17T10:00:01Z src/value.ts(1,14): error TS2322: Type number is not assignable to type string',
+          grounding ? `2026-09-17T10:00:01Z ${BUILD_FAILURE}` : '2026-09-17T10:00:01Z src/value.ts(1,14): error TS2322: Type number is not assignable to type string',
         ],
         startedAt: '2026-09-17T10:00:00Z',
         completedAt: '2026-09-17T10:00:01Z',
@@ -256,7 +264,7 @@ export async function createAuditPathReplayBundleForTest(legacyAuditPresentation
           ? [{ path, startLine: 1, content: SOURCE_BEFORE, truncated: false }]
           : []),
       ),
-      executor: recordingExecutor(new AuditPathReplayExecutor(Boolean(ranking)), recorder),
+      executor: recordingExecutor(new AuditPathReplayExecutor(Boolean(ranking), Boolean(grounding)), recorder),
       llm,
       tavily,
       secondOpinion,

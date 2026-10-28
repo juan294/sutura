@@ -1,5 +1,6 @@
 import { DecisionSession, type SemanticPort } from './decisions/call.js';
 import { rankRepairFrontier } from './decisions/rank-frontier.js';
+import { selectGrounding } from './decisions/select-grounding.js';
 import type { ControllerClockDomain } from './replay/controller-clock.js';
 import { verifyReproductionRuntime } from './engine/reproduction-runtime.js';
 import { preparationDeadlineExecutor } from './executor/deadlines.js';
@@ -1131,9 +1132,7 @@ async function repairFailureWithinBudget(
   let diagnosis = await classify(charged.llm, providerLog);
   progress.diagnosis = diagnosis;
   diagnosis = promoteUpstreamDependencyDiagnosis(diagnosis, ctx.dependencyHints);
-  diagnosis = withGrounding(
-    diagnosis,
-    await withinRecoveryDeadline(budget.remainingElapsedTimeSec(), undefined, () => ground(
+  const retrievedGrounding = await withinRecoveryDeadline(budget.remainingElapsedTimeSec(), undefined, () => ground(
       ctx.tavily ?? { search: async () => [] },
       diagnosis,
       {
@@ -1143,8 +1142,11 @@ async function repairFailureWithinBudget(
           ? {}
           : { dependencyHints: ctx.dependencyHints }),
       },
-    )),
-  );
+    ));
+  const selectedGrounding = fullContext.decisionSession && fullContext.decisionSession.options.config.modes.grounding !== 'off'
+    ? await selectGrounding(fullContext.decisionSession, retrievedGrounding, diagnosis, ctx.dependencyHints)
+    : retrievedGrounding;
+  diagnosis = withGrounding(diagnosis, selectedGrounding);
   ledger.record({
     stage: 'search',
     attempt: 1,

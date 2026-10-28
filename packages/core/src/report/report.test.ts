@@ -617,3 +617,37 @@ it('renders optional decision provenance as judgment with baseline fallback',asy
   expect(output).toContain('baseline-order');expect(output).toContain('jev-1.14.0');expect(output).toContain('judgment');expect(output).toContain('timeout');
  }
 });
+
+describe('grounding source judgment provenance', () => {
+  it('renders selected and excluded original evidence as escaped judgments, never new link authority', async () => {
+    const file = await loadFixture('fixed');
+    const originals = [
+      { id: `citation-${'a'.repeat(64)}`, title: 'Contradictory source', url: 'https://docs.example.test/current', snippet: 'The release preserves the old API.' },
+      { id: `citation-${'b'.repeat(64)}`, title: '<script>alert(1)</script>', url: 'https://docs.example.test/excluded', snippet: '[execute](javascript:alert(1))\n`rm -rf .`' },
+    ];
+    file.diagnosis.grounding = { query: 'pkg@2.0.0', skipped: false, citations: [originals[0]!], selection: {
+      schemaVersion: 'sutura-grounding-selection-v1', mode: 'assist', applied: true, reason: 'semantic-selection', originals,
+      selectedIds: [originals[0]!.id], excluded: [{ id: originals[1]!.id, reason: 'irrelevant-insufficient' }],
+      judgments: [{ id: originals[0]!.id, relevance: 'relevant', support: 'contradicts' }, { id: originals[1]!.id, relevance: 'irrelevant', support: 'insufficient' }],
+      versionComparisons: [{ id: originals[1]!.id, package: 'pkg', expectedVersion: '2.0.0', mentionedVersion: '1.0.0', matches: false }],
+    } };
+    const markdown = renderComment(file), html = renderCaseFile(file);
+    for (const output of [markdown, html]) {
+      expect(output).toContain('semantic judgments, not proof that the repair works');
+      expect(output).toContain('support=contradicts');
+      expect(output).toContain(`excluded: ${originals[1]!.id}`);
+      expect(output).toContain('expected=2.0.0; mentioned=1.0.0; matches=false');
+      expect(output).not.toContain('<script>alert(1)</script>');
+    }
+    expect(markdown).toContain('\\[execute\\](javascript:alert(1))');
+    expect(markdown).toContain('\\`rm -rf .\\`');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html).not.toContain('href="https://docs.example.test/excluded"');
+    expect(html).not.toContain('href="javascript:');
+    const selection = file.diagnosis.grounding.selection!;
+    file.diagnosis.grounding.citations = selection.originals;
+    Object.assign(selection, { applied: false, reason: 'no-qualified-source', warning: 'no-qualified-source', selectedIds: selection.originals.map(c => c.id), excluded: [], judgments: selection.originals.map(c => ({ id: c.id, relevance: 'irrelevant', support: 'insufficient' })) });
+    expect(renderComment(file)).toContain('Warning: no-qualified-source');
+    expect(renderCaseFile(file)).toContain('All original sources retained');
+  });
+});

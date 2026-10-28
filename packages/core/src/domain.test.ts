@@ -33,6 +33,7 @@ describe('domain model', () => {
     expectTypeOf<Grounding>().toEqualTypeOf<{
       query: string;
       citations: Array<{ title: string; url: string; snippet: string }>;
+      selection?: import('./decisions/grounding-evidence.js').GroundingSelection;
       skipped: boolean;
       reason?: 'disabled' | 'not-applicable';
     }>();

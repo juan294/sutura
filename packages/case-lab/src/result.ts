@@ -1,6 +1,7 @@
 import { parseDiagnosisRecoveryEvidence, findSelectedCandidate, summarizeVerificationCosts, parseVerificationEvidence, type CaseFile, type VerificationCostSummary } from '@sutura/core';
 import { parseAuditCheckMetadata } from '@sutura/core/audit-status';
 import { validateSemanticDecisions } from '@sutura/core/semantic-evidence';
+import { validateGroundingSelection } from '@sutura/core/grounding-evidence';
 
 import { canonicalJson, contentHash } from './canonical.js';
 import {
@@ -329,6 +330,11 @@ export function validateCaseLabCaseFile(value: unknown, expectedOutcome: CaseLab
       if (!isPublicHttpsUrl(url)) {
         throw new CaseLabResultError(`caseFile.diagnosis.grounding.citations[${index}].url must be an https URL`);
       }
+    }
+    if (grounding.selection !== undefined) {
+      const selection = grounding.selection;
+      if (!validateGroundingSelection(selection, grounding.citations)) throw new CaseLabResultError('caseFile.diagnosis.grounding.selection contains invalid citation provenance; regenerate the report');
+      if (selection.originals.some(c => !isPublicHttpsUrl(c.url))) throw new CaseLabResultError('caseFile.diagnosis.grounding.selection originals must retain public https URLs');
     }
   }
   const triage = record(file.triage, 'caseFile.triage');

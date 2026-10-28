@@ -1,4 +1,5 @@
 import { semanticConfig } from './decisions/config.js';
+import { TavilyClient } from './diagnose/tavily.js';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -2119,4 +2120,36 @@ it.each(['shadow', 'assist'] as const)('uses %s ranking in real healing while pr
   expect(file.semanticDecisions?.records[0]).toMatchObject({ role: 'ranking', mode, reason: mode === 'shadow' ? 'shadow-captured' : 'ranking-applied', baseline: ['search-001', 'search-002'], suggested: mode === 'shadow' ? ['search-001', 'search-002'] : ['search-002', 'search-001'] });
   expect(file.outcome).toBe('gave-up'); expect(file.search?.[2]?.parentNodeId).toBe(mode === 'shadow' ? 'search-001' : 'search-002');
   expect(file.audit).toBeUndefined();
+});
+
+it.each(['shadow', 'assist'] as const)('uses %s grounding after retrieval and keeps excluded provenance out of repair prompts', async mode => {
+  const citations = [{ title: 'Relevant package source', url: 'https://example.com/relevant', content: 'RETAINED_PUBLIC_EVIDENCE: node-fetch is ESM-only.' },
+    { title: 'Unrelated source', url: 'https://example.com/unrelated', content: 'EXCLUDED_PUBLIC_EVIDENCE: an unrelated package and error.' }];
+  const tavilyFetch = vi.fn(async () => new Response(JSON.stringify({ results: citations })));
+  const semanticFetch = vi.fn(async (_url: string, request: Parameters<NebiusFetch>[1]) => {
+    const body = JSON.parse(request.body!) as { questions: Record<string, TypeSafeQuestion> };
+    const answers: Record<string, TypeSafeAnswer> = {};
+    for (const [id, question] of Object.entries(body.questions)) {
+      if (question.type === 'noul') answers[id] = { type: 'noul', noul: id.startsWith('citation_0_') ? .95 : .05 };
+      else { const selected = id.startsWith('citation_0_') ? 'supports' : 'insufficient';
+        answers[id] = { type: 'choice', choice: selected, confidence: .95, probabilities: Object.fromEntries(Object.keys(question.criteria).map(key => [key, key === selected ? .9 : .05])) }; }
+    }
+    return new Response(JSON.stringify({ model: 'jev-1.14.0', answers, usage: { input_tokens: 100, output_tokens: 0 } }));
+  });
+  const capture = vi.fn();
+  const value = context('upstream-parser-release', [1, 1, 1, 1, 1, 0, 0], 'dep-upstream-breaking', {
+    tavily: new TavilyClient('test-key', { fetch: tavilyFetch }), dependencyHints: [],
+    semantic: { config: semanticConfig({ modes: { grounding: mode }, maxUsd: .02 }, true), capture,
+      client: new TypeSafeClient({ apiKey: 'test-key', model: 'jev-1.14.0', ledger: new Ledger({}) }, { fetch: semanticFetch }) },
+  });
+  const file = await healCase(value.ctx);
+  expect(file.outcome).toBe('fixed'); expect(tavilyFetch).toHaveBeenCalledOnce();
+  expect(file.diagnosis.grounding?.selection?.originals).toHaveLength(2);
+  expect(file.diagnosis.grounding?.citations).toHaveLength(mode === 'assist' ? 1 : 2);
+  const prompt = JSON.stringify(value.chat.mock.calls.filter(([tier]) => tier === 'super'));
+  expect(prompt).toContain('RETAINED_PUBLIC_EVIDENCE');
+  if (mode === 'assist') { expect(prompt).not.toContain('EXCLUDED_PUBLIC_EVIDENCE'); expect(prompt).toContain('supports'); }
+  else expect(prompt).toContain('EXCLUDED_PUBLIC_EVIDENCE');
+  expect(JSON.stringify(file.diagnosis.grounding)).toContain('EXCLUDED_PUBLIC_EVIDENCE');
+  expect(semanticFetch).toHaveBeenCalledTimes(mode === 'assist' ? 1 : 0); expect(capture).toHaveBeenCalledTimes(mode === 'shadow' ? 1 : 0);
 });

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { contentHash } from './canonical.js';
 import { modeLabel } from './labels.js';
+import type { GroundingSelection } from '@sutura/core/grounding-evidence';
 import {
   CaseLabResultError,
   assertCaseLabResultPublicSafe,
@@ -18,6 +19,13 @@ import {
 const LIVE_RESULT_PATH = resolve(import.meta.dirname, '../../../docs/demo/placebo-v0.2-live-2026-09.json');
 const RELEASE_SHA = 'a943ded4c734aed75c5c63f2b2dd63a2f44556c2';
 const CONTROLLER_SHA = '48ac760399950dcc82542ffba5269323da3a1e76';
+
+function groundingSelection(): GroundingSelection {
+  const a = `citation-${'a'.repeat(64)}`, b = `citation-${'b'.repeat(64)}`;
+  return { schemaVersion: 'sutura-grounding-selection-v1', mode: 'assist', applied: true, reason: 'grounding-applied',
+    originals: [{ id: a, title: 'Applicable source', url: 'https://example.com/a', snippet: 'pkg 1.0.0 supports this behavior' }, { id: b, title: 'Unrelated source', url: 'https://example.com/b', snippet: 'An unrelated topic' }],
+    selectedIds: [a], excluded: [{ id: b, reason: 'irrelevant-insufficient' }], judgments: [{ id: a, relevance: 'relevant', support: 'supports' }, { id: b, relevance: 'irrelevant', support: 'insufficient' }], versionComparisons: [] };
+}
 
 interface LiveResult {
   results: Array<{ caseId: string; caseFile: CaseLabCaseFile }>;
@@ -65,6 +73,21 @@ function recordedBase(overrides: Overrides = {}): CaseLabResultBase {
 }
 
 describe('CaseLabResult', () => {
+  it('preserves grounding provenance in the hash and validates original, excluded and selected sources', () => {
+    const base = recordedBase(); const selection = groundingSelection();
+    const original = selection.originals[0]!;
+    base.caseFile!.diagnosis.grounding = { query: 'pkg error', skipped: false, citations: [{ title: original.title, url: original.url, snippet: original.snippet }], selection };
+    const result = createCaseLabResult(base);
+    expect(validateCaseLabResult(JSON.parse(JSON.stringify(result))).caseFile!.diagnosis.grounding!.selection).toEqual(selection);
+    const changed = structuredClone(base); changed.caseFile!.diagnosis.grounding!.selection!.reason = 'retained-evidence';
+    expect(createCaseLabResult(changed).resultHash).not.toBe(result.resultHash);
+    const foreign = structuredClone(base); foreign.caseFile!.diagnosis.grounding!.selection!.selectedIds = ['foreign'];
+    expect(() => createCaseLabResult(foreign)).toThrow(/grounding.selection/u);
+    const substituted = structuredClone(base); substituted.caseFile!.diagnosis.grounding!.citations[0]!.snippet = 'substituted content';
+    expect(() => createCaseLabResult(substituted)).toThrow(/grounding.selection/u);
+    const insecureSource = structuredClone(base); insecureSource.caseFile!.diagnosis.grounding!.selection!.originals[1]!.url = 'http://example.com/excluded';
+    expect(() => createCaseLabResult(insecureSource)).toThrow(/grounding.selection.*public https/u);
+  });
   it('preserves bounded optional process evidence and rejects corrupt termination', () => {
     const base = recordedBase();
     const stage = base.caseFile!.stages[0]!;

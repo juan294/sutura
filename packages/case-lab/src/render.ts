@@ -1,3 +1,4 @@
+import { groundingSummary } from '@sutura/core/grounding-summary';
 import { semanticSummary } from '@sutura/core/semantic-summary';
 import { auditCheckEvidence, auditCheckLabel, auditVoiceDisclosure } from '@sutura/core/audit-status';
 /**
@@ -213,6 +214,8 @@ function renderEvidence(result: CaseLabResult, item: CaseLabCase): string {
 function renderDiagnosis(file: CaseLabCaseFile | undefined): string {
   if (!file) return section('diagnosis', 'Nano diagnosis', '<p class="empty">No case file was published for this run.</p>');
   const grounding = file.diagnosis.grounding;
+  const selection = groundingSummary(grounding);
+  const selectionHtml = selection.length ? `<h3>Grounding selection evidence</h3><ul>${selection.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul>` : '';
   const citations = grounding && !grounding.skipped && grounding.citations.length > 0
     ? `<h3>Grounding</h3><ul>${grounding.citations.map((citation) =>
       `<li>${anchor(citation.url, citation.title)}</li>`).join('')}</ul>`
@@ -221,7 +224,7 @@ function renderDiagnosis(file: CaseLabCaseFile | undefined): string {
   <dt>Failure class</dt><dd>${escapeHtml(file.diagnosis.class)}</dd>
   <dt>Confidence</dt><dd>${percent(file.diagnosis.confidence)}</dd>
   <dt>Signals</dt><dd>${file.diagnosis.signals.length === 0 ? 'none' : `<ul>${file.diagnosis.signals.map((signal) => `<li><code>${escapeHtml(signal)}</code></li>`).join('')}</ul>`}</dd>
-</dl>${citations}`);
+</dl>${citations}${selectionHtml}`);
 }
 
 function renderRecovery(file: CaseLabCaseFile | undefined): string {

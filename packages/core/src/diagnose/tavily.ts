@@ -417,7 +417,13 @@ function groundingQuery(
     .slice(0, MAX_QUERY_CHARACTERS);
 }
 
-function packageNameAndVersion(hint: string): { name: string; version: string } | null {
+export function packageNameAndVersion(hint: string, allowBuildMetadata = false): { name: string; version: string } | null {
+  if (allowBuildMetadata && hint.includes('+')) {
+    const at = hint.indexOf('+'); const build = hint.slice(at + 1);
+    if (!/^[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*$/u.test(build)) return null;
+    const parsed = packageNameAndVersion(hint.slice(0, at));
+    return parsed ? { ...parsed, version: `${parsed.version}+${build}` } : null;
+  }
   const match = DEPENDENCY_HINT.exec(hint);
   return match?.groups?.name && match.groups.version
     ? { name: match.groups.name, version: match.groups.version }

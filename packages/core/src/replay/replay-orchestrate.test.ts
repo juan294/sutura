@@ -89,6 +89,17 @@ function withCurrentGitBaseline(recorded: ReplayBundle): ReplayBundle {
 }
 
 describe('replayBundle', () => {
+  it.each(['assist', 'shadow'] as const)('replays enabled %s grounding with original provenance and selected prompt sources', async mode => {
+    const bundle = await createAuditPathReplayBundleForTest(false, undefined, mode);
+    expect(bundle.configuration.semantic?.modes.grounding).toBe(mode);
+    const result = await replayBundle(bundle);
+    expect(result.caseFile.outcome).toBe('fixed');
+    expect(result.caseFile.diagnosis.grounding?.selection?.originals).toHaveLength(2);
+    expect(result.caseFile.diagnosis.grounding?.citations).toHaveLength(mode === 'assist' ? 1 : 2);
+    expect(result.caseFile.semanticDecisions?.records[0]).toMatchObject({ role: 'grounding', mode, latencyMs: expect.any(Number) });
+    expect(result.caseFile.semanticDecisions?.records[0]?.latencyMs).toBeGreaterThanOrEqual(20);
+    expect(result.caseFile.semanticDecisions?.budget).toEqual(bundle.configuration.semanticBudget);
+  }, 30_000);
   it.each(['assist', 'shadow'] as const)('replays enabled %s ranking and its delayed timing through full orchestration', async mode => {
     const bundle = await createAuditPathReplayBundleForTest(false, mode);
     expect(bundle.configuration.semantic?.modes.ranking).toBe(mode);

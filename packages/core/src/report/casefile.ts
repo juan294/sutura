@@ -1,3 +1,4 @@
+import { groundingSummary } from './grounding-summary.js';
 import { semanticSummary } from './semantic-summary.js';
 import { auditCheckEvidence, auditCheckLabel, auditVoiceDisclosure } from './audit-status.js';
 import type { CaseFile } from '../domain.js';
@@ -85,6 +86,8 @@ function renderCitations(caseFile: CaseFile): string {
 function renderDiagnosis(caseFile: CaseFile): string {
   const { diagnosis } = caseFile;
   const citations = renderCitations(caseFile);
+  const selection = groundingSummary(diagnosis.grounding);
+  const selectionHtml = selection.length ? `<div class="grounding-selection"><p class="micro-label">Grounding selection evidence</p><ul>${selection.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul></div>` : '';
   return `<section class="sheet diagnosis" aria-labelledby="diagnosis-title">
     <div class="section-label"><span>D</span><h2 id="diagnosis-title">Diagnosis</h2></div>
     <div class="section-body">
@@ -97,7 +100,8 @@ function renderDiagnosis(caseFile: CaseFile): string {
         <div><dt>Error specimen</dt><dd>${escapeHtml(diagnosis.errorExcerpt)}</dd></div>
       </dl>
       <ul class="signals">${diagnosis.signals.map((signal) => `<li>${escapeHtml(signal)}</li>`).join('')}</ul>${citations ? `
-      ${citations}` : ''}
+      ${citations}` : ''}${selectionHtml ? `
+      ${selectionHtml}` : ''}
     </div>
   </section>`;
 }

@@ -1,4 +1,5 @@
 import type { SemanticDecisions } from './decisions/evidence.js';
+import type { GroundingSelection, GroundingCitation } from './decisions/grounding-evidence.js';
 import type { RuntimeCandidateEvidence } from './verification/runtime-evidence.js';
 import type { ChallengePreparationDiagnostics } from './challenges/runtime.js';
 import type { CounterfactualEvidence } from './counterfactual/types.js';
@@ -21,11 +22,8 @@ export type FailureClass =
 
 export interface Grounding {
   query: string;
-  citations: Array<{
-    title: string;
-    url: string;
-    snippet: string;
-  }>;
+  citations: GroundingCitation[];
+  selection?: GroundingSelection;
   skipped: boolean;
   reason?: 'disabled' | 'not-applicable';
 }

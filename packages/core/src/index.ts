@@ -667,4 +667,5 @@ export { nodeRuntimeFromJobLog } from './github/adapter.js';
 export * from './decisions/config.js';
 export * from './decisions/call.js';
 export * from './decisions/evidence.js';
+export * from './decisions/grounding-evidence.js';
 export type { JsonValue, TypeSafeQuestion, TypeSafeAnswer } from './llm/typesafe.js';

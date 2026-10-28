@@ -554,7 +554,7 @@ export async function generateCandidates(
     },
     {
       role: 'user' as const,
-      content: JSON.stringify(redactExternalJsonValue({ diagnosis, sourceContext })),
+      content: JSON.stringify(redactExternalJsonValue({ diagnosis: diagnosisForRepairPrompt(diagnosis), sourceContext })),
     },
   ]);
   const options = {
@@ -675,3 +675,4 @@ export function selectWinner(results: readonly RaceResult[]): RaceResult | null 
 
   return winner;
 }
+import { diagnosisForRepairPrompt } from '../decisions/grounding-prompt.js';

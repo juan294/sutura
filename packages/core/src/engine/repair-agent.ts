@@ -66,7 +66,7 @@ export interface RepairAgentContext {
 
 function initialMessages(ctx: RepairAgentContext): ChatMessage[] {
   const evidence = redactExternalJsonValue({
-    diagnosis: ctx.diagnosis,
+    diagnosis: diagnosisForRepairPrompt(ctx.diagnosis),
     initialSources: ctx.sourceContext.sources,
     trustedCommandIds: Object.keys(ctx.trustedCommands),
   });
@@ -387,3 +387,4 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
     }
   }
 }
+import { diagnosisForRepairPrompt } from '../decisions/grounding-prompt.js';

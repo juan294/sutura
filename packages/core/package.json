@@ -4,6 +4,16 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./grounding-summary": {
+      "types": "./src/report/grounding-summary.ts",
+      "development": "./src/report/grounding-summary.ts",
+      "default": "./dist/report/grounding-summary.js"
+    },
+    "./grounding-evidence": {
+      "types": "./src/decisions/grounding-evidence.ts",
+      "development": "./src/decisions/grounding-evidence.ts",
+      "default": "./dist/decisions/grounding-evidence.js"
+    },
     ".": {
       "types": "./src/index.ts",
       "development": "./src/index.ts",

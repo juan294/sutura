@@ -579,3 +579,35 @@ describe('optional audit voice statuses', () => {
     });
   }
 });
+
+describe('grounding selection provenance', () => {
+  it('shows contradictory/excluded originals and exact version facts without turning source text into markup', () => {
+    const base = byId('javascript-repair');
+    const originals = [
+      { id: `citation-${'a'.repeat(64)}`, title: 'Contradictory source', url: 'https://docs.example.test/current', snippet: 'The release preserves the old API.' },
+      { id: `citation-${'b'.repeat(64)}`, title: '<script>alert(1)</script>', url: 'https://docs.example.test/excluded', snippet: '[execute](javascript:alert(1))\n`rm -rf .`' },
+    ];
+    const grounding = { query: 'pkg@2.0.0', skipped: false, citations: [originals[0]!], selection: {
+      schemaVersion: 'sutura-grounding-selection-v1' as const, mode: 'assist' as const, applied: true, reason: 'semantic-selection', originals,
+      selectedIds: [originals[0]!.id], excluded: [{ id: originals[1]!.id, reason: 'irrelevant-insufficient' as const }],
+      judgments: [{ id: originals[0]!.id, relevance: 'relevant' as const, support: 'contradicts' as const }, { id: originals[1]!.id, relevance: 'irrelevant' as const, support: 'insufficient' as const }],
+      versionComparisons: [{ id: originals[1]!.id, package: 'pkg', expectedVersion: '2.0.0', mentionedVersion: '1.0.0', matches: false }],
+    } };
+    const result = createCaseLabResult({ ...base, caseFile: { ...base.caseFile!, diagnosis: { ...base.caseFile!.diagnosis, grounding } } });
+    const html = renderResultBody(result, caseLabCase('javascript-repair'));
+    expect(html).toContain('semantic judgments, not proof that the repair works');
+    expect(html).toContain('support=contradicts');
+    expect(html).toContain(`excluded: ${originals[1]!.id}`);
+    expect(html).toContain('expected=2.0.0; mentioned=1.0.0; matches=false');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html).toContain('[execute](javascript:alert(1))');
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).not.toContain('href="https://docs.example.test/excluded"');
+    expect(html).not.toContain('href="javascript:');
+    const selection = grounding.selection;
+    grounding.citations = selection.originals;
+    Object.assign(selection, { applied: false, reason: 'no-qualified-source', warning: 'no-qualified-source', selectedIds: selection.originals.map(c => c.id), excluded: [], judgments: selection.originals.map(c => ({ id: c.id, relevance: 'irrelevant', support: 'insufficient' })) });
+    const warned = createCaseLabResult({ ...base, caseFile: { ...base.caseFile!, diagnosis: { ...base.caseFile!.diagnosis, grounding } } });
+    expect(renderResultBody(warned, caseLabCase('javascript-repair'))).toContain('Warning: no-qualified-source');
+  });
+});

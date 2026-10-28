@@ -1,3 +1,4 @@
+import { groundingSummary } from './grounding-summary.js';
 import { semanticSummary } from './semantic-summary.js';
 import { auditCheckEvidence, auditCheckLabel, auditVoiceDisclosure } from './audit-status.js';
 import type { CaseFile } from '../domain.js';
@@ -44,6 +45,8 @@ function renderDiagnosis(caseFile: CaseFile): string[] {
     }
   }
 
+  const selection = groundingSummary(grounding);
+  if (selection.length) lines.push('', '**Grounding selection evidence**', '', ...selection.map(line => `- ${escapeMarkdown(line)}`));
   return lines;
 }
 
