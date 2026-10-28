@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it, vi } from 'vitest';
 import { decisionHash } from '../decisions/call.js';
 import { Ledger } from '../llm/cost.js';
@@ -131,4 +132,13 @@ describe('local evidence selection', () => {
     const capped = provider(); expect((await explainEvidence(value, 'error', { semantic: true, maxUsd: 1e-10, client: capped.client })).status).toBe('unavailable'); expect(capped.fetch).not.toHaveBeenCalled();
     expect((await explainEvidence(value, 'error', { semantic: true, maxUsd: .002, client: provider().client })).status).toBe('matched');
   });
+});
+
+it('finds the original coroutine diagnostic when display escaping touches its first word', async () => {
+ const value = JSON.parse(await readFile(new URL('../../../case-lab/src/__fixtures__/live-36975022285-python-repair-fixed-case-file.json', import.meta.url), 'utf8')) as unknown;
+ const source = parseEvidenceCase(value);
+ expect(lexicalEvidence(source, 'coroutine')[0]?.locator).toBe('$.diagnosis.errorExcerpt');
+ expect(lexicalEvidence(source, 'coroutine assertion').some(block => block.locator === '$.diagnosis.errorExcerpt')).toBe(true);
+ const original = source.blocks.find(block => block.locator === '$.diagnosis.errorExcerpt')!;
+ expect(original.excerpt).toContain('\\u003ccoroutine');
 });
