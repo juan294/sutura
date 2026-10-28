@@ -28,7 +28,7 @@ describe('reduced-assurance audit reports', () => {
     expect(renderAuditCaseFile(await fixture())).toMatchSnapshot();
   });
 
-  it('renders the unconfigured second-opinion row as a skipped PASS', async () => {
+  it('renders unconfigured optional voices as skipped while preserving their passing booleans', async () => {
     const ledger = new Ledger(DEFAULT_MODEL_PRICES);
     const llm = {
       async chat(tier: 'nano' | 'ultra') {
@@ -58,11 +58,13 @@ describe('reduced-assurance audit reports', () => {
       policyEvidence: { baseRef: 'local', baseSha: 'local', policySha: loaded.sha },
     });
 
+    expect(result.audit.checks.find((check) => check.name === 'second-opinion')?.passed).toBe(true);
+    expect(result.audit.checks.find((check) => check.name === 'typesafe-audit')?.passed).toBe(true);
     expect(renderAuditMarkdown(result)).toContain(
-      '| second-opinion | PASS | gpt-6-astra: skipped: Not configured: OPENAI\\_API\\_KEY absent |',
+      '| second-opinion | SKIPPED | gpt-6-astra: skipped: Not configured: OPENAI\\_API\\_KEY absent; requested model=gpt-6-astra;',
     );
     expect(renderAuditMarkdown(result)).toContain(
-      '| typesafe-audit | PASS | jev-latest: skipped: Not configured: TYPESAFE\\_API\\_KEY absent |',
+      '| typesafe-audit | SKIPPED | jev-latest: skipped: Not configured: TYPESAFE\\_API\\_KEY absent; requested model=jev-latest;',
     );
   });
 });

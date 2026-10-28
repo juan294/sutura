@@ -267,3 +267,34 @@ describe('counterfactual evidence at the published-result boundary', () => {
     expect(() => assertCaseLabResultPublicSafe(result)).not.toThrow();
   });
 });
+
+
+describe('audit presentation metadata', () => {
+  const metadata = { status: 'skipped' as const, requestedModel: 'jev-latest', policyVersion: 'legacy-v1', policyHash: 'a'.repeat(64) };
+  it('retains metadata in public JSON and binds the result hash to provenance', () => {
+    const baseline = recordedBase();
+    const file = baseline.caseFile!;
+    file.audit!.checks = [{ name: 'typesafe-audit', passed: true, metadata }];
+    const result = createCaseLabResult(baseline);
+    expect(validateCaseLabResult(JSON.parse(JSON.stringify(result))).caseFile!.audit!.checks[0]!.metadata).toEqual(metadata);
+    const changed = createCaseLabResult({ ...baseline, caseFile: { ...file, audit: { ...file.audit!, checks: [{ name: 'typesafe-audit', passed: true, metadata: { ...metadata, requestedModel: 'jev-1.14.0' } }] } } });
+    expect(changed.resultHash).not.toBe(result.resultHash);
+  });
+  it.each([
+    { ...metadata, status: 'PASS' },
+    { ...metadata, policyHash: 'x' },
+    { ...metadata, requestedModel: 14 },
+    { ...metadata, resolvedModel: null },
+    { ...metadata, state: 'raw private input' },
+  ])('rejects malformed metadata without dropping fields: %s', (invalid) => {
+    const base = recordedBase();
+    base.caseFile!.audit!.checks = [{ name: 'typesafe-audit', passed: true, metadata: invalid as never }];
+    expect(() => createCaseLabResult(base)).toThrow(/checks\[0\].metadata/u);
+  });
+});
+
+it('rejects malformed semantic decision envelopes before public rendering', () => {
+  const base = recordedBase();
+  Object.assign(base.caseFile!, { semanticDecisions: { schemaVersion: 'unknown', records: [], budget: { maxUsd: 0 } } });
+  expect(() => createCaseLabResult(base)).toThrow(/caseFile.semanticDecisions/u);
+});

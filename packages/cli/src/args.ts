@@ -1,3 +1,4 @@
+import { semanticConfig, type SemanticConfig, type SemanticRole, type DecisionMode } from '@sutura/core';
 const MAX_CANDIDATE_DIFF_BYTES = 1024 * 1024;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 const SHA_PATTERN = /^[a-f0-9]{40}$/iu;
@@ -12,6 +13,7 @@ export const USAGE = [
   '  sutura <upgrade|pause|resume|remove> --plan | --apply <plan-digest>',
   '  sutura doctor [--repo <owner/repo>] [--action-sha <commit>]',
   '  sutura heal --case-dir <dir> --format json [--candidate-diff <diff>] [--alternatives-file <file>] [--routing-profile <id>] [--runtime <auto|node|python>] [--no-tavily]',
+  '  Local Jev experiments: --jev-<ranking|grounding|classification|recovery> <off|shadow|assist> --jev-budget-usd <0..0.02>; non-off requires a key. Shadow captures redacted local input without inference.',
   '  Long verification: add --verification-packet <private-envelope-file> --authorize-long-verification <canonical-packet-sha256>; separate approved spending is required.',
   '  sutura verify --case-dir <dir> --source-sha <commit> --policy-base-sha <commit> --candidate-diff <file> --failing-command <id> [--runtime <auto|node|python>] --format json',
   '  sutura audit --case-dir <dir> --candidate-diff <file> --before-log <file> --after-log <file> --format json',
@@ -39,6 +41,7 @@ export interface DiagnoseArguments {
 }
 
 export interface HealArguments {
+  semantic?: SemanticConfig;
   command: 'heal';
   verificationPacket?: string;
   authorizeLongVerification?: string;
@@ -212,11 +215,14 @@ function parseHeal(args: readonly string[]): HealArguments {
   let runtime: 'node' | 'python' | undefined;
   let tavilyEnabled = true;
   let verificationPacket: string | undefined, authorizeLongVerification: string | undefined;
+  const semanticModes: Record<SemanticRole, DecisionMode> = { ranking: 'off', grounding: 'off', classification: 'off', recovery: 'off' };
+  let semanticBudget: number | undefined;
+  let semanticSelected = false;
   const seen = new Set<string>();
 
   for (let index = 1; index < args.length; index += 1) {
     const flag = args[index];
-    if (!flag || !['--case-dir', '--format', '--candidate-diff', '--alternatives-file', '--failing-command', '--routing-profile', '--runtime', '--no-tavily', '--verification-packet', '--authorize-long-verification'].includes(flag)) {
+    if (!flag || !['--case-dir', '--format', '--candidate-diff', '--alternatives-file', '--failing-command', '--routing-profile', '--runtime', '--no-tavily', '--verification-packet', '--authorize-long-verification', '--jev-ranking', '--jev-grounding', '--jev-classification', '--jev-recovery', '--jev-budget-usd'].includes(flag)) {
       throw new CliUsageError(`Unknown argument: ${flag ?? '(missing)'}`);
     }
     if (seen.has(flag)) throw new CliUsageError(`Duplicate argument: ${flag}`);
@@ -227,7 +233,12 @@ function parseHeal(args: readonly string[]): HealArguments {
     }
     const value = nonEmptyValue(args, index, flag);
     index += 1;
-    if (flag === '--case-dir') caseDir = value;
+    if (flag === '--jev-budget-usd') {
+      semanticBudget = Number(value); semanticSelected = true;
+    } else if (flag.startsWith('--jev-')) {
+      if (!['off', 'shadow', 'assist'].includes(value)) throw new CliUsageError(`${flag} must be off, shadow, or assist`);
+      semanticModes[flag.slice(6) as SemanticRole] = value as DecisionMode; semanticSelected = true;
+    } else if (flag === '--case-dir') caseDir = value;
     else if (flag === '--format') format = value;
     else if (flag === '--candidate-diff') candidateDiff = value;
     else if (flag === '--alternatives-file') alternativesFile = value;
@@ -240,6 +251,12 @@ function parseHeal(args: readonly string[]): HealArguments {
     else throw new CliUsageError('--runtime must be auto, node, or python');
   }
 
+  let semantic: SemanticConfig | undefined;
+  if (semanticSelected) {
+    try {
+      semantic = semanticConfig({ schemaVersion: 'sutura-semantic-config-v1', model: 'jev-1.14.0', policyVersion: 'semantic-v1', modes: semanticModes, maxUsd: semanticBudget ?? 0 }, true);
+    } catch (error) { throw new CliUsageError(`Invalid --jev options: ${error instanceof Error ? error.message : String(error)}; choose off or supply a positive --jev-budget-usd up to 0.02`); }
+  }
   validateLongVerificationArguments(verificationPacket, authorizeLongVerification);
   if (!caseDir) throw new CliUsageError('--case-dir is required');
   if (format !== 'json') throw new CliUsageError('--format must be json');
@@ -251,6 +268,7 @@ function parseHeal(args: readonly string[]): HealArguments {
   }
   return {
     command: 'heal',
+    ...(semantic === undefined ? {} : { semantic }),
     ...(verificationPacket === undefined ? {} : { verificationPacket, authorizeLongVerification: authorizeLongVerification! }),
     caseDir,
     format: 'json',

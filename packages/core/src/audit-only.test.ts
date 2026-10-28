@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
+import { TypeSafeClient } from './llm/typesafe.js';
 import { DEFAULT_MODEL_PRICES, Ledger } from './llm/cost.js';
 import type { ChatMessage } from './llm/types.js';
 import { auditOnly, validateAuditEvidence } from './audit-only.js';
@@ -106,4 +107,31 @@ describe('auditOnly', () => {
     expect(seen.join('\n')).not.toContain('token-value');
     expect(seen.join('\n')).toContain('[policy-denied repository context]');
   });
+});
+
+
+it('finishes audit-only with skipped optional assurance when the provider never responds', async () => {
+  vi.useFakeTimers();
+  try {
+    const ledger = new Ledger(DEFAULT_MODEL_PRICES);
+    let calls = 0;
+    let signal: AbortSignal | undefined;
+    const typesafe = new TypeSafeClient({ apiKey: 'test', ledger }, { fetch: async (_url, request) => {
+      calls++; signal = request.signal; return new Promise(() => {});
+    } });
+    const llm = { async chat(tier: 'nano' | 'ultra') {
+      return { text: tier === 'ultra' ? '{"approved":true,"reasoning":"Fixes the assertion."}' : JSON.stringify({ class: 'test-assertion', confidence: 0.9, signals: ['assertion'], failingCmd: 'pnpm test', errorExcerpt: 'AssertionError' }) };
+    } };
+    const loaded = loadRepositoryPolicy(null);
+    const pending = auditOnly({ llm, cost: ledger, typesafeAudit: typesafe, beforeLog: BEFORE, afterLog: AFTER, candidateDiff: DIFF, policy: loaded.policy, policyEvidence: { baseRef: 'local', baseSha: 'local', policySha: loaded.sha } });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+    const file = await pending;
+    expect(calls).toBe(1); expect(signal?.aborted).toBe(true);
+    expect(file.audit.checks.find((check) => check.name === 'typesafe-audit')).toMatchObject({ passed: true, metadata: { status: 'skipped' } });
+    expect(file.outcome).toBe('audit-approved');
+    expect(renderAuditMarkdown(file)).toContain('deadline exhausted');
+    expect(renderAuditMarkdown(file)).toContain('new authorized invocation');
+    expect(renderAuditMarkdown(file)).toContain('| typesafe-audit | SKIPPED |');
+  } finally { vi.useRealTimers(); }
 });

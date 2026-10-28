@@ -226,3 +226,14 @@ describe('TypeSafeClient', () => {
     }]);
   });
 });
+
+it('never starts another legacy attempt after cancellation during retry delay',async()=>{
+ vi.useFakeTimers();try{
+  const fetch=vi.fn().mockResolvedValueOnce(response('overload',429,{'retry-after':'10'})).mockResolvedValue(response(successBody()));
+  const controller=new AbortController();
+  const pending=client({fetch}).decide(STATE,QUESTIONS,{signal:controller.signal});
+  const stopped=expect(pending).rejects.toThrow(/cancel/u);
+  await vi.advanceTimersByTimeAsync(100);controller.abort();await vi.advanceTimersByTimeAsync(10000);
+  await stopped;expect(fetch).toHaveBeenCalledTimes(1);
+ }finally{vi.useRealTimers();}
+});

@@ -1,3 +1,4 @@
+import type { SemanticConfig } from './decisions/config.js';
 import {
   DEFAULT_REPAIR_BUDGET_LIMITS,
   repairBudgetLimits,
@@ -23,6 +24,8 @@ export const MAX_RACE_CANDIDATES = 10;
 export const MAX_STAGE_EVIDENCE_ENTRIES = 100;
 
 export interface Config {
+  /** Local CLI experiments only; absent preserves legacy behavior. */
+  semantic?: SemanticConfig;
   nebiusApiKey: string;
   tavilyApiKey?: string;
   /** Optional veto-only second-opinion provider (GPT-6 Astra). Never the runtime model. */

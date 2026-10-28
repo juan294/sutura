@@ -5,6 +5,22 @@ import { describe, expect, it } from 'vitest';
 import { CliUsageError, parseArgs, VERSION } from './args.js';
 
 describe('parseArgs', () => {
+  it('parses explicit bounded local Jev modes and leaves absent flags absent', () => {
+    const parsed = parseArgs(['heal', '--case-dir', '/tmp/case', '--format', 'json', '--jev-ranking', 'shadow', '--jev-grounding', 'assist', '--jev-classification', 'off', '--jev-recovery', 'off', '--jev-budget-usd', '0.01']);
+    expect(parsed).toMatchObject({ semantic: { model: 'jev-1.14.0', policyVersion: 'semantic-v1', maxUsd: 0.01, modes: { ranking: 'shadow', grounding: 'assist', classification: 'off', recovery: 'off' } } });
+    expect(parseArgs(['heal', '--case-dir', '/tmp/case', '--format', 'json'])).not.toHaveProperty('semantic');
+  });
+
+  it.each([
+    ['--jev-ranking', 'auto', '--jev-budget-usd', '0.01'],
+    ['--jev-recovery', 'assist'],
+    ['--jev-grounding', 'shadow', '--jev-budget-usd', '0'],
+    ['--jev-classification', 'assist', '--jev-budget-usd', '0.021'],
+    ['--jev-ranking', 'off', '--jev-budget-usd', 'NaN'],
+  ])('rejects invalid Jev selection %j before runtime creation', (...flags) => {
+    expect(() => parseArgs(['heal', '--case-dir', '/tmp/case', '--format', 'json', ...flags])).toThrow(CliUsageError);
+  });
+
   it('parses the Placebo-compatible heal contract', () => {
     expect(parseArgs([
       'heal', '--case-dir', '/tmp/case', '--format', 'json',

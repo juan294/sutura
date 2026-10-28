@@ -1,4 +1,6 @@
 import { parseDiagnosisRecoveryEvidence, findSelectedCandidate, summarizeVerificationCosts, parseVerificationEvidence, type CaseFile, type VerificationCostSummary } from '@sutura/core';
+import { parseAuditCheckMetadata } from '@sutura/core/audit-status';
+import { validateSemanticDecisions } from '@sutura/core/semantic-evidence';
 
 import { canonicalJson, contentHash } from './canonical.js';
 import {
@@ -348,6 +350,13 @@ export function validateCaseLabCaseFile(value: unknown, expectedOutcome: CaseLab
       const check = record(entry, `caseFile.audit.checks[${index}]`);
       text(check.name, `caseFile.audit.checks[${index}].name`, 64);
       boolean(check.passed, `caseFile.audit.checks[${index}].passed`);
+      if (check.metadata !== undefined) {
+        try {
+          parseAuditCheckMetadata(check.metadata);
+        } catch (error) {
+          throw new CaseLabResultError(`caseFile.audit.checks[${index}].${error instanceof Error ? error.message : 'metadata is invalid'}; use a report with valid recorded audit metadata`);
+        }
+      }
     }
     if (typeof audit.reasoning !== 'string') throw new CaseLabResultError('caseFile.audit.reasoning must be a string');
   }
@@ -378,6 +387,11 @@ export function validateCaseLabCaseFile(value: unknown, expectedOutcome: CaseLab
     }
   }
   if (file.search !== undefined) array(file.search, 'caseFile.search', 256);
+  if (file.semanticDecisions !== undefined) {
+    const candidateIds = (file.search === undefined ? [] : array(file.search, 'caseFile.search', 256))
+      .map((node, index) => text(record(node, `caseFile.search[${index}]`).nodeId, `caseFile.search[${index}].nodeId`, 128));
+    if (!validateSemanticDecisions(file.semanticDecisions, candidateIds)) throw new CaseLabResultError('caseFile.semanticDecisions contains invalid decision evidence; regenerate the report with valid candidate references');
+  }
   if (file.counterfactual !== undefined) validateCounterfactual(file.counterfactual);
   const verification = file.verification === undefined ? undefined : parseVerificationEvidence(file.verification);
   const recovery = Object.hasOwn(file, 'recovery') ? parseDiagnosisRecoveryEvidence(file.recovery, {

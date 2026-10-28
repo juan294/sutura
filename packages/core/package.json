@@ -13,6 +13,21 @@
       "types": "./src/report/recovery-summary.ts",
       "development": "./src/report/recovery-summary.ts",
       "default": "./dist/report/recovery-summary.js"
+    },
+    "./audit-status": {
+      "types": "./src/report/audit-status.ts",
+      "development": "./src/report/audit-status.ts",
+      "default": "./dist/report/audit-status.js"
+    },
+    "./semantic-evidence": {
+      "types": "./src/decisions/evidence.ts",
+      "development": "./src/decisions/evidence.ts",
+      "default": "./dist/decisions/evidence.js"
+    },
+    "./semantic-summary": {
+      "types": "./src/report/semantic-summary.ts",
+      "development": "./src/report/semantic-summary.ts",
+      "default": "./dist/report/semantic-summary.js"
     }
   },
   "scripts": {

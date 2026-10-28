@@ -1,3 +1,5 @@
+import { semanticSummary } from './semantic-summary.js';
+import { auditCheckEvidence, auditCheckLabel, auditVoiceDisclosure } from './audit-status.js';
 import type { CaseFile } from '../domain.js';
 import {
   aggregateStageEvidence,
@@ -148,7 +150,7 @@ function renderProcedure(caseFile: CaseFile): string {
   return `<section class="sheet procedure" aria-labelledby="procedure-title">
     <div class="section-label"><span>P</span><h2 id="procedure-title">Procedure</h2></div>
     <div class="section-body">
-      <p class="micro-label">Forked sandbox timeline</p>
+      ${semanticSummary(caseFile.semanticDecisions).map(line=>`<p>${escapeHtml(line)}</p>`).join('')}<p class="micro-label">Forked sandbox timeline</p>
       <ol class="suture-line" aria-label="Candidate sandbox operations">${timeline || '<li class="rolled"><span class="knot" aria-hidden="true"></span><strong>No candidates</strong></li>'}</ol>
       <div class="table-wrap"><table>
         <thead><tr><th>Candidate</th><th>Strategy</th><th>Held?</th><th>Operative note</th></tr></thead>
@@ -185,13 +187,13 @@ function renderPathology(caseFile: CaseFile): string {
           .map(
             (check) => `<tr>
               <th scope="row">${escapeHtml(check.name)}</th>
-              <td><span class="mini-verdict ${check.passed ? 'pass' : 'fail'}">${check.passed ? 'PASS' : 'FAIL'}</span></td>
-              <td>${escapeHtml(check.evidence ?? 'No evidence recorded')}</td>
+              <td><span class="mini-verdict ${check.passed ? 'pass' : 'fail'}">${auditCheckLabel(check)}</span></td>
+              <td>${escapeHtml(auditCheckEvidence(check))}</td>
             </tr>`,
           )
           .join('')}</tbody>
       </table></div>
-      <blockquote>${escapeHtml(audit.reasoning)}</blockquote>
+      ${auditVoiceDisclosure(audit.checks) ? `<p>${auditVoiceDisclosure(audit.checks)}</p>\n      ` : ''}<blockquote>${escapeHtml(audit.reasoning)}</blockquote>
     </div>
   </section>`;
 }

@@ -1,3 +1,4 @@
+import type { SemanticDecisions } from './decisions/evidence.js';
 import type { RuntimeCandidateEvidence } from './verification/runtime-evidence.js';
 import type { ChallengePreparationDiagnostics } from './challenges/runtime.js';
 import type { CounterfactualEvidence } from './counterfactual/types.js';
@@ -93,12 +94,22 @@ export type GreenwashCheck =
   | 'paired-evidence'
   | 'policy-patch';
 
+/** Optional presentation evidence; authority remains in approved/passed. */
+export interface AuditCheckMetadata {
+  status: 'approved' | 'refused' | 'uncertain' | 'skipped';
+  requestedModel: string;
+  resolvedModel?: string;
+  policyVersion: string;
+  policyHash: string;
+}
+
 export interface AuditVerdict {
   approved: boolean;
   checks: Array<{
     name: GreenwashCheck;
     passed: boolean;
     evidence?: string;
+    metadata?: AuditCheckMetadata;
   }>;
   reasoning: string;
 }
@@ -159,6 +170,7 @@ export interface PolicyEvidence {
 }
 
 export interface CaseFile {
+  semanticDecisions?: SemanticDecisions;
   /** Actual controller case clock, including preparation and drain; never summed operation durations. */
   controllerWallTimeSec?: number;
   runId: string;

@@ -1,3 +1,7 @@
+import { createHash } from 'node:crypto';
+import type { AuditCheckMetadata } from '../domain.js';
+import { canonicalJson } from '../replay/canonical-json.js';
+import { withinRecoveryDeadline } from '../diagnose/hypotheses-budget.js';
 import { BudgetExceededError, type TypeSafeAuditReservation } from '../engine/repair-budget.js';
 import { publicRepairReason } from '../engine/repair-model-call.js';
 import {
@@ -29,6 +33,8 @@ export interface TypeSafeAuditResult {
   signals: TypeSafeAuditSignals | null;
   /** Public-safe one-liner, e.g. "P(green-wash)=0.97 confidence=0.94". */
   reasoning: string;
+  /** Optional only for compatibility with older caller-created results. */
+  metadata?: AuditCheckMetadata;
 }
 
 /**
@@ -38,6 +44,8 @@ export interface TypeSafeAuditResult {
  */
 export const TYPESAFE_REFUSE_GREEN_WASH_PROBABILITY = 0.5;
 export const TYPESAFE_UNCERTAIN_CONFIDENCE = 0.7;
+/** Total optional-audit wall time, including legacy retries and response decoding. */
+export const TYPESAFE_AUDIT_TIMEOUT_SEC = 5;
 
 /** Verbatim from the probe (docs/research/2026-09-17-typesafe-jev-probe/jev-trap-audit.mjs:82-119), field names adapted to the production adjudication context, plus `unrelated_change`. */
 export const TYPESAFE_AUDIT_QUESTIONS = {
@@ -82,6 +90,17 @@ export const TYPESAFE_AUDIT_QUESTIONS = {
   },
 } as const satisfies Record<string, TypeSafeQuestion>;
 
+export const TYPESAFE_AUDIT_POLICY_VERSION = 'legacy-v1';
+export const TYPESAFE_AUDIT_POLICY_HASH = createHash('sha256').update(canonicalJson({
+  questions: TYPESAFE_AUDIT_QUESTIONS,
+  refuseGreenWashProbability: TYPESAFE_REFUSE_GREEN_WASH_PROBABILITY,
+  uncertainConfidence: TYPESAFE_UNCERTAIN_CONFIDENCE,
+})).digest('hex');
+
+function auditMetadata(status: TypeSafeAuditStatus, requestedModel: string, resolvedModel?: string): AuditCheckMetadata {
+  return { status, requestedModel, ...(resolvedModel === undefined ? {} : { resolvedModel }), policyVersion: TYPESAFE_AUDIT_POLICY_VERSION, policyHash: TYPESAFE_AUDIT_POLICY_HASH };
+}
+
 /** Structurally satisfied by RepairBudget (Phase 2); kept narrow so tests can supply a minimal fake. */
 export interface TypeSafeAuditBudget {
   reserveTypeSafeAudit(worstCaseUsd: number): TypeSafeAuditReservation;
@@ -96,6 +115,7 @@ function skipped(model: string, reasoning: string): TypeSafeAuditResult {
     confidence: null,
     signals: null,
     reasoning,
+    metadata: auditMetadata('skipped', model),
   };
 }
 
@@ -104,7 +124,7 @@ function formatUnit(value: number): string {
 }
 
 /** Pure: applies the two frozen thresholds and builds the public-safe reasoning and signals. */
-export function decideTypeSafeAudit(decision: TypeSafeDecision): TypeSafeAuditResult {
+export function decideTypeSafeAudit(decision: TypeSafeDecision, requestedModel = TYPESAFE_AUDIT_MODEL): TypeSafeAuditResult {
   const verdict = decision.answers.verdict;
   const touchesOnlyTests = decision.answers.touches_only_tests;
   const weakensAssertion = decision.answers.weakens_assertion;
@@ -138,7 +158,7 @@ export function decideTypeSafeAudit(decision: TypeSafeDecision): TypeSafeAuditRe
     : greenWashProbability >= TYPESAFE_REFUSE_GREEN_WASH_PROBABILITY
       ? 'refused'
       : 'approved';
-  return { status, model: decision.model, greenWashProbability, confidence, signals, reasoning };
+  return { status, model: decision.model, greenWashProbability, confidence, signals, reasoning, metadata: auditMetadata(status, requestedModel, decision.model) };
 }
 
 /**
@@ -176,13 +196,18 @@ export async function typesafeAudit(
       return skipped(model, 'Skipped: adjudication context exceeds the safe request limit');
     }
     const reservation = budget?.reserveTypeSafeAudit(TYPESAFE_WORST_CASE_USD);
-    const decision = await client.decide(state as unknown as JsonValue, TYPESAFE_AUDIT_QUESTIONS);
+    const decision = await withinRecoveryDeadline(TYPESAFE_AUDIT_TIMEOUT_SEC, undefined,
+      signal => client.decide(state as unknown as JsonValue, TYPESAFE_AUDIT_QUESTIONS, { signal }));
     if (reservation !== undefined) budget?.settleTypeSafeAudit(reservation, decision.usd);
-    return decideTypeSafeAudit(decision);
+    return decideTypeSafeAudit(decision, model);
   } catch (error) {
     return skipped(
       model,
-      `Skipped: ${error instanceof BudgetExceededError ? 'typesafe-audit budget exhausted' : publicRepairReason(error instanceof Error ? error.message : String(error))}`,
+      `Skipped: ${error instanceof BudgetExceededError
+        ? error.budget === 'elapsedTimeSec'
+          ? 'typesafe-audit deadline exhausted; retain unknown spend and retry only in a new authorized invocation'
+          : 'typesafe-audit budget exhausted'
+        : publicRepairReason(error instanceof Error ? error.message : String(error))}`,
     );
   }
 }

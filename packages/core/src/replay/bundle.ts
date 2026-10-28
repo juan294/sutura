@@ -1,3 +1,5 @@
+import { canonicalJson } from './canonical-json.js';
+import { semanticConfig, type SemanticConfig } from '../decisions/config.js';
 import type { ControllerClockDomain, ControllerClockSample } from './controller-clock.js';
 import { isVerificationAllowance, canonicalPacketDigest, type VerificationPacket, type VerificationAllowance } from '../engine/verification-allowance.js';
 import type { RepairBudgetSnapshot } from '../engine/repair-budget.js';
@@ -123,6 +125,9 @@ export interface RecordedExecutorCall {
 }
 
 export interface ReplayOrchestrationConfig {
+  /** Exact opt-in local decision configuration; absence disables all new roles. */
+  semantic?: SemanticConfig;
+  semanticBudget?: { maxUsd: number; attempts: number; reservedUsd: number; actualUsd: number };
   operationDeadlines?: 'sutura-operation-deadlines-v1';
   controllerClock?: ControllerClockSample[];
   longVerification?: { packet: VerificationPacket; provenance: string; admitted: boolean; controllerWallTimeSec?: number; finalPhase?: { imageId: string; diffSha256: string; sharedBudget: RepairBudgetSnapshot } };
@@ -461,6 +466,17 @@ export class ReplayRecorder {
     const configured = this.configuration.longVerification;
     if (!configured?.admitted || configured.finalPhase || !input.imageId || !/^[a-f0-9]{64}$/u.test(input.diffSha256)) throw new Error('Recorded final phase is unadmitted, repeated or invalid');
     configured.finalPhase = structuredClone(input);
+  }
+
+  recordSemanticConfiguration(config: SemanticConfig): void {
+    const validated = semanticConfig(config, true);
+    if (this.configuration.semantic && canonicalJson(this.configuration.semantic) !== canonicalJson(validated)) throw new Error('Recorded semantic configuration differs from the selected local configuration');
+    this.configuration.semantic = structuredClone(validated);
+  }
+
+  recordSemanticBudget(snapshot: NonNullable<ReplayOrchestrationConfig['semanticBudget']>): void {
+    if (!this.configuration.semantic || snapshot.maxUsd !== this.configuration.semantic.maxUsd) throw new Error('Recorded semantic budget lacks matching configured authority');
+    this.configuration.semanticBudget = structuredClone(snapshot);
   }
 
   recordControllerWallTime(seconds: number | undefined): void {

@@ -1,3 +1,5 @@
+import { semanticSummary } from './semantic-summary.js';
+import { auditCheckEvidence, auditCheckLabel, auditVoiceDisclosure } from './audit-status.js';
 import type { CaseFile } from '../domain.js';
 import {
   aggregateStageEvidence,
@@ -72,6 +74,8 @@ function renderProcedure(caseFile: CaseFile): string[] {
       ),
     );
   }
+  const decisions=semanticSummary(caseFile.semanticDecisions);
+  if(decisions.length) lines.push('', '**Semantic judgments (optional)**', '', ...decisions.map(line=>`- ${escapeMarkdown(line)}`));
   return lines;
 }
 
@@ -90,9 +94,11 @@ function renderPathology(caseFile: CaseFile): string[] {
   );
   for (const check of caseFile.audit.checks) {
     lines.push(
-      `| ${escapeMarkdown(check.name)} | **${check.passed ? 'PASS' : 'FAIL'}** | ${escapeMarkdown(check.evidence ?? 'No evidence recorded')} |`,
+      `| ${escapeMarkdown(check.name)} | **${auditCheckLabel(check)}** | ${escapeMarkdown(auditCheckEvidence(check))} |`,
     );
   }
+  const disclosure = auditVoiceDisclosure(caseFile.audit.checks);
+  if (disclosure) lines.push('', disclosure);
   lines.push('', `> ${escapeMarkdown(caseFile.audit.reasoning)}`);
   return lines;
 }

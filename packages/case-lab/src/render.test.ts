@@ -560,3 +560,22 @@ it('shows bounded recovery grants and separately records executed commands with 
   expect(html).toContain('do not measure live repair quality');
   expect(renderResultBody(original, caseLabCase('flaky-failure'))).not.toContain('Diagnosis recovery');
 });
+
+
+describe('optional audit voice statuses', () => {
+  for (const status of ['approved', 'refused', 'uncertain', 'skipped', undefined] as const) {
+    it(`shows ${status ?? 'not recorded'} from typed metadata`, () => {
+      const base = byId('javascript-repair');
+      const result = createCaseLabResult({ ...base, caseFile: { ...base.caseFile!, audit: {
+        approved: true, reasoning: 'Other mandatory gates determine acceptance.',
+        checks: [{ name: 'typesafe-audit', passed: status !== 'refused', evidence: 'approved: legacy prose is not status',
+          ...(status === undefined ? {} : { metadata: { status, requestedModel: 'jev-latest', policyVersion: 'legacy-v1', policyHash: 'a'.repeat(64) } }),
+        }],
+      } } });
+      const output = renderResultBody(result, caseLabCase('javascript-repair'));
+      expect(output).toContain(status?.toUpperCase() ?? 'NOT RECORDED');
+      expect(result.caseFile!.audit!.checks[0]!.passed).toBe(status !== 'refused');
+      expect(output).toContain('Verdict: <strong>approved</strong>');
+    });
+  }
+});

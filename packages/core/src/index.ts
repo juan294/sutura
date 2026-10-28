@@ -663,3 +663,7 @@ export { authenticateActionVerification, isAuthenticatedActionAuthority, type Au
 export { authorizeActionVerification } from './engine/verification-allowance.js';
 
 export { nodeRuntimeFromJobLog } from './github/adapter.js';
+
+export * from './decisions/config.js';
+export * from './decisions/call.js';
+export * from './decisions/evidence.js';

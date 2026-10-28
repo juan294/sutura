@@ -1,3 +1,4 @@
+import { DecisionSession, type SemanticPort } from './decisions/call.js';
 import type { ControllerClockDomain } from './replay/controller-clock.js';
 import { verifyReproductionRuntime } from './engine/reproduction-runtime.js';
 import { preparationDeadlineExecutor } from './executor/deadlines.js';
@@ -136,6 +137,8 @@ export type HealLlm = DiagnosisLlm & RepairLlm & AuditLlm;
 export type RepairVerificationScope = 'full' | 'failing-workspace';
 
 export interface RepairFailureContext {
+  semantic?: SemanticPort;
+  decisionSession?: DecisionSession;
   runId: string;
   repo: string;
   controllerStartedAt?: number;
@@ -898,6 +901,7 @@ function makeCaseFile(
     | 'controllerStartedAt'
     | 'recordedControllerWallTimeSec'
     | 'evidenceMode'
+    | 'decisionSession'
   >,
   diagnosis: Diagnosis,
   triageVerdict: CaseFile['triage'],
@@ -924,6 +928,7 @@ function makeCaseFile(
   return {
     runId: ctx.runId,
     repo: ctx.repo,
+    ...(ctx.decisionSession ? { semanticDecisions: { schemaVersion: 'sutura-semantic-decisions-v1' as const, records: ctx.decisionSession.records, budget: ctx.decisionSession.snapshot() } } : {}),
     ...(ctx.reproductionPlan && ctx.controllerStartedAt !== undefined ? { controllerWallTimeSec: ctx.evidenceMode === 'replay' && ctx.recordedControllerWallTimeSec !== undefined ? ctx.recordedControllerWallTimeSec : Math.max(0, (Date.now() - ctx.controllerStartedAt) / 1000) } : {}),
     runtime: (ctx.runtime ?? NODE_RUNTIME).id,
     diagnosis,
@@ -1057,7 +1062,9 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
   }, ctx.clockNow ? () => ctx.clockNow!('repair') : Date.now, ctx.controllerStartedAt);
   const trace = ctx.traceRecorder ?? new TraceRecorder(ctx.runId);
   const ledger = ctx.stageLedger ?? new StageLedger(trace);
+  const decisionSession = ctx.semantic ? new DecisionSession({ ...ctx.semantic, deadline: Date.now() + budget.remainingElapsedTimeSec() * 1000 }) : undefined;
   const fullContext = {
+    ...(decisionSession ? { decisionSession } : {}),
     ...ctx, policy, llm: tracedLlm(ctx.llm, trace),
     ...(ctx.secondOpinion === undefined ? {} : { secondOpinion: tracedAuditLlm(ctx.secondOpinion, trace) }),
     ...(ctx.typesafeAudit === undefined ? {} : { typesafeAudit: tracedTypeSafeAudit(ctx.typesafeAudit, trace) }),
@@ -1950,6 +1957,7 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     llm: fullContext.llm,
     ...(ctx.secondOpinion === undefined ? {} : { secondOpinion: ctx.secondOpinion }),
     ...(ctx.typesafeAudit === undefined ? {} : { typesafeAudit: ctx.typesafeAudit }),
+    ...(ctx.semantic === undefined ? {} : { semantic: ctx.semantic }),
     cost: ctx.cost,
     triageN: ctx.triageN,
     raceK: ctx.raceK,

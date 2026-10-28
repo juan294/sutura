@@ -95,6 +95,16 @@ describe('replayBundle', () => {
     );
   });
 
+  it('replays explicit all-off semantic identity without live fallback and verifies final semantic counters', async () => {
+    const bundle = await createCompleteReplayBundleForTest({ schemaVersion: 'sutura-semantic-config-v1', model: 'jev-1.14.0', policyVersion: 'semantic-v1', maxUsd: 0, modes: { ranking: 'off', grounding: 'off', classification: 'off', recovery: 'off' } });
+    expect(bundle.http.some(({ boundary }) => boundary === 'typesafe')).toBe(false);
+    const result = await replayBundle(bundle);
+    expect(result.caseFile.outcome).toBe(bundle.outcome);
+    expect(result.caseFile.semanticDecisions?.budget).toEqual(bundle.configuration.semanticBudget);
+    bundle.configuration.semanticBudget!.attempts = 1;
+    await expect(replayBundle(bundle)).rejects.toThrow(/semanticBudget.*differs/u);
+  }, 30_000);
+
   it('replays every recorded boundary through the real offline orchestration path', async () => {
     const bundle = await createCompleteReplayBundleForTest();
 

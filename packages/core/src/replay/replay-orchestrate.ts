@@ -144,6 +144,15 @@ export async function replayBundle(
         { fetch: replayFetch(validated, 'typesafe', httpCursor) },
       )
     : undefined;
+  const semantic = validated.configuration.semantic === undefined ? undefined : {
+    config: validated.configuration.semantic,
+    // Replay observes the recorded local capture boundary without writing new files.
+    capture: async () => {},
+    client: new TypeSafeClient(
+      { apiKey: 'replay-only', ledger: llm.ledger, model: validated.configuration.semantic.model },
+      { fetch: replayFetch(validated, 'typesafe', httpCursor) },
+    ),
+  };
   const runtimeId = options.runtimeId ??
     validated.runtimeDetection?.runtime ??
     validated.configuration.runtimeId;
@@ -169,6 +178,7 @@ export async function replayBundle(
         llm,
         ...(secondOpinion === undefined ? {} : { secondOpinion }),
         ...(typesafeAudit === undefined ? {} : { typesafeAudit }),
+        ...(semantic === undefined ? {} : { semantic }),
         cost: llm.ledger,
         triageN: validated.configuration.triageN,
         raceK: validated.configuration.raceK,
@@ -192,6 +202,7 @@ export async function replayBundle(
           validated.configuration.repairVerificationScope ?? 'full',
         triagePolicy: validated.configuration.triagePolicy ?? LEGACY_TRIAGE_POLICY,
       });
+      if (validated.configuration.semanticBudget !== undefined && canonicalJson(caseFile.semanticDecisions?.budget) !== canonicalJson(validated.configuration.semanticBudget)) throw new ReplayValidationError('bundle.configuration.semanticBudget', 'replayed semantic consumption differs from the recorded final counters');
       rethrowEarliestMismatch(cursors);
       for (const cursor of cursors) cursor.assertConsumed();
       clock?.assertConsumed();

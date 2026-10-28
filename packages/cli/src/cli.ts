@@ -15,7 +15,7 @@ import {
 } from './args.js';
 import { diagnoseRun } from './diagnose.js';
 import { doctorSutura, type DoctorResult } from './doctor.js';
-import { detectLocalRuntimeId, healFromEnvironment } from './heal.js';
+import { CliSemanticConfigError, detectLocalRuntimeId, healFromEnvironment } from './heal.js';
 import { auditFromEnvironment } from './heal.js';
 import { installSutura, type SetupResult } from './setup.js';
 import { runEvaluationCommand } from './eval.js';
@@ -209,6 +209,7 @@ export async function runCli(
   try {
     caseFile = await (dependencies.heal ?? healFromEnvironment)(request);
   } catch (error) {
+    if (error instanceof CliSemanticConfigError) { writeError(`${publicError(error)}\n`); return 2; }
     caseFile = await infraStop(request.caseDir, error, request.runtime);
   }
   write(`${JSON.stringify(caseFile)}\n`);

@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { BudgetExceededError } from '../engine/repair-budget.js';
 import type { Diagnosis } from '../domain.js';
-import { TYPESAFE_AUDIT_MODEL, TypeSafeResponseError, type TypeSafeDecision } from '../llm/typesafe.js';
+import { TYPESAFE_AUDIT_MODEL, TypeSafeClient, TypeSafeResponseError, type TypeSafeDecision } from '../llm/typesafe.js';
+import { Ledger } from '../llm/cost.js';
+import type { HttpResponse } from '../llm/nebius.js';
 import { decideTypeSafeAudit, typesafeAudit, type TypeSafeAuditBudget } from './typesafe-audit.js';
 
 const DIAGNOSIS: Diagnosis = {
@@ -89,6 +91,7 @@ describe('typesafeAudit', () => {
   it('reports skipped when unconfigured, without calling any client', async () => {
     const result = await typesafeAudit(undefined, CONTEXT);
     expect(result).toEqual({
+      metadata: expect.objectContaining({ status: 'skipped', requestedModel: TYPESAFE_AUDIT_MODEL, policyVersion: 'legacy-v1', policyHash: expect.stringMatching(/^[a-f0-9]{64}$/u) }),
       status: 'skipped',
       model: TYPESAFE_AUDIT_MODEL,
       greenWashProbability: null,
@@ -159,6 +162,7 @@ describe('typesafeAudit', () => {
       },
     }, CONTEXT, budget);
     expect(result).toEqual({
+      metadata: expect.objectContaining({ status: 'skipped', requestedModel: TYPESAFE_AUDIT_MODEL, policyVersion: 'legacy-v1', policyHash: expect.stringMatching(/^[a-f0-9]{64}$/u) }),
       status: 'skipped',
       model: TYPESAFE_AUDIT_MODEL,
       greenWashProbability: null,
@@ -218,4 +222,58 @@ describe('typesafeAudit', () => {
       },
     }, CONTEXT)).resolves.toMatchObject({ status: 'skipped' });
   });
+});
+
+
+it('records requested and resolved models and frozen legacy policy without changing the request', async () => {
+  const sent: unknown[] = [];
+  const result = await typesafeAudit({
+    modelId: () => 'jev-latest',
+    decide: async (state, questions) => { sent.push({ state, questions }); return decision(0.03, 0.96, { model: 'jev-1.14.0' }); },
+  }, CONTEXT);
+  expect(result.metadata).toEqual({ status: 'approved', requestedModel: 'jev-latest', resolvedModel: 'jev-1.14.0', policyVersion: 'legacy-v1', policyHash: expect.stringMatching(/^[a-f0-9]{64}$/u) });
+  expect(sent).toHaveLength(1);
+  const skipped = await typesafeAudit(undefined, CONTEXT);
+  expect(skipped.metadata?.resolvedModel).toBeUndefined();
+});
+
+
+it('bounds a standalone legacy audit, retains unknown spend, and recovers only in a fresh invocation', async () => {
+  vi.useFakeTimers();
+  try {
+    let finish: ((response: HttpResponse) => void) | undefined;
+    let sentSignal: AbortSignal | undefined;
+    let calls = 0;
+    const ledger = new Ledger({});
+    const client = new TypeSafeClient({ apiKey: 'test', ledger }, { fetch: async (_url, request) => {
+      calls++; sentSignal = request.signal;
+      return new Promise<HttpResponse>((resolve) => { finish = resolve; });
+    } });
+    let reserved = 0, settled = 0;
+    const budget: TypeSafeAuditBudget = {
+      reserveTypeSafeAudit: (reservedUsd) => ({ id: ++reserved, reservedUsd }),
+      settleTypeSafeAudit: () => { settled++; },
+    };
+    const pending = typesafeAudit(client, CONTEXT, budget);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(sentSignal?.aborted).toBe(true);
+    let completed = false;
+    void pending.then(() => { completed = true; });
+    await Promise.resolve();
+    expect(completed).toBe(true);
+    const result = await pending;
+    expect(result.status).toBe('skipped');
+    expect(result.reasoning).toMatch(/deadline.*new authorized invocation/u);
+    expect(reserved).toBe(1); expect(settled).toBe(0); expect(calls).toBe(1);
+    const approved = decision(0.03, 0.96);
+    const response: HttpResponse = { ok: true, status: 200, headers: { get: () => null },
+      json: async () => ({ model: approved.model, answers: approved.answers, usage: { input_tokens: 1_000, output_tokens: 0 } }), text: async () => '' };
+    finish!(response);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(0);
+    expect(ledger.entries).toHaveLength(0);
+    const nextClient = new TypeSafeClient({ apiKey: 'test', ledger }, { fetch: async () => response });
+    const next = await typesafeAudit(nextClient, CONTEXT, budget);
+    expect(next.status).toBe('approved'); expect(reserved).toBe(2); expect(settled).toBe(1);
+  } finally { vi.useRealTimers(); }
 });

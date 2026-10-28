@@ -594,3 +594,11 @@ it('reports the actual controller clock separately from overlapping operation du
   expect(renderCaseFile(file)).toContain('Controller wall time');
   expect(renderComment(file)).toContain('1500.000 s, including preparation');
 });
+
+it('renders optional decision provenance as judgment with baseline fallback',async()=>{
+ const file=await loadFixture('gave-up');
+ file.semanticDecisions={schemaVersion:'sutura-semantic-decisions-v1',budget:{maxUsd:.02,attempts:1,reservedUsd:.001,actualUsd:0},records:[{role:'ranking',mode:'assist',outcome:'unavailable',policyVersion:'semantic-v1',policyHash:'a'.repeat(64),inputHash:'b'.repeat(64),requestedModel:'jev-1.14.0',usage:null,attempts:1,reservedUsd:.001,actualUsd:0,latencyMs:5000,reason:'timeout',fallback:'baseline-order',candidateIds:[],baseline:[]}]};
+ for(const output of [renderComment(file),renderCaseFile(file)]) {
+  expect(output).toContain('baseline-order');expect(output).toContain('jev-1.14.0');expect(output).toContain('judgment');expect(output).toContain('timeout');
+ }
+});

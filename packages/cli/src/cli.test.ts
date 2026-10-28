@@ -35,6 +35,20 @@ function fixed(): CaseFile {
 }
 
 describe('runCli', () => {
+  it('reports a missing semantic key as usage error before any runtime/provider work', async () => {
+    const stdout: string[] = [], stderr: string[] = [];
+    const network = vi.fn(async () => { throw new Error('unexpected provider request'); });
+    vi.stubGlobal('fetch', network);
+    vi.stubEnv('TYPESAFE_API_KEY', '');
+    try {
+      const code = await runCli(['heal', '--case-dir', '/does-not-exist', '--format', 'json', '--jev-ranking', 'assist', '--jev-budget-usd', '0.01'], { write: value => stdout.push(value), writeError: value => stderr.push(value) });
+      expect(code).toBe(2);
+      expect(stdout).toEqual([]);
+      expect(stderr.join('')).toContain('TYPESAFE_API_KEY');
+      expect(network).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
+  });
+
   it('replays a complete bundle offline and prints matching CaseFile JSON', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'sutura-cli-complete-replay-'));
     const bundlePath = join(directory, 'bundle.json');

@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import type {
   AuditVerdict,
+  AuditCheckMetadata,
   Candidate,
   CaseFile,
   CostLedger,
@@ -92,6 +93,7 @@ describe('domain model', () => {
         name: GreenwashCheck;
         passed: boolean;
         evidence?: string;
+        metadata?: AuditCheckMetadata;
       }>;
       reasoning: string;
     }>();
@@ -133,6 +135,7 @@ describe('domain model', () => {
       verificationRuns?: import('./verification/runtime-evidence.js').RuntimeCandidateEvidence[];
       challengePreparation?: import('./challenges/runtime.js').ChallengePreparationDiagnostics;
       recovery?: import('./diagnose/hypotheses.js').DiagnosisRecoveryEvidence;
+      semanticDecisions?: NonNullable<CaseFile['semanticDecisions']>;
       selectedCandidate?: {
         id: string;
         diffHash: string;

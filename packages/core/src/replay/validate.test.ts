@@ -30,6 +30,24 @@ function clone(bundle: ReplayBundle): ReplayBundle {
 }
 
 describe('parseReplayBundle', () => {
+  it('preserves exact semantic configuration and rejects invalid new fields with recovery text', () => {
+    const value = clone(PARTIAL);
+    value.configuration.semantic = { schemaVersion: 'sutura-semantic-config-v1', model: 'jev-1.14.0', policyVersion: 'semantic-v1', maxUsd: 0.01, modes: { ranking: 'assist', grounding: 'off', classification: 'off', recovery: 'off' } };
+    expect(parseReplayBundle(value)).toEqual(value);
+    (value.configuration.semantic as unknown as Record<string, unknown>).model = 'jev-latest';
+    expect(() => parseReplayBundle(value)).toThrow(/configuration.semantic.*regenerate/u);
+  });
+
+  it.each([
+    { semantic: { maxUsd: 0.01 } },
+    { semanticBudget: { maxUsd: 0.01, attempts: 1, reservedUsd: 0.001, actualUsd: 0 } },
+    { semanticBudget: { maxUsd: 0, attempts: 9, reservedUsd: 0, actualUsd: 0 } },
+  ])('rejects incomplete semantic identity or budget evidence %j', (extra) => {
+    const value = clone(PARTIAL);
+    Object.assign(value.configuration, extra);
+    expect(() => parseReplayBundle(value)).toThrow(/configuration.semantic/u);
+  });
+
   let complete: ReplayBundle;
 
   beforeAll(async () => {

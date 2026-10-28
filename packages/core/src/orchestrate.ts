@@ -265,6 +265,7 @@ export interface OrchestrationContext {
   secondOpinion?: AuditLlm;
   /** Optional veto-only TypeSafe Jev calibrated audit. Absent when TYPESAFE_API_KEY is unconfigured. */
   typesafeAudit?: TypeSafeAuditClient;
+  semantic?: import('./heal.js').RepairFailureContext['semantic'];
   cost: CostLedger;
   triageN: number;
   raceK: number;
@@ -698,6 +699,7 @@ export function resolveAuditedCandidate(
 }
 
 export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> {
+  if (ctx.semantic) ctx.replay?.recordSemanticConfiguration(ctx.semantic.config);
   const controllerStartedAt = ctx.controllerStartedAt ?? Date.now();
   const clockNow = ctx.clockNow ?? (ctx.replay ? (domain: ControllerClockDomain) => ctx.replay!.clockNow(domain) : () => Date.now());
   const legacyRecorded = ctx.legacyRecordedExecution === true && ctx.evidenceMode === 'replay' && ctx.executor instanceof RecordedExecutor;
@@ -986,6 +988,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     llm: ctx.llm,
     ...(ctx.secondOpinion === undefined ? {} : { secondOpinion: ctx.secondOpinion }),
     ...(ctx.typesafeAudit === undefined ? {} : { typesafeAudit: ctx.typesafeAudit }),
+    ...(ctx.semantic === undefined ? {} : { semantic: ctx.semantic }),
     cost: ctx.cost,
     triageN: ctx.triageN,
     raceK: ctx.raceK,
@@ -1017,6 +1020,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       : { lockfileDiff: ctx.lockfileDiff }),
   });
   ctx.replay?.recordControllerWallTime(caseFile.controllerWallTimeSec);
+  if (caseFile.semanticDecisions) ctx.replay?.recordSemanticBudget(caseFile.semanticDecisions.budget);
   if (caseFile.outcome !== 'fixed') {
     await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir, ctx.replay);
     return caseFile;

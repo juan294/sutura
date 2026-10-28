@@ -125,3 +125,6 @@ __pycache__/
 
 # Local 0.4.1 benchmark evidence remains private.
 .sutura/placebo-v0.4.1-*
+
+# Opt-in local semantic evaluation inputs contain redacted repository context.
+.sutura/semantic-shadow.jsonl

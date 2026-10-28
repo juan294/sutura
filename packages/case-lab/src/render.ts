@@ -1,3 +1,5 @@
+import { semanticSummary } from '@sutura/core/semantic-summary';
+import { auditCheckEvidence, auditCheckLabel, auditVoiceDisclosure } from '@sutura/core/audit-status';
 /**
  * Pure HTML rendering for the Case Lab. This module runs in Node (site
  * generation) and in the browser (live result page), so it imports only
@@ -244,7 +246,7 @@ function renderSearch(file: CaseLabCaseFile | undefined): string {
     String(node.changedFiles),
     String(node.diffBytes),
   ]);
-  return section('search', 'ConTree search tree and branch status', `${triage}${table(
+  return section('search', 'ConTree search tree and branch status', `${semanticSummary(file.semanticDecisions).map(line=>`<p>${escapeHtml(line)}</p>`).join('')}${triage}${table(
     ['Node', 'Parent', 'Depth', 'Terminal reason', 'Test exit', 'Policy', 'Changed files', 'Diff bytes'],
     rows,
   )}`);
@@ -293,10 +295,10 @@ function renderAudit(file: CaseLabCaseFile | undefined): string {
   }
   const rows = file.audit.checks.map((check) => [
     `<code>${escapeHtml(check.name)}</code>`,
-    check.passed ? 'passed' : 'failed',
-    escapeHtml(check.evidence ?? ''),
+    escapeHtml(auditCheckLabel(check)),
+    escapeHtml(auditCheckEvidence(check)),
   ]);
-  return section('audit', 'Clean audit branch and Ultra verdict', `<p>Verdict: <strong>${file.audit.approved ? 'approved' : 'rejected'}</strong> · policy <code>${escapeHtml(file.policy.policySha)}</code> at <code>${escapeHtml(file.policy.baseRef)}</code></p>${table(['Check', 'Result', 'Evidence'], rows)}<p>${escapeHtml(file.audit.reasoning)}</p>`);
+  return section('audit', 'Clean audit branch and Ultra verdict', `<p>Verdict: <strong>${file.audit.approved ? 'approved' : 'rejected'}</strong> · policy <code>${escapeHtml(file.policy.policySha)}</code> at <code>${escapeHtml(file.policy.baseRef)}</code></p>${table(['Check', 'Result', 'Evidence'], rows)}${auditVoiceDisclosure(file.audit.checks) ? `<p>${auditVoiceDisclosure(file.audit.checks)}</p>` : ''}<p>${escapeHtml(file.audit.reasoning)}</p>`);
 }
 
 function renderOutcome(result: CaseLabResult): string {

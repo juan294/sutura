@@ -1,3 +1,4 @@
+import { semanticConfig, SEMANTIC_ROLES } from '../decisions/config.js';
 import { parseVerificationPacket } from '../engine/verification-allowance.js';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
@@ -484,6 +485,20 @@ export function parseReplayBundle(value: unknown): ReplayBundle {
   });
 
   const config = object(bundle.configuration, 'bundle.configuration');
+  if (config.semantic !== undefined) {
+    try {
+      const semantic = object(config.semantic, 'bundle.configuration.semantic');
+      if (!exactKeys(semantic, ['schemaVersion', 'model', 'policyVersion', 'modes', 'maxUsd']) || !exactKeys(object(semantic.modes, 'bundle.configuration.semantic.modes'), [...SEMANTIC_ROLES])) throw new Error('exact model, policy, modes and cap are required');
+      semanticConfig(config.semantic, true);
+    } catch (error) {
+      throw new ReplayValidationError('bundle.configuration.semantic', `${error instanceof Error ? error.message : String(error)}; use the original compatible bundle or regenerate a recording`);
+    }
+  }
+  if (config.semanticBudget !== undefined) {
+    const budget = object(config.semanticBudget, 'bundle.configuration.semanticBudget');
+    const semantic = config.semantic as { maxUsd: number } | undefined;
+    if (!semantic || !exactKeys(budget, ['maxUsd', 'attempts', 'reservedUsd', 'actualUsd']) || budget.maxUsd !== semantic.maxUsd || !Number.isSafeInteger(budget.attempts) || Number(budget.attempts) < 0 || Number(budget.attempts) > 8 || ['reservedUsd', 'actualUsd'].some(key => typeof budget[key] !== 'number' || !Number.isFinite(budget[key]) || Number(budget[key]) < 0 || Number(budget[key]) > semantic.maxUsd + 1e-12) || Number(budget.actualUsd) > Number(budget.reservedUsd) + 1e-12) throw new ReplayValidationError('bundle.configuration.semanticBudget', 'invalid bounded counters or missing matching semantic config; regenerate a recording');
+  }
   if (config.controllerClock !== undefined) {
     let previous = -1;
     for (const [index, value] of array(config.controllerClock, 'bundle.configuration.controllerClock', 8192).entries()) {
