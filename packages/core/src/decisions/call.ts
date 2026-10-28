@@ -18,7 +18,7 @@ export interface ShadowInput {
  requestedModel:string; state:JsonValue; questions:Record<string,TypeSafeQuestion>; candidateIds:string[]; baseline:string[];
 }
 export interface SemanticPort { config:SemanticConfig; client?:TypeSafeAuditClient; capture?(input:ShadowInput):Promise<void>|void }
-export interface DecisionSessionOptions extends SemanticPort { deadline:number; now?:()=>number }
+export interface DecisionSessionOptions extends SemanticPort { deadline:number; now?:()=>number; remainingMs?:()=>number }
 export function noul(answer: TypeSafeAnswer | undefined): boolean | undefined {
  if(answer?.type!=='noul'||!Number.isFinite(answer.noul)||answer.noul<0||answer.noul>1)return undefined;
  return answer.noul>=.8?true:answer.noul<=.2?false:undefined;
@@ -75,10 +75,15 @@ export class DecisionSession {
   const serialized=JSON.stringify({state:safeState,questions});const bytes=Buffer.byteLength(serialized,'utf8');
   if(bytes>24*1024)return finish('unavailable','input-too-large');
   if(candidateIds.length>32||new Set(candidateIds).size!==candidateIds.length||Object.values(questions).some(q=>q.type==='choice'&&(Object.keys(q.criteria).length<1||Object.keys(q.criteria).length>255)))return finish('unavailable','invalid-candidates');
+  const availableDeadline=()=>{
+   if(!this.options.remainingMs)return this.options.deadline;
+   const checkedAt=this.now();const remaining=this.options.remainingMs();
+   return Number.isFinite(remaining)&&remaining>=0?Math.min(this.options.deadline,checkedAt+remaining):checkedAt;
+  };
   if(mode==='shadow'){
    if(!this.options.capture)return finish('unavailable','shadow-capture-unavailable');
    let timer:ReturnType<typeof setTimeout>|undefined;
-   const remaining=Math.min(100,this.options.deadline-this.now());
+   const remaining=Math.min(100,availableDeadline()-this.now());
    if(remaining<=0)return finish('unavailable','deadline');
    try {
     await Promise.race([this.options.capture({schemaVersion:'sutura-semantic-shadow-v1',role,policyVersion:SEMANTIC_POLICY,policyHash,inputHash,requestedModel:SEMANTIC_MODEL,state:safeState,questions,candidateIds,baseline}),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('capture-timeout')),remaining);})]);
@@ -87,9 +92,10 @@ export class DecisionSession {
    finally{if(timer!==undefined)clearTimeout(timer);}
   }
   if(!this.options.client)return finish('unavailable','key-unavailable');
-  const deadline=Math.min(this.options.deadline,started+5000);
+  let deadline=Math.min(this.options.deadline,started+5000);
   const reservation=Math.ceil(Buffer.byteLength(JSON.stringify({state:safeState,model:SEMANTIC_MODEL,questions}),'utf8')*TYPESAFE_PRICE.input)/1e6;
   for(let attempt=0;attempt<2;attempt++){
+   deadline=Math.min(deadline,availableDeadline());
    if(this.now()>=deadline)return finish('unavailable','deadline');
    if(this.attempts>=8||this.reservedUsd+reservation>this.options.config.maxUsd)return finish('unavailable','semantic-cap');
    this.attempts++;this.reservedUsd+=reservation;evidence.attempts++;evidence.reservedUsd+=reservation;evidence.unknownSpendUsd=(evidence.unknownSpendUsd??0)+reservation;

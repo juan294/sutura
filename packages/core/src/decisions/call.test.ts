@@ -4,6 +4,7 @@ import { semanticConfig } from './config.js';
 import type { NebiusFetch } from '../llm/nebius.js';
 import { Ledger } from '../llm/cost.js';
 import { TypeSafeClient } from '../llm/typesafe.js';
+import { RepairBudget, repairBudgetLimits } from '../engine/repair-budget.js';
 
 const questions = { applicable: { type: 'noul' as const, instructions: 'Is evidence sufficient?' } };
 const config = () => semanticConfig({ modes: { ranking: 'assist' }, maxUsd: .02 }, true);
@@ -109,4 +110,33 @@ it('retains unknown first-attempt spend when an explicit overload retry succeeds
  const session=new DecisionSession({config:config(),client:client(fetch),deadline:Date.now()+5000});
  const evidence=await session.judge('ranking',{},questions,'baseline');
  expect(evidence.outcome).toBe('answered');expect(evidence.unknownSpendUsd).toBeGreaterThan(0);expect(evidence.usage?.inTok).toBe(10);
+});
+
+it('keeps protected audit seconds outside the semantic call deadline', async () => {
+ vi.useFakeTimers();try {
+  const started=Date.now(); const budget=new RepairBudget(repairBudgetLimits({elapsedTimeSec:62}),Date.now,started);
+  const fetch=vi.fn<NebiusFetch>(()=>new Promise<never>(()=>{}));
+  const session=new DecisionSession({config:config(),client:client(fetch),deadline:started+62_000,remainingMs:()=>budget.remainingElapsedTimeSec()*1000});
+  const held=budget.reserveCapacity({elapsedTimeSec:60});
+  const observed=session.judge('ranking',{},questions,'baseline').then(result=>({result,finishedAt:Date.now(),auditRemaining:budget.remainingElapsedTimeSec(held)}));
+  await vi.advanceTimersByTimeAsync(5000);
+  const {result,finishedAt,auditRemaining}=await observed;
+  expect(result.reason).toBe('timeout');expect(finishedAt-started).toBe(2000);expect(auditRemaining).toBe(60);
+  expect(fetch).toHaveBeenCalledOnce();expect(fetch.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+ } finally {vi.useRealTimers();}
+});
+it.each(['assist','shadow'] as const)('makes zero sends, captures and reservations with no ordinary time in %s',async mode=>{
+ const fetch=vi.fn().mockResolvedValue(response()),capture=vi.fn();
+ const session=new DecisionSession({config:semanticConfig({modes:{ranking:mode},maxUsd:.02},true),client:client(fetch),capture,deadline:Date.now()+5000,remainingMs:()=>0});
+ expect((await session.judge('ranking',{},questions,'baseline')).reason).toBe('deadline');
+ expect(fetch).not.toHaveBeenCalled();expect(capture).not.toHaveBeenCalled();expect(session.snapshot()).toMatchObject({attempts:0,reservedUsd:0,actualUsd:0});
+});
+it('rechecks ordinary time before retrying an explicit overload response',async()=>{
+ let remainingMs=5000;
+ const fetch=vi.fn().mockImplementationOnce(async()=>{remainingMs=0;return response(429);}).mockResolvedValue(response());
+ const session=new DecisionSession({config:config(),client:client(fetch),deadline:Date.now()+5000,remainingMs:()=>remainingMs});
+ expect((await session.judge('ranking',{},questions,'baseline')).reason).toBe('deadline');
+ expect(fetch).toHaveBeenCalledOnce();expect(session.snapshot().attempts).toBe(1);expect(session.snapshot().reservedUsd).toBeGreaterThan(0);
+ const recovered=new DecisionSession({config:config(),client:client(vi.fn().mockResolvedValue(response())),deadline:Date.now()+5000,remainingMs:()=>5000});
+ expect((await recovered.judge('ranking',{},questions,'baseline')).outcome).toBe('answered');
 });

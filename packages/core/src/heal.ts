@@ -1070,7 +1070,8 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
     // latency. Offline replay must reproduce evidence, not its own wall time.
     const now = ctx.clockNow ? () => ctx.clockNow!('repair') : Date.now;
     const started = now();
-    decisionSession = new DecisionSession({ ...ctx.semantic, now, deadline: started + budget.remainingElapsedTimeSec() * 1000 });
+    decisionSession = new DecisionSession({ ...ctx.semantic, now, deadline: started + budget.remainingElapsedTimeSec() * 1000,
+      remainingMs: () => budget.remainingElapsedTimeSec() * 1000 });
   }
   const fullContext = {
     ...(decisionSession ? { decisionSession } : {}),
