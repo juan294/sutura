@@ -29,6 +29,31 @@ function measurement(manifest: JevManifest, next: NonNullable<ReturnType<typeof 
   return { configurationHash: next.configurationHash, repairLimitsHash: manifest.controller!.repairLimitsHash, receiptHash: next.ordinal.toString(16).padStart(64, '0'), inferenceUsd: arm === 'off' ? .1 : .08, sandboxUsd: .1, nativeCancellationComplete: true, controllerSeconds: 10, sandboxSeconds: arm === 'off' ? 100 : 85, authorityPreserved: true, insufficientEvidenceHandled: true, legitimateAuditRefusal: false, classIntentCorrect: true, groundingRecall: 1, top3SupportPrecision: arm === 'off' ? .7 : .85, roleLatencyMs: arm === 'off' ? 100 : 80 };
 }
 
+async function qualificationWithRoleMeasurements(
+  role: 'classification' | 'recovery',
+  assistMeasurement: (next: JevControllerRunDescriptor) => Partial<JevControllerMeasurement>,
+) {
+  const { manifest, proof, report } = await setup(role);
+  const records: JevControllerRunRecord[] = [];
+  while (nextJevControllerRun(manifest, proof, records).status === 'ready') {
+    const next = nextJevControllerRun(manifest, proof, records).next!;
+    const observed = {
+      ...measurement(manifest, next, next.arm),
+      // Hold inference spend constant so every oracle isolates its named criterion.
+      inferenceUsd: .1,
+      ...(next.arm === 'assist' ? assistMeasurement(next) : {}),
+    };
+    records.push(importJevControllerRun(manifest, proof, next, boundReport(report, next), observed));
+  }
+  expect(nextJevControllerRun(manifest, proof, records).status).toBe('complete');
+  expect(records).toHaveLength(6);
+  expect(records.every(record => record.status === 'COMPLETE')).toBe(true);
+  const result = qualifyJevControllerRuns(manifest, proof, records);
+  expect(result).toHaveLength(1);
+  expect(result[0]!.role).toBe(role);
+  return result[0]!;
+}
+
 describe('bounded Jev controller support; invented measurements do not qualify production', () => {
   it('refuses missing full-run proof and never treats a Jev-only cap as full-controller allocation', async () => {
     const { manifest, proof } = await setup();
@@ -60,6 +85,32 @@ describe('bounded Jev controller support; invented measurements do not qualify p
     expect(retained.map(v => v.identity.arm)).toEqual(['off', 'assist', 'assist', 'off', 'off', 'assist']);
     expect(qualifyJevControllerRuns(manifest, proof, retained)[0]!.status).toBe('PASS');
     expect(qualifyJevControllerRuns(manifest, proof, retained.slice(0, 2))[0]!.status).toBe('UNMEASURED');
+  });
+
+  describe.each(['classification', 'recovery'] as const)('%s qualification rejection oracles', role => {
+    it('rejects a 6% p95 controller slowdown despite a 20% role-latency improvement', async () => {
+      const result = await qualificationWithRoleMeasurements(role, () => ({ controllerSeconds: 10.6, roleLatencyMs: 80 }));
+      expect(result.status).toBe('FAIL');
+      expect(result.reasons).toEqual(['p95-controller-time-regressed']);
+    });
+
+    it('rejects only 5% role-latency improvement despite a 20% controller speedup', async () => {
+      const result = await qualificationWithRoleMeasurements(role, () => ({ controllerSeconds: 8, roleLatencyMs: 95 }));
+      expect(result.status).toBe('FAIL');
+      expect(result.reasons).toEqual(['role-latency-or-inference-improvement-below-10-percent']);
+    });
+
+    it.each(['authorityPreserved', 'insufficientEvidenceHandled'] as const)('rejects a false %s label even when the performance criterion passes', async field => {
+      const result = await qualificationWithRoleMeasurements(role, () => ({ [field]: false }));
+      expect(result.status).toBe('FAIL');
+      expect(result.reasons).toEqual(['authorization-or-insufficiency-violation']);
+    });
+
+    it('rejects losing one previously correct class/intent judgment across matched repetitions', async () => {
+      const result = await qualificationWithRoleMeasurements(role, next => ({ classIntentCorrect: next.repetition !== 1 }));
+      expect(result.status).toBe('FAIL');
+      expect(result.reasons).toEqual(['class-or-intent-accuracy-lost']);
+    });
   });
 
   it('retains gave-up and infra-stop outcomes and fails newly lost verified repairs', async () => {
