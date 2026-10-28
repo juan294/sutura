@@ -1,6 +1,6 @@
 # Phase 4: Grounding relevance and source-support labels
 
-Parent: [implementation plan](../2026-10-28-jev-decision-improvements.md). Baseline and invariants inherit the parent. Status: planned, not implemented.
+Parent: [implementation plan](../2026-10-28-jev-decision-improvements.md). Baseline and invariants inherit the parent. Status: implemented and offline verified; live grounding benefit remains UNMEASURED. See the [handoff](../2026-10-28-jev-decision-improvements-notes.md).
 
 ## Scope and source anchors
 
