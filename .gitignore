@@ -127,4 +127,4 @@ __pycache__/
 .sutura/placebo-v0.4.1-*
 
 # Opt-in local semantic evaluation inputs contain redacted repository context.
-.sutura/semantic-shadow.jsonl
+.sutura-controller/semantic-shadow.jsonl

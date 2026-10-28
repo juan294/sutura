@@ -413,11 +413,11 @@ export async function readCounterfactualAlternatives(
 /** Opt-in evaluation input stays in a bounded owner-only local file, never a public CaseFile. */
 export function captureSemanticShadow(caseDir: string): (input: ShadowInput) => Promise<void> {
   return async (input) => {
-    const directory = resolve(await realpath(caseDir), '.sutura');
+    const directory = resolve(await realpath(caseDir), '.sutura-controller');
     await mkdir(directory, { mode: 0o700, recursive: true });
     const beforeDirectory = await lstat(directory);
     if (!beforeDirectory.isDirectory() || beforeDirectory.isSymbolicLink() || await realpath(directory) !== directory) {
-      throw new CliConfigError('Shadow capture requires the actual local .sutura directory; remove a symlink or select a stable case directory');
+      throw new CliConfigError('Shadow capture requires the actual local .sutura-controller directory; remove a symlink or select a stable case directory');
     }
     const handle = await open(resolve(directory, 'semantic-shadow.jsonl'), constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW, 0o600);
     try {

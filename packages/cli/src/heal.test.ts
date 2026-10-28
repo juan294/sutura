@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   InMemoryExecutor,
+  isSensitiveRepositoryPath,
   DEFAULT_MODELS,
   DEFAULT_MODEL_PRICES,
   DEFAULT_ROUTING_PROFILE_ID,
@@ -227,7 +228,8 @@ describe('CLI runtime configuration and source boundaries', () => {
     const input = { schemaVersion: 'sutura-semantic-shadow-v1' as const, role: 'ranking' as const, policyVersion: 'semantic-v1', policyHash: 'a'.repeat(64), inputHash: 'b'.repeat(64), requestedModel: 'jev-1.14.0', state: { redacted: true }, questions: {}, candidateIds: ['candidate'], baseline: ['candidate'] };
     try {
       await captureSemanticShadow(directory)(input);
-      const target = join(directory, '.sutura', 'semantic-shadow.jsonl');
+      const target = join(directory, '.sutura-controller', 'semantic-shadow.jsonl');
+      expect(isSensitiveRepositoryPath('.sutura-controller/semantic-shadow.jsonl')).toBe(true);
       expect((await stat(target)).mode & 0o777).toBe(0o600);
       expect(JSON.parse((await readFile(target, 'utf8')).trim())).toEqual(input);
       await rm(target);
