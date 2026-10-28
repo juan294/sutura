@@ -326,3 +326,13 @@ describe('counterfactual alternatives at the adapter boundary', () => {
     expect(execute.mock.calls[0]?.[1]).not.toContain('--alternatives-file');
   });
 });
+
+it('passes explicit local Jev arm options through withTavily while preserving default argv',async()=>{
+ const execute=vi.fn().mockResolvedValue({stdout:VALID_CASE_FILE,stderr:'',exitCode:0});
+ const semantic={schemaVersion:'sutura-semantic-config-v1' as const,model:'jev-1.14.0' as const,policyVersion:'semantic-v1' as const,modes:{ranking:'assist' as const,grounding:'off' as const,classification:'off' as const,recovery:'off' as const},maxUsd:.01};
+ const selected=new SuturaAdapter({execute,semantic}).withTavily(false);
+ await selected.heal('/tmp/paired-case');
+ expect(execute.mock.calls[0]?.[1]).toEqual(['heal','--case-dir','/tmp/paired-case','--format','json','--no-tavily','--jev-ranking','assist','--jev-grounding','off','--jev-classification','off','--jev-recovery','off','--jev-budget-usd','0.01']);
+ execute.mockClear();await new SuturaAdapter({execute}).heal('/tmp/paired-case');expect(execute.mock.calls[0]?.[1]).toEqual(['heal','--case-dir','/tmp/paired-case','--format','json']);
+ expect(()=>new SuturaAdapter({execute,semantic:{...semantic,maxUsd:.021}})).toThrow(/maxUsd/u);
+});

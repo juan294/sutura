@@ -1,3 +1,4 @@
+import { semanticConfig } from './decisions/config.js';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -2070,3 +2071,11 @@ it('heals a required local contract using one frozen source manifest through the
     await expect(readFile(join(snapshots[0]!, 'page-count.js'))).rejects.toThrow();
   } finally { await rm(directory, { recursive: true, force: true }); }
 }, 30_000);
+
+it('records the selected semantic configuration without skipping reproduction or making speculative calls',async()=>{
+ const config=semanticConfig({modes:{ranking:'assist'},maxUsd:.01},true);
+ const value=context('repair-off-by-one',[],'test-assertion');
+ const file=await repairFailure({...value.ctx,semantic:{config},failingImage:'baseline',failedLog:`Run pnpm test\n${FAILURE_LOG}`,baselineResult:{...result(0),imageId:'baseline'}});
+ expect(file.outcome).toBe('infra-stop');expect(file.semanticDecisions?.configuration).toEqual(config);expect(file.semanticDecisions?.records).toEqual([]);expect(value.chat).not.toHaveBeenCalled();
+ config.modes.ranking='off';expect(file.semanticDecisions?.configuration?.modes.ranking).toBe('assist');
+});

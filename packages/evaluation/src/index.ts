@@ -119,3 +119,6 @@ export type {
   PairedBatchRequest,
   ValidatedDataset,
 } from './dataset.js';
+export * from './jev-manifest.js';
+export * from './jev-decisions.js';
+export * from './jev-controller.js';

@@ -928,7 +928,7 @@ function makeCaseFile(
   return {
     runId: ctx.runId,
     repo: ctx.repo,
-    ...(ctx.decisionSession ? { semanticDecisions: { schemaVersion: 'sutura-semantic-decisions-v1' as const, records: ctx.decisionSession.records, budget: ctx.decisionSession.snapshot() } } : {}),
+    ...(ctx.decisionSession ? { semanticDecisions: { schemaVersion: 'sutura-semantic-decisions-v1' as const, configuration: structuredClone(ctx.decisionSession.options.config), records: ctx.decisionSession.records, budget: ctx.decisionSession.snapshot() } } : {}),
     ...(ctx.reproductionPlan && ctx.controllerStartedAt !== undefined ? { controllerWallTimeSec: ctx.evidenceMode === 'replay' && ctx.recordedControllerWallTimeSec !== undefined ? ctx.recordedControllerWallTimeSec : Math.max(0, (Date.now() - ctx.controllerStartedAt) / 1000) } : {}),
     runtime: (ctx.runtime ?? NODE_RUNTIME).id,
     diagnosis,

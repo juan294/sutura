@@ -1,12 +1,14 @@
 import { createHash } from 'node:crypto';
 import { redactExternalText } from '../security/external-text.js';
-import { TypeSafeApiError, type TypeSafeAnswer, type TypeSafeAuditClient, type TypeSafeQuestion, type JsonValue, type TypeSafeDecision } from '../llm/typesafe.js';
+import { TYPESAFE_PRICE, TypeSafeApiError, type TypeSafeAnswer, type TypeSafeAuditClient, type TypeSafeQuestion, type JsonValue, type TypeSafeDecision } from '../llm/typesafe.js';
 import { SEMANTIC_MODEL, SEMANTIC_POLICY, type SemanticConfig, type DecisionRole, type DecisionMode, type SemanticRole } from './config.js';
 export const decisionHash = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export interface DecisionEvidence {
   role: DecisionRole; mode: DecisionMode; outcome: 'answered'|'uncertain'|'unavailable'|'disabled';
   policyVersion: string; policyHash: string; inputHash: string; requestedModel: string; resolvedModel?: string;
   usage: TypeSafeDecision['usage'] | null;
+  /** Retained reservation for attempts whose actual charge remains unknown. */
+  unknownSpendUsd?: number;
   attempts: number; reservedUsd: number; actualUsd: number; latencyMs: number; reason: string; fallback: string;
   candidateIds: string[]; baseline: string[]; suggested?: string[];
   answers?: Record<string, TypeSafeAnswer>;
@@ -66,7 +68,7 @@ export class DecisionSession {
   } catch { invalidInput='invalid-input'; }
   const policyHash=decisionHash({role,version:SEMANTIC_POLICY,questions,thresholds:{noul:[.2,.8],choice:[.8,.2]}});
   const inputHash=decisionHash({state:safeState,questions,candidateIds});
-  const evidence:DecisionEvidence={role,mode,outcome:'unavailable',policyVersion:SEMANTIC_POLICY,policyHash,inputHash,requestedModel:SEMANTIC_MODEL,usage:null,attempts:0,reservedUsd:0,actualUsd:0,latencyMs:0,reason:'provider-unavailable',fallback,candidateIds:[...candidateIds],baseline:[...baseline]};
+  const evidence:DecisionEvidence={role,mode,outcome:'unavailable',policyVersion:SEMANTIC_POLICY,policyHash,inputHash,requestedModel:SEMANTIC_MODEL,usage:null,unknownSpendUsd:0,attempts:0,reservedUsd:0,actualUsd:0,latencyMs:0,reason:'provider-unavailable',fallback,candidateIds:[...candidateIds],baseline:[...baseline]};
   const finish=(outcome:DecisionEvidence['outcome'],reason:string)=>{evidence.outcome=outcome;evidence.reason=reason;evidence.latencyMs=Math.max(0,this.now()-started);if(this.records.length<100)this.records.push(evidence);return evidence;};
   if(mode==='off')return finish('disabled','role-off');
   if(invalidInput)return finish('unavailable',invalidInput);
@@ -86,18 +88,18 @@ export class DecisionSession {
   }
   if(!this.options.client)return finish('unavailable','key-unavailable');
   const deadline=Math.min(this.options.deadline,started+5000);
-  const reservation=Math.ceil(Buffer.byteLength(JSON.stringify({state:safeState,model:SEMANTIC_MODEL,questions}),'utf8')*.042)/1e6;
+  const reservation=Math.ceil(Buffer.byteLength(JSON.stringify({state:safeState,model:SEMANTIC_MODEL,questions}),'utf8')*TYPESAFE_PRICE.input)/1e6;
   for(let attempt=0;attempt<2;attempt++){
    if(this.now()>=deadline)return finish('unavailable','deadline');
    if(this.attempts>=8||this.reservedUsd+reservation>this.options.config.maxUsd)return finish('unavailable','semantic-cap');
-   this.attempts++;this.reservedUsd+=reservation;evidence.attempts++;evidence.reservedUsd+=reservation;
+   this.attempts++;this.reservedUsd+=reservation;evidence.attempts++;evidence.reservedUsd+=reservation;evidence.unknownSpendUsd=(evidence.unknownSpendUsd??0)+reservation;
    const abort=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined;
    try{
     const timeout=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{abort.abort();reject(new Error('semantic-timeout'));},Math.max(0,deadline-this.now()));});
     const decision=await Promise.race([this.options.client.decide(safeState,questions,{signal:abort.signal,singleAttempt:true}),timeout]);
     if(this.now()>=deadline)return finish('unavailable','timeout');
     if(!Number.isFinite(decision.usd)||decision.usd<0||!Number.isFinite(decision.usage.inTok)||decision.usage.inTok<0)return finish('unavailable','invalid-provider-result');
-    this.reservedUsd+=Math.max(0,decision.usd)-reservation;this.actualUsd+=decision.usd;evidence.actualUsd+=decision.usd;
+    this.reservedUsd+=Math.max(0,decision.usd)-reservation;this.actualUsd+=decision.usd;evidence.actualUsd+=decision.usd;evidence.unknownSpendUsd=Math.max(0,(evidence.unknownSpendUsd??0)-reservation);
     evidence.resolvedModel=decision.model; evidence.usage=decision.usage;
     if(decision.model!==SEMANTIC_MODEL)return finish('unavailable','model-mismatch');
     if(!validateAnswers(decision,questions))return finish('unavailable','invalid-provider-result');

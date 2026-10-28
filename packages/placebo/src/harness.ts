@@ -1,3 +1,5 @@
+import { observeJevControllerRun } from './jev-observation.js';
+import type { JevControllerRunIdentity } from '@sutura/evaluation';
 import { cp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -31,6 +33,7 @@ import {
 } from './types.js';
 
 export interface BenchmarkOptions {
+  jevComparison?: JevControllerRunIdentity;
   only?: CaseKind;
   caseId?: string;
   noTavily?: boolean;
@@ -126,6 +129,8 @@ async function evaluate(
 }
 
 export async function runBenchmark(adapter: Adapter, options: BenchmarkOptions = {}): Promise<BenchmarkReport> {
+  const jevComparison=options.jevComparison===undefined?undefined:observeJevControllerRun(adapter,options.jevComparison);
+  if(jevComparison && (!options.manifest || options.caseId!==jevComparison.identity.placeboCaseId))throw new Error('Jev controller comparison requires one exact case and a clean source evaluation manifest');
   const frozen = await discoverBenchmarkCases();
   // Naming one case reaches the expanded selection; a whole-corpus run keeps
   // the frozen slice, so an unqualified benchmark score still means what it
@@ -166,6 +171,7 @@ export async function runBenchmark(adapter: Adapter, options: BenchmarkOptions =
     ? undefined
     : createEvaluationManifest({
         ...options.manifest,
+        ...(jevComparison ? { evaluationId: `jev-${jevComparison.identity.manifestHash}-${jevComparison.identity.ordinal}-${jevComparison.invocationId}` } : {}),
         completedAt: options.manifest.completedAt ?? new Date().toISOString(),
         corpusName: 'placebo',
         corpusVersion: CORPUS_VERSION,
@@ -184,6 +190,7 @@ export async function runBenchmark(adapter: Adapter, options: BenchmarkOptions =
       });
   return {
     adapter: adapter.name,
+    ...(jevComparison===undefined?{}:{jevComparison}),
     results,
     score: benchmarkScore,
     ...(manifest === undefined ? {} : { manifest }),

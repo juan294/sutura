@@ -25,3 +25,17 @@ describe('decision boundary contracts',()=>{
   for(const probabilities of [{a:.8},{a:.9,b:.1,c:0},{a:1,b:NaN},{a:.9,b:.5},{a:.1,b:.9}])expect(validateAnswers({...base,answers:{selection:{type:'choice',choice:'a',probabilities,confidence:.9}}},questions)).toBe(false);
  });
 });
+
+it('validates and preserves observed semantic configuration independently of asserted report arms',async()=>{
+ const config=semanticConfig({modes:{ranking:'assist'},maxUsd:.01},true);
+ const value={schemaVersion:'sutura-semantic-decisions-v1',configuration:config,records:[],budget:{maxUsd:.01,attempts:0,reservedUsd:0,actualUsd:0}};
+ expect(validateSemanticDecisions(value)).toBe(true);
+ expect(validateSemanticDecisions({...value,configuration:{...config,model:'jev-latest'}})).toBe(false);
+ expect(validateSemanticDecisions({...value,configuration:{...config,maxUsd:.02}})).toBe(false);
+});
+
+it('rejects partial serialized configurations without throwing on untrusted evidence',async()=>{
+ const session=new DecisionSession({config:semanticConfig({maxUsd:.01}),deadline:0});await session.judge('ranking',{}, {},'baseline');
+ const value={schemaVersion:'sutura-semantic-decisions-v1',configuration:{maxUsd:.01},records:session.records,budget:session.snapshot()};
+ expect(()=>validateSemanticDecisions(value)).not.toThrow();expect(validateSemanticDecisions(value)).toBe(false);
+});

@@ -103,3 +103,10 @@ it('navigator never retries even on explicit provider overload',async()=>{
  await new DecisionSession({config:config(),client:client(fetch),deadline:Date.now()+5000}).judge('navigator',{},questions,'lexical');
  expect(fetch).toHaveBeenCalledTimes(1);
 });
+
+it('retains unknown first-attempt spend when an explicit overload retry succeeds',async()=>{
+ const fetch=vi.fn().mockResolvedValueOnce(response(429)).mockResolvedValue(response());
+ const session=new DecisionSession({config:config(),client:client(fetch),deadline:Date.now()+5000});
+ const evidence=await session.judge('ranking',{},questions,'baseline');
+ expect(evidence.outcome).toBe('answered');expect(evidence.unknownSpendUsd).toBeGreaterThan(0);expect(evidence.usage?.inTok).toBe(10);
+});
