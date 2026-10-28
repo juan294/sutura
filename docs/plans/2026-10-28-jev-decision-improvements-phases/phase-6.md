@@ -1,6 +1,6 @@
 # Phase 6: Developer evidence navigator and completion
 
-Parent: [implementation plan](../2026-10-28-jev-decision-improvements.md). Baseline and invariants inherit the parent. Status: planned, not implemented.
+Parent: [implementation plan](../2026-10-28-jev-decision-improvements.md). Baseline and invariants inherit the parent. Status: implemented and offline-verified. Live semantic qualification and owner usability observations remain UNMEASURED. Exact candidate/check evidence and retained failures are in the parent implementation notes.
 
 ## Scope and source anchors
 

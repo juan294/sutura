@@ -1,5 +1,7 @@
 # Jev decision improvements: six-phase implementation plan
 
+Implementation update, 2026-10-29: all six phases are implemented and locally verified. The complete final local gate passed on `c6d8f2bdd3d702cfbd3a14eef9f8bf92ac23d8e8`; see [implementation notes](2026-10-28-jev-decision-improvements-notes.md) for exact per-phase receipts, repaired findings and final integration/publication state. New modes remain off by default; live benefit and owner comprehension are UNMEASURED. The planning statements below preserve the original pre-implementation history.
+
 Date: 2026-10-28. Planning baseline: `develop`, `969bd68b08c973c3a16f00bb2b67dc19c6300a6d`, `/Users/juan/code/sutura`. Source remains unchanged from the accepted research. The three October 28 Jev research artifacts are untracked intended work and must be preserved. User confirmed all six phases during planning. This document specifies implementation; it does not start it or authorize live experiments/publication.
 
 ## Objective and evidence
