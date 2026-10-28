@@ -1,3 +1,4 @@
+import { parseAuditCheckMetadata } from './audit-status.js';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { AuditFile, CaseFile } from '../domain.js';
@@ -41,4 +42,17 @@ describe('typed optional audit status presentation', () => {
       expect(file.audit!.approved).toBe(true);
     });
   }
+});
+
+// Removing any named parser guard must make its matching field assertion fail.
+describe('public audit metadata parser guards',()=>{
+ const valid={status:'approved',requestedModel:'jev-latest',resolvedModel:'jev-1.14.0',policyVersion:'legacy-v1',policyHash:'a'.repeat(64)};
+ it('retains only the validated flat metadata contract',()=>{expect(parseAuditCheckMetadata(valid)).toEqual(valid);});
+ it.each([
+  [null,'metadata must be an object'],
+  [{...valid,rawState:'private'},'metadata contains an unsupported field'],
+  [{...valid,status:'pass'},'metadata.status'],
+  [{...valid,requestedModel:'jev\nsecret'},'metadata.requestedModel'],
+  [{...valid,policyHash:'bad'},'metadata.policyHash'],
+ ] as const)('rejects malformed metadata %j with a field-specific recovery cause',(value,message)=>{expect(()=>parseAuditCheckMetadata(value)).toThrow(message);});
 });

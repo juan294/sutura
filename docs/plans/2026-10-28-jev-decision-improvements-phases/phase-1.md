@@ -1,6 +1,6 @@
 # Phase 1: Audit and decision-call foundation
 
-Parent: [implementation plan](../2026-10-28-jev-decision-improvements.md). Baseline and invariants inherit the parent. Status: planned, not implemented.
+Parent: [implementation plan](../2026-10-28-jev-decision-improvements.md). Baseline and invariants inherit the parent. Status: implemented and offline-verified; live qualification UNMEASURED. See the [implementation notes](../2026-10-28-jev-decision-improvements-notes.md).
 
 ## Scope and source anchors
 
