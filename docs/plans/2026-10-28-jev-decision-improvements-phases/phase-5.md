@@ -1,6 +1,6 @@
 # Phase 5: Typed diagnosis and bounded recovery choices
 
-Parent: [implementation plan](../2026-10-28-jev-decision-improvements.md). Baseline and invariants inherit the parent. Status: planned, not implemented.
+Parent: [implementation plan](../2026-10-28-jev-decision-improvements.md). Baseline and invariants inherit the parent. Status: implemented and offline-verified; live quality/performance UNMEASURED. See the parent implementation notes for aggregate exact-candidate receipts and retained failures.
 
 ## Scope and source anchors
 
