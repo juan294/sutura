@@ -32,8 +32,9 @@ import {
   type HealCaseContext,
 } from './heal.js';
 import type { ChatMessage, TierLlm } from './llm/types.js';
-import { TYPESAFE_AUDIT_MODEL, type TypeSafeAuditClient, type TypeSafeDecision } from './llm/typesafe.js';
-import { DEFAULT_MODEL_PRICES } from './llm/cost.js';
+import { TypeSafeClient, TYPESAFE_AUDIT_MODEL, type TypeSafeAuditClient, type TypeSafeDecision, type TypeSafeQuestion, type TypeSafeAnswer } from './llm/typesafe.js';
+import type { NebiusFetch } from './llm/nebius.js';
+import { Ledger, DEFAULT_MODEL_PRICES } from './llm/cost.js';
 import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
 import { parseRepositoryPolicy } from './policy/schema.js';
 import { createDefaultRepositoryPolicy } from './policy/load.js';
@@ -2078,4 +2079,44 @@ it('records the selected semantic configuration without skipping reproduction or
  const file=await repairFailure({...value.ctx,semantic:{config},failingImage:'baseline',failedLog:`Run pnpm test\n${FAILURE_LOG}`,baselineResult:{...result(0),imageId:'baseline'}});
  expect(file.outcome).toBe('infra-stop');expect(file.semanticDecisions?.configuration).toEqual(config);expect(file.semanticDecisions?.records).toEqual([]);expect(value.chat).not.toHaveBeenCalled();
  config.modes.ranking='off';expect(file.semanticDecisions?.configuration?.modes.ranking).toBe('assist');
+});
+
+it.each(['shadow', 'assist'] as const)('uses %s ranking in real healing while preserving executable admission', async mode => {
+  let applyCount = 0; const outputs = new Map<string, string>();
+  const executor = new InMemoryExecutor((command, parent) => {
+    const imageId = executor.calls.at(-1)!.imageId; const output = outputs.get(parent);
+    if (output !== undefined) outputs.set(imageId, output);
+    if (command.includes('corepack pnpm install --frozen-lockfile') || command.includes('git init --quiet')) return result(0);
+    if (command.includes('git apply - && git diff')) {
+      applyCount++;
+      outputs.set(imageId, applyCount === 1 ? FAILURE_LOG : Array.from({ length: 20 }, (_, index) => `TypeError: new observed failure ${String.fromCharCode(65 + index)}`).join('\n'));
+      return { ...result(0), stdout: applyCount === 1 ? WRONG_REPLACEMENT_DIFF : HONEST_DIFF };
+    }
+    return result(1, output);
+  });
+  let proposal = 0;
+  const value = context('repair-off-by-one', [], 'test-assertion', { executor,
+    search: { initialBranches: 2, beamWidth: 1, maximumDepth: 2, maximumTotalBranches: 3 } });
+  const capture = vi.fn();
+  const fetch = vi.fn(async (_url: string, request: Parameters<NebiusFetch>[1]) => {
+    const body = JSON.parse(request.body!) as { questions: Record<string, TypeSafeQuestion> };
+    const answers: Record<string, TypeSafeAnswer> = {};
+    for (const [id, question] of Object.entries(body.questions)) {
+      if (question.type === 'noul') answers[id] = { type: 'noul', noul: id.endsWith('sufficient') || id === 'node_0_original' ? .95 : .05 };
+      else { const selected = id.startsWith('node_0_') ? 'same_failure' : 'original_resolved_new_failure';
+        answers[id] = { type: 'choice', choice: selected, confidence: .95, probabilities: Object.fromEntries(Object.keys(question.criteria).map(key => [key, key === selected ? .9 : .05])) }; }
+    }
+    return new Response(JSON.stringify({ model: 'jev-1.14.0', answers, usage: { input_tokens: 100, output_tokens: 0 } }));
+  });
+  value.ctx.semantic = { config: semanticConfig({ modes: { ranking: mode }, maxUsd: .02 }, true), client: new TypeSafeClient({ apiKey: 'test', model: 'jev-1.14.0', ledger: new Ledger({}) }, { fetch }), capture };
+  value.ctx.llm = { ...value.ctx.llm, chat: async tier => {
+    if (tier === 'nano') return { text: JSON.stringify(diagnosis('test-assertion')) };
+    if (tier === 'super') { const diff = proposal++ === 0 ? WRONG_REPLACEMENT_DIFF : HONEST_DIFF; return repairProposalReply({ id: 'fixture', diff, rationale: 'source repair' }, diff === HONEST_DIFF ? HONEST_REPLACEMENT : WRONG_REPLACEMENT); }
+    return { text: JSON.stringify({ approved: true, reasoning: 'unused without passing execution' }) };
+  } };
+  const file = await healCase(value.ctx);
+  expect(capture).toHaveBeenCalledTimes(mode === 'shadow' ? 1 : 0); expect(fetch).toHaveBeenCalledTimes(mode === 'assist' ? 1 : 0);
+  expect(file.semanticDecisions?.records[0]).toMatchObject({ role: 'ranking', mode, reason: mode === 'shadow' ? 'shadow-captured' : 'ranking-applied', baseline: ['search-001', 'search-002'], suggested: mode === 'shadow' ? ['search-001', 'search-002'] : ['search-002', 'search-001'] });
+  expect(file.outcome).toBe('gave-up'); expect(file.search?.[2]?.parentNodeId).toBe(mode === 'shadow' ? 'search-001' : 'search-002');
+  expect(file.audit).toBeUndefined();
 });

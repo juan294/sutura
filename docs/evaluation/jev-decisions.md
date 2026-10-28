@@ -2,6 +2,8 @@
 
 New semantic repair roles are off by default. This evaluator validates frozen inputs and reports bounded observations; it never enables a role, changes audit veto policy, dispatches hosted work, or authorizes a paid experiment. Current quality, calibration, speed, repair yield and developer comprehension remain **UNMEASURED**. All implementation examples/tests are offline; no live API compatibility probe or qualification run has been performed.
 
+Local heal can explicitly select `--jev-ranking shadow|assist` with `--jev-budget-usd` and the existing key. The [ranking selector](../../packages/core/src/decisions/rank-frontier.ts#L7) sees only the eligible failing frontier. Shadow captures bounded redacted inputs locally and keeps native order, with no inline provider request. Assist may reorder the same IDs within native priority groups; it cannot revive a terminal branch, increase search limits or admit a candidate. Missing, contradictory, uncertain, oversized, unavailable or over-budget evidence retains the native comparator. Public evidence retains baseline/suggested order, policy/model/input identity, resources and fallback; replay uses the recorded controller clock to preserve its latency evidence and exact reports.
+
 ## Decision-only evaluation
 
 Run `pnpm run test:jev-decisions` for the offline contracts. After building, `node scripts/jev-decisions-eval.mjs --help` describes the finite command. With `--manifest`, the default is a dry-run: it validates the frozen schema and prints case/input/policy hashes, model, categories, repetitions, maximum attempts, reservations and output paths. It makes no network requests and writes no journal or result files.

@@ -396,3 +396,42 @@ it('ends the consumed attempt when a sibling ignores cancellation beyond its bou
     expect(result.nodes[1]?.terminalReason).toBe('policy');
   } finally { vi.useRealTimers(); }
 });
+
+describe('optional frontier ordering boundary', () => {
+  async function run(rankFrontier: (nodes: readonly import('./search.js').SearchNode[]) => Promise<readonly string[]>, onDecision = vi.fn()) {
+    return adaptiveSearch({ baselineImageId: 'base', initialBranches: 2, beamWidth: 1,
+      maximumDepth: 2, maximumTotalBranches: 3, availableBranches: () => 3, rankFrontier, onDecision,
+      admit: async () => ({ accepted: false, reason: 'mandatory verification refused' }),
+      expand: async ({ depth, branch }) => depth === 1 ? expansion(`branch-${branch}`, 1, `error ${branch}`) : expansion('visible-green', 0) });
+  }
+  it('uses only supplied eligible IDs to change the next parent and still requires admission', async () => {
+    const rank = vi.fn(async (nodes: readonly import('./search.js').SearchNode[]) => nodes.map(n => n.id).reverse());
+    const result = await run(rank);
+    expect(rank).toHaveBeenCalledOnce(); expect(rank.mock.calls[0]![0].map(n => n.id)).toEqual(['search-001', 'search-002']);
+    expect(result.nodes[2]?.parentId).toBe('search-002'); expect(result.candidates).toEqual([]);
+    expect(result.nodes[2]?.terminalReason).toBe('verification-refused');
+  });
+  it.each([['search-001'], ['search-002', 'search-002'], ['search-002', 'foreign']].map(ids => ({ ids })))('rejects invalid permutations $ids as a whole', async ({ ids }) => {
+    const onDecision = vi.fn(); const result = await run(async () => ids, onDecision);
+    expect(result.nodes[2]?.parentId).toBe('search-001');
+    expect(onDecision).toHaveBeenCalledWith({ summary: 'semantic-ranking-invalid-permutation' });
+  });
+  it('retains the baseline when the hook fails', async () => {
+    const onDecision = vi.fn();
+    expect((await run(async () => { throw new Error('secret transport text'); }, onDecision)).nodes[2]?.parentId).toBe('search-001');
+    expect(onDecision).toHaveBeenCalledWith({ summary: 'semantic-ranking-unavailable' });
+    expect(JSON.stringify(onDecision.mock.calls)).not.toContain('secret transport text');
+  });
+  it('never invokes the hook for passed, policy, refused, cancelled, empty or singleton frontiers', async () => {
+    for (const kind of ['passed', 'policy', 'verification-refused', 'cancelled', 'singleton'] as const) {
+      const rank = vi.fn(async (nodes: readonly import('./search.js').SearchNode[]) => nodes.map(n => n.id));
+      await adaptiveSearch({ baselineImageId: 'base', initialBranches: kind === 'singleton' ? 1 : 2,
+        maximumDepth: 2, maximumTotalBranches: 4, availableBranches: () => 4, rankFrontier: rank,
+        admit: async () => ({ accepted: kind === 'passed' }),
+        expand: async ({ branch }) => kind === 'policy' ? { ...expansion(`b-${branch}`, 1), policyEvidence: { valid: false, violations: ['denied'], changedFiles: [], diffBytes: 0 } }
+          : kind === 'cancelled' ? { ...expansion(`b-${branch}`, 1), terminalReason: 'cancelled' }
+          : expansion(`b-${branch}`, kind === 'singleton' ? 1 : 0) });
+      expect(rank, kind).not.toHaveBeenCalled();
+    }
+  });
+});

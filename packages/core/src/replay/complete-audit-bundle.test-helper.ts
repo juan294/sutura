@@ -15,6 +15,8 @@ import { GitHubAdapter } from '../github/adapter.js';
 import { OpenAiClient } from '../llm/openai.js';
 import { createTokenFactoryClient } from '../llm/token-factory.js';
 import { TypeSafeClient } from '../llm/typesafe.js';
+import type { TypeSafeAnswer, TypeSafeQuestion } from '../llm/typesafe.js';
+import { semanticConfig } from '../decisions/config.js';
 import { orchestrate } from '../orchestrate.js';
 import {
   REPLAY_BUNDLE_SCHEMA_VERSION,
@@ -78,6 +80,7 @@ function runResult(imageId: string, exitCode: number): RunResult {
 class AuditPathReplayExecutor implements Executor {
   private snapshotCount = 0;
   private plainTestRuns = 0;
+  constructor(private readonly ranking = false) {}
 
   importImage(): Promise<ImageId> {
     return Promise.resolve('image-1');
@@ -103,7 +106,9 @@ class AuditPathReplayExecutor implements Executor {
       return runResult('image-preparation', 0);
     }
     this.plainTestRuns += 1;
-    return runResult(`image-test-${this.plainTestRuns}`, this.plainTestRuns === 1 ? 1 : 0);
+    const result = runResult(`image-test-${this.plainTestRuns}`, this.plainTestRuns <= (this.ranking ? 3 : 1) ? 1 : 0);
+    if (this.ranking && this.plainTestRuns === 3) result.stderr = Array.from({ length: 20 }, (_, index) => `TypeError: new observed failure ${String.fromCharCode(65 + index)}`).join('\n');
+    return result;
   }
 
   run(_parent: ImageId, command: string): Promise<RunResult> {
@@ -132,12 +137,13 @@ class AuditPathReplayExecutor implements Executor {
  * with a content-aware executor and a source excerpt that lets the repair
  * proposal construct a real diff instead of a supplied one.
  */
-export async function createAuditPathReplayBundleForTest(legacyAuditPresentation = false): Promise<ReplayBundle> {
+export async function createAuditPathReplayBundleForTest(legacyAuditPresentation = false, ranking?: 'assist' | 'shadow'): Promise<ReplayBundle> {
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'sutura-audit-replay-'));
   const checkoutDir = join(temporaryRoot, 'checkout');
   await mkdir(checkoutDir);
   await writeFile(join(checkoutDir, 'package.json'), PACKAGE_JSON, 'utf8');
-  const recorder = new ReplayRecorder(RUN_ID, REPOSITORY, HEAD_SHA, CONFIGURATION);
+  const search = ranking ? { initialBranches: 2, beamWidth: 1, maximumDepth: 2, maximumTotalBranches: 3 } : undefined;
+  const recorder = new ReplayRecorder(RUN_ID, REPOSITORY, HEAD_SHA, { ...CONFIGURATION, ...(search ? { search } : {}) });
   recorder.recordHttp({
     boundary: 'contree',
     request: { method: 'POST', url: 'https://contree.invalid/logical', headers: {}, body: null },
@@ -162,8 +168,8 @@ export async function createAuditPathReplayBundleForTest(legacyAuditPresentation
           errorExcerpt: 'TS2322: Type number is not assignable to type string',
         })));
       }
-      if (nebiusCall === 2) {
-        return bytesResponse(chatCompletion(JSON.stringify({ replacement: HONEST_REPLACEMENT })));
+      if (nebiusCall === 2 || ranking && nebiusCall <= 4) {
+        return bytesResponse(chatCompletion(JSON.stringify({ replacement: ranking ? `export const value: string = "${nebiusCall - 1}";\n` : HONEST_REPLACEMENT })));
       }
       return bytesResponse(chatCompletion(JSON.stringify({
         approved: true,
@@ -203,6 +209,23 @@ export async function createAuditPathReplayBundleForTest(legacyAuditPresentation
       throw new Error('Tavily should not be called for this diagnosis class');
     }),
   });
+  const semantic = ranking ? {
+    config: semanticConfig({ modes: { ranking }, maxUsd: .02 }, true),
+    capture: async () => { await new Promise(resolve => setTimeout(resolve, 20)); },
+    client: new TypeSafeClient({ apiKey: 'capture-only', model: 'jev-1.14.0', ledger: llm.ledger }, {
+      fetch: recordingTypeSafeFetch(recorder, async (_url, request) => {
+        await new Promise(resolve => setTimeout(resolve, 20));
+        const { questions } = JSON.parse(request.body!) as { questions: Record<string, TypeSafeQuestion> };
+        const answers: Record<string, TypeSafeAnswer> = {};
+        for (const [id, question] of Object.entries(questions)) {
+          if (question.type === 'noul') answers[id] = { type: 'noul', noul: id.endsWith('sufficient') || id === 'node_0_original' ? .95 : .05 };
+          else { const selected = id.startsWith('node_0_') ? 'same_failure' : 'original_resolved_new_failure';
+            answers[id] = { type: 'choice', choice: selected, confidence: .95, probabilities: Object.fromEntries(Object.keys(question.criteria).map(key => [key, key === selected ? .9 : .05])) }; }
+        }
+        return bytesResponse({ model: 'jev-1.14.0', answers, usage: { input_tokens: 100, output_tokens: 0 } });
+      }),
+    }),
+  } : undefined;
   try {
     const caseFile = await orchestrate({
       replay: recorder,
@@ -233,11 +256,13 @@ export async function createAuditPathReplayBundleForTest(legacyAuditPresentation
           ? [{ path, startLine: 1, content: SOURCE_BEFORE, truncated: false }]
           : []),
       ),
-      executor: recordingExecutor(new AuditPathReplayExecutor(), recorder),
+      executor: recordingExecutor(new AuditPathReplayExecutor(Boolean(ranking)), recorder),
       llm,
       tavily,
       secondOpinion,
       typesafeAudit,
+      ...(semantic ? { semantic } : {}),
+      ...(search ? { search } : {}),
       cost: llm.ledger,
       triageN: CONFIGURATION.triageN,
       raceK: CONFIGURATION.raceK,

@@ -4,7 +4,7 @@ import type { Candidate, StageEvidence } from '../domain.js';
 import type { ImageId, RunMetrics } from '../executor/types.js';
 import type { RepairTestEvidence } from './repair-tools.js';
 import { diffFingerprint, errorFingerprint } from './fingerprint.js';
-import { compareSearchNodes } from './search-score.js';
+import { compareSearchNodes, compareSearchNodePriorities } from './search-score.js';
 
 export const DEFAULT_SEARCH_LIMITS = Object.freeze({
   initialBranches: 4,
@@ -72,6 +72,8 @@ export interface AdaptiveSearchOptions {
   singleFinalVerification?: boolean;
   onProvisional?(input: { nodeId: string; expansion: SearchExpansion }): void | number;
   onDecision?(decision: { summary: string; nodeId?: string; parentNodeId?: string }): void;
+  /** Advisory ordering only: must return an exact permutation of these IDs. */
+  rankFrontier?(nodes: readonly SearchNode[]): Promise<readonly string[]>;
   expand(context: SearchExpansionContext): Promise<SearchExpansion>;
   /**
    * Fully verifies a provisionally green candidate. Diagnosed-test green only
@@ -268,10 +270,27 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
     const candidates = children.filter(({ terminalReason }) => terminalReason === 'passed').sort(compareSearchNodes);
     if (candidates.length > 0) return { nodes, candidates, terminalReason: 'candidate-found' };
     if (options.singleFinalVerification && children.some(node => node.terminalReason === 'verification-refused')) return { nodes, candidates: [], terminalReason: 'frontier-exhausted' };
-    frontier = children
+    const baseline = children
       .filter(({ terminalReason }) => terminalReason === undefined || terminalReason === 'failed')
-      .sort(compareSearchNodes)
-      .slice(0, beamWidth);
+      .sort(compareSearchNodes);
+    const eligible = baseline.filter(node => !processSucceeded(node.testEvidence));
+    if (options.rankFrontier && eligible.length > 1 && nodes.length < maximumTotalBranches) {
+      try {
+        // The hook sees a copy and returns IDs; it cannot replace executable evidence.
+        const suggested = await options.rankFrontier(structuredClone(eligible));
+        const byId = new Map(eligible.map(node => [node.id, node]));
+        if (Array.isArray(suggested) && suggested.length === eligible.length &&
+          new Set(suggested).size === eligible.length && suggested.every(id => byId.has(id))) {
+          const positions = new Map(suggested.map((id, index) => [id, index]));
+          const ordered = eligible.toSorted((left, right) => compareSearchNodePriorities(left, right) || positions.get(left.id)! - positions.get(right.id)!);
+          let next = 0;
+          for (let index = 0; index < baseline.length; index++) {
+            if (byId.has(baseline[index]!.id)) baseline[index] = ordered[next++]!;
+          }
+        } else options.onDecision?.({ summary: 'semantic-ranking-invalid-permutation' });
+      } catch { options.onDecision?.({ summary: 'semantic-ranking-unavailable' }); }
+    }
+    frontier = baseline.slice(0, beamWidth);
   }
   return { nodes, candidates: [], terminalReason: frontier.length === 0 ? 'frontier-exhausted' : 'depth' };
 }

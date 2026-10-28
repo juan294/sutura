@@ -22,6 +22,7 @@ export function validateSemanticDecisions(value:unknown,candidateIds?:readonly s
   if(config!==undefined&&['ranking','grounding','classification','recovery'].includes(v.role as string)){if(v.mode!==config.modes[v.role as keyof SemanticConfig['modes']]||v.requestedModel!==config.model||v.policyVersion!==config.policyVersion)return false;}
   if(!Number.isInteger(v.attempts)||!amount(v.attempts)||v.attempts>2||![v.actualUsd,v.reservedUsd,v.latencyMs].every(amount)||!ids(v.candidateIds)||!ids(v.baseline)||!v.baseline.every(x=>(v.candidateIds as string[]).includes(x)))return false;
   if(v.suggested!==undefined&&(!ids(v.suggested)||!v.suggested.every(x=>(v.candidateIds as string[]).includes(x))))return false;
+  if(v.role==='ranking'&&((v.baseline as string[]).length!==(v.candidateIds as string[]).length||v.suggested!==undefined&&(v.suggested as string[]).length!==(v.candidateIds as string[]).length))return false;
   if(v.role==='ranking'&&candidateIds!==undefined&&!v.candidateIds.every(x=>candidateIds.includes(x)))return false;
   if(v.unknownSpendUsd!==undefined&&(!amount(v.unknownSpendUsd)||v.unknownSpendUsd>(v.reservedUsd as number)+1e-12))return false;
   if(v.usage!==null && v.usage!==undefined){if(!record(v.usage)||Object.keys(v.usage).some(k=>!['inTok','outTok','reasoningTok'].includes(k))||!['inTok','outTok','reasoningTok'].every(k=>Number.isSafeInteger(v.usage && (v.usage as Record<string,unknown>)[k])&&amount((v.usage as Record<string,unknown>)[k])))return false;}

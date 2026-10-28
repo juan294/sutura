@@ -4,6 +4,14 @@ import { validateSemanticDecisions } from './evidence.js';
 import { DecisionSession,validateAnswers } from './call.js';
 import type { TypeSafeDecision, TypeSafeQuestion } from '../llm/typesafe.js';
 describe('decision boundary contracts',()=>{
+ it('requires complete ranking permutations in public evidence',async()=>{
+  const session=new DecisionSession({config:semanticConfig(),deadline:0});
+  await session.judge('ranking',{}, {},'baseline',['a','b']);
+  const envelope={schemaVersion:'sutura-semantic-decisions-v1',records:session.records,budget:session.snapshot()};
+  expect(validateSemanticDecisions(envelope)).toBe(true);
+  expect(validateSemanticDecisions({...envelope,records:[{...session.records[0],baseline:['a']}]})).toBe(false);
+  expect(validateSemanticDecisions({...envelope,records:[{...session.records[0],suggested:['b']}]})).toBe(false);
+ });
  it('defaults off and rejects implicit spend, invalid roles, keys, caps and policy',()=>{
   expect(semanticConfig().maxUsd).toBe(0);expect(Object.values(semanticConfig().modes)).toEqual(['off','off','off','off']);
   for(const value of [{modes:{ranking:'assist'}},{modes:{ranking:'assist'},maxUsd:.02},{maxUsd:NaN},{maxUsd:.021},{modes:{wrong:'off'}},{model:'jev-latest'},{policyVersion:'other'}])expect(()=>semanticConfig(value)).toThrow(/semantic\./u);

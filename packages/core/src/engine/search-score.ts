@@ -35,3 +35,10 @@ export function compareSearchNodes(left: SearchNode, right: SearchNode): number 
   }
   return a.nodeId.localeCompare(b.nodeId);
 }
+
+/** Semantic ordering may refine only nodes with identical native priorities. */
+export function compareSearchNodePriorities(left: SearchNode, right: SearchNode): number {
+  const a = searchScore(left);
+  const b = searchScore(right);
+  return a.pruned - b.pruned || a.passing - b.passing || a.unpatched - b.unpatched;
+}

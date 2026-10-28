@@ -1,4 +1,5 @@
 import { DecisionSession, type SemanticPort } from './decisions/call.js';
+import { rankRepairFrontier } from './decisions/rank-frontier.js';
 import type { ControllerClockDomain } from './replay/controller-clock.js';
 import { verifyReproductionRuntime } from './engine/reproduction-runtime.js';
 import { preparationDeadlineExecutor } from './executor/deadlines.js';
@@ -1062,7 +1063,14 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
   }, ctx.clockNow ? () => ctx.clockNow!('repair') : Date.now, ctx.controllerStartedAt);
   const trace = ctx.traceRecorder ?? new TraceRecorder(ctx.runId);
   const ledger = ctx.stageLedger ?? new StageLedger(trace);
-  const decisionSession = ctx.semantic ? new DecisionSession({ ...ctx.semantic, deadline: Date.now() + budget.remainingElapsedTimeSec() * 1000 }) : undefined;
+  let decisionSession: DecisionSession | undefined;
+  if (ctx.semantic) {
+    // Use the existing recorded controller clock for both deadlines and public
+    // latency. Offline replay must reproduce evidence, not its own wall time.
+    const now = ctx.clockNow ? () => ctx.clockNow!('repair') : Date.now;
+    const started = now();
+    decisionSession = new DecisionSession({ ...ctx.semantic, now, deadline: started + budget.remainingElapsedTimeSec() * 1000 });
+  }
   const fullContext = {
     ...(decisionSession ? { decisionSession } : {}),
     ...ctx, policy, llm: tracedLlm(ctx.llm, trace),
@@ -1445,6 +1453,9 @@ async function repairFailureWithinBudget(
         maximumDepth: searchLimits.maximumDepth,
         maximumTotalBranches: Math.min(searchLimits.maximumTotalBranches, budget.limits.branches),
         availableBranches,
+        ...(fullContext.decisionSession && fullContext.decisionSession.options.config.modes.ranking !== 'off' ? {
+          rankFrontier: (nodes: readonly SearchNode[]) => rankRepairFrontier(fullContext.decisionSession!, providerLog, nodes),
+        } : {}),
         ...(ctx.verificationAllowance === undefined ? {} : {
           singleFinalVerification: true,
           onProvisional: ({ expansion }: { expansion: import('./engine/search.js').SearchExpansion }) => {
