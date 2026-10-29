@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
 import { expect, it } from 'vitest';
 import { explainEvidence, navigatorRequest, parseEvidenceCase, type DecisionEvidence, type FailureClass, type TypeSafeQuestion } from '@sutura/core';
-import { createJevManifest, jevManifestHash, type JevCase } from './jev-manifest.js';
+import { createJevManifest, jevManifestHash, JEV_QUESTION_VERSIONS, type JevCase } from './jev-manifest.js';
 import { compareJevDecisions, type JevObservation } from './jev-decisions.js';
 
 interface Golden { id: string; class: FailureClass; diagnostic: string; query: string }
@@ -38,11 +38,11 @@ it('measures the actual provider-free lexical navigator on 30 independently labe
         if (negative) { expect(answer.status).toBe('no-match'); expect(ids).toEqual([]); }
         else { expect(answer.status).toBe('matched'); expect(ids).toContain(target!.id); }
         const choices = Object.entries(request.questions).filter(([, question]) => question.type === 'choice').map(([questionId]) => questionId);
-        expect(choices).toEqual(['first', 'second', 'third']); expect(request.questions.applicable).toMatchObject({ type: 'noul' });
-        const baselineLabels: Record<string, string | boolean> = { applicable: ids.length > 0, first: ids[0] ?? 'none', second: ids[1] ?? 'none', third: ids[2] ?? 'none' };
-        const labels: Record<string, string | boolean> = negative ? { applicable: false } : { applicable: true, first: target!.id, second: 'none', third: 'none' };
+        expect(choices).toEqual(['first']); expect(request.questions.applicable).toMatchObject({ type: 'noul' });
+        const baselineLabels: Record<string, string | boolean> = { applicable: ids.length > 0, first: ids[0] ?? 'none' };
+        const labels: Record<string, string | boolean> = negative ? { applicable: false } : { applicable: true, first: target!.id };
         expect((request.questions.first as Extract<TypeSafeQuestion, { type: 'choice' }>).criteria).toHaveProperty('none');
-        if (repetition === 0) cases.push({ id, family: golden.id, role: 'navigator', split: 'evaluation', category: 'synthetic', variant: negative ? 'negative' : 'positive', questionVersion: 'navigator-v1', state: request.state, questions: request.questions, candidateIds: request.candidateIds, baselineIds: request.baselineIds, labels });
+        if (repetition === 0) cases.push({ id, family: golden.id, role: 'navigator', split: 'evaluation', category: 'synthetic', variant: negative ? 'negative' : 'positive', questionVersion: JEV_QUESTION_VERSIONS.navigator, state: request.state, questions: request.questions, candidateIds: request.candidateIds, baselineIds: request.baselineIds, labels });
         observedLabels.set(`${id}/${repetition}`, baselineLabels);
         measurements.push({ id, repetition, target: negative ? null : target!.id, ids, latencyMs, matched: negative ? !ids.length : ids.includes(target!.id) });
       }

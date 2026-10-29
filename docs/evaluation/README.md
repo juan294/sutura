@@ -155,7 +155,7 @@ Follow [contributor setup](../../README.md#contributor-setup) and the existing
 [offline replay commands](../../README.md#offline-replay). The documentation check
 is `node --test scripts/submission-contract.test.mjs`; run project typecheck,
 lint, tests, and build sequentially. These local checks do not measure live
-repair quality. Current publication evidence follows the [v0.4.1 release record](../release/v0.4.1-case-lab-record.md). The [v0.3.9 release evidence contract](../demo/sutura-v0.3.9-release-evidence-requirements.json#L1) remains historical.
+repair quality. Historical v0.4.1 publication evidence follows the [v0.4.1 release record](../release/v0.4.1-case-lab-record.md). The [v0.3.9 release evidence contract](../demo/sutura-v0.3.9-release-evidence-requirements.json#L1) remains historical.
 
 On refresh, review changed source bytes and update inspected references. Keep
 reviewed source, historical benchmark subject, and demo Action identity separate;

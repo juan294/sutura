@@ -131,15 +131,21 @@ function score(item: JevCase, arm: JevObservation['arm'], repetition: number, ob
   if (!row.correct) row.diagnostics.push('label-mismatch');
   if (item.role === 'navigator' && arm === 'assist' && e?.answers) {
     const candidateLabels = Object.values(item.labels).filter((value): value is string => typeof value === 'string' && value !== 'uncertain' && item.candidateIds.includes(value));
-    const proposed = e.suggested ?? Object.values(e.answers).filter(answer => answer.type === 'choice').flatMap(answer => answer.type === 'choice' ? Object.entries(answer.probabilities).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id) : []);
+    const proposed = e.suggested ?? Object.entries(e.answers).flatMap(([id, answer]) => {
+      if (answer.type !== 'choice') return [];
+      const question = item.questions[id];
+      // Only the actual selection is a result. Probability alternatives are not
+      // returned evidence, and a declared none sentinel is an explicit abstention.
+      return answer.choice === 'none' && question?.type === 'choice' && Object.hasOwn(question.criteria, 'none') ? [] : [answer.choice];
+    });
     row.unsupportedEvidence = proposed.some(id => !item.candidateIds.includes(id));
-    if (item.variant === 'negative') row.navigatorTop3 = row.correct && Object.values(item.labels).includes(false) && (e.suggested?.length ?? 0) === 0;
+    if (item.variant === 'negative') row.navigatorTop3 = row.correct && Object.values(item.labels).includes(false) && proposed.length === 0;
     else {
       const requiredNonselection=Object.entries(item.labels).filter(([id,expected])=>item.questions[id]?.type!=='choice'||typeof expected!=='string'||!item.candidateIds.includes(expected));
       const applicable=requiredNonselection.some(([id,expected])=>item.questions[id]?.type==='noul'&&expected===true&&labels![id]===true);
       row.navigatorTop3 = !row.uncertain && applicable && requiredNonselection.every(([id,expected])=>labels![id]===expected) && candidateLabels.length>0 && candidateLabels.every(id=>proposed.slice(0,3).includes(id));
     }
-    if(item.variant==='uncertain') row.navigatorTop3 = row.correct && row.uncertain && (e.suggested?.length??0)===0;
+    if(item.variant==='uncertain') row.navigatorTop3 = row.correct && row.uncertain && proposed.length===0;
     if (row.unsupportedEvidence) row.diagnostics.push('unsupported-evidence');
   }
   return row;

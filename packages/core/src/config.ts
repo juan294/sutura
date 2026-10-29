@@ -24,13 +24,13 @@ export const MAX_RACE_CANDIDATES = 10;
 export const MAX_STAGE_EVIDENCE_ENTRIES = 100;
 
 export interface Config {
-  /** Local CLI experiments only; absent preserves legacy behavior. */
+  /** Explicit CLI/Action experiments; absent preserves legacy behavior. */
   semantic?: SemanticConfig;
   nebiusApiKey: string;
   tavilyApiKey?: string;
   /** Optional veto-only second-opinion provider (GPT-6 Astra). Never the runtime model. */
   openaiApiKey?: string;
-  /** Optional veto-only calibrated audit provider (TypeSafe Jev). Never the runtime model. */
+  /** Optional TypeSafe Jev key for veto-only audit and explicit semantic roles. Never the runtime model. */
   typesafeApiKey?: string;
   contreeToken?: string;
   contreeProject?: string;

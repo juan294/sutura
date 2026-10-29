@@ -23,9 +23,11 @@ import {
   recordingOpenAiFetch,
   recordingTavilyFetch,
   recordingTypeSafeFetch,
+  semanticConfig,
   type Config,
   type ConfigEnvironment,
   type OrchestrationContext,
+  type SemanticPort,
 } from '@sutura/core';
 
 import { ActionTextArtifactPort, GitHubAdapter } from './github.js';
@@ -41,6 +43,7 @@ import { GitRepository } from './repository.js';
 import { recordingGitHubApi } from './replay-github.js';
 import { recordingRepositoryPort } from './replay-repository.js';
 import { createTerminalFailureEvidence, resolveActionIdentity } from './terminal-failure.js';
+import { createActionSemanticShadow } from './semantic-shadow.js';
 
 export interface RunActionDependencies {
   readAction(): ActionConfiguration;
@@ -93,6 +96,8 @@ export async function runAction(
       return;
     }
     const config = dependencies.loadConfiguration(action.environment);
+    const selectedSemantic = action.semantic === undefined ? undefined : semanticConfig(action.semantic, Boolean(config.typesafeApiKey));
+    if (action.mode === 'verify' && selectedSemantic) throw new ActionInputError('Jev role inputs require mode heal', action.requireFixed, action.runId, 'verify');
     if (!config.contreeToken || !config.contreeProject) {
       throw new Error('ConTree token and project are required by the GitHub Action');
     }
@@ -183,6 +188,24 @@ export async function runAction(
           ),
         } : {})
       : undefined;
+    let shadowCapture: SemanticPort['capture'];
+    if (selectedSemantic && Object.values(selectedSemantic.modes).includes('shadow')) {
+      try {
+        const shadow = await createActionSemanticShadow();
+        shadowCapture = shadow.capture;
+        core.setOutput('semantic-shadow-path', shadow.path);
+      } catch {
+        core.warning('Jev shadow capture could not be initialized; native decisions continue and shadow evidence is unavailable.');
+        shadowCapture = () => { throw new Error('Jev shadow capture unavailable'); };
+      }
+    }
+    const semantic = selectedSemantic === undefined ? undefined : {
+      config: selectedSemantic,
+      ...(Object.values(selectedSemantic.modes).includes('assist') ? { client: new TypeSafeClient({ apiKey: config.typesafeApiKey!, ledger: nebius.ledger, model: selectedSemantic.model }, recorder ? {
+        fetch: recordingTypeSafeFetch(recorder, globalThis.fetch as Parameters<typeof recordingTypeSafeFetch>[1]),
+      } : {}) } : {}),
+      ...(shadowCapture ? { capture: shadowCapture } : {}),
+    };
     let publicationSource: AuthenticatedSourceRun | undefined;
     let publishedPrNumber: number | undefined;
     const baseGithubApi = createGitHubApi(octokit, owner, repo, { ...(longVerification ? { sourceAttempt: longVerification.authority.actual.attempt } : {}), onSourceRun: source => {
@@ -250,6 +273,7 @@ export async function runAction(
       llm: nebius,
       ...(secondOpinion ? { secondOpinion } : {}),
       ...(typesafeAudit ? { typesafeAudit } : {}),
+      ...(semantic ? { semantic } : {}),
       cost: nebius.ledger,
       ...orchestrationOptions,
       ...(tavily ? { tavily } : {}),

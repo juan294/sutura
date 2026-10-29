@@ -173,3 +173,91 @@ it('does not present a successful retry as a fully known cost when its failed at
  const m=manifest(),rows=observations(m);rows[1]!.evidence!.unknownSpendUsd=.000005;
  const arm=compareJevDecisions(m,rows).roles[0]!.arms.assist;expect(arm.errors).toBe(0);expect(arm.totalCostUsd).toBeNull();expect(arm.unknownCost).toBe(1);expect(arm.knownCostUsd).toBeCloseTo(.0000126,9);
 });
+
+describe('navigator observed selection diagnostics', () => {
+  function navigator(variant: JevCase['variant'] = 'positive') {
+    const seed = manifest(1, 'navigator'), item = seed.cases[0]!;
+    const labels = variant === 'negative' ? { applies: false, selection: 'none' } : { applies: true, selection: 'gold' };
+    return createJevManifest({ controllerSha: seed.controllerSha, cases: [{ ...item, variant,
+      questions: { applies: item.questions.applies, selection: { type: 'choice', instructions: 'Which supplied excerpt addresses the query?', criteria: { gold: 'Relevant excerpt', other: 'Other excerpt', none: 'No applicable excerpt' } } },
+      candidateIds: ['gold', 'other'], baselineIds: ['gold'], labels, baselineLabels: labels,
+    }] });
+  }
+
+  function selected(m: JevManifest, id: 'gold' | 'other' | 'none') {
+    const rows = observations(m, true);
+    for (const row of rows) if (row.evidence) row.evidence.answers!.selection = {
+      type: 'choice', choice: id, confidence: .9,
+      probabilities: { gold: id === 'gold' ? .9 : .05, other: id === 'other' ? .9 : .05, none: id === 'none' ? .9 : .05 },
+    };
+    return rows;
+  }
+
+  it('does not label a declared none sentinel or low-ranked alternatives as unsupported selected evidence', () => {
+    const m = navigator(), result = compareJevDecisions(m, selected(m, 'gold'));
+    for (const row of result.perCase.filter(row => row.arm === 'assist')) {
+      expect(row.correct).toBe(true);
+      expect(row.navigatorTop3).toBe(true);
+      expect(row.unsupportedEvidence).toBe(false);
+      expect(row.diagnostics).not.toContain('unsupported-evidence');
+    }
+  });
+
+  it('does not reward a gold excerpt that was only an unselected probability alternative', () => {
+    const m = navigator(), result = compareJevDecisions(m, selected(m, 'other'));
+    for (const row of result.perCase.filter(row => row.arm === 'assist')) {
+      expect(row.correct).toBe(false);
+      expect(row.navigatorTop3).toBe(false);
+      expect(row.unsupportedEvidence).toBe(false);
+    }
+  });
+
+  it('accepts a declared none result on a negative query without inventing unsupported evidence', () => {
+    const m = navigator('negative'), result = compareJevDecisions(m, selected(m, 'none'));
+    for (const row of result.perCase.filter(row => row.arm === 'assist')) {
+      expect(row.correct).toBe(true);
+      expect(row.navigatorTop3).toBe(true);
+      expect(row.unsupportedEvidence).toBe(false);
+    }
+  });
+
+  it('keeps an explicitly suggested unknown evidence ID as an error and a qualification failure', () => {
+    const m = navigator(), rows = selected(m, 'gold');
+    rows[1]!.evidence!.suggested = ['unknown-action'];
+    const result = compareJevDecisions(m, rows), row = result.perCase.find(row => row.arm === 'assist')!;
+    expect(row.error).toBe(true);
+    expect(row.unsupportedEvidence).toBe(true);
+    expect(row.navigatorTop3).not.toBe(true);
+    expect(result.roles[0]!.failedCriteria).toContain('unsupported-evidence');
+  });
+
+  it('does not mistake an omitted suggestion list for no result when negative-query answers select evidence', () => {
+    const seed = navigator('negative'), item = seed.cases[0]!;
+    const m = createJevManifest({ controllerSha: seed.controllerSha, cases: [{ ...item, labels: { applies: false }, baselineLabels: { applies: false } }] });
+    const result = compareJevDecisions(m, selected(m, 'gold'));
+    for (const row of result.perCase.filter(row => row.arm === 'assist')) {
+      expect(row.correct).toBe(true);
+      expect(row.navigatorTop3).toBe(false);
+    }
+    expect(result.roles[0]!.failedCriteria).toContain('navigator-negative-returned-result');
+  });
+
+  it('distinguishes an unselected unknown option from an actually selected unsupported evidence ID', () => {
+    const seed = navigator(), item = seed.cases[0]!;
+    const m = createJevManifest({ controllerSha: seed.controllerSha, cases: [{ ...item,
+      questions: { ...item.questions, selection: { type: 'choice', instructions: 'Which supplied excerpt?', criteria: { gold: 'Gold excerpt', other: 'Other excerpt', none: 'No excerpt', unknown: 'Unsupplied option' } } },
+    }] });
+    const rows = selected(m, 'gold');
+    for (const row of rows) if (row.evidence) row.evidence.answers!.selection = {
+      type: 'choice', choice: 'gold', confidence: .9, probabilities: { gold: .9, unknown: .06, other: .02, none: .02 },
+    };
+    expect(compareJevDecisions(m, rows).perCase.find(row => row.arm === 'assist')!.unsupportedEvidence).toBe(false);
+    rows[1]!.evidence!.answers!.selection = {
+      type: 'choice', choice: 'unknown', confidence: .9, probabilities: { unknown: .9, gold: .06, other: .02, none: .02 },
+    };
+    const result = compareJevDecisions(m, rows), row = result.perCase.find(row => row.arm === 'assist')!;
+    expect(row.unsupportedEvidence).toBe(true);
+    expect(row.navigatorTop3).toBe(false);
+    expect(result.roles[0]!.failedCriteria).toContain('unsupported-evidence');
+  });
+});

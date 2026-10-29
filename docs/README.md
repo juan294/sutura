@@ -27,7 +27,7 @@
 
 ## Evidence and security
 
-- [Current release benchmark](demo/sutura-v0.4.1-release-benchmark-evidence.md):
+- [Latest measured release benchmark](demo/sutura-v0.4.1-release-benchmark-evidence.md):
   the v0.4.1 release commit, its complete 51-case denominator, and every
   retained failure.
 - [Development/validation measurement](demo/run-manifests/development-validation-v8-evidence.md):

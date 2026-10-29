@@ -2,7 +2,7 @@
 
 Sutura verifies AI-generated CI repairs before it opens a pull request.
 
-Version 0.4.1 starts with one repository assessment. Node.js 22 or later is required; assessment needs no provider account and never runs repository scripts.
+Version 0.5.0 starts with one repository assessment. Node.js 22 or later is required; assessment needs no provider account and never runs repository scripts.
 
 ```bash
 sutura assess . --json
@@ -23,7 +23,7 @@ Doctor distinguishes installed and desired Action versions and static/configured
 
 `upgrade` changes reviewed pins without replacing App wiring or unrelated jobs. `pause`, `resume` and `remove` use the same plan/apply contract; removal requires an unchanged wholly owned workflow and retains credentials/evidence. Activation only occurs after the workflow reaches the default branch. No setup command activates a workflow or runs a paid smoke test.
 
-Use `npx sutura@0.4.1` in place of `sutura` after publication. Release verification uses the packed candidate before registry publication; installing the package alone does not activate a consumer workflow.
+Use `npx sutura@0.5.0` in place of `sutura` after publication. Release verification uses the packed candidate before registry publication; installing the package alone does not activate a consumer workflow.
 
 Sutura handles pull request, push, scheduled, and manual CI failures. It records evidence on the pull request or failing commit and in one GitHub Check on the exact failing SHA.
 
@@ -58,9 +58,9 @@ provider, repository, or sandbox work starts.
 
 The current local source candidate adds `sutura explain --case-file <path> --query <text> [--json]` for completed case JSON. Build the checkout and use `node packages/cli/dist/bin.js explain` before publication; an installed older package does not establish delivery of this candidate. Lexical mode makes zero provider requests, returns up to three original redacted excerpts with exact JSON locators, and never scans or executes repository source. Files must be stable regular JSON, at most 4 MiB; queries are limited to 2 KiB. Symlink/replacement, malformed recognized fields and unsupported schemas return invalid-input with a correction.
 
-`--semantic --max-usd 0.002` explicitly sends the redacted query and bounded evidence candidates to TypeSafe using the existing `TYPESAFE_API_KEY`; stderr discloses that transmission even with `--json`. The positive cap must be at most USD 0.002. One pinned `jev-1.14.0` request selects supplied IDs, with no retry or generated explanation. Missing key, uncertain/malformed answers and provider failure retain labeled lexical fallback when available. Status/exit pairs are `matched`/0, `no-match`/0, `unavailable`/1 and `invalid-input`/2. Old missing assurance stays unavailable, and file-supplied actions cannot become executable commands.
+`--semantic --max-usd 0.002` explicitly sends the redacted query and bounded evidence candidates to TypeSafe using the existing `TYPESAFE_API_KEY`; stderr discloses that transmission even with `--json`. The positive cap must be at most USD 0.002. One pinned `jev-1.14.0` request checks applicability and selects at most one best supplied evidence block, with no retry or generated explanation. Missing key, uncertain/malformed answers and provider failure retain labeled lexical fallback when available. Status/exit pairs are `matched`/0, `no-match`/0, `unavailable`/1 and `invalid-input`/2. Old missing assurance stays unavailable, and file-supplied actions cannot become executable commands.
 
-Local `heal` can select `--jev-ranking`, `--jev-grounding`, `--jev-classification` or `--jev-recovery` as `off|shadow|assist`, with a shared `--jev-budget-usd` cap at most 0.02 and an existing key for nonoff modes. Defaults are all off. Shadow captures bounded redacted local comparison inputs without inline inference; assist changes only the bounded selection. Neither changes executable admission, grants, final verification or hosted defaults. Quality/performance qualification is separate; see [local Jev evaluation](../../docs/evaluation/jev-decisions.md).
+Local `heal` can select `--jev-ranking`, `--jev-grounding`, `--jev-classification` or `--jev-recovery` as `off|shadow|assist`, with a shared `--jev-budget-usd` cap at most 0.02 and an existing key for nonoff modes. Defaults are all off. Shadow captures bounded redacted local comparison inputs without inline inference; assist changes only the bounded selection. Neither changes executable admission, grants, final verification or hosted defaults. Semantic recovery selects at most one existing validated hypothesis; the native fallback retains its at-most-two limit. Quality/performance qualification is separate; see [local Jev evaluation](../../docs/evaluation/jev-decisions.md).
 
 Read the complete [user guide](../../docs/user-guide.md) for credentials,
 first-run behavior, upgrades, disabling, removal, and troubleshooting. The

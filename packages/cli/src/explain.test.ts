@@ -132,11 +132,11 @@ it('sends redacted query and evidence without transmitting raw report or query c
 }));
 
 
-it.each(['duplicate', 'missing', 'foreign'] as const)('returns labeled lexical fallback for %s semantic evidence IDs', kind => fixture(async path => {
+it.each(['extra', 'missing', 'foreign'] as const)('returns labeled lexical fallback for %s semantic evidence IDs', kind => fixture(async path => {
  const baseline = await explainFromFile(request(path));
  const fetch = semanticFetch(answers => {
-  if (kind === 'duplicate') answers.second = structuredClone(answers.first!);
-  if (kind === 'missing') delete answers.third;
+  if (kind === 'extra') answers.second = structuredClone(answers.first!);
+  if (kind === 'missing') delete answers.first;
   if (kind === 'foreign') { const first = answers.first; if (first?.type === 'choice') first.choice = 'foreign-evidence-id'; }
  });
  const answer = await explainFromFile(request(path, { semantic: true, maxUsd: .002 }), { env: { TYPESAFE_API_KEY: 'existing-key' }, fetch, writeError: () => {} });

@@ -12,7 +12,7 @@ function sameHypothesis(left: RecoveryHypothesis, right: RecoveryHypothesis): bo
   return left.class === right.class && left.intent === right.intent && left.path === right.path && left.sourceSha256 === right.sourceSha256 && left.signal === right.signal && left.probeId === right.probeId;
 }
 
-/** Selects existing validator-approved proposals; it neither reads sources nor grants authority. */
+/** Selects at most one existing validator-approved proposal; it neither reads sources nor grants authority. */
 export async function chooseRecovery(
   session: DecisionSession,
   context: Context,
@@ -51,12 +51,11 @@ export async function chooseRecovery(
   }
   const criteria = Object.fromEntries([
     ...eligible.map(option => [option.id, `${option.hypothesis.intent} for supplied source ${option.hypothesis.path}, observed signal ${option.hypothesis.signal}, existing probe ${option.hypothesis.probeId}`]),
-    ['none', 'No additional supplied recovery hypothesis is supported by the evidence.'],
+    ['none', 'None of the supplied recovery hypotheses is supported by the evidence.'],
   ]);
   const questions: Record<string, TypeSafeQuestion> = {
     applicable: { type: 'noul', instructions: 'Does the supplied observed failure and complete source evidence support evaluating these narrow recovery alternatives?' },
     first: { type: 'choice', instructions: 'Which supplied recovery hypothesis is best supported by the observed failure and complete source evidence?', criteria },
-    second: { type: 'choice', instructions: 'Which distinct supplied recovery hypothesis is also supported by the observed failure and complete source evidence?', criteria },
   };
   const state = {
     signals: context.signals,
@@ -68,10 +67,10 @@ export async function chooseRecovery(
   const inputIssue = tooMany || baselineInvalid ? 'invalid-candidates' : eligible.length === 0 || mode === 'shadow' && baseline === undefined ? 'missing-evidence' : undefined;
   const evidence = await session.judge('recovery', state, questions, baseline === undefined ? 'existing-recovery-unmeasured' : 'existing-recovery-retained', candidateIds, baselineInvalid ? [] : baselineIds, inputIssue);
   if (mode === 'shadow' || evidence.outcome !== 'answered' || !evidence.answers) return undefined;
-  const first = choice(evidence.answers.first), second = choice(evidence.answers.second);
+  const first = choice(evidence.answers.first);
   const invalid = () => { evidence.outcome = 'uncertain'; evidence.reason = 'invalid-recovery-selection'; return undefined; };
-  if (noul(evidence.answers.applicable) !== true || first === undefined || second === undefined || first === 'none' && second !== 'none' || first !== 'none' && first === second) return invalid();
-  const ids = [first, second].filter(id => id !== 'none');
+  if (noul(evidence.answers.applicable) !== true || first === undefined) return invalid();
+  const ids = first === 'none' ? [] : [first];
   const selected = ids.map(id => eligible.find(option => option.id === id));
   if (selected.some(option => option === undefined)) return invalid();
   try {
