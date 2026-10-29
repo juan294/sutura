@@ -308,7 +308,7 @@ before enabling Sutura on confidential source.
 
 ## Install Sutura
 
-Version 0.5.0 adds opt-in Jev decision roles and local evidence navigation to repository assessment, guided setup and evidence-qualified recovery. Use the packed candidate during release verification; after publication, install `npx sutura@0.5.0` or `brew install juan294/tap/sutura`. The historical v0.4.1 benchmark above is not a measurement of this candidate.
+Version 0.5.0 includes repository assessment, guided setup and evidence-qualified recovery, plus opt-in Jev decision roles and local evidence navigation. Use the packed candidate during release verification; after publication, install `npx sutura@0.5.0` or `brew install juan294/tap/sutura`. The historical v0.4.1 benchmark above is not a measurement of this candidate.
 
 Start from one repository clone with Node.js 22 or later. Assessment needs no provider account, GitHub authentication, source upload or script execution:
 

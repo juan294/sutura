@@ -123,8 +123,8 @@ __pycache__/
 .sutura/placebo-v0.4.0-live-artifacts/
 .sutura/placebo-v0.4.0-failed-runs/
 
-# Local 0.4.1 benchmark evidence remains private.
-.sutura/placebo-v0.4.1-*
+# Versioned local benchmark evidence remains private.
+.sutura/placebo-v*-*
 
 # Opt-in local semantic evaluation inputs contain redacted repository context.
 .sutura-controller/semantic-shadow.jsonl

@@ -1,3 +1,4 @@
+import { RELEASE_VERSION } from './install-test-lib.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -165,7 +166,7 @@ test('dogfood gate in release mode proves main reachability, a main push CI run 
       throw new Error(`unexpected gh api: ${endpoint}`);
     },
   }, { branch: 'main', candidate: RELEASE_SHA });
-  await assert.doesNotReject(() => gateDogfood(RELEASE_SHA, dependencies, { branch: 'main', releaseVersion: '0.4.1' }));
+  await assert.doesNotReject(() => gateDogfood(RELEASE_SHA, dependencies, { branch: 'main', releaseVersion: RELEASE_VERSION }));
   assert.equal(output.filter((line) => line.startsWith('PASS')).length, 7);
   assert.ok(output.some((line) => line.startsWith('PASS origin-main:')));
   assert.ok(output.some((line) => line.startsWith('PASS main-ci:')));
@@ -184,7 +185,7 @@ test('dogfood gate in release mode fails independently on main reachability, mai
         throw new Error(`unexpected gh api: ${endpoint}`);
       },
     }, { branch: 'main', candidate: RELEASE_SHA });
-    await assert.rejects(() => gateDogfood(RELEASE_SHA, dependencies, { branch: 'main', releaseVersion: '0.4.1' }), /gate failed/u);
+    await assert.rejects(() => gateDogfood(RELEASE_SHA, dependencies, { branch: 'main', releaseVersion: RELEASE_VERSION }), /gate failed/u);
     assert.match(output.join(''), /origin\/main does not contain/u);
   }
 
@@ -200,7 +201,7 @@ test('dogfood gate in release mode fails independently on main reachability, mai
         throw new Error(`unexpected gh api: ${endpoint}`);
       },
     }, { branch: 'main', candidate: RELEASE_SHA });
-    await assert.rejects(() => gateDogfood(RELEASE_SHA, dependencies, { branch: 'main', releaseVersion: '0.4.1' }), /gate failed/u);
+    await assert.rejects(() => gateDogfood(RELEASE_SHA, dependencies, { branch: 'main', releaseVersion: RELEASE_VERSION }), /gate failed/u);
     assert.match(output.join(''), /missing successful main push CI/u);
   }
 
@@ -213,7 +214,7 @@ test('dogfood gate in release mode fails independently on main reachability, mai
       },
     }, { branch: 'main', candidate: RELEASE_SHA });
     await assert.rejects(() => gateDogfood(RELEASE_SHA, dependencies, { branch: 'main', releaseVersion: '0.3.10' }), /gate failed/u);
-    assert.match(output.join(''), /RELEASE_VERSION is 0\.4\.1 but the release tag names 0\.3\.10/u);
+    assert.ok(output.join('').includes(`RELEASE_VERSION is ${RELEASE_VERSION} but the release tag names 0.3.10`));
   }
 });
 

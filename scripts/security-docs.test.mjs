@@ -28,7 +28,8 @@ test('security docs distinguish ZDR inference from explicit Data Lab retention',
   assert.ok(readme.includes(`test-public-install.mjs --release ${version}`));
   assert.match(readme, /After publication, `node scripts\/test-public-install\.mjs/u);
   assert.ok(readme.includes(`Version ${version} includes repository assessment`));
-  assert.match(readme, /Its release benchmark is recorded above/u);
+  assert.match(readme, /historical v0\.4\.1 benchmark above is not a measurement of this candidate/u);
+  assert.doesNotMatch(readme, /Its release benchmark is recorded above/u);
   assert.match(readme, /docs\/demo\/sutura-v0\.4\.1-release-benchmark-evidence\.md/u);
   assert.match(await readFile('docs/adoption/ws-3-marketplace-checklist.md', 'utf8'),
     /MARKETPLACE-INSTALL-CONFIRMED/u);

@@ -1,3 +1,4 @@
+import { RELEASE_VERSION } from './install-test-lib.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -31,7 +32,7 @@ function artifact(definition, mode = 'candidate', overrides = {}) {
     expectedOutcome: definition.expectedOutcome,
     actualOutcome: definition.expectedOutcome,
     auditApproved: ['fixed', 'audit-approved'].includes(definition.expectedOutcome),
-    packageVersion: '0.4.1',
+    packageVersion: RELEASE_VERSION,
     packageMode: mode,
     packageContentHash: PACKAGE_HASH,
     actionCommit: ACTION_SHA,
