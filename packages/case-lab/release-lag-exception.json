@@ -1,0 +1,6 @@
+{
+  "tag": "v0.5.0",
+  "reason": "Publish the v0.5.0 CLI and Action now; defer the 51-case Case Lab benchmark refresh and deployment for seven days to keep this release lean. The hosted demo retains its labeled v0.4.1 evidence.",
+  "approvedBy": "Juan Gonzalez, repository owner; explicit approval in the release conversation on 2026-10-29",
+  "expires": "2026-11-05T13:02:35Z"
+}
