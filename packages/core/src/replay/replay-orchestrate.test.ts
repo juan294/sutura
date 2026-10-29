@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   capturedDogfoodReplayBundle,
@@ -101,28 +101,33 @@ describe('replayBundle', () => {
     }
   }, 30_000);
 
-  it.each(['assist', 'shadow'] as const)('replays enabled %s grounding with original provenance and selected prompt sources', async mode => {
-    const bundle = await createAuditPathReplayBundleForTest(false, undefined, mode);
-    expect(bundle.configuration.semantic?.modes.grounding).toBe(mode);
-    const result = await replayBundle(bundle);
-    expect(result.caseFile.outcome).toBe('fixed');
-    expect(result.caseFile.diagnosis.grounding?.selection?.originals).toHaveLength(2);
-    expect(result.caseFile.diagnosis.grounding?.citations).toHaveLength(mode === 'assist' ? 1 : 2);
-    expect(result.caseFile.semanticDecisions?.records[0]).toMatchObject({ role: 'grounding', mode, latencyMs: expect.any(Number) });
-    expect(result.caseFile.semanticDecisions?.records[0]?.latencyMs).toBeGreaterThanOrEqual(20);
-    expect(result.caseFile.semanticDecisions?.budget).toEqual(bundle.configuration.semanticBudget);
-  }, 30_000);
-  it.each(['assist', 'shadow'] as const)('replays enabled %s ranking and its delayed timing through full orchestration', async mode => {
-    const bundle = await createAuditPathReplayBundleForTest(false, mode);
-    expect(bundle.configuration.semantic?.modes.ranking).toBe(mode);
-    expect(bundle.http.filter(exchange => exchange.boundary === 'typesafe')).toHaveLength(mode === 'assist' ? 2 : 1);
-    const result = await replayBundle(bundle);
-    expect(result.caseFile.outcome).toBe('fixed');
-    expect(result.caseFile.search?.[2]?.parentNodeId).toBe(mode === 'assist' ? 'search-002' : 'search-001');
-    expect(result.caseFile.semanticDecisions?.records[0]).toMatchObject({ role: 'ranking', mode, latencyMs: expect.any(Number) });
-    expect(result.caseFile.semanticDecisions?.records[0]?.latencyMs).toBeGreaterThanOrEqual(20);
-    expect(result.caseFile.semanticDecisions?.budget).toEqual(bundle.configuration.semanticBudget);
-  }, 30_000);
+  describe('recorded semantic timing', () => {
+    beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it.each(['assist', 'shadow'] as const)('replays enabled %s grounding with original provenance and selected prompt sources', async mode => {
+      const bundle = await createAuditPathReplayBundleForTest(false, undefined, mode);
+      expect(bundle.configuration.semantic?.modes.grounding).toBe(mode);
+      const result = await replayBundle(bundle);
+      expect(result.caseFile.outcome).toBe('fixed');
+      expect(result.caseFile.diagnosis.grounding?.selection?.originals).toHaveLength(2);
+      expect(result.caseFile.diagnosis.grounding?.citations).toHaveLength(mode === 'assist' ? 1 : 2);
+      expect(result.caseFile.semanticDecisions?.records[0]).toMatchObject({ role: 'grounding', mode, latencyMs: expect.any(Number) });
+      expect(result.caseFile.semanticDecisions?.records[0]?.latencyMs).toBeGreaterThanOrEqual(20);
+      expect(result.caseFile.semanticDecisions?.budget).toEqual(bundle.configuration.semanticBudget);
+    }, 30_000);
+    it.each(['assist', 'shadow'] as const)('replays enabled %s ranking and its delayed timing through full orchestration', async mode => {
+      const bundle = await createAuditPathReplayBundleForTest(false, mode);
+      expect(bundle.configuration.semantic?.modes.ranking).toBe(mode);
+      expect(bundle.http.filter(exchange => exchange.boundary === 'typesafe')).toHaveLength(mode === 'assist' ? 2 : 1);
+      const result = await replayBundle(bundle);
+      expect(result.caseFile.outcome).toBe('fixed');
+      expect(result.caseFile.search?.[2]?.parentNodeId).toBe(mode === 'assist' ? 'search-002' : 'search-001');
+      expect(result.caseFile.semanticDecisions?.records[0]).toMatchObject({ role: 'ranking', mode, latencyMs: expect.any(Number) });
+      expect(result.caseFile.semanticDecisions?.records[0]?.latencyMs).toBeGreaterThanOrEqual(20);
+      expect(result.caseFile.semanticDecisions?.budget).toEqual(bundle.configuration.semanticBudget);
+    }, 30_000);
+  });
   it('rejects a partial bundle before constructing replay dependencies', async () => {
     await expect(replayBundle(baseBundle())).rejects.toThrow(
       'bundle is partial; complete provider, repository, and sandbox recordings are required',
