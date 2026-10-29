@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import type {
   AuditVerdict,
+  AuditCheckMetadata,
   Candidate,
   CaseFile,
   CostLedger,
@@ -32,6 +33,7 @@ describe('domain model', () => {
     expectTypeOf<Grounding>().toEqualTypeOf<{
       query: string;
       citations: Array<{ title: string; url: string; snippet: string }>;
+      selection?: import('./decisions/grounding-evidence.js').GroundingSelection;
       skipped: boolean;
       reason?: 'disabled' | 'not-applicable';
     }>();
@@ -66,6 +68,7 @@ describe('domain model', () => {
       imageId: string;
       nodeId: string;
       exitCode: number;
+      processState?: { timedOut?: boolean; signal?: number };
       held: boolean;
       note?: string;
     }>();
@@ -91,6 +94,7 @@ describe('domain model', () => {
         name: GreenwashCheck;
         passed: boolean;
         evidence?: string;
+        metadata?: AuditCheckMetadata;
       }>;
       reasoning: string;
     }>();
@@ -106,6 +110,7 @@ describe('domain model', () => {
       totalUsd(): number;
     }>();
     expectTypeOf<CaseFile>().toEqualTypeOf<{
+      controllerWallTimeSec?: number;
       runId: string;
       repo: string;
       runtime: 'node' | 'python';
@@ -131,6 +136,7 @@ describe('domain model', () => {
       verificationRuns?: import('./verification/runtime-evidence.js').RuntimeCandidateEvidence[];
       challengePreparation?: import('./challenges/runtime.js').ChallengePreparationDiagnostics;
       recovery?: import('./diagnose/hypotheses.js').DiagnosisRecoveryEvidence;
+      semanticDecisions?: NonNullable<CaseFile['semanticDecisions']>;
       selectedCandidate?: {
         id: string;
         diffHash: string;

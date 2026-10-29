@@ -1,3 +1,4 @@
+import { authorizedOperationTimeout } from '../engine/verification-allowance.js';
 import type {
   CancellationResult,
   Executor,
@@ -179,10 +180,15 @@ export class RecordedExecutor implements Executor {
   }
 
   run(parent: ImageId, cmd: string, options?: RunOptions): Promise<RunResult> {
+    if (options?.verificationPermit) authorizedOperationTimeout(options.verificationPermit, parent, cmd, options.timeoutSec ?? 0);
     return this.ordered<RunResult>('run', [parent, cmd, options ?? null]);
   }
 
   runMany(parent: ImageId, commands: string[], options?: RunOptions): Promise<RunResult[]> {
+    if (options?.verificationPermit) {
+      if (commands.length !== 1) throw new Error('Final verification permits one full command');
+      authorizedOperationTimeout(options.verificationPermit, parent, commands[0]!, options.timeoutSec ?? 0);
+    }
     return this.ordered<RunResult[]>('runMany', [parent, commands, options ?? null]);
   }
 

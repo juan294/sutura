@@ -1,3 +1,4 @@
+import { processSucceeded } from '../executor/types.js';
 import { Buffer } from 'node:buffer';
 
 import type {
@@ -553,7 +554,7 @@ export async function generateCandidates(
     },
     {
       role: 'user' as const,
-      content: JSON.stringify(redactExternalJsonValue({ diagnosis, sourceContext })),
+      content: JSON.stringify(redactExternalJsonValue({ diagnosis: diagnosisForRepairPrompt(diagnosis), sourceContext })),
     },
   ]);
   const options = {
@@ -624,6 +625,7 @@ export async function race(
   candidates: readonly Candidate[],
   failingCmd: string,
   observe?: (result: RunResult, attempt: number) => string,
+  testRunOptions?: { cwd: string; timeoutSec: number },
 ): Promise<RaceResult[]> {
   if (candidates.length > MAX_RACE_CANDIDATES) {
     throw new RangeError(
@@ -641,15 +643,16 @@ export async function race(
   for (const [index, patch] of applied.entries()) {
     // Visible commands may mutate their child image. All subsequent audit gates
     // must start from the immutable applied source, never those side effects.
-    const tested = patch.exitCode === 0
-      ? await executor.run(patch.imageId, `sh -lc ${shellQuote(failingCmd)}`, { cwd: SNAPSHOT_CWD, network: 'disabled' })
+    const tested = processSucceeded(patch)
+      ? await executor.run(patch.imageId, `sh -lc ${shellQuote(failingCmd)}`, { cwd: SNAPSHOT_CWD, ...testRunOptions, network: 'disabled' })
       : patch;
     results.push({
       candidate: candidates[index] as Candidate,
       imageId: patch.imageId,
       nodeId: observe?.(tested, index + 1) ?? `candidate-${index + 1}`,
       exitCode: tested.exitCode,
-      held: patch.exitCode === 0 && tested.exitCode === 0,
+      ...(tested.processState === undefined ? {} : { processState: tested.processState }),
+      held: processSucceeded(patch) && processSucceeded(tested),
     });
   }
   return results;
@@ -672,3 +675,4 @@ export function selectWinner(results: readonly RaceResult[]): RaceResult | null 
 
   return winner;
 }
+import { diagnosisForRepairPrompt } from '../decisions/grounding-prompt.js';

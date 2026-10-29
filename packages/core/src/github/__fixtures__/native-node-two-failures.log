@@ -1,0 +1,24 @@
+Run node scripts/test-select.mjs run terminal:rest
+✖ SET-01 storage recovery keeps priority at 24x10 (20826.899229ms)
+✔ SET-01 storage recovery keeps priority at 45x24 (11182.024819ms)
+✖ CLOCK-01 future source clock renders Cached without fabricated age (5593.730443ms)
+ℹ tests 194
+ℹ suites 0
+ℹ pass 192
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1521500
+
+✖ failing tests:
+
+test at test/terminal/storage.test.mjs:203:3
+✖ SET-01 storage recovery keeps priority at 24x10 (20826.899229ms)
+  AssertionError [ERR_ASSERTION]: Error: UI barrier timed out: ()=>screen().includes("No workflows found")
+      at TestContext.<anonymous> (file:///workspace/test/terminal/storage.test.mjs:220:10)
+
+test at test/terminal/clock.test.mjs:270:3
+✖ CLOCK-01 future source clock renders Cached without fabricated age (5593.730443ms)
+  AssertionError [ERR_ASSERTION]: expected a real Cached footer after successful observation
+      at TestContext.<anonymous> (file:///workspace/test/terminal/clock.test.mjs:280:10)

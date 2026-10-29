@@ -1,6 +1,6 @@
 # Sutura user guide
 
-This guide covers Sutura 0.4.1. Use the packed candidate during release verification and `npx sutura@0.4.1` after publication. Sutura is in public beta, and Nebius ConTree access remains an access-controlled prerequisite.
+This guide covers Sutura 0.5.0. Use the packed candidate during release verification and `npx sutura@0.5.0` after publication. Sutura is in public beta, and Nebius ConTree access remains an access-controlled prerequisite.
 
 ## Requirements
 
@@ -219,3 +219,12 @@ Use `upgrade --plan` to inspect minimal pin changes. Resolve the displayed three
 Report reproducible defects through the repository's
 [GitHub issues](https://github.com/juan294/sutura/issues). Report security
 problems privately as described in [SECURITY.md](../SECURITY.md).
+
+
+## Optional Jev decision roles
+
+The CLI healing flags `--jev-ranking`, `--jev-grounding`, `--jev-classification` and `--jev-recovery` and matching Action inputs accept `off`, `shadow` or `assist`. All default to off. Nonoff modes require the existing TypeSafe key and an explicit positive shared `--jev-budget-usd` / `jev-budget-usd` limit, at most USD 0.02 per repair. This Jev-only limit does not cap generation or sandbox charges. Existing execution, source, audit and human approval rules still apply.
+
+Shadow captures private redacted comparison inputs without making inline semantic calls; Action output `semantic-shadow-path` names its runner-local file. Capture failure is visible and retains native repair choices. Assist uses only validated supplied choices and retains the native fallback when uncertain, malformed, over budget or unavailable. Recovery can select one supplied validated hypothesis; its native fallback can still investigate up to two.
+
+For a completed local case, `sutura explain --case-file packages/case-lab/src/__fixtures__/live-36975022285-python-repair-fixed-case-file.json --query "coroutine assertion"` selects up to three original excerpts without network. Explicit `--semantic --max-usd 0.002` uses one TypeSafe request to check applicability and select one best supplied excerpt. It never executes a repair or generates a causal explanation. See the [Jev evaluation guide](evaluation/jev-decisions.md) for data transmission, provenance and quality limitations. The modes being implemented and tested does not establish live repair improvements or authorize default activation.

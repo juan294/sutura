@@ -50,6 +50,7 @@ export interface RepairAgentContext {
   policy: RepositoryPolicy;
   budget: RepairBudget;
   trustedCommands: Readonly<Record<string, string>>;
+  testRunOptions?: Readonly<Record<string, { cwd: string; timeoutSec: number }>>;
   sourceContext: RepairSourceContext;
   /** Decides how a related-source pair resolves an import; defaults to Node. */
   runtimeId?: RuntimeId;
@@ -65,7 +66,7 @@ export interface RepairAgentContext {
 
 function initialMessages(ctx: RepairAgentContext): ChatMessage[] {
   const evidence = redactExternalJsonValue({
-    diagnosis: ctx.diagnosis,
+    diagnosis: diagnosisForRepairPrompt(ctx.diagnosis),
     initialSources: ctx.sourceContext.sources,
     trustedCommandIds: Object.keys(ctx.trustedCommands),
   });
@@ -176,6 +177,7 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
     policy: ctx.policy,
     budget: ctx.budget,
     trustedCommands: ctx.trustedCommands,
+    ...(ctx.testRunOptions === undefined ? {} : { testRunOptions: ctx.testRunOptions }),
     sourceContext: ctx.sourceContext,
     ...(ctx.authorization === undefined ? {} : { authorization: ctx.authorization }),
     ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
@@ -385,3 +387,4 @@ export async function runRepairAgent(ctx: RepairAgentContext): Promise<RepairAge
     }
   }
 }
+import { diagnosisForRepairPrompt } from '../decisions/grounding-prompt.js';

@@ -14,6 +14,24 @@ const CONFIG = {
 } as const;
 
 describe('ReplayRecorder', () => {
+  it('marks new report presentation while leaving old serialized configuration absent', () => {
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+    expect(recorder.finish('gave-up').configuration.auditPresentation).toBe('typed-status-v1');
+    expect(CONFIG).not.toHaveProperty('auditPresentation');
+  });
+
+  it('retains exact opt-in semantic configuration and final bounded budget without changing legacy recordings', () => {
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+    const semantic = { schemaVersion: 'sutura-semantic-config-v1' as const, model: 'jev-1.14.0' as const, policyVersion: 'semantic-v1' as const, maxUsd: 0.01, modes: { ranking: 'shadow' as const, grounding: 'off' as const, classification: 'off' as const, recovery: 'off' as const } };
+    recorder.recordSemanticConfiguration(semantic);
+    const budget = { maxUsd: 0.01, attempts: 1, reservedUsd: 0.001, actualUsd: 0.0001 };
+    recorder.recordSemanticBudget(budget);
+    const bundle = recorder.finish('gave-up');
+    expect(bundle.configuration.semantic).toEqual(semantic);
+    expect(bundle.configuration.semanticBudget).toEqual(budget);
+    expect(new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG).finish('gave-up').configuration).not.toHaveProperty('semantic');
+  });
+
   it('bounds bodies, strips sensitive headers, and redacts injected secrets', () => {
     const recorder = new ReplayRecorder(
       '77001',

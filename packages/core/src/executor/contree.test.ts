@@ -253,6 +253,45 @@ describe('ContreeExecutor', { timeout: 30_000 }, () => {
         .rejects.toThrow(new RegExp(`${status}: synthetic detail`, 'u'));
     },
   );
+  it('tags positive provider ENOSPC at the FAILED operation boundary without retrying', async () => {
+    const operation = await fixture('operation-provider-disk-exhausted.json');
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({}, 201, { Location: '/sandboxes/v1/operations/disk-operation' }))
+      .mockResolvedValueOnce(jsonResponse(operation));
+    const executor = new ContreeExecutor(config(fetch));
+    await expect(executor.run('parent', 'true', { operationId: 'caller-operation' })).rejects.toMatchObject({
+      name: 'ContreeError', code: 'provider-disk-exhausted', stage: 'provider-operation',
+      details: { providerOperationId: 'disk-operation' },
+      message: expect.stringContaining("RemoteCallError('OSError', '28', 'No space left on device (os error 28)')"),
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(executor.completions).toEqual([{ operationId: 'caller-operation', terminal: 'failed', cancellationRequested: false }]);
+    const recovered = new ContreeExecutor(config(vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({}, 201, { Location: '/sandboxes/v1/operations/recovered-operation' }))
+      .mockResolvedValueOnce(jsonResponse(await fixture('operation-success.json')))));
+    await expect(recovered.run('parent', 'true')).resolves.toMatchObject({ exitCode: 0 });
+  });
+
+  it.each([
+    ['FAILED', 'No space left on device (os error 28)'],
+    ['FAILED', "remote log mentions RemoteCallError('OSError', '28', 'No space left on device (os error 28)')"],
+    ['FAILED', "RemoteCallError('OSError', '29', 'No space left on device (os error 28)')"],
+    ['FAILED', "RemoteCallError('RuntimeError', '28', 'No space left on device (os error 28)')"],
+    ['CANCELLED', "RemoteCallError('OSError', '28', 'No space left on device (os error 28)')"],
+  ])('keeps generic or lookalike %s provider errors untyped', async (status, error) => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({}, 201, { Location: '/sandboxes/v1/operations/generic' }))
+      .mockResolvedValueOnce(jsonResponse({ status, error }));
+    await expect(new ContreeExecutor(config(fetch)).run('parent', 'true')).rejects.toMatchObject({
+      code: undefined, stage: undefined, details: undefined,
+      message: `ConTree operation ended with ${status}: ${error}`,
+    });
+  });
+
+  it('preserves the ContreeError positional constructor contract', () => {
+    expect(new ContreeError('legacy', 429, 'original body')).toMatchObject({ message: 'legacy', status: 429, body: 'original body' });
+  });
+
   it('maps run options to the documented request and decodes the result fixture', async () => {
     const pending = await fixture('operation-pending.json');
     const success = await fixture('operation-success.json');
@@ -301,6 +340,7 @@ describe('ContreeExecutor', { timeout: 30_000 }, () => {
     expect(result).toEqual({
       imageId: 'image-child',
       exitCode: 0,
+      processState: { timedOut: false },
       stdout: 'hello\n',
       stderr: 'warning\n',
       truncated: true,
@@ -1376,4 +1416,23 @@ describe('repository overlay shell contract', () => {
       }
     },
   );
+});
+it('checks the protected reviewed account limit before long execution without creating an operation', async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>(async () => jsonResponse({ limits: { reviewed_timeout_limit: 3600 } }));
+  const executor = new ContreeExecutor(config(fetch));
+  await expect(executor.verifyDeadlineSupport(undefined, 1800)).rejects.toThrow(/review/);
+  expect(fetch).not.toHaveBeenCalled();
+  await expect(executor.verifyDeadlineSupport('reviewed_timeout_limit', 1800)).resolves.toBe(3600);
+  expect(fetch.mock.calls[0]?.[1]?.method).toBe('GET');
+  expect(String(fetch.mock.calls[0]?.[0])).toContain('/whoami');
+  await expect(executor.verifyDeadlineSupport('reviewed_timeout_limit', 3601)).rejects.toThrow(/below/);
+  await expect(executor.verifyDeadlineSupport('unavailable_limit', 1800)).rejects.toThrow(/unavailable/);
+  expect(fetch.mock.calls.every(([, init]) => init?.method === 'GET')).toBe(true);
+});
+it('retains an unresolved remote terminal state after a client polling failure', async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => init?.method === 'POST' ? jsonResponse({}, 202, { location: 'operations/unresolved' }) : init?.method === 'DELETE' ? new Response(null, { status: 204 }) : jsonResponse({ error: 'service unavailable' }, 503));
+  const executor = new ContreeExecutor(config(fetch));
+  await expect(executor.run('base', 'probe', { operationId: 'unresolved-operation', timeoutSec: 120 })).rejects.toThrow();
+  expect(executor.completions).toEqual([]);
+  expect(await executor.cancel('unresolved-operation')).not.toHaveProperty('terminal');
 });

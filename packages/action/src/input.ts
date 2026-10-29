@@ -5,13 +5,18 @@ import {
   DEFAULT_TRIAGE_SANDBOX_SEC,
   MAX_TRIAGE_RUNS,
   MAX_TRIAGE_SANDBOX_SEC,
+  semanticConfig,
+  type SemanticConfig,
 } from '@sutura/core';
 
 export type InputReader = (name: string) => string;
 
 export interface ActionConfiguration {
   mode?: 'verify' | 'inspect';
+  semantic?: SemanticConfig;
   githubToken: string;
+  verificationPacket?: string;
+  authorizeLongVerification?: string;
   runId: string;
   triageN: number;
   requireFixed: boolean;
@@ -94,6 +99,8 @@ export function mapActionInputs(read: InputReader): ActionConfiguration {
   if (mode === 'inspect') return { mode, githubToken: required(read, 'github-token'), runId,
     triageN: 0, requireFixed: false, captureReplay: false, environment: {} };
   const requireFixed = booleanInput(read('require-fixed'), false, 'require-fixed');
+  const verificationPacket = read('verification-packet').trim(), authorizeLongVerification = read('authorize-long-verification').trim();
+  if (Boolean(verificationPacket) !== Boolean(authorizeLongVerification) || (authorizeLongVerification && !/^[a-f0-9]{64}$/u.test(authorizeLongVerification)) || Buffer.byteLength(verificationPacket) > 16_384) throw new ActionInputError('Long verification requires a bounded canonical packet and separate exact SHA-256 authorization digest', requireFixed, runId, mode);
   const triageN = boundedInteger(read('triage-n'), 5, MAX_TRIAGE_RUNS, 'triage-n');
   const environment: Record<string, string> = {
     NEBIUS_API_KEY: required(read, 'nebius-api-key', requireFixed, runId, mode),
@@ -122,12 +129,28 @@ export function mapActionInputs(read: InputReader): ActionConfiguration {
   optional(environment, read, 'model-nano', 'SUTURA_MODEL_NANO');
   optional(environment, read, 'model-super', 'SUTURA_MODEL_SUPER');
   optional(environment, read, 'model-ultra', 'SUTURA_MODEL_ULTRA');
+  const modes: Record<string, string> = {};
+  for (const role of ['ranking', 'grounding', 'classification', 'recovery']) {
+    const value = read(`jev-${role}`).trim() || 'off';
+    if (!['off', 'shadow', 'assist'].includes(value)) throw new ActionInputError(`jev-${role} must be off, shadow, or assist`, requireFixed, runId, mode);
+    modes[role] = value;
+  }
+  const cap = read('jev-budget-usd').trim();
+  const maxUsd = cap ? Number(cap) : 0;
+  if (!Number.isFinite(maxUsd) || maxUsd < 0 || maxUsd > .02) throw new ActionInputError('jev-budget-usd must be from 0 to 0.02', requireFixed, runId, mode);
+  const active = Object.values(modes).some(value => value !== 'off');
+  if (active && maxUsd <= 0) throw new ActionInputError('Nonoff Jev roles require an explicit positive jev-budget-usd at most 0.02', requireFixed, runId, mode);
+  if (active && !environment.TYPESAFE_API_KEY) throw new ActionInputError('Nonoff Jev roles require typesafe-api-key', requireFixed, runId, mode);
+  if (mode !== 'heal' && (active || maxUsd > 0)) throw new ActionInputError('Jev role inputs require mode heal', requireFixed, runId, mode);
+  const semantic = active || maxUsd > 0 ? semanticConfig({ modes, maxUsd }, Boolean(environment.TYPESAFE_API_KEY)) : undefined;
   const runtime = runtimeInput(read('runtime'));
   if (runtime !== undefined) environment.SUTURA_RUNTIME = runtime;
 
   return {
     ...(mode === 'verify' ? { mode: 'verify' as const } : {}),
+    ...(semantic === undefined ? {} : { semantic }),
     githubToken: required(read, 'github-token'),
+    ...(verificationPacket ? { verificationPacket, authorizeLongVerification } : {}),
     runId,
     triageN,
     requireFixed,

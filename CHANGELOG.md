@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-29
+
+### Added
+
+- Explicit, default-off Jev ranking, grounding, classification and recovery roles for local healing and the GitHub Action, with a separate shared spend cap, pinned model, bounded typed choices and native fallbacks.
+- `sutura explain` selects original evidence from completed case JSON without network by default; an explicitly capped semantic mode selects one best supplied excerpt.
+- Finite Jev decision evaluation with frozen manifests, retained individual outcomes, resumable spend journals and explicit qualification limits. Experimental atomic audit questions retain the existing legacy veto behavior.
+- Protected Node reproduction profiles, complete native failure identity and separately approved one-use final verification for longer trusted commands.
+
+### Fixed
+
+- Semantic evidence navigation and recovery selection no longer depend on independent model questions coordinating optional ranked choices. Required judgments retain the existing strict probability thresholds.
+- Navigator evaluation scores actual selected evidence, excludes a declared no-result sentinel and rejects false retrieval credit from unselected probability alternatives.
+- Action shadow capture stays private and preserves native repair when its capture file cannot be initialized or written.
+- Ranking retains native order for incomplete process evidence and compares failing checks independently from changes to observed values; grounding relevance includes applicable contradicting sources. Experimental atomic audit questions distinguish deletion, skipping, weakened assertions and suppressed runtime errors.
+
+### Changed
+
+- Revised ranking, grounding, navigator, recovery and experimental audit question contracts are versioned independently; frozen historical manifests and their results remain readable.
+- New role activation remains explicit. Local verification and API compatibility do not establish improved repair yield, cost, latency or general model quality.
+
+Retired guidance: independent optional second/third semantic rank questions. Shared confidence thresholds, native executable verification, legacy audit veto behavior and human merge authority remain intact.
+
 ## [0.4.1] - 2026-10-27
 
 ### Fixed

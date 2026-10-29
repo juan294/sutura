@@ -1,3 +1,6 @@
+import { groundingSummary } from './grounding-summary.js';
+import { semanticSummary } from './semantic-summary.js';
+import { auditCheckEvidence, auditCheckLabel, auditVoiceDisclosure } from './audit-status.js';
 import type { CaseFile } from '../domain.js';
 import {
   aggregateStageEvidence,
@@ -42,6 +45,8 @@ function renderDiagnosis(caseFile: CaseFile): string[] {
     }
   }
 
+  const selection = groundingSummary(grounding);
+  if (selection.length) lines.push('', '**Grounding selection evidence**', '', ...selection.map(line => `- ${escapeMarkdown(line)}`));
   return lines;
 }
 
@@ -72,10 +77,12 @@ function renderProcedure(caseFile: CaseFile): string[] {
       ),
     );
   }
+  const decisions=semanticSummary(caseFile.semanticDecisions);
+  if(decisions.length) lines.push('', '**Semantic judgments (optional)**', '', ...decisions.map(line=>`- ${escapeMarkdown(line)}`));
   return lines;
 }
 
-function renderPathology(caseFile: CaseFile): string[] {
+function renderPathology(caseFile: CaseFile, legacyAuditPresentation = false): string[] {
   const lines = ['### Pathology', ''];
   if (!caseFile.audit) {
     lines.push('**NOT RUN** — no candidate survived for adversarial audit.');
@@ -90,9 +97,11 @@ function renderPathology(caseFile: CaseFile): string[] {
   );
   for (const check of caseFile.audit.checks) {
     lines.push(
-      `| ${escapeMarkdown(check.name)} | **${check.passed ? 'PASS' : 'FAIL'}** | ${escapeMarkdown(check.evidence ?? 'No evidence recorded')} |`,
+      `| ${escapeMarkdown(check.name)} | **${legacyAuditPresentation ? (check.passed ? 'PASS' : 'FAIL') : auditCheckLabel(check)}** | ${escapeMarkdown(legacyAuditPresentation ? (check.evidence ?? 'No evidence recorded') : auditCheckEvidence(check))} |`,
     );
   }
+  const disclosure = auditVoiceDisclosure(caseFile.audit.checks);
+  if (disclosure && !legacyAuditPresentation) lines.push('', disclosure);
   lines.push('', `> ${escapeMarkdown(caseFile.audit.reasoning)}`);
   return lines;
 }
@@ -136,6 +145,8 @@ function renderDischarge(caseFile: CaseFile): string[] {
     `**Policy:** base <code>${escapeHtml(caseFile.policy.baseRef)}</code> at <code>${escapeHtml(caseFile.policy.baseSha)}</code> · policy <code>${escapeHtml(caseFile.policy.policySha)}</code>`,
     '',
     `**Runtime:** <code>${escapeHtml(caseFile.runtime)}</code>`,
+    ...(caseFile.controllerWallTimeSec === undefined ? [] : [`**Controller wall time:** ${caseFile.controllerWallTimeSec.toFixed(3)} s, including preparation, waits and cancellation/drain.`]),
+    ...caseFile.stages.filter(entry => entry.processState !== undefined || entry.metrics.wallTimeSec !== undefined).map(entry => `**Process evidence (${escapeMarkdown(entry.stage)} ${entry.attempt}):** ${escapeMarkdown(entry.processState === undefined ? 'termination unknown' : JSON.stringify(entry.processState))}; wall ${entry.metrics.wallTimeSec ?? 'unknown'} s. Review the command deadline before a new authorized attempt.`),
   ];
 }
 
@@ -155,7 +166,7 @@ function renderFooter(caseFile: CaseFile, artifactUrl?: string): string[] {
   ];
 }
 
-export function renderComment(caseFile: CaseFile, artifactUrl?: string): string {
+export function renderComment(caseFile: CaseFile, artifactUrl?: string, options: { legacyAuditPresentation?: boolean } = {}): string {
   const sections = [
     `## Sutura — Surgical Report`,
     '',
@@ -177,7 +188,7 @@ export function renderComment(caseFile: CaseFile, artifactUrl?: string): string 
       '',
       ...renderProcedure(caseFile),
       '',
-      ...renderPathology(caseFile),
+      ...renderPathology(caseFile, options.legacyAuditPresentation),
     );
   }
 

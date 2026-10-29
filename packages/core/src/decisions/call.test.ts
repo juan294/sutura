@@ -1,0 +1,152 @@
+import { describe, expect, it, vi } from 'vitest';
+import { DecisionSession, choice, noul } from './call.js';
+import { semanticConfig } from './config.js';
+import type { NebiusFetch } from '../llm/nebius.js';
+import { Ledger } from '../llm/cost.js';
+import { TypeSafeClient } from '../llm/typesafe.js';
+import { RepairBudget, repairBudgetLimits } from '../engine/repair-budget.js';
+
+const questions = { applicable: { type: 'noul' as const, instructions: 'Is evidence sufficient?' } };
+const config = () => semanticConfig({ modes: { ranking: 'assist' }, maxUsd: .02 }, true);
+function client(fetch: ReturnType<typeof vi.fn>) { return new TypeSafeClient({apiKey:'test',ledger:new Ledger({}),model:'jev-1.14.0'}, {fetch:fetch as NebiusFetch}); }
+function response(status=200) { return { ok: status===200,status,headers:{get:()=>null},text:async()=>'',json:async()=>({model:'jev-1.14.0',answers:{applicable:{type:'noul',noul:.9}},usage:{input_tokens:10,output_tokens:0}}) }; }
+describe('bounded semantic calls',()=>{
+ it('off and shadow never send; shadow captures redacted bounded input',async()=>{
+  const fetch=vi.fn(); const capture=vi.fn();
+  await new DecisionSession({config:semanticConfig(),client:client(fetch),deadline:Date.now()+5000}).judge('ranking',{secret:'Bearer abc'},questions,'baseline');
+  const session=new DecisionSession({config:semanticConfig({modes:{ranking:'shadow'},maxUsd:.02},true),client:client(fetch),deadline:Date.now()+5000,capture});
+  const result=await session.judge('ranking',{token:'Bearer abc'},questions,'baseline');
+  expect(fetch).not.toHaveBeenCalled(); expect(capture).toHaveBeenCalledOnce(); expect(result.reason).toBe('shadow-captured');
+  expect(JSON.stringify(capture.mock.calls)).not.toContain('Bearer abc');
+ });
+ it('retries only an explicit 429/5xx with separate reservation',async()=>{
+  const fetch=vi.fn().mockResolvedValueOnce(response(429)).mockResolvedValue(response());
+  const session=new DecisionSession({config:config(),client:client(fetch),deadline:Date.now()+5000});
+  expect((await session.judge('ranking',{},questions,'baseline')).outcome).toBe('answered');
+  expect(fetch).toHaveBeenCalledTimes(2); expect(session.snapshot().attempts).toBe(2);
+ });
+ it('unknown transport completion is not resent and retains spend',async()=>{
+  const fetch=vi.fn().mockRejectedValue(new Error('lost connection'));
+  const session=new DecisionSession({config:config(),client:client(fetch),deadline:Date.now()+5000});
+  expect((await session.judge('ranking',{},questions,'baseline')).reason).toBe('provider-unavailable');
+  expect(fetch).toHaveBeenCalledTimes(1);expect(session.snapshot().reservedUsd).toBeGreaterThan(0);
+ });
+ it('rejects wrong models, malformed answers, deadlines, size and cap before use',async()=>{
+  const fetch=vi.fn().mockResolvedValue(response());
+  const expired=new DecisionSession({config:config(),client:client(fetch),deadline:0});
+  expect((await expired.judge('ranking',{},questions,'baseline')).reason).toBe('deadline');
+  expect(fetch).not.toHaveBeenCalled();
+  const session=new DecisionSession({config:config(),client:client(fetch),deadline:Date.now()+5000});
+  expect((await session.judge('ranking','x'.repeat(24577),questions,'baseline')).reason).toBe('input-too-large');
+  expect(fetch).not.toHaveBeenCalled();
+ });
+ it('times out once even if transport completes late, then a fresh invocation recovers',async()=>{
+  vi.useFakeTimers();
+  try {
+   const fetch=vi.fn().mockImplementation(()=>new Promise(resolve=>setTimeout(()=>resolve(response()),6000)));
+   const session=new DecisionSession({config:config(),client:client(fetch),deadline:Date.now()+5000});
+   const pending=session.judge('ranking',{},questions,'baseline'); await vi.advanceTimersByTimeAsync(5000);
+   const evidence=await pending;expect(evidence.reason).toBe('timeout');const spent=session.snapshot().reservedUsd;
+   await vi.advanceTimersByTimeAsync(1000);expect(session.snapshot().reservedUsd).toBe(spent);expect(fetch).toHaveBeenCalledTimes(1);
+   const next=new DecisionSession({config:config(),client:client(vi.fn().mockResolvedValue(response())),deadline:Date.now()+5000});
+   expect((await next.judge('ranking',{},questions,'baseline')).outcome).toBe('answered');
+  } finally {vi.useRealTimers();}
+ });
+ it('uses frozen inclusive thresholds and validates exact distributions',()=>{
+  expect(noul({type:'noul',noul:.2})).toBe(false);expect(noul({type:'noul',noul:.8})).toBe(true);
+  expect(noul({type:'noul',noul:.20001})).toBeUndefined();expect(noul({type:'noul',noul:.79999})).toBeUndefined();
+  expect(choice({type:'choice',choice:'a',probabilities:{a:.8,b:.2},confidence:.1})).toBe('a');
+  expect(choice({type:'choice',choice:'b',probabilities:{a:.8,b:.2},confidence:.99})).toBeUndefined();
+ });
+});
+
+describe('semantic validation and accounting recovery',()=>{
+ it('does not charge a late completed transport to the shared ledger',async()=>{
+  vi.useFakeTimers();try{
+   const ledger=new Ledger({});const fetch=vi.fn().mockImplementation(()=>new Promise(resolve=>setTimeout(()=>resolve(response()),6000)));
+   const port=new TypeSafeClient({apiKey:'test',ledger,model:'jev-1.14.0'},{fetch});
+   const pending=new DecisionSession({config:config(),client:port,deadline:Date.now()+5000}).judge('ranking',{},questions,'baseline');
+   await vi.advanceTimersByTimeAsync(5000);await pending;await vi.advanceTimersByTimeAsync(1000);expect(ledger.entries).toHaveLength(0);
+  }finally{vi.useRealTimers();}
+ });
+ it.each([
+  {model:'other'},
+  {answers:{applicable:{type:'noul',noul:NaN}}},
+  {answers:{applicable:{type:'noul',noul:.9},extra:{type:'noul',noul:.9}}},
+  {answers:{}},
+ ])('falls back for invalid response %j',async(overrides)=>{
+  const fetch=vi.fn().mockResolvedValue({...response(),json:async()=>({...await response().json(),...overrides})});
+  expect((await new DecisionSession({config:config(),client:client(fetch),deadline:Date.now()+5000}).judge('ranking',{},questions,'baseline')).outcome).toBe('unavailable');
+ });
+ it('holds failed attempt spend and stops at eight sends',async()=>{
+  const fetch=vi.fn().mockRejectedValue(new Error('unknown'));
+  const session=new DecisionSession({config:config(),client:client(fetch),deadline:Date.now()+5000});
+  for(let i=0;i<9;i++)await session.judge('ranking',{},questions,'baseline');
+  expect(fetch).toHaveBeenCalledTimes(8);expect(session.records.at(-1)?.reason).toBe('semantic-cap');
+ });
+ it('retains the original request cap when the explicit cap is too small',async()=>{
+  const fetch=vi.fn();const session=new DecisionSession({config:semanticConfig({modes:{ranking:'assist'},maxUsd:1e-10},true),client:client(fetch),deadline:Date.now()+5000});
+  expect((await session.judge('ranking',{},questions,'baseline')).reason).toBe('semantic-cap');expect(fetch).not.toHaveBeenCalled();
+ });
+});
+
+it('bounds shadow capture without network and redacts questions as well as state',async()=>{
+ vi.useFakeTimers();try{
+  const fetch=vi.fn(), capture=vi.fn(()=>new Promise<void>(()=>{}));
+  const session=new DecisionSession({config:semanticConfig({modes:{ranking:'shadow'},maxUsd:.02},true),client:client(fetch),capture,deadline:Date.now()+5000});
+  const pending=session.judge('ranking',{}, {applicable:{type:'noul',instructions:'Authorization: Bearer private-value'}},'baseline');
+  await vi.advanceTimersByTimeAsync(100);expect((await pending).reason).toBe('shadow-capture-failed');
+  expect(JSON.stringify(capture.mock.calls)).not.toContain('private-value');expect(fetch).not.toHaveBeenCalled();
+ }finally{vi.useRealTimers();}
+});
+it('navigator never retries even on explicit provider overload',async()=>{
+ const fetch=vi.fn().mockResolvedValue(response(500));
+ await new DecisionSession({config:config(),client:client(fetch),deadline:Date.now()+5000}).judge('navigator',{},questions,'lexical');
+ expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it('retains unknown first-attempt spend when an explicit overload retry succeeds',async()=>{
+ const fetch=vi.fn().mockResolvedValueOnce(response(429)).mockResolvedValue(response());
+ const session=new DecisionSession({config:config(),client:client(fetch),deadline:Date.now()+5000});
+ const evidence=await session.judge('ranking',{},questions,'baseline');
+ expect(evidence.outcome).toBe('answered');expect(evidence.unknownSpendUsd).toBeGreaterThan(0);expect(evidence.usage?.inTok).toBe(10);
+});
+
+it('keeps protected audit seconds outside the semantic call deadline', async () => {
+ vi.useFakeTimers();try {
+  const started=Date.now(); const budget=new RepairBudget(repairBudgetLimits({elapsedTimeSec:62}),Date.now,started);
+  const fetch=vi.fn<NebiusFetch>(()=>new Promise<never>(()=>{}));
+  const session=new DecisionSession({config:config(),client:client(fetch),deadline:started+62_000,remainingMs:()=>budget.remainingElapsedTimeSec()*1000});
+  const held=budget.reserveCapacity({elapsedTimeSec:60});
+  const observed=session.judge('ranking',{},questions,'baseline').then(result=>({result,finishedAt:Date.now(),auditRemaining:budget.remainingElapsedTimeSec(held)}));
+  await vi.advanceTimersByTimeAsync(5000);
+  const {result,finishedAt,auditRemaining}=await observed;
+  expect(result.reason).toBe('timeout');expect(finishedAt-started).toBe(2000);expect(auditRemaining).toBe(60);
+  expect(fetch).toHaveBeenCalledOnce();expect(fetch.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+ } finally {vi.useRealTimers();}
+});
+it.each(['assist','shadow'] as const)('makes zero sends, captures and reservations with no ordinary time in %s',async mode=>{
+ const fetch=vi.fn().mockResolvedValue(response()),capture=vi.fn();
+ const session=new DecisionSession({config:semanticConfig({modes:{ranking:mode},maxUsd:.02},true),client:client(fetch),capture,deadline:Date.now()+5000,remainingMs:()=>0});
+ expect((await session.judge('ranking',{},questions,'baseline')).reason).toBe('deadline');
+ expect(fetch).not.toHaveBeenCalled();expect(capture).not.toHaveBeenCalled();expect(session.snapshot()).toMatchObject({attempts:0,reservedUsd:0,actualUsd:0});
+});
+it('rechecks ordinary time before retrying an explicit overload response',async()=>{
+ let remainingMs=5000;
+ const fetch=vi.fn().mockImplementationOnce(async()=>{remainingMs=0;return response(429);}).mockResolvedValue(response());
+ const session=new DecisionSession({config:config(),client:client(fetch),deadline:Date.now()+5000,remainingMs:()=>remainingMs});
+ expect((await session.judge('ranking',{},questions,'baseline')).reason).toBe('deadline');
+ expect(fetch).toHaveBeenCalledOnce();expect(session.snapshot().attempts).toBe(1);expect(session.snapshot().reservedUsd).toBeGreaterThan(0);
+ const recovered=new DecisionSession({config:config(),client:client(vi.fn().mockResolvedValue(response())),deadline:Date.now()+5000,remainingMs:()=>5000});
+ expect((await recovered.judge('ranking',{},questions,'baseline')).outcome).toBe('answered');
+});
+
+it.each(['assist','shadow'] as const)('records a controller-known missing-input fallback without sends/capture in %s',async mode=>{
+ const fetch=vi.fn().mockResolvedValue(response()),capture=vi.fn();
+ const session=new DecisionSession({config:semanticConfig({modes:{classification:mode},maxUsd:.02},true),client:client(fetch),capture,deadline:Date.now()+5000});
+ const result=await session.judge('classification',{},questions,'existing-classifier',[],[],'missing-evidence');
+ expect(result).toMatchObject({outcome:'unavailable',reason:'missing-evidence',fallback:'existing-classifier',attempts:0,reservedUsd:0});
+ expect(fetch).not.toHaveBeenCalled();expect(capture).not.toHaveBeenCalled();
+ const next=await session.judge('classification',{},questions,'existing-classifier');
+ expect(next.reason).toBe(mode==='assist'?'usable':'shadow-captured');
+});

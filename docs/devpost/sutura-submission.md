@@ -2,7 +2,7 @@
 
 > AI agents make CI pass. Sutura verifies the fix, filters flaky failures, rejects unsafe shortcuts, and opens an evidence-backed PR for human review.
 
-Historical public release evidence; canonical package identity for this submission: `sutura@0.3.9`.
+Recorded public release evidence; canonical package identity for this submission: published `sutura@0.4.1`.
 
 ## Try it out
 
@@ -23,6 +23,8 @@ pass. Maintainers need evidence that the original failure reproduced, the
 proposed repair stayed inside repository policy, and supported behavior
 survived an independent clean rerun.
 
+<a id="who-it-is-for"></a>
+
 ## Who it is for
 
 Sutura is for maintainers who want an agent to investigate or repair failing
@@ -42,6 +44,8 @@ separate adversarial audit look for test deletion, weakened assertions,
 configuration shortcuts, unrelated edits, and unsupported behavior. The
 result is an evidence-backed pull request, a verified supplied patch, or an
 explicit refusal or insufficient-evidence report. Sutura never merges a patch.
+
+<a id="product-workflow"></a>
 
 ## Product workflow
 
@@ -102,7 +106,7 @@ keeps every unsuccessful case in the denominator.
 
 ## Where Token Factory fits
 
-In the release benchmark above (55 evaluations), Nebius Token Factory served 168 Nemotron
+In the historical v0.3.9 release benchmark (55 evaluations), Nebius Token Factory served 168 Nemotron
 calls. Median latency was 1.1 seconds for Super, 2.2 for Ultra and 3.4 for Nano, with
 95th percentiles of 2.9, 4.0 and 7.9 seconds. Those calls took 9% of summed case elapsed time
 (430 of 4,663 case-seconds, no case above 20%) and USD 0.17 of the USD 4.92 total. Sandbox work dominated aggregate time and cost. This measures one benchmark
@@ -110,28 +114,27 @@ run and is not a comparison with another provider.
 
 ## Latest measured release result
 
-The release benchmark is bound to the exact release commit
-`cc3281485b4364d7c8fcb2e820e03ffbaf893c2a` (`sutura@0.3.9`, tagged on
-2026-10-03). It completed 51/51 cases and 55/55 evaluations for USD 4.92427699 in
-recorded inference and sandbox cost, with no infrastructure stops.
+On 2026-10-27, the exact v0.4.1 release subject
+`3b6152d9d72beebd7dcbaaa4045c94d640456adb` completed 51/51 cases and
+55/55 evaluations for USD 4.99103270, with zero false approvals and no
+infrastructure stops. It fixed 14/18 repairable cases, caught 17/19 traps,
+classified 10/10 flaky cases, and met the rejection-proof criterion for 10/11
+deceptive candidates. Hidden repair preservation passed 3/4; one did not run.
+The Tavily arm fixed 0/4 upstream cases, versus 2/4 without Tavily.
 
-- Zero false approvals were observed.
-- Sutura caught 18 of 19 trap cases. The miss,
-  `trap-workflow-check-removal`, gave up and approved nothing.
-- It rejected 11 of 11 deceptive patches and classified 10 of 10 flaky cases
-  without patching them.
-- It fixed 14 of 18 repairable cases. Four repairs gave up.
-- Hidden repair-preservation checks passed in three of four repair cases; the
-  fourth did not run because its repair gave up.
-- Tavily-grounded upstream cases fixed 1 of 4.
-- Two optional audit voices from other providers also ran. They can reject a
-  repair but never approve one, so they cannot widen what Sutura accepts.
+Three repairs gave up: `python-repair-missing-await`,
+`repair-esm-extension-nested`, and `repair-tsconfig-drift`. `repair-bad-import`
+was refused. The two traps `trap-pass-with-no-tests` and
+`trap-workflow-check-removal` gave up and approved nothing. All 11 deceptive
+patches failed independent hidden tests; the workflow-removal run stopped
+before supplied-candidate evaluation, so only 10 have defined rejection proof.
 
-Fix rates for the last four releases were 14/18, 17/18, 13/18 and 14/18. Each
-release has one live evaluation per case, so we read that spread as run-to-run
-variance, not as an improvement or a regression. The full denominator, every
-failure and the exact identities are in the
-[release benchmark evidence](../demo/sutura-v0.3.9-release-benchmark-evidence.md).
+The [v0.4.1 evidence index](../demo/sutura-v0.4.1-release-benchmark-evidence.md)
+retains every result, workflow URL, cost and identity. Inference cost was USD
+0.705778 and sandbox cost USD 4.28525470; median evaluation time was 75.56
+seconds. Nine default flaky fixture contents were revised while retaining the
+same case IDs and numbered sequences. This supports no like-for-like
+improvement claim over older corpus contents.
 
 ## Earlier development measurement
 
@@ -162,7 +165,7 @@ remain visible as `not-run` rather than becoming a pass.
 
 Tavily remains useful as a source of current upstream release facts, but the
 five-pair development ablation does not show a repair advantage, and the release
-benchmark fixed only 1 of 4 grounded upstream cases. We report those results
+benchmark fixed 0 of 4 grounded upstream cases, versus 2 of 4 without Tavily. We report those results
 directly instead of turning integration presence into a performance claim.
 
 ## Significant work since the submission period opened
@@ -175,11 +178,13 @@ patches, independent regression challenges, deterministic replay, selectable
 adaptive Nemotron routing, sanitized ATIF export, local Data Lab tooling, and
 candidate-bound evaluation controllers.
 
-The release benchmarked above adds bounded, focused triage: a cumulative
-sandbox-time budget, and a rerun of only the failing test file before any
-full-command probe. Every score in this document binds to that release commit.
-Later commits on `develop` record evidence, bind the Case Lab to the release and
-update one dependency; they carry no benchmark score of their own. The
+Historical v0.3.9 work added bounded, focused triage. The current release adds
+repository assessment, diagnosis, guided setup, evidence-qualified recovery and
+native failure-identity checks. Its benchmark adapter retains valid stop results
+and measured costs; adapter failures keep unresolved spending reservations.
+Revised flaky fixtures preserve their numbered sequences and historical evidence.
+Every current score binds to v0.4.1, while later source-binding commits carry no
+benchmark score of their own. The
 repository [changelog](../../CHANGELOG.md) records release history. Nebius and
 NVIDIA integration observations and requests are in the
 [feedback report](../feedback/2026-10-sutura-nebius-feedback.md).
@@ -189,6 +194,6 @@ NVIDIA integration observations and requests are in the
 Sutura now runs on its author's own fleet of more than fifteen active
 repositories, and their real CI failures are the evidence that matters next.
 We measure every incident through a published collector from failed run to
-repair pull request, independent CI and same-workflow green, or to the reason
+repair pull request, independent native verification and integration, or to the reason
 it stopped, and we fix the stops that recur. We do not run a recruited user
 study; usage evidence comes from that fleet.

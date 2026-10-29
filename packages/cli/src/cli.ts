@@ -1,4 +1,4 @@
-import { notRunTriageVerdict, type AuditFile, type CaseFile, type CostLedger } from '@sutura/core';
+import { describeTerminalRecovery, notRunTriageVerdict, type AuditFile, type CaseFile, type CostLedger, type EvidenceAnswer } from '@sutura/core';
 
 import {
   CliUsageError,
@@ -15,13 +15,14 @@ import {
 } from './args.js';
 import { diagnoseRun } from './diagnose.js';
 import { doctorSutura, type DoctorResult } from './doctor.js';
-import { detectLocalRuntimeId, healFromEnvironment } from './heal.js';
+import { CliSemanticConfigError, detectLocalRuntimeId, healFromEnvironment } from './heal.js';
 import { auditFromEnvironment } from './heal.js';
 import { installSutura, type SetupResult } from './setup.js';
 import { runEvaluationCommand } from './eval.js';
 import { replayFromFile } from './replay.js';
 import { executeVerify, verifyRuntimeFromEnvironment } from './verify.js';
 import { assessRepository, type RepositoryAssessment } from './assess.js';
+import { explainFromFile, explainExitCode, renderEvidenceAnswer } from './explain.js';
 
 export interface CliIo {
   write?: (value: string) => void;
@@ -77,7 +78,8 @@ async function infraStop(
   error: unknown,
   configuredRuntime?: 'node' | 'python',
 ): Promise<CaseFile> {
-  const reason = publicError(error);
+  const recovery = describeTerminalRecovery(error);
+  const reason = publicError(`${error instanceof Error ? error.message : String(error)}${recovery ? ` ${recovery.nextAction}` : ''}`);
   const caseName = caseDir.split(/[\\/]/u).filter(Boolean).at(-1) ?? 'case';
   const runtime = configuredRuntime ?? await detectLocalRuntimeId(caseDir).catch(() => 'node' as const);
   return {
@@ -87,7 +89,7 @@ async function infraStop(
     diagnosis: {
       class: 'infra',
       confidence: 1,
-      signals: ['cli-runtime-failure'],
+      signals: ['cli-runtime-failure', ...(recovery ? [recovery.code] : [])],
       failingCmd: 'pnpm test',
       errorExcerpt: diagnosticExcerpt(reason),
     },
@@ -130,6 +132,15 @@ export async function runCli(
   if (request.command === 'version') {
     write(`${VERSION}\n`);
     return 0;
+  }
+  if (request.command === 'explain') {
+    let answer: EvidenceAnswer;
+    try { answer = await explainFromFile(request, { writeError }); }
+    catch {
+      answer = { schemaVersion: 'sutura-evidence-answer-v1', status: 'unavailable', mode: request.semantic ? 'semantic' : 'lexical', reason: 'navigation-unavailable', results: [], nextAction: 'Retry this local evidence query after resolving the unavailable navigation service; no repair or command was run.' };
+    }
+    write(`${renderEvidenceAnswer(answer, request.json)}\n`);
+    return explainExitCode(answer);
   }
   if (request.command === 'diagnose') {
     try {
@@ -208,6 +219,7 @@ export async function runCli(
   try {
     caseFile = await (dependencies.heal ?? healFromEnvironment)(request);
   } catch (error) {
+    if (error instanceof CliSemanticConfigError) { writeError(`${publicError(error)}\n`); return 2; }
     caseFile = await infraStop(request.caseDir, error, request.runtime);
   }
   write(`${JSON.stringify(caseFile)}\n`);

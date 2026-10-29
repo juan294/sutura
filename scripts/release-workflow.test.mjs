@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 
@@ -8,7 +9,7 @@ async function text(path) {
   return readFile(new URL(path, root), 'utf8');
 }
 
-test('all release-bearing packages and the public API declare 0.4.1', async () => {
+test('all release-bearing packages and the public API declare 0.5.0', async () => {
   const manifests = await Promise.all([
     'package.json',
     'packages/action/package.json',
@@ -18,8 +19,8 @@ test('all release-bearing packages and the public API declare 0.4.1', async () =
     'packages/evaluation/package.json',
     'packages/placebo/package.json',
   ].map(async (path) => JSON.parse(await text(path))));
-  assert.deepEqual(manifests.map(({ version }) => version), Array(7).fill('0.4.1'));
-  assert.match(await text('packages/core/src/index.ts'), /VERSION = '0\.4\.1'/u);
+  assert.deepEqual(manifests.map(({ version }) => version), Array(7).fill('0.5.0'));
+  assert.match(await text('packages/core/src/index.ts'), /VERSION = '0\.5\.0'/u);
 });
 
 test('ordinary CI runs deterministic release contract and candidate install checks', async () => {
@@ -156,4 +157,12 @@ test('versioned release evidence requirements name every authorization gate', as
     'public-matrix': 4,
   });
   assert.equal(Object.keys(requirements.ownerPhaseByEvidenceId).length, 11);
+});
+
+
+test('current release private benchmark state is ignored before recording or provider work', async () => {
+  const { version } = JSON.parse(await text('package.json'));
+  const paths = [`.sutura/placebo-v${version}-live-ledger.json`, `.sutura/placebo-v${version}-live.lock`, `.sutura/placebo-v${version}-live-artifacts/result.json`];
+  const ignored = execFileSync('git', ['check-ignore', '--no-index', '--stdin'], { cwd: root, input: paths.join('\n') + '\n', encoding: 'utf8' }).trim().split('\n');
+  assert.deepEqual(ignored, paths);
 });

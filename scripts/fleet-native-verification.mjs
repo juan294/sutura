@@ -109,7 +109,7 @@ export async function collectNativeVerification({ client, repository, source, mo
     requireFact(id(monitor?.id) && id(monitor.runAttempt) && monitor.outcome === 'fixed' && id(repairPr?.number), 'publication-source-unavailable');
     const monitorRun = await fetch(`${prefix}/actions/runs/${monitor.id}/attempts/${monitor.runAttempt}`);
     requireFact(monitorRun?.id === monitor.id && monitorRun.run_attempt === monitor.runAttempt && monitorRun.repository?.id === source.repositoryId &&
-      monitorRun.head_repository?.id === source.repositoryId && monitorRun.event === 'workflow_run' && monitorRun.status === 'completed' &&
+      monitorRun.head_repository?.id === source.repositoryId && (monitorRun.event === 'workflow_run' || (monitorRun.event === 'workflow_dispatch' && monitorRun.run_attempt === 1)) && monitorRun.status === 'completed' &&
       SHA.test(monitorRun.head_sha ?? '') && canonicalTime(monitorRun.updated_at), 'monitor-api-identity-mismatch');
     const producerCache = new Map();
     async function trustedProducer(run, kind) {
@@ -157,10 +157,22 @@ export async function collectNativeVerification({ client, repository, source, mo
       publication.source.workflowId === source.workflowId && publication.source.branch === source.branch && publication.outcome === 'fixed' &&
       SHA.test(publication.actionSha ?? '') && publication.actionSha === monitor.actionSha && publication.publication?.prNumber === repairPr.number &&
       SHA.test(publication.publication.headSha ?? '') && DIGEST.test(publication.publication.diffDigest ?? ''), 'publication-source-identity-mismatch');
+    let dispatchProvenance;
+    if (monitorRun.event === 'workflow_dispatch') {
+      const authorization = publication.authorization;
+      const parts = typeof authorization?.provenance === 'string' ? authorization.provenance.split(':') : [];
+      requireFact(authorization && Object.keys(authorization).length === 3 && authorization.kind === 'authenticated-owner-dispatch' &&
+        typeof authorization.packetDigest === 'string' && DIGEST.test(authorization.packetDigest) && parts.length === 7 &&
+        /^[1-9]\d*$/u.test(parts[4]) && id(Number(parts[4])) && authorization.provenance.length <= 1024 &&
+        authorization.provenance === `authenticated-workflow-dispatch:${identity}:${monitorRun.id}:1:${parts[4]}:${publication.workflowBlobSha}:${authorization.packetDigest}`,
+      'dispatch-publication-authorization-unavailable');
+      dispatchProvenance = authorization.provenance;
+    } else requireFact(publication.authorization === undefined, 'publication-authorization-unexpected');
     const pr = await fetch(`${prefix}/pulls/${repairPr.number}`);
     requireFact(pr.number === repairPr.number && pr.head?.repo?.id === source.repositoryId && pr.base?.repo?.id === source.repositoryId &&
       pr.head.sha === publication.publication.headSha && pr.base.ref === source.branch && SHA.test(pr.base.sha ?? '') &&
       typeof pr.head.ref === 'string', 'publication-pr-identity-mismatch');
+    if (dispatchProvenance) requireFact(pr.head.ref === `sutura/fix-${source.id}-dispatch-${hash(dispatchProvenance).slice(0, 16)}`, 'publication-dispatch-branch-mismatch');
     const parent = await fetch(`${prefix}/commits/${pr.head.sha}`);
     requireFact(parent.sha === pr.head.sha && parent.parents?.length === 1 && parent.parents[0].sha === source.headSha, 'repair-parent-identity-mismatch');
     const diff = [];

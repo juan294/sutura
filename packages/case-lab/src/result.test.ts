@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { contentHash } from './canonical.js';
 import { modeLabel } from './labels.js';
+import type { GroundingSelection } from '@sutura/core/grounding-evidence';
 import {
   CaseLabResultError,
   assertCaseLabResultPublicSafe,
@@ -18,6 +19,13 @@ import {
 const LIVE_RESULT_PATH = resolve(import.meta.dirname, '../../../docs/demo/placebo-v0.2-live-2026-09.json');
 const RELEASE_SHA = 'a943ded4c734aed75c5c63f2b2dd63a2f44556c2';
 const CONTROLLER_SHA = '48ac760399950dcc82542ffba5269323da3a1e76';
+
+function groundingSelection(): GroundingSelection {
+  const a = `citation-${'a'.repeat(64)}`, b = `citation-${'b'.repeat(64)}`;
+  return { schemaVersion: 'sutura-grounding-selection-v1', mode: 'assist', applied: true, reason: 'grounding-applied',
+    originals: [{ id: a, title: 'Applicable source', url: 'https://example.com/a', snippet: 'pkg 1.0.0 supports this behavior' }, { id: b, title: 'Unrelated source', url: 'https://example.com/b', snippet: 'An unrelated topic' }],
+    selectedIds: [a], excluded: [{ id: b, reason: 'irrelevant-insufficient' }], judgments: [{ id: a, relevance: 'relevant', support: 'supports' }, { id: b, relevance: 'irrelevant', support: 'insufficient' }], versionComparisons: [] };
+}
 
 interface LiveResult {
   results: Array<{ caseId: string; caseFile: CaseLabCaseFile }>;
@@ -65,6 +73,31 @@ function recordedBase(overrides: Overrides = {}): CaseLabResultBase {
 }
 
 describe('CaseLabResult', () => {
+  it('preserves grounding provenance in the hash and validates original, excluded and selected sources', () => {
+    const base = recordedBase(); const selection = groundingSelection();
+    const original = selection.originals[0]!;
+    base.caseFile!.diagnosis.grounding = { query: 'pkg error', skipped: false, citations: [{ title: original.title, url: original.url, snippet: original.snippet }], selection };
+    const result = createCaseLabResult(base);
+    expect(validateCaseLabResult(JSON.parse(JSON.stringify(result))).caseFile!.diagnosis.grounding!.selection).toEqual(selection);
+    const changed = structuredClone(base); changed.caseFile!.diagnosis.grounding!.selection!.reason = 'retained-evidence';
+    expect(createCaseLabResult(changed).resultHash).not.toBe(result.resultHash);
+    const foreign = structuredClone(base); foreign.caseFile!.diagnosis.grounding!.selection!.selectedIds = ['foreign'];
+    expect(() => createCaseLabResult(foreign)).toThrow(/grounding.selection/u);
+    const substituted = structuredClone(base); substituted.caseFile!.diagnosis.grounding!.citations[0]!.snippet = 'substituted content';
+    expect(() => createCaseLabResult(substituted)).toThrow(/grounding.selection/u);
+    const insecureSource = structuredClone(base); insecureSource.caseFile!.diagnosis.grounding!.selection!.originals[1]!.url = 'http://example.com/excluded';
+    expect(() => createCaseLabResult(insecureSource)).toThrow(/grounding.selection.*public https/u);
+  });
+  it('preserves bounded optional process evidence and rejects corrupt termination', () => {
+    const base = recordedBase();
+    const stage = base.caseFile!.stages[0]!;
+    Object.assign(stage, { processState: { timedOut: true, signal: 9 } });
+    Object.assign(stage.metrics, { wallTimeSec: 60.1 });
+    expect(validateCaseLabResult(createCaseLabResult(base)).caseFile!.stages[0]).toMatchObject({ processState: { timedOut: true, signal: 9 }, metrics: { wallTimeSec: 60.1 } });
+    Object.assign(stage, { processState: { signal: -1 } });
+    expect(() => createCaseLabResult(base)).toThrow(/signal/u);
+  });
+
   it('round-trips through create and validate with a content hash', () => {
     const result = createCaseLabResult(recordedBase());
     expect(result.resultHash).toBe(contentHash({ ...result, resultHash: undefined }));
@@ -256,4 +289,35 @@ describe('counterfactual evidence at the published-result boundary', () => {
 
     expect(() => assertCaseLabResultPublicSafe(result)).not.toThrow();
   });
+});
+
+
+describe('audit presentation metadata', () => {
+  const metadata = { status: 'skipped' as const, requestedModel: 'jev-latest', policyVersion: 'legacy-v1', policyHash: 'a'.repeat(64) };
+  it('retains metadata in public JSON and binds the result hash to provenance', () => {
+    const baseline = recordedBase();
+    const file = baseline.caseFile!;
+    file.audit!.checks = [{ name: 'typesafe-audit', passed: true, metadata }];
+    const result = createCaseLabResult(baseline);
+    expect(validateCaseLabResult(JSON.parse(JSON.stringify(result))).caseFile!.audit!.checks[0]!.metadata).toEqual(metadata);
+    const changed = createCaseLabResult({ ...baseline, caseFile: { ...file, audit: { ...file.audit!, checks: [{ name: 'typesafe-audit', passed: true, metadata: { ...metadata, requestedModel: 'jev-1.14.0' } }] } } });
+    expect(changed.resultHash).not.toBe(result.resultHash);
+  });
+  it.each([
+    { ...metadata, status: 'PASS' },
+    { ...metadata, policyHash: 'x' },
+    { ...metadata, requestedModel: 14 },
+    { ...metadata, resolvedModel: null },
+    { ...metadata, state: 'raw private input' },
+  ])('rejects malformed metadata without dropping fields: %s', (invalid) => {
+    const base = recordedBase();
+    base.caseFile!.audit!.checks = [{ name: 'typesafe-audit', passed: true, metadata: invalid as never }];
+    expect(() => createCaseLabResult(base)).toThrow(/checks\[0\].metadata/u);
+  });
+});
+
+it('rejects malformed semantic decision envelopes before public rendering', () => {
+  const base = recordedBase();
+  Object.assign(base.caseFile!, { semanticDecisions: { schemaVersion: 'unknown', records: [], budget: { maxUsd: 0 } } });
+  expect(() => createCaseLabResult(base)).toThrow(/caseFile.semanticDecisions/u);
 });

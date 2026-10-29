@@ -1,6 +1,8 @@
+import { readFile, rm } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
-import { RepairBranchRunError, ReplayRecorder, loadConfig } from '@sutura/core';
+import { RepairBranchRunError, ReplayRecorder, loadConfig, semanticConfig, DecisionSession, type OrchestrationContext } from '@sutura/core';
 
 import { GitHubAdapter, type GitHubApi } from './github.js';
 import { withFailureSafeCheck } from './failure-safe.js';
@@ -16,11 +18,34 @@ vi.mock('@actions/github', async (importOriginal) => {
   return { ...actual, getOctokit: () => unreachableOctokit() };
 });
 
-const { mockOrchestrate, mockTypeSafeClient, mockReplayRecorderCalls } = vi.hoisted(() => ({
+const { mockOrchestrate, mockTypeSafeClient, mockReplayRecorderCalls, mockSetOutput, mockWarning, shadowFsFailure } = vi.hoisted(() => ({
   mockOrchestrate: vi.fn<(...args: unknown[]) => never>(() => { throw new Error('stop before repair orchestration'); }),
   mockTypeSafeClient: vi.fn().mockImplementation(function (config: { apiKey: string }) { return { __typesafeApiKey: config.apiKey }; }),
   mockReplayRecorderCalls: [] as unknown[][],
+  mockSetOutput: vi.fn(),
+  mockWarning: vi.fn(),
+  shadowFsFailure: { stage: undefined as 'mkdtemp' | 'open' | undefined, createdDirectories: [] as string[] },
 }));
+
+vi.mock('@actions/core', async (importOriginal) => ({ ...await importOriginal<typeof import('@actions/core')>(), setOutput: mockSetOutput, warning: mockWarning }));
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...actual,
+    mkdtemp: async (...args: Parameters<typeof actual.mkdtemp>) => {
+      const shadow = String(args[0]).includes('sutura-semantic-');
+      if (shadow && shadowFsFailure.stage === 'mkdtemp') throw new Error('private-filesystem-detail-token=secret-test');
+      const result = await actual.mkdtemp(...args);
+      if (shadow && shadowFsFailure.stage === 'open') shadowFsFailure.createdDirectories.push(String(result));
+      return result;
+    },
+    open: async (...args: Parameters<typeof actual.open>) => {
+      if (shadowFsFailure.stage === 'open' && String(args[0]).endsWith('/semantic-shadow.jsonl')) throw new Error('private-filesystem-detail-token=secret-test');
+      return actual.open(...args);
+    },
+  };
+});
 
 vi.mock('@sutura/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@sutura/core')>();
@@ -386,4 +411,99 @@ it('never turns verify-mode missing provider input into advisory success', async
   await runAction({ readAction: () => mapActionInputs(name => ({ mode: 'verify', 'run-id': '7', 'github-token': 'read-only' } as Record<string, string>)[name] ?? ''), setFailed, publishTerminal });
   expect(setFailed).toHaveBeenCalledOnce();
   expect(publishTerminal).not.toHaveBeenCalled();
+});
+
+
+describe('Jev semantic orchestration wiring', () => {
+  const environment = { NEBIUS_API_KEY: 'nebius-test', TYPESAFE_API_KEY: 'typesafe-secret', CONTREE_TOKEN: 'contree-test', CONTREE_PROJECT: 'project-test' };
+  const action = { githubToken: 'github-test', runId: '77', triageN: 1, requireFixed: false, captureReplay: false, environment };
+
+  it('passes a separate pinned semantic client without changing the existing audit client', async () => {
+    mockOrchestrate.mockClear(); mockTypeSafeClient.mockClear();
+    const selected = semanticConfig({ modes: { ranking: 'assist', recovery: 'assist' }, maxUsd: .01 }, true);
+    await runAction({ readAction: () => ({ ...action, semantic: selected }), repository: () => ({ owner: 'acme', repo: 'widget' }), environment: { GITHUB_RUN_ID: '88' }, setFailed: vi.fn() });
+    expect(mockTypeSafeClient).toHaveBeenCalledTimes(2);
+    expect(mockTypeSafeClient.mock.calls[0]?.[0]).not.toHaveProperty('model');
+    expect(mockTypeSafeClient.mock.calls[1]?.[0]).toMatchObject({ apiKey: 'typesafe-secret', model: 'jev-1.14.0' });
+    const context = mockOrchestrate.mock.calls[0]?.[0] as { semantic?: { config: unknown; client: unknown }; typesafeAudit?: unknown };
+    expect(context.semantic?.config).toEqual(selected);
+    expect(context.semantic?.client).toBe(mockTypeSafeClient.mock.results[1]?.value);
+    expect(context.typesafeAudit).toBe(mockTypeSafeClient.mock.results[0]?.value);
+  });
+
+  it('wires real shadow capture to a private runner-local path without constructing a semantic provider', async () => {
+    mockOrchestrate.mockClear(); mockTypeSafeClient.mockClear();
+    mockSetOutput.mockClear();
+    const selected = semanticConfig({ modes: { classification: 'shadow' }, maxUsd: .01 }, true);
+    let recordedPath: string | undefined;
+    mockOrchestrate.mockImplementationOnce((value: unknown) => {
+      const context = value as OrchestrationContext;
+      return (async () => {
+        expect(context.semantic?.config).toEqual(selected);
+        expect(context.semantic).not.toHaveProperty('client');
+        const session = new DecisionSession({ ...context.semantic!, deadline: Date.now() + 5000 });
+        const result = await session.judge('classification', { token: 'shadow-secret', log: 'AssertionError' }, { sufficient: { type: 'noul', instructions: 'Is the evidence sufficient?' } }, 'native-classifier');
+        expect(result.reason).toBe('shadow-captured');
+        throw new Error('stop after real shadow capture');
+      })() as never;
+    });
+    try {
+      await runAction({ readAction: () => ({ ...action, semantic: selected }), repository: () => ({ owner: 'acme', repo: 'widget' }), environment: { GITHUB_RUN_ID: '88' }, setFailed: vi.fn() });
+      recordedPath = mockSetOutput.mock.calls.find(([name]) => name === 'semantic-shadow-path')?.[1] as string | undefined;
+      expect(recordedPath).toBeTypeOf('string');
+      const capture = await readFile(recordedPath!, 'utf8');
+      expect(capture).toContain('AssertionError');
+      expect(capture).not.toContain('shadow-secret');
+      expect(mockTypeSafeClient).toHaveBeenCalledTimes(1);
+      expect(mockTypeSafeClient.mock.calls[0]?.[0]).not.toHaveProperty('model');
+    } finally {
+      if (recordedPath) await rm(dirname(recordedPath), { recursive: true, force: true });
+    }
+  });
+
+  it.each(['mkdtemp', 'open'] as const)('preserves baseline orchestration when shadow initialization %s fails', async stage => {
+    mockOrchestrate.mockReset(); mockTypeSafeClient.mockClear(); mockSetOutput.mockClear(); mockWarning.mockClear();
+    shadowFsFailure.stage = stage;
+    const selected = semanticConfig({ modes: { classification: 'shadow' }, maxUsd: .01 }, true);
+    const setFailed = vi.fn();
+    let shadowDecision: unknown;
+    mockOrchestrate.mockImplementationOnce((value: unknown) => {
+      const context = value as OrchestrationContext;
+      return (async () => {
+        expect(context.semantic?.config).toEqual(selected);
+        expect(context.semantic).not.toHaveProperty('client');
+        const session = new DecisionSession({ ...context.semantic!, deadline: Date.now() + 5000 });
+        shadowDecision = await session.judge('classification', { log: 'AssertionError' }, { sufficient: { type: 'noul', instructions: 'Is the evidence sufficient?' } }, 'native-classifier', ['test-assertion'], ['test-assertion']);
+        expect(session.records).toHaveLength(1);
+        throw new Error('stop-after-baseline-assertions');
+      })() as never;
+    });
+    try {
+      await runAction({ readAction: () => ({ ...action, semantic: selected }), repository: () => ({ owner: 'acme', repo: 'widget' }), environment: { GITHUB_RUN_ID: '88' }, setFailed });
+      expect(mockOrchestrate).toHaveBeenCalledOnce();
+      expect(shadowDecision).toMatchObject({ outcome: 'unavailable', reason: 'shadow-capture-failed', fallback: 'native-classifier', baseline: ['test-assertion'], attempts: 0, actualUsd: 0, unknownSpendUsd: 0 });
+      expect(mockWarning).toHaveBeenCalledWith('Jev shadow capture could not be initialized; native decisions continue and shadow evidence is unavailable.');
+      expect(JSON.stringify(mockWarning.mock.calls)).not.toContain('private-filesystem-detail');
+      expect(JSON.stringify(mockWarning.mock.calls)).not.toContain('secret-test');
+      expect(mockSetOutput.mock.calls.some(([name]) => name === 'semantic-shadow-path')).toBe(false);
+      expect(mockTypeSafeClient).toHaveBeenCalledTimes(1);
+      expect(mockTypeSafeClient.mock.calls[0]?.[0]).not.toHaveProperty('model');
+      expect(setFailed).toHaveBeenCalledWith('stop-after-baseline-assertions');
+    } finally {
+      shadowFsFailure.stage = undefined;
+      for (const directory of shadowFsFailure.createdDirectories.splice(0)) await rm(directory, { recursive: true, force: true });
+      mockOrchestrate.mockReset();
+      mockOrchestrate.mockImplementation(() => { throw new Error('stop before repair orchestration'); });
+    }
+  });
+
+  it('validates selected semantics before constructing provider clients or orchestrating', async () => {
+    mockOrchestrate.mockClear(); mockTypeSafeClient.mockClear();
+    const setFailed = vi.fn();
+    const selected = semanticConfig({ modes: { classification: 'assist' }, maxUsd: .01 }, true);
+    await runAction({ readAction: () => ({ ...action, environment: { ...environment, TYPESAFE_API_KEY: '' }, semantic: selected }), repository: () => ({ owner: 'acme', repo: 'widget' }), environment: { GITHUB_RUN_ID: '88' }, setFailed });
+    expect(mockOrchestrate).not.toHaveBeenCalled();
+    expect(mockTypeSafeClient).not.toHaveBeenCalled();
+    expect(setFailed).toHaveBeenCalledWith(expect.stringMatching(/semantic.authorization/));
+  });
 });

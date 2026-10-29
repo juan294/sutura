@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { assessJobSupport, classifyIncident, classifyMechanically, compareFailureIdentity, extractAssessmentJobs, nativeFailureForCommand,
+import { admitNativeCommand, assessJobSupport, classifyIncident, classifyMechanically, compareFailureIdentity, extractAssessmentJobs, nativeFailureForCommand,
   parseAssessmentWorkflow, RUNTIME_SUPPORT_CONTRACT, type FailedStepLog, type IncidentClassificationRecord, type JobAssessmentRecord } from '@sutura/core';
 export interface InspectionCapture {
   observedAt: string; repository: string; repositoryId: number; runId: string; attempt: number; sourceSha: string; workflowId: number; workflowPath: string;
@@ -29,6 +29,8 @@ export function inspectEvidence(capture: InspectionCapture): ActionInspection {
   if (!['failure', 'timed_out'].includes(capture.conclusion ?? '')) return { ...base, disposition: 'observe-only', reason: 'no-failed-source-run', nextAction: 'Keep diagnosis available; wait for a real eligible failure.' };
   if (capture.headBranch.startsWith('sutura/fix-')) return { ...base, disposition: 'observe-only', reason: 'repair-branch-recursion', nextAction: 'Inspect the existing repair attempt; do not create a recursive repair.' };
   if (!capture.complete || !selected || selected.truncated) return base;
+  const admission = admitNativeCommand(classifyMechanically(selected.log).failingCmd);
+  if (admission) return { ...base, reason: admission.reason, owner: 'sutura', nextAction: admission.nextAction };
   const workflow = parseAssessmentWorkflow(capture.workflow), jobs = extractAssessmentJobs(workflow, capture.files);
   const definitions = workflow.jobs as Record<string, { name?: unknown }>;
   const matches = jobs.filter(job => (definitions[job.jobKey]?.name ?? job.jobKey) === selected.jobName);

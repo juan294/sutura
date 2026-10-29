@@ -815,7 +815,7 @@ describe('runControlledRepairAttempt', () => {
     expect(expensive.chat).not.toHaveBeenCalled();
   });
 
-  it('replays live run 7: a trusted-test timeout becomes checkpoint evidence without another model turn', async () => {
+  it('replays live run 7: a trusted-test timeout stops without another model turn', async () => {
     const executor = new InMemoryExecutor((_command, _parent, index) => [
       runResult(0, diff), runResult(-1, '', 'command timed out'),
     ][index]!);
@@ -828,7 +828,7 @@ describe('runControlledRepairAttempt', () => {
     });
 
     expect(outcome).toMatchObject({
-      status: 'checkpoint', test: { exitCode: -1, output: expect.stringContaining('timed out') },
+      status: 'gave-up', failureKind: 'sandbox', reason: 'Automatic trusted test did not produce valid evidence',
     });
     expect(chat).toHaveBeenCalledOnce();
     expect(executor.calls).toHaveLength(2);

@@ -95,3 +95,10 @@ describe('provider-free repository assessment', () => {
     expect((await assessRepository(root, options)).jobs.map(job => job.support)).toEqual(['candidate-supported', 'unknown']);
   });
 });
+
+it('retains the known control block through real workflow parsing and repository assessment', async () => {
+  const command = await readFile(new URL('../../core/src/engine/__fixtures__/native-ci-control.sh', import.meta.url), 'utf8');
+  const workflow = `jobs:\n  routing:\n    steps:\n      - run: |\n${command.trimEnd().split('\n').map(line => `          ${line}`).join('\n')}\n      - run: node --test test/example.test.mjs\n`;
+  const root = await repo({ ...nodeFiles, '.github/workflows/ci.yml': workflow });
+  expect((await assessRepository(root, options)).jobs[0]).toMatchObject({ support: 'unsupported', reason: 'native-command-admission', nextAction: expect.stringContaining('Sutura') });
+});

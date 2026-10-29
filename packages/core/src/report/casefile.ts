@@ -1,3 +1,6 @@
+import { groundingSummary } from './grounding-summary.js';
+import { semanticSummary } from './semantic-summary.js';
+import { auditCheckEvidence, auditCheckLabel, auditVoiceDisclosure } from './audit-status.js';
 import type { CaseFile } from '../domain.js';
 import {
   aggregateStageEvidence,
@@ -27,13 +30,14 @@ function renderRecovery(caseFile: CaseFile): string {
 
 function renderSandboxEvidence(caseFile: CaseFile): string {
   const totals = aggregateStageEvidence(caseFile);
+  const hasProcessEvidence = caseFile.stages.some(entry => entry.processState !== undefined || entry.metrics.wallTimeSec !== undefined);
   const hasOperationEvidence = caseFile.stages.some((entry) => entry.operationId !== undefined);
   const rows = caseFile.stages.map((entry) => `<tr>
         <th scope="row">${escapeHtml(entry.stage)}</th>
         <td>${entry.attempt}</td>
         <td><code>${escapeHtml(entry.nodeId)}</code></td>
         <td>${entry.parentNodeId ? `<code>${escapeHtml(entry.parentNodeId)}</code>` : '—'}</td>
-        <td>${entry.exitCode ?? '—'}</td>
+        <td>${entry.exitCode ?? '—'}</td>${hasProcessEvidence ? `<td>${escapeHtml(entry.processState === undefined ? 'unknown' : JSON.stringify(entry.processState))}</td><td>${entry.metrics.wallTimeSec ?? '—'}</td>` : ''}
         <td>${entry.metrics.elapsedTimeSec ?? '—'}</td>
         <td>${entry.metrics.maxRssKb ?? '—'}</td>
         <td>${entry.metrics.cost ?? '—'}</td>${hasOperationEvidence ? `
@@ -51,10 +55,10 @@ function renderSandboxEvidence(caseFile: CaseFile): string {
         <div><dt>Base SHA</dt><dd><code>${escapeHtml(caseFile.policy.baseSha)}</code></dd></div>
         <div><dt>Policy SHA</dt><dd><code>${escapeHtml(caseFile.policy.policySha)}</code></dd></div>
       </dl>
-      <p class="micro-label">Sandbox totals</p>
+      ${caseFile.controllerWallTimeSec === undefined ? '' : `<p class="micro-label">Controller wall time</p><p>${caseFile.controllerWallTimeSec.toFixed(3)} s, including preparation, waits and cancellation/drain.</p>\n      `}<p class="micro-label">Sandbox totals</p>
       <p>${totals.operationCount} operations · ${totals.elapsedTimeSec.toFixed(3)} s elapsed · ${totals.cpuTimeSec.toFixed(3)} s CPU · ${totals.maxRssKb.toLocaleString('en-US')} KB peak RSS · ${formatUsd(totals.sandboxCostUsd)} sandbox cost</p>
       <div class="table-wrap"><table class="ledger">
-        <thead><tr><th>Stage</th><th>Attempt</th><th>Node</th><th>Parent</th><th>Exit</th><th>Elapsed s</th><th>Max RSS KB</th><th>Cost USD</th>${hasOperationEvidence ? '<th>Operation</th><th>Terminal</th><th>Cancel requested</th>' : ''}<th>Network</th><th>Note</th></tr></thead>
+        <thead><tr><th>Stage</th><th>Attempt</th><th>Node</th><th>Parent</th><th>Exit</th>${hasProcessEvidence ? '<th>Process termination</th><th>Wall s</th>' : ''}<th>Elapsed s</th><th>Max RSS KB</th><th>Cost USD</th>${hasOperationEvidence ? '<th>Operation</th><th>Terminal</th><th>Cancel requested</th>' : ''}<th>Network</th><th>Note</th></tr></thead>
         <tbody>${rows || `<tr><td colspan="${hasOperationEvidence ? 13 : 10}">No sandbox operations recorded</td></tr>`}</tbody>
       </table></div>
     </div>`;
@@ -82,6 +86,8 @@ function renderCitations(caseFile: CaseFile): string {
 function renderDiagnosis(caseFile: CaseFile): string {
   const { diagnosis } = caseFile;
   const citations = renderCitations(caseFile);
+  const selection = groundingSummary(diagnosis.grounding);
+  const selectionHtml = selection.length ? `<div class="grounding-selection"><p class="micro-label">Grounding selection evidence</p><ul>${selection.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul></div>` : '';
   return `<section class="sheet diagnosis" aria-labelledby="diagnosis-title">
     <div class="section-label"><span>D</span><h2 id="diagnosis-title">Diagnosis</h2></div>
     <div class="section-body">
@@ -94,7 +100,8 @@ function renderDiagnosis(caseFile: CaseFile): string {
         <div><dt>Error specimen</dt><dd>${escapeHtml(diagnosis.errorExcerpt)}</dd></div>
       </dl>
       <ul class="signals">${diagnosis.signals.map((signal) => `<li>${escapeHtml(signal)}</li>`).join('')}</ul>${citations ? `
-      ${citations}` : ''}
+      ${citations}` : ''}${selectionHtml ? `
+      ${selectionHtml}` : ''}
     </div>
   </section>`;
 }
@@ -102,7 +109,7 @@ function renderDiagnosis(caseFile: CaseFile): string {
 function renderTriage(caseFile: CaseFile): string {
   return `<section class="sheet triage" aria-labelledby="triage-title">
     <div class="section-label"><span>T</span><h2 id="triage-title">Triage</h2></div>
-    <div class="section-body"><p class="triage-reading">${escapeHtml(triageSentence(caseFile))}</p></div>
+    <div class="section-body"><p class="triage-reading" data-sutura-stop-reason="${escapeHtml(caseFile.triage.stopReason)}">${escapeHtml(triageSentence(caseFile))}</p></div>
   </section>`;
 }
 
@@ -147,7 +154,7 @@ function renderProcedure(caseFile: CaseFile): string {
   return `<section class="sheet procedure" aria-labelledby="procedure-title">
     <div class="section-label"><span>P</span><h2 id="procedure-title">Procedure</h2></div>
     <div class="section-body">
-      <p class="micro-label">Forked sandbox timeline</p>
+      ${semanticSummary(caseFile.semanticDecisions).map(line=>`<p>${escapeHtml(line)}</p>`).join('')}<p class="micro-label">Forked sandbox timeline</p>
       <ol class="suture-line" aria-label="Candidate sandbox operations">${timeline || '<li class="rolled"><span class="knot" aria-hidden="true"></span><strong>No candidates</strong></li>'}</ol>
       <div class="table-wrap"><table>
         <thead><tr><th>Candidate</th><th>Strategy</th><th>Held?</th><th>Operative note</th></tr></thead>
@@ -184,13 +191,13 @@ function renderPathology(caseFile: CaseFile): string {
           .map(
             (check) => `<tr>
               <th scope="row">${escapeHtml(check.name)}</th>
-              <td><span class="mini-verdict ${check.passed ? 'pass' : 'fail'}">${check.passed ? 'PASS' : 'FAIL'}</span></td>
-              <td>${escapeHtml(check.evidence ?? 'No evidence recorded')}</td>
+              <td><span class="mini-verdict ${check.passed ? 'pass' : 'fail'}">${auditCheckLabel(check)}</span></td>
+              <td>${escapeHtml(auditCheckEvidence(check))}</td>
             </tr>`,
           )
           .join('')}</tbody>
       </table></div>
-      <blockquote>${escapeHtml(audit.reasoning)}</blockquote>
+      ${auditVoiceDisclosure(audit.checks) ? `<p>${auditVoiceDisclosure(audit.checks)}</p>\n      ` : ''}<blockquote>${escapeHtml(audit.reasoning)}</blockquote>
     </div>
   </section>`;
 }

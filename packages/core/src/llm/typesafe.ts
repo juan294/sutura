@@ -191,7 +191,7 @@ export interface TypeSafeAuditClient {
   decide(
     state: JsonValue,
     questions: Record<string, TypeSafeQuestion>,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; singleAttempt?: boolean },
   ): Promise<TypeSafeDecision>;
 }
 
@@ -229,8 +229,9 @@ export class TypeSafeClient implements TypeSafeAuditClient {
   async decide(
     state: JsonValue,
     questions: Record<string, TypeSafeQuestion>,
-    options: { signal?: AbortSignal } = {},
+    options: { signal?: AbortSignal; singleAttempt?: boolean } = {},
   ): Promise<TypeSafeDecision> {
+    if (options.signal?.aborted) throw new TypeSafeResponseError('TypeSafe request cancelled');
     const startedAt = this.now();
     const body = { state, model: this.model, questions };
     const requestUrl = endpoint(this.baseUrl);
@@ -246,12 +247,13 @@ export class TypeSafeClient implements TypeSafeAuditClient {
 
     const retryDeadline = this.now() + RETRY_DEADLINE_MS;
     for (let attempt = 0; ; attempt += 1) {
+      if (options.signal?.aborted) throw new TypeSafeResponseError('TypeSafe request cancelled');
       let response: HttpResponse;
       try {
         response = await this.fetch(requestUrl, request);
       } catch (error) {
         if (options.signal?.aborted === true) throw error;
-        if (attempt < MAX_RETRIES) {
+        if (!options.singleAttempt && attempt < MAX_RETRIES) {
           const delay = this.localBackoff(attempt);
           if (!(await this.waitForRetry(delay, retryDeadline))) {
             const detail = error instanceof Error ? error.message : String(error);
@@ -274,13 +276,15 @@ export class TypeSafeClient implements TypeSafeAuditClient {
       }
 
       if (response.ok) {
-        return this.parseDecision(await response.json(), questions, Math.max(0, this.now() - startedAt), response.headers);
+        const raw = await response.json();
+        if (options.signal?.aborted) throw new TypeSafeResponseError('TypeSafe request cancelled before settlement');
+        return this.parseDecision(raw, questions, Math.max(0, this.now() - startedAt), response.headers, options.singleAttempt);
       }
 
       const responseBody = await response.text();
       const error = TypeSafeApiError.fromResponse(response.status, responseBody);
       const retryable = response.status === 429 || response.status >= 500;
-      if (!retryable || attempt === MAX_RETRIES) {
+      if (options.singleAttempt || !retryable || attempt === MAX_RETRIES) {
         throw error;
       }
       const retryAfter = response.status === 429 ? retryAfterSeconds(response.headers) : null;
@@ -309,6 +313,7 @@ export class TypeSafeClient implements TypeSafeAuditClient {
     questions: Record<string, TypeSafeQuestion>,
     latencyMs: number,
     headers: HttpHeaders,
+    strict = false,
   ): TypeSafeDecision {
     if (typeof value !== 'object' || value === null) {
       throw new TypeSafeResponseError('TypeSafe returned a non-object response');
@@ -320,6 +325,7 @@ export class TypeSafeClient implements TypeSafeAuditClient {
     if (typeof response.answers !== 'object' || response.answers === null) {
       throw new TypeSafeResponseError('TypeSafe response is missing answers');
     }
+    if (strict && (Object.keys(response.answers).length !== Object.keys(questions).length || Object.keys(response.answers).some(id => !Object.hasOwn(questions, id)))) throw new TypeSafeResponseError('TypeSafe answer keys differ from requested questions');
     const answers: Record<string, TypeSafeAnswer> = {};
     for (const [id, question] of Object.entries(questions)) {
       answers[id] = parseAnswer(id, question, response.answers[id]);

@@ -5,6 +5,22 @@ import { describe, expect, it } from 'vitest';
 import { CliUsageError, parseArgs, VERSION } from './args.js';
 
 describe('parseArgs', () => {
+  it('parses explicit bounded local Jev modes and leaves absent flags absent', () => {
+    const parsed = parseArgs(['heal', '--case-dir', '/tmp/case', '--format', 'json', '--jev-ranking', 'shadow', '--jev-grounding', 'assist', '--jev-classification', 'off', '--jev-recovery', 'off', '--jev-budget-usd', '0.01']);
+    expect(parsed).toMatchObject({ semantic: { model: 'jev-1.14.0', policyVersion: 'semantic-v1', maxUsd: 0.01, modes: { ranking: 'shadow', grounding: 'assist', classification: 'off', recovery: 'off' } } });
+    expect(parseArgs(['heal', '--case-dir', '/tmp/case', '--format', 'json'])).not.toHaveProperty('semantic');
+  });
+
+  it.each([
+    ['--jev-ranking', 'auto', '--jev-budget-usd', '0.01'],
+    ['--jev-recovery', 'assist'],
+    ['--jev-grounding', 'shadow', '--jev-budget-usd', '0'],
+    ['--jev-classification', 'assist', '--jev-budget-usd', '0.021'],
+    ['--jev-ranking', 'off', '--jev-budget-usd', 'NaN'],
+  ])('rejects invalid Jev selection %j before runtime creation', (...flags) => {
+    expect(() => parseArgs(['heal', '--case-dir', '/tmp/case', '--format', 'json', ...flags])).toThrow(CliUsageError);
+  });
+
   it('parses the Placebo-compatible heal contract', () => {
     expect(parseArgs([
       'heal', '--case-dir', '/tmp/case', '--format', 'json',
@@ -171,5 +187,45 @@ describe('parseArgs counterfactual alternatives', () => {
     const { USAGE } = await import('./args.js');
 
     expect(USAGE).toContain('--alternatives-file <file>');
+  });
+});
+it('requires an explicit packet path and separate canonical authorization digest for long healing', () => {
+  const prefix = ['heal', '--case-dir', '/tmp/project', '--format', 'json'];
+  expect(() => parseArgs([...prefix, '--verification-packet', '/tmp/packet.json'])).toThrow();
+  expect(() => parseArgs([...prefix, '--authorize-long-verification', 'a'.repeat(64)])).toThrow();
+  expect(parseArgs([...prefix, '--verification-packet', '/tmp/packet.json', '--authorize-long-verification', 'a'.repeat(64)])).toMatchObject({ verificationPacket: '/tmp/packet.json', authorizeLongVerification: 'a'.repeat(64) });
+  expect(() => parseArgs([...prefix, '--verification-packet', '/tmp/packet.json', '--authorize-long-verification', 'bad'])).toThrow();
+});
+
+describe('bounded explain arguments', () => {
+  it('parses lexical and explicitly capped semantic navigation without reading credentials', () => {
+    expect(parseArgs(['explain', '--case-file', '/tmp/case.json', '--query', 'Why stopped?'])).toEqual({ command: 'explain', caseFile: '/tmp/case.json', query: 'Why stopped?', semantic: false, json: false });
+    expect(parseArgs(['explain', '--case-file', '/tmp/case.json', '--query', 'cause', '--semantic', '--max-usd', '0.002', '--json'])).toEqual({ command: 'explain', caseFile: '/tmp/case.json', query: 'cause', semantic: true, maxUsd: .002, json: true });
+  });
+  it.each([
+    [], ['--case-file', '/tmp/case.json'], ['--query', 'why'],
+    ['--case-file', '/tmp/case.json', '--query', ''],
+    ['--case-file', '/tmp/case.json', '--query', '  '],
+    ['--case-file', '/tmp/case.json', '--query', 'x', '--case-file', '/tmp/b.json'],
+    ['--case-file', '/tmp/case.json', '--query', 'x', '--query', 'y'],
+    ['--case-file', '/tmp/case.json', '--query', 'x', '--json', '--json'],
+    ['--case-file', '/tmp/case.json', '--query', 'x', '--unknown'],
+    ['--case-file', '/tmp/case.json', '--query', 'x', '--max-usd', '.001'],
+    ['--case-file', '/tmp/case.json', '--query', 'x', '--semantic'],
+    ['--case-file', '/tmp/case.json', '--query', 'x', '--semantic', '--max-usd', '0'],
+    ['--case-file', '/tmp/case.json', '--query', 'x', '--semantic', '--max-usd', '-1'],
+    ['--case-file', '/tmp/case.json', '--query', 'x', '--semantic', '--max-usd', '0.0021'],
+    ['--case-file', '/tmp/case.json', '--query', 'x', '--semantic', '--max-usd', 'NaN'],
+    ['--case-file', '/tmp/case.json', '--query', 'x', '--semantic', '--max-usd', 'Infinity'],
+    ['--case-file', '/tmp/case.json', '--query', 'é'.repeat(1025)],
+  ].map(flags => [flags] as const))('rejects malformed navigation arguments %j', flags => {
+    expect(() => parseArgs(['explain', ...flags])).toThrow(CliUsageError);
+  });
+  it('bounds query bytes rather than characters and advertises the data boundary', async () => {
+    expect(parseArgs(['explain', '--case-file', '/tmp/case.json', '--query', 'é'.repeat(1024)])).toMatchObject({ query: 'é'.repeat(1024) });
+    const { USAGE } = await import('./args.js');
+    expect(USAGE).toContain('sutura explain --case-file <path> --query <text>');
+    expect(USAGE).toContain('redacted query');
+    expect(USAGE).toContain('bounded evidence');
   });
 });

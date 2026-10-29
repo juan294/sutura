@@ -30,10 +30,48 @@ function clone(bundle: ReplayBundle): ReplayBundle {
 }
 
 describe('parseReplayBundle', () => {
+  it('accepts absent legacy or explicit typed audit presentation and rejects unknown versions', () => {
+    const value = clone(PARTIAL);
+    expect(parseReplayBundle(value).configuration).not.toHaveProperty('auditPresentation');
+    Object.assign(value.configuration, { auditPresentation: 'typed-status-v1' });
+    expect(parseReplayBundle(value).configuration.auditPresentation).toBe('typed-status-v1');
+    Object.assign(value.configuration, { auditPresentation: 'future-status' });
+    expect(() => parseReplayBundle(value)).toThrow(/configuration.auditPresentation/u);
+  });
+
+  it('preserves exact semantic configuration and rejects invalid new fields with recovery text', () => {
+    const value = clone(PARTIAL);
+    value.configuration.semantic = { schemaVersion: 'sutura-semantic-config-v1', model: 'jev-1.14.0', policyVersion: 'semantic-v1', maxUsd: 0.01, modes: { ranking: 'assist', grounding: 'off', classification: 'off', recovery: 'off' } };
+    expect(parseReplayBundle(value)).toEqual(value);
+    (value.configuration.semantic as unknown as Record<string, unknown>).model = 'jev-latest';
+    expect(() => parseReplayBundle(value)).toThrow(/configuration.semantic.*regenerate/u);
+  });
+
+  it.each([
+    { semantic: { maxUsd: 0.01 } },
+    { semanticBudget: { maxUsd: 0.01, attempts: 1, reservedUsd: 0.001, actualUsd: 0 } },
+    { semanticBudget: { maxUsd: 0, attempts: 9, reservedUsd: 0, actualUsd: 0 } },
+  ])('rejects incomplete semantic identity or budget evidence %j', (extra) => {
+    const value = clone(PARTIAL);
+    Object.assign(value.configuration, extra);
+    expect(() => parseReplayBundle(value)).toThrow(/configuration.semantic/u);
+  });
+
   let complete: ReplayBundle;
 
   beforeAll(async () => {
     complete = await createCompleteReplayBundleForTest();
+  });
+
+  it('round-trips optional termination and wall evidence without completing an incomplete replay', () => {
+    const value = clone(PARTIAL);
+    value.executor = [{ sequence: 1, method: 'run', args: ['baseline', 'test', null], result: { imageId: 'killed', exitCode: -1, stdout: '', stderr: '', truncated: false, metrics: { wallTimeSec: 60.1, cost: 0.01 }, processState: { timedOut: true, signal: 9 } } }];
+    expect(parseReplayBundle(value)).toEqual(value);
+    expect(parseReplayBundle(value).completeness.complete).toBe(false);
+    (value.executor[0]!.result as Record<string, unknown>).processState = { trusted: true };
+    expect(() => parseReplayBundle(value)).toThrow(/unknown fields/u);
+    (value.executor[0]!.result as Record<string, unknown>).processState = { signal: -1 };
+    expect(() => parseReplayBundle(value)).toThrow(/signal/u);
   });
 
   it('accepts valid partial and complete bundles', () => {

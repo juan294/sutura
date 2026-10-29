@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { isActionReadAuthority, permitsActionSourceRead } from '../engine/action-verification-authority.js';
+import { captureNodeDiagnostics, type DiagnosticBinding, type NativeDiagnostics } from '../engine/native-diagnostics.js';
 import type {
   AttemptTarget,
   CompleteCheckInput,
@@ -50,6 +53,16 @@ function timestamp(line: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
+export function nodeRuntimeFromJobLog(log: string): string | undefined {
+  const versions = [...new Set(log.split(/\r?\n/u).flatMap(line => {
+    const match = /^(?:node: v|Node\.js v)(\d+\.\d+\.\d+)$/u.exec(logPayload(line).replace(/\u001b\[[0-9;]*m/gu, '').trim());
+    return match ? [match[1]!] : [];
+  }))];
+  return versions.length === 1 ? versions[0] : undefined;
+}
+
+export interface DiagnosticStepContext { binding: DiagnosticBinding; completion: 'normal' | 'abnormal' | 'unknown' }
+
 interface TimestampedLogLine { line: string; time: number }
 
 function parseTimestampedLog(log: string): TimestampedLogLine[] {
@@ -70,7 +83,8 @@ function parseTimestampedLog(log: string): TimestampedLogLine[] {
 function failedStepLog(
   lines: readonly TimestampedLogLine[],
   step: { name: string; startedAt: string | null; completedAt: string | null },
-): { log: string; truncated: boolean } {
+  diagnosticContext?: DiagnosticStepContext,
+): { log: string; truncated: boolean; diagnostics?: NativeDiagnostics } {
   if (!step.startedAt || !step.completedAt) {
     throw new GitHubAdapterError(`Failed step ${step.name} has no timestamp bounds`);
   }
@@ -102,7 +116,13 @@ function failedStepLog(
   if (matching.length === 0) {
     throw new GitHubAdapterError(`Job logs contain no lines for failed step ${step.name}`);
   }
-  if (matching.length <= FAILED_STEP_LINES) return { log: matching.map(({ line }) => line).join('\n'), truncated: false };
+  const fullLog = matching.map(({ line }) => line).join('\n');
+  const hasNodeDiagnostics = matching.some(({ line }) => /^(?:test at |(?:ℹ |# )(?:tests|fail) \d+|\s*not ok \d+ - )/u.test(logPayload(line).replace(/\x1b\[[0-9;]*m/gu, '')));
+  const exits = [...fullLog.matchAll(/Process completed with exit code (\d+)\./gu)].map(match => Number(match[1]));
+  const normal = diagnosticContext?.completion === 'normal' && exits.length === 1 && exits[0] === 1 && !/\b(?:Killed|SIGKILL|SIGTERM|The operation was canceled|The operation was cancelled)\b/u.test(fullLog);
+  const diagnostics = diagnosticContext && hasNodeDiagnostics ? captureNodeDiagnostics(fullLog, diagnosticContext.binding, normal ? 'normal' : 'unknown') : undefined;
+  const structured = diagnostics === undefined ? {} : { diagnostics };
+  if (matching.length <= FAILED_STEP_LINES) return { log: fullLog, truncated: false, ...structured };
   const kept = new Set<number>();
   if (groupIndex >= 0) {
     for (let index = 0; index <= scriptBlockEnd(matching); index += 1) kept.add(index);
@@ -115,7 +135,7 @@ function failedStepLog(
   for (let index = matching.length - 1; index >= 0 && kept.size < FAILED_STEP_LINES; index -= 1) {
     kept.add(index);
   }
-  return { log: [...kept].sort((left, right) => left - right).map((index) => matching[index]?.line).join('\n'), truncated: true };
+  return { log: [...kept].sort((left, right) => left - right).map((index) => matching[index]?.line).join('\n'), truncated: true, ...structured };
 }
 
 function runContextLines(lines: readonly TimestampedLogLine[]): number[] {
@@ -216,6 +236,11 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
     integerId(options.runId, 'Workflow run id');
   }
 
+  private attemptKey(): string {
+    const authority = this.options.explicitAuthority;
+    return isActionReadAuthority(authority) ? `${this.options.runId}-dispatch-${createHash('sha256').update(authority.provenance).digest('hex').slice(0, 16)}` : this.options.runId;
+  }
+
   async getFailingRun(runId: string): Promise<FailingWorkflowRun> {
     if (runId !== this.options.runId) {
       throw new GitHubAdapterError('Requested workflow run differs from the action event');
@@ -232,6 +257,7 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
       throw new RepairBranchRunError(runId, workflowRun.headBranch);
     }
 
+    const admittedHistorical = isActionReadAuthority(this.options.explicitAuthority) && permitsActionSourceRead(this.options.explicitAuthority.readPermit, { repository: this.repository, runId, attempt: workflowRun.runAttempt ?? 0, sourceSha: workflowRun.headSha });
     let prNumber: number | undefined;
     let targetBranch: { headRef: string; baseSha: string; baseRef: string } | undefined;
     if (workflowRun.event === 'pull_request' || workflowRun.event === 'workflow_dispatch') {
@@ -248,7 +274,7 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
         if (pullRequest.number !== unique[0]) {
           throw new GitHubAdapterError('GitHub returned a different pull request');
         }
-        if (pullRequest.headSha.toLowerCase() !== workflowRun.headSha.toLowerCase()) {
+        if (pullRequest.headSha.toLowerCase() !== workflowRun.headSha.toLowerCase() && !(admittedHistorical && pullRequest.headRef === workflowRun.headBranch)) {
           throw new GitHubAdapterError('Pull request head no longer matches the failing SHA');
         }
         if (pullRequest.headRepo?.toLowerCase() !== this.repository.toLowerCase()) {
@@ -275,8 +301,9 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
         throw new GitHubAdapterError('Workflow run head branch is invalid');
       }
       const branchTip = await this.api.getRefSha(`heads/${workflowRun.headBranch}`);
+      const historical = isActionReadAuthority(this.options.explicitAuthority) && permitsActionSourceRead(this.options.explicitAuthority.readPermit, { repository: this.repository, runId, attempt: workflowRun.runAttempt ?? 0, sourceSha: workflowRun.headSha });
       if (!SHA_PATTERN.test(branchTip) ||
-        branchTip.toLowerCase() !== workflowRun.headSha.toLowerCase()) {
+        (branchTip.toLowerCase() !== workflowRun.headSha.toLowerCase() && !historical)) {
         throw new GitHubAdapterError('Workflow run head branch no longer matches the failing SHA');
       }
       targetBranch = {
@@ -285,13 +312,17 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
         baseRef: workflowRun.headBranch,
       };
     }
-    const { headRef, baseSha, baseRef } = targetBranch;
+    const { headRef, baseRef } = targetBranch;
+    const authority = this.options.explicitAuthority;
+    if (authority !== undefined && (!isActionReadAuthority(authority) || !permitsActionSourceRead(authority.readPermit, { repository: this.repository, runId, attempt: workflowRun.runAttempt ?? 0, sourceSha: workflowRun.headSha }))) throw new GitHubAdapterError('Explicit source authority differs from actual source run');
+    const baseSha = authority?.actual.policyBaseSha ?? targetBranch.baseSha;
     const jobs = await this.api.listJobsForWorkflowRun(numericRunId);
     const failedSteps: FailingWorkflowRun['failedSteps'] = [];
     for (const job of jobs) {
       if (!FAILED_CONCLUSIONS.has(job.conclusion ?? '')) continue;
       const jobLog = await this.api.downloadJobLogs(job.id);
       const timestampedLines = parseTimestampedLog(jobLog);
+      const runtimeVersion = nodeRuntimeFromJobLog(jobLog);
       for (const step of job.steps) {
         if (!FAILED_CONCLUSIONS.has(step.conclusion ?? '')) continue;
         failedSteps.push({
@@ -299,7 +330,12 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
           jobName: job.name,
           stepName: step.name,
           ...(step.number === undefined ? {} : { stepNumber: step.number }),
-          ...failedStepLog(timestampedLines, step),
+          ...failedStepLog(timestampedLines, step, { binding: {
+            repository: this.repository, sourceSha: workflowRun.headSha, runId, attempt: workflowRun.runAttempt ?? 0, jobId: job.id, stepNumber: step.number ?? 0,
+            jobName: job.name, stepName: step.name,
+            ...(workflowRun.path === undefined ? {} : { workflowPath: workflowRun.path }),
+            ...(runtimeVersion === undefined ? {} : { runtimeVersion }),
+          }, completion: step.conclusion === 'failure' && workflowRun.conclusion === 'failure' ? 'normal' : 'abnormal' }),
           ...(step.completedAt ? { completedAt: step.completedAt } : {}),
         });
       }
@@ -309,13 +345,14 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
     }
     return {
       runId, repo: this.repository,
+      ...(workflowRun.runAttempt === undefined ? {} : { runAttempt: workflowRun.runAttempt }),
       ...(prNumber === undefined ? {} : { prNumber }),
       headSha: workflowRun.headSha, headRef, baseSha, baseRef, failedSteps,
     };
   }
 
   private async findCheck(headSha: string): Promise<{ id: number; headSha: string; status: string } | undefined> {
-    const externalId = checkExternalId(this.repository, this.options.runId);
+    const externalId = checkExternalId(this.repository, this.attemptKey());
     const matches = (await this.api.listCheckRunsForRef(headSha)).filter((check) =>
       check.name === SUTURA_CHECK_NAME && check.externalId === externalId &&
       check.headSha.toLowerCase() === headSha.toLowerCase(),
@@ -332,7 +369,7 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
       throw new GitHubAdapterError('Workflow run metadata changed before claim');
     }
     try {
-      await this.api.createRef(`refs/tags/sutura-attempt-${this.options.runId}`, run.headSha);
+      await this.api.createRef(`refs/tags/sutura-attempt-${this.attemptKey()}`, run.headSha);
     } catch (error) {
       if (apiStatus(error) === 422) {
         this.activeCheck = await this.findCheck(run.headSha);
@@ -349,7 +386,7 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
       if (!this.activeCheck) {
         const created = await this.api.createCheckRun({
           name: SUTURA_CHECK_NAME, headSha: run.headSha,
-          externalId: checkExternalId(this.repository, this.options.runId),
+          externalId: checkExternalId(this.repository, this.attemptKey()),
           status: 'in_progress', title: 'Sutura repair audit in progress',
           summary: `Analyzing failed workflow run ${this.options.runId}.`,
         });
@@ -384,7 +421,7 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
       if (recoveredExistingCheck) return null;
       return target;
     } finally {
-      await this.api.deleteRef(`tags/sutura-attempt-${this.options.runId}`);
+      await this.api.deleteRef(`tags/sutura-attempt-${this.attemptKey()}`);
     }
   }
 
@@ -452,7 +489,7 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
     }
     const created = await this.api.createCheckRun({
       name: SUTURA_REPAIR_CHECK_NAME, headSha: input.pullRequest.headSha,
-      externalId: `${checkExternalId(this.repository, this.options.runId)}:repair`,
+      externalId: `${checkExternalId(this.repository, this.attemptKey())}:repair`,
       status: 'in_progress', title: 'Sutura repair verification in progress',
       summary: `Recording the sandbox verification for workflow run ${this.options.runId}.`,
     });
@@ -489,6 +526,6 @@ export class GitHubAdapter implements GitHubOrchestrationPort {
 }
 
 /** Shared bounded step selection for read-only diagnosis outside the Action adapter. */
-export function selectFailedStepLog(log: string, step: { name: string; startedAt: string | null; completedAt: string | null }): { log: string; truncated: boolean } {
-  return failedStepLog(parseTimestampedLog(log), step);
+export function selectFailedStepLog(log: string, step: { name: string; startedAt: string | null; completedAt: string | null }, diagnosticContext?: DiagnosticStepContext): { log: string; truncated: boolean; diagnostics?: NativeDiagnostics } {
+  return failedStepLog(parseTimestampedLog(log), step, diagnosticContext);
 }

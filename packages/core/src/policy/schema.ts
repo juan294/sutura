@@ -1,3 +1,4 @@
+import { parseReproductionProfiles, type ReproductionProfile } from './reproduction-profile.js';
 import { parseVerificationPolicy, type VerificationPolicy } from '../challenges/contracts.js';
 
 export interface ResourceLimits {
@@ -7,6 +8,7 @@ export interface ResourceLimits {
 
 export interface RepositoryPolicy {
   version: 1;
+  reproductionProfiles?: readonly ReproductionProfile[];
   verification?: VerificationPolicy;
   runtime?: 'node' | 'python';
   allowedPaths: string[];
@@ -27,6 +29,7 @@ export class PolicyValidationError extends Error {
 
 const POLICY_KEYS = new Set([
   'version',
+  'reproductionProfiles',
   'verification',
   'runtime',
   'allowedPaths',
@@ -207,8 +210,12 @@ export function parseRepositoryPolicy(content: string): RepositoryPolicy {
     );
   }
 
+  let reproductionProfiles: ReproductionProfile[] | undefined;
+  try { reproductionProfiles = value.reproductionProfiles === undefined ? undefined : parseReproductionProfiles(value.reproductionProfiles); }
+  catch (error) { throw new PolicyValidationError(error instanceof Error ? error.message : 'Invalid reproduction profiles'); }
   return {
     version: 1,
+    ...(reproductionProfiles === undefined ? {} : { reproductionProfiles }),
     ...(value.verification === undefined ? {} : { verification: parseVerificationPolicy(value.verification) }),
     ...(value.runtime === undefined ? {} : { runtime: value.runtime }),
     allowedPaths: stringArray(

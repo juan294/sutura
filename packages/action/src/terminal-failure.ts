@@ -1,5 +1,6 @@
 import {
   VERSION,
+  describeTerminalRecovery,
   redactExternalText,
   type ReplayBundle,
 } from '@sutura/core';
@@ -186,6 +187,7 @@ export function createTerminalFailureEvidence(
   const errorClass = error instanceof Error ? error.name : 'UnknownError';
   const sandbox = sandboxEvidence(context.replay);
   const workflowRun = workflowRunResult(context.replay);
+  const recovery = describeTerminalRecovery(error);
   return {
     schemaVersion: TERMINAL_FAILURE_SCHEMA_VERSION,
     outcome: 'infra-stop',
@@ -214,5 +216,6 @@ export function createTerminalFailureEvidence(
     execution: executionEvidence(context.replay, sandbox.operationIds),
     runtimeDetection: runtimeDetectionEvidence(context.replay),
     failure: failureIdentity(error),
+    ...(recovery === undefined ? {} : { recovery }),
   };
 }

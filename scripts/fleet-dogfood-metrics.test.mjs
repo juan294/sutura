@@ -44,6 +44,39 @@ test('case-file parser records a triage sandbox-budget stop so the fleet can cou
   assert.equal(parseCaseFileHtml(html).outcome, 'gave-up');
 });
 
+test('retains current and historical identity stops only from the triage reading', () => {
+  const reading = 'Original failure reproduction unavailable: Complete native and sandbox diagnostic logs are required. Repair stopped; consumed probe resources remain recorded.';
+  const stopped = FIXED_HTML.replace('outcome-fixed', 'outcome-gave-up').replace('</body>', `<p class="triage-reading">${reading}</p></body>`);
+  assert.equal(parseCaseFileHtml(stopped).triageStopReason, 'failure-identity');
+  assert.equal(parseCaseFileHtml(stopped.replace(reading, 'Reproduced 0/0').replace('class="triage-reading"', 'class="triage-reading" data-sutura-stop-reason="failure-identity"')).triageStopReason, 'failure-identity');
+  assert.equal(parseCaseFileHtml(FIXED_HTML.replace('</body>', `<pre>${reading}</pre></body>`)).triageStopReason, null);
+  assert.equal(parseCaseFileHtml(FIXED_HTML.replace('</body>', '<p class="triage-reading" data-sutura-stop-reason="invented">No identity evidence</p></body>')).triageStopReason, null);
+});
+
+test('malformed, duplicate and oversized triage attributes cannot establish a stop', () => {
+  for (const attributes of [
+    'data-sutura-stop-reason="failure-identity" data-sutura-stop-reason="failure-identity"',
+    `title='data-sutura-stop-reason="failure-identity"'`,
+    `data-sutura-stop-reason="${'x'.repeat(1000)}"`,
+  ]) {
+    const html = FIXED_HTML.replace('</body>', `<p class="triage-reading" ${attributes}>Original failure reproduction unavailable: missing. Repair stopped; consumed probe resources remain recorded.</p></body>`);
+    assert.equal(parseCaseFileHtml(html).triageStopReason, null);
+  }
+});
+
+test('renderer and collector round-trip explicit identity stops and process termination', async () => {
+  const { renderCaseFile } = await import('../packages/core/dist/index.js');
+  const file = JSON.parse(await readFile(new URL('../packages/core/src/report/fixtures/gave-up.json', import.meta.url), 'utf8'));
+  file.cost.totalUsd = () => file.cost.entries.reduce((total, entry) => total + entry.usd, 0);
+  file.triage.stopReason = 'failure-identity';
+  file.triage.reproduction = { version: 'sutura-failure-identity-v1', status: 'unavailable', parser: 'unavailable', reason: 'Process timed out; review deadline before a new authorized probe' };
+  file.stages.push({ stage: 'reproduction', attempt: 1, nodeId: 'timeout', operationId: 'operation', operationTerminal: 'succeeded', exitCode: -1, processState: { timedOut: true, signal: 9 }, metrics: { wallTimeSec: 60.1, cost: 0.01 }, network: 'disabled' });
+  const html = renderCaseFile(file);
+  assert.equal(parseCaseFileHtml(html).triageStopReason, 'failure-identity');
+  assert.match(html, /timedOut/u);
+  assert.match(html, /succeeded/u);
+});
+
 test('terminal failure parser preserves an infrastructure stop without inventing cost', () => {
   assert.deepEqual(parseTerminalFailureJson(JSON.stringify({
     schemaVersion: 'sutura-terminal-failure-v1',
@@ -404,6 +437,19 @@ test('replay-enriched evidence wins over the primary checkpoint regardless of re
   assert.equal(mergeMonitorEvents([enriched, primary], [])[0].replayComplete, true);
 });
 
+test('reparsed identity stops enrich the same attempt without creating another recovery', () => {
+  const original = { repository: 'alpha', runId: 11, runAttempt: 1, outcome: 'gave-up', triageStopReason: null, providerInvocations: null, searchStarted: null };
+  const corrected = { ...original, triageStopReason: 'failure-identity' };
+  const frozen = structuredClone(original);
+  const selected = mergeMonitorEvents([original], [corrected]);
+  assert.deepEqual(original, frozen);
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].triageStopReason, 'failure-identity');
+  assert.equal(selected.filter(event => event.outcome === 'fixed').length, 0);
+  assert.equal(selected[0].providerInvocations, null);
+  assert.equal(mergeMonitorEvents([corrected], [original])[0].triageStopReason, 'failure-identity');
+});
+
 test('CI pagination expands prior failed attempts hidden by a successful rerun', async () => {
   const client = new GhFleetClient('owner');
   let queriedWindow;
@@ -641,4 +687,13 @@ test('collector selects the failed step and records diagnostic identity without 
   const incomplete = await client.inspectFailedRun('alpha', { id: 41, attempt: 2, headSha: 'a'.repeat(40) });
   assert.equal(incomplete.complete, false);
   assert.equal(incomplete.classification.cause, 'unknown');
+});
+
+test('typed recovery detail stays bounded private telemetry and cannot establish delivery', () => {
+  const input = { schemaVersion: 'sutura-terminal-failure-v2', outcome: 'infra-stop', failure: { code: 'provider-disk-exhausted', stage: 'provider-operation', class: 'ContreeError' }, recovery: { code: 'provider-disk-exhausted', stage: 'provider-operation', nextAction: 'Inspect provider capacity; retained operation evidence is private.' } };
+  assert.equal(parseTerminalFailureJson(JSON.stringify(input)).recoveryAction, input.recovery.nextAction);
+  input.recovery.nextAction = 'x'.repeat(1001);
+  assert.equal(parseTerminalFailureJson(JSON.stringify(input)).recoveryAction, undefined);
+  input.recovery = { code: 'invented', stage: 'provider-operation', nextAction: 'pretend fixed' };
+  assert.equal(parseTerminalFailureJson(JSON.stringify(input)).recoveryAction, undefined);
 });

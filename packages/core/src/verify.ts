@@ -139,10 +139,10 @@ export function validateVerifyRequest(
  * declares rather than supplying command text of its own.
  */
 export function trustedCommandsFromPolicy(
-  policy: Pick<RepositoryPolicy, 'requiredCommands'>,
+  policy: Pick<RepositoryPolicy, 'requiredCommands' | 'reproductionProfiles'>,
 ): Readonly<Record<string, string>> {
-  return Object.freeze(Object.fromEntries(policy.requiredCommands.map((command, index) =>
-    [index === 0 ? 'diagnosed' : `required-${index}`, command])));
+  return Object.freeze(Object.fromEntries([...policy.requiredCommands.map((command, index) =>
+    [index === 0 ? 'diagnosed' : `required-${index}`, command]), ...(policy.reproductionProfiles ?? []).map(profile => [`profile:${profile.id}`, profile.fullCommand])]));
 }
 
 export type VerifyOutcomeStatus =

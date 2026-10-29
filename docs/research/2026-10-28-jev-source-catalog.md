@@ -1,0 +1,160 @@
+# Jev documentation research, 2026-10-28
+
+Scope: all 131 Markdown documents enumerated by https://docs.typesafe.ai/llms.txt were fetched successfully, plus the public OpenAPI spec. The index also links Mintlify's homepage, which is not Jev documentation. No missing indexed pages. Coverage involved a page-by-page purpose/API surface review, deeper reading of decision, model, confidence, image, error, SDK and relevant cookbook contracts; it is not a claim that all cookbook programs were executed or every generated API line was manually audited. Raw files and URL/status manifest are local at /tmp/sutura-jev-docs. No credentials, inference requests or console writes used. All following external facts retrieved 2026-10-28.
+
+## Material capabilities and limits
+
+- Jev supplies typed closed-set judgments, not generated patches, explanations or tool execution. Choice selects among supplied options with per-option probabilities; Score rates described ordered levels; Noul returns P(yes). Code must choose effects and enforce policy. https://docs.typesafe.ai/introduction/coding-agents and https://docs.typesafe.ai/concepts/how-to-build-with-system-one
+- Choice always picks an option; add a separate applicability/exists Noul for abstention. Choose candidates in code first, then copy the selected original span. Choice maximum is 255 options (OpenAPI and pre-parsed cookbook). https://docs.typesafe.ai/cookbooks/pre_parsed_value_extraction_cookbook and https://docs.typesafe.ai/cookbooks/semantic_find
+- Batch atomic questions sharing state into one request. Each independently sees state, not other questions' answers. Dependent evidence fetches require another round. Vendor 13-question GDPR example reports 12.2x lower cost and 10x faster batching; this compares batched Jev against separate Jev calls, NOT Sutura or Nemotron. https://docs.typesafe.ai/cookbooks/parallel_questions and https://docs.typesafe.ai/patterns/fan-out
+- Choice/Score confidence summarizes concentration, not a new independent correctness measurement. Noul has no confidence property. Evaluate class probabilities, abstention coverage and correctness on Sutura labels; do not treat confidence as an authorization or universal safety guarantee. https://docs.typesafe.ai/confidence
+- Current stable Jev 1.14.0 released 2026-10-14; 1.13.0 also documented. $0.042 per million INPUT tokens; output free. Both have 64k request / 32k per-question context. State plus all questions counts for request; state plus one question counts for per-question. No separate question-count cap. Long context danger header enables 262k for both limits, explicitly slower and less accurate. latest and preview currently both point to 1.14.0; aliases can move. Pin version and retain response model. Organization-specific requests/sec and tokens/sec limits require console read. No customer fine tuning/LoRA. https://docs.typesafe.ai/models
+- Images/Box are experimental, explicitly not production-ready, and require TypeSafe-Danger-Zone-Images: true. Dedicated image docs say 1.13 and 1.14 accept images; Box needs 1.14. Images are PNG/JPEG in named assets, can appear in state/instructions/criteria. Box always returns a box even if target absent; pair with existence Noul. This contradicts the general System One page and model table saying text-only. Dedicated API/OpenAPI/SDK establish an experimental opt-in surface, not mature visual verification. https://docs.typesafe.ai/images and https://docs.typesafe.ai/primitives/box and https://api.typesafe.ai/openapi.json
+- 1.13 jaggedness page (reviewed 2026-10-02) warns about literal readings, arithmetic/counting/date comparison, indirection, distracting state, adversarial input and option ordering. It is version-scoped; do not assert every listed defect persists or is fixed in 1.14. No 1.14 jaggedness page appears in current index. https://docs.typesafe.ai/model-jaggedness/jev-1.13
+- Self-consistency cookbooks report some answer changes for Jev too. A borderline Noul ranged 0.43–0.53; class labels can flip. This supports explicit uncertain outcomes rather than exact-probability regression assertions. These are vendor examples on one state, not broad reliability guarantees. https://docs.typesafe.ai/cookbooks/consistency_noul_cookbook and https://docs.typesafe.ai/cookbooks/consistency_choice_cookbook
+
+## Integration facts
+
+- POST /v1/systemone takes model, state, questions and optional assets, returns model, typed answers and usage. GET /v1/models is authenticated and currently lists aliases; versioned IDs can be accepted without appearing in listing. Public OpenAPI version 0.2.0. https://docs.typesafe.ai/api/system-one and https://docs.typesafe.ai/api/list-models
+- Request body max 32 MiB; UTF-8 JSON without BOM; nesting <=64; only finite numbers. gzip/zstd accepted; compressed and expanded body each bounded. 400 invalid/context exceeded, 401 auth, 413 size, 415 encoding, 422 validation, 429 rate limit, 529 overload. Backoff recommended for 429/529. https://docs.typesafe.ai/api/errors
+- JS SDK changelog v0.7.0 (2026-10-14) requires Node 22+, includes images and Box, zstd compression on Node >=22.15 for bodies >=1KiB. The quickstart says Node 20 for JavaScript while the current SDK guide/changelog say 22: use installed version/types and current changelog for integration. https://docs.typesafe.ai/sdk/javascript/changelog and https://docs.typesafe.ai/sdk/javascript
+- JS defaults: 2 retries after initial attempt, 10s timeout PER ATTEMPT with no total retry budget; retry 408/429/5xx, connection and timeout errors; 500ms initial backoff capped 5s, jitter .25; honor retry-after up to 60s. Cancellation signal covers pending retries. An SDK migration must preserve Sutura's total budget/cancellation contract instead of accepting defaults silently. https://docs.typesafe.ai/sdk/javascript/api/interfaces/RetryPolicy and https://docs.typesafe.ai/sdk/javascript/api/interfaces/TypeSafeClientConfig and https://docs.typesafe.ai/sdk/javascript/api/interfaces/RequestOptions
+- JS debug logging includes unredacted request bodies; known credential headers redacted. Browser use disabled unless explicit dangerous option. Keep calls server-side; avoid logging repository secrets. Python SDK retry budget defaults to 30s total, unlike JS. https://docs.typesafe.ai/sdk/javascript/api/interfaces/TypeSafeClientConfig and https://docs.typesafe.ai/sdk/python/api/retries
+- Legal index says no training on customer data; enterprise ZDR offered. Do not infer all accounts have zero retention. Full DPA/account policy was not needed for docs mapping and is not asserted. https://docs.typesafe.ai/legal
+
+## Complete indexed page inventory
+
+All entries below HTTP 200; content cached at retrieval.
+
+- https://docs.typesafe.ai/introduction.md
+- https://docs.typesafe.ai/introduction/quickstart.md
+- https://docs.typesafe.ai/introduction/coding-agents.md
+- https://docs.typesafe.ai/concepts/use-case-map.md
+- https://docs.typesafe.ai/concepts/system-one.md
+- https://docs.typesafe.ai/concepts/state.md
+- https://docs.typesafe.ai/primitives.md
+- https://docs.typesafe.ai/primitives/choice.md
+- https://docs.typesafe.ai/primitives/score.md
+- https://docs.typesafe.ai/primitives/noul.md
+- https://docs.typesafe.ai/primitives/box.md
+- https://docs.typesafe.ai/primitives/advanced.md
+- https://docs.typesafe.ai/images.md
+- https://docs.typesafe.ai/confidence.md
+- https://docs.typesafe.ai/concepts/how-to-build-with-system-one.md
+- https://docs.typesafe.ai/introduction/machine-learning-primer.md
+- https://docs.typesafe.ai/patterns.md
+- https://docs.typesafe.ai/patterns/fan-out.md
+- https://docs.typesafe.ai/patterns/confidence-routing.md
+- https://docs.typesafe.ai/patterns/composite-scoring.md
+- https://docs.typesafe.ai/patterns/intent-routing.md
+- https://docs.typesafe.ai/cookbooks.md
+- https://docs.typesafe.ai/cookbooks/function_calling.md
+- https://docs.typesafe.ai/cookbooks/skill_suggestion.md
+- https://docs.typesafe.ai/cookbooks/llm_guardrails.md
+- https://docs.typesafe.ai/cookbooks/citation_check.md
+- https://docs.typesafe.ai/cookbooks/classifying_rag_passages.md
+- https://docs.typesafe.ai/cookbooks/basic_memory.md
+- https://docs.typesafe.ai/cookbooks/hierarchical_classification.md
+- https://docs.typesafe.ai/cookbooks/classification_using_confidence.md
+- https://docs.typesafe.ai/cookbooks/twitch_chat_filter.md
+- https://docs.typesafe.ai/cookbooks/sde_cascade.md
+- https://docs.typesafe.ai/cookbooks/date_extraction_cookbook.md
+- https://docs.typesafe.ai/cookbooks/pre_parsed_value_extraction_cookbook.md
+- https://docs.typesafe.ai/cookbooks/autoformat.md
+- https://docs.typesafe.ai/cookbooks/rerank_typesafe.md
+- https://docs.typesafe.ai/cookbooks/semantic_find.md
+- https://docs.typesafe.ai/cookbooks/entity_alignment.md
+- https://docs.typesafe.ai/cookbooks/intelliprompter.md
+- https://docs.typesafe.ai/cookbooks/consistency_choice_cookbook.md
+- https://docs.typesafe.ai/cookbooks/consistency_noul_cookbook.md
+- https://docs.typesafe.ai/cookbooks/parallel_questions.md
+- https://docs.typesafe.ai/cookbooks/autoresearch_feature_discovery.md
+- https://docs.typesafe.ai/demos.md
+- https://docs.typesafe.ai/demos/smart-home.md
+- https://docs.typesafe.ai/models.md
+- https://docs.typesafe.ai/agent-skill.md
+- https://docs.typesafe.ai/legal.md
+- https://docs.typesafe.ai/model-jaggedness/jev-1.13.md
+- https://docs.typesafe.ai/api/system-one.md
+- https://docs.typesafe.ai/api/list-models.md
+- https://docs.typesafe.ai/api/errors.md
+- https://docs.typesafe.ai/sdk.md
+- https://docs.typesafe.ai/sdk/python.md
+- https://docs.typesafe.ai/sdk/python/usage/basic.md
+- https://docs.typesafe.ai/sdk/python/usage/advanced.md
+- https://docs.typesafe.ai/sdk/python/changelog.md
+- https://docs.typesafe.ai/sdk/python/api.md
+- https://docs.typesafe.ai/sdk/python/api/clients/async.md
+- https://docs.typesafe.ai/sdk/python/api/clients/sync.md
+- https://docs.typesafe.ai/sdk/python/api/types/questions.md
+- https://docs.typesafe.ai/sdk/python/api/types/assets.md
+- https://docs.typesafe.ai/sdk/python/api/types/responses.md
+- https://docs.typesafe.ai/sdk/python/api/retries.md
+- https://docs.typesafe.ai/sdk/python/api/types/common.md
+- https://docs.typesafe.ai/sdk/python/api/exceptions.md
+- https://docs.typesafe.ai/sdk/python/api/constants.md
+- https://docs.typesafe.ai/sdk/javascript.md
+- https://docs.typesafe.ai/sdk/javascript/changelog.md
+- https://docs.typesafe.ai/sdk/javascript/api.md
+- https://docs.typesafe.ai/sdk/javascript/api/classes/APIConnectionError.md
+- https://docs.typesafe.ai/sdk/javascript/api/classes/APIError.md
+- https://docs.typesafe.ai/sdk/javascript/api/classes/APIPromise.md
+- https://docs.typesafe.ai/sdk/javascript/api/classes/APITimeoutError.md
+- https://docs.typesafe.ai/sdk/javascript/api/classes/APIUserAbortError.md
+- https://docs.typesafe.ai/sdk/javascript/api/classes/AuthenticationError.md
+- https://docs.typesafe.ai/sdk/javascript/api/classes/BadRequestError.md
+- https://docs.typesafe.ai/sdk/javascript/api/classes/Image.md
+- https://docs.typesafe.ai/sdk/javascript/api/classes/InternalServerError.md
+- https://docs.typesafe.ai/sdk/javascript/api/classes/NotFoundError.md
+- https://docs.typesafe.ai/sdk/javascript/api/classes/PermissionDeniedError.md
+- https://docs.typesafe.ai/sdk/javascript/api/classes/RateLimitError.md
+- https://docs.typesafe.ai/sdk/javascript/api/classes/TypeSafeClient.md
+- https://docs.typesafe.ai/sdk/javascript/api/classes/TypeSafeError.md
+- https://docs.typesafe.ai/sdk/javascript/api/classes/UnprocessableEntityError.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/BoxCoordinates.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/BoxQuestion.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/BoxResponse.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/ChoiceQuestion.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/ChoiceResponse.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/Logger.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/ModelCard.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/Models.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/NoulQuestion.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/NoulResponse.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/Questions.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/RequestOptions.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/RetryPolicy.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/ScoreQuestion.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/ScoreResponse.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/SystemOneRequest.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/SystemOneResult.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/TextWithAssets.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/TypeSafeClientConfig.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/Usage.md
+- https://docs.typesafe.ai/sdk/javascript/api/interfaces/WithResponse.md
+- https://docs.typesafe.ai/sdk/javascript/api/type-aliases/Asset.md
+- https://docs.typesafe.ai/sdk/javascript/api/type-aliases/ChoiceCriteria.md
+- https://docs.typesafe.ai/sdk/javascript/api/type-aliases/Compression.md
+- https://docs.typesafe.ai/sdk/javascript/api/type-aliases/ContentValue.md
+- https://docs.typesafe.ai/sdk/javascript/api/type-aliases/Description.md
+- https://docs.typesafe.ai/sdk/javascript/api/type-aliases/EntryType.md
+- https://docs.typesafe.ai/sdk/javascript/api/type-aliases/EnvVar.md
+- https://docs.typesafe.ai/sdk/javascript/api/type-aliases/Fetch.md
+- https://docs.typesafe.ai/sdk/javascript/api/type-aliases/JsonValue.md
+- https://docs.typesafe.ai/sdk/javascript/api/type-aliases/LogLevel.md
+- https://docs.typesafe.ai/sdk/javascript/api/type-aliases/Question.md
+- https://docs.typesafe.ai/sdk/javascript/api/type-aliases/ResultFor.md
+- https://docs.typesafe.ai/sdk/javascript/api/type-aliases/ScoreCriteria.md
+- https://docs.typesafe.ai/sdk/javascript/api/type-aliases/ScoreLegend.md
+- https://docs.typesafe.ai/sdk/javascript/api/type-aliases/ScoreOf.md
+- https://docs.typesafe.ai/sdk/javascript/api/type-aliases/SentContent.md
+- https://docs.typesafe.ai/sdk/javascript/api/variables/ENV.md
+- https://docs.typesafe.ai/sdk/javascript/api/variables/LOG_LEVELS.md
+- https://docs.typesafe.ai/sdk/javascript/api/variables/noul.md
+- https://docs.typesafe.ai/sdk/javascript/api/variables/score.md
+- https://docs.typesafe.ai/sdk/javascript/api/variables/VERSION.md
+- https://docs.typesafe.ai/sdk/javascript/api/variables/withAssets.md
+- https://docs.typesafe.ai/sdk/javascript/api/functions/box.md
+- https://docs.typesafe.ai/sdk/javascript/api/functions/choice.md
+- https://docs.typesafe.ai/sdk/javascript/api/functions/image.md
+- https://api.typesafe.ai/openapi.json

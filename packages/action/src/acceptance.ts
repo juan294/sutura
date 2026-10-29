@@ -1,8 +1,9 @@
-import { ContreeError, RuntimeDetectionError, type CaseFile } from '@sutura/core';
+import { CI_CONTROL_NEXT_ACTION, ContreeError, RuntimeDetectionError, type CaseFile } from '@sutura/core';
 import { ActionInputError } from './input.js';
 type ActionOutcome = CaseFile['outcome'] | 'already-attempted' | 'repair-branch-skipped';
 interface OutcomeReporter { setOutput(name: string, value: string): void; setFailed(message: string): void }
 const STAGES = {
+  'native-command-admission': ['admission'],
   'unsupported-input': ['runtime-detection', 'preparation', 'snapshot'],
   'setup-blocked': ['configuration', 'admission'],
   'resource-blocked': ['provider-request', 'preparation', 'reproduction', 'search', 'audit'],
@@ -50,6 +51,7 @@ export function expectedActionStop(error: unknown): TerminalDetail | undefined {
   return undefined;
 }
 export function caseTerminalDetail(result: CaseFile): TerminalDetail | undefined {
+  if (result.outcome === 'gave-up' && result.reproduction?.parser === 'native-command-admission' && result.diagnosis.signals.includes('native-command-admission:ci-control')) return { reason: 'native-command-admission', stage: 'admission', nextAction: CI_CONTROL_NEXT_ACTION };
   const identity = result.reproduction ?? result.triage.reproduction;
   if (identity?.status === 'mismatch') return { reason: 'reproduction-mismatch', stage: 'reproduction', nextAction: 'Compare retained native and sandbox failure identities; repair the reproduction boundary before a new attempt.' };
   if (identity?.status === 'unavailable') return { reason: 'identity-unavailable', stage: 'reproduction', nextAction: 'Provide complete supported native and sandbox diagnostics; a nonzero exit alone cannot authorize repair.' };

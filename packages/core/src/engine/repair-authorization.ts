@@ -1,3 +1,4 @@
+import { processCompletedNormally, type ProcessState } from '../executor/types.js';
 import { createHash } from 'node:crypto';
 import { basename, dirname, posix } from 'node:path';
 import { canonicalJson } from '../replay/canonical-json.js';
@@ -26,7 +27,7 @@ export interface RepairAuthorizationEvidence {
 }
 export interface RepairAuthorizationInput {
   kind: RepairAuthorizationKind; path: string; evidenceReferences: string[];
-  controllerProbe: { id: string; imageId: string; exitCode: number; output: string; sourceSha256: string; failingCommand: string };
+  controllerProbe: { id: string; imageId: string; exitCode: number; processState?: ProcessState; output: string; sourceSha256: string; failingCommand: string };
   strictKey?: 'strict' | 'noUncheckedIndexedAccess';
 }
 interface State {
@@ -59,7 +60,7 @@ export async function deriveRepairAuthorization(session: RepairAuthorizationSess
   const source = state.sources.find((s) => s.path === input.path);
   const probe = input.controllerProbe;
   if (!source || source.startLine !== 1 || source.truncated || !source.content || Buffer.byteLength(source.content) > 16_000 || isSensitiveRepositoryPath(input.path) || !policyAllowsSourceRead(input.path, state.policy) || !policyAllowsPatchPath(input.path, state.policy)) return { ok: false, reason: 'source is incomplete, unsupported, or policy-protected' };
-  if (!probe || probe.sourceSha256 !== digest(source.content) || probe.failingCommand !== state.failingCommand || probe.id !== (input.kind === 'restore-strict-config' ? 'strict-json' : 'async-completion') || probe.imageId !== state.baseline.baselineImageId || !Number.isSafeInteger(probe.exitCode) || probe.exitCode === 0 || typeof probe.output !== 'string' || Buffer.byteLength(probe.output) > 16_384 || input.evidenceReferences.length === 0 || input.evidenceReferences.length > 8 || input.evidenceReferences.some((ref) => typeof ref !== 'string' || !ref || ref.length > 256)) return { ok: false, reason: 'missing baseline controller probe evidence' };
+  if (!probe || probe.sourceSha256 !== digest(source.content) || probe.failingCommand !== state.failingCommand || probe.id !== (input.kind === 'restore-strict-config' ? 'strict-json' : 'async-completion') || probe.imageId !== state.baseline.baselineImageId || !Number.isSafeInteger(probe.exitCode) || !processCompletedNormally(probe) || probe.exitCode === 0 || typeof probe.output !== 'string' || Buffer.byteLength(probe.output) > 16_384 || input.evidenceReferences.length === 0 || input.evidenceReferences.length > 8 || input.evidenceReferences.some((ref) => typeof ref !== 'string' || !ref || ref.length > 256)) return { ok: false, reason: 'missing baseline controller probe evidence' };
   if (input.kind === 'restore-strict-config') {
     const key = input.strictKey;
     if (!key || !['strict', 'noUncheckedIndexedAccess'].includes(key) || !/(?:^|\/)tsconfig(?:\.[^/]+)?\.json$/u.test(input.path)) return { ok: false, reason: 'unsupported strict configuration target' };

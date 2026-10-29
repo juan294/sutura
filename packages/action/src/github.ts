@@ -6,6 +6,7 @@ import {
   GitHubAdapter as CoreGitHubAdapter,
   GitHubAdapterError,
   type GitHubApi,
+  type AuthenticatedActionAuthority,
   type TextArtifactPort,
 } from '@sutura/core';
 
@@ -27,6 +28,7 @@ export interface ArtifactApi {
 }
 
 export interface GitHubAdapterOptions {
+  explicitAuthority?: AuthenticatedActionAuthority;
   owner: string;
   repo: string;
   runId: string;
@@ -83,6 +85,7 @@ export class GitHubAdapter extends CoreGitHubAdapter {
       owner: options.owner,
       repo: options.repo,
       runId: options.runId,
+      ...(options.explicitAuthority === undefined ? {} : { explicitAuthority: options.explicitAuthority }),
       ...(artifactPort ? { artifact: artifactPort } : {}),
     });
   }

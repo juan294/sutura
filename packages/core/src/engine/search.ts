@@ -1,8 +1,10 @@
+import { withinRecoveryDeadline } from '../diagnose/hypotheses-budget.js';
+import { processSucceeded } from '../executor/types.js';
 import type { Candidate, StageEvidence } from '../domain.js';
 import type { ImageId, RunMetrics } from '../executor/types.js';
 import type { RepairTestEvidence } from './repair-tools.js';
 import { diffFingerprint, errorFingerprint } from './fingerprint.js';
-import { compareSearchNodes } from './search-score.js';
+import { compareSearchNodes, compareSearchNodePriorities } from './search-score.js';
 
 export const DEFAULT_SEARCH_LIMITS = Object.freeze({
   initialBranches: 4,
@@ -66,8 +68,12 @@ export interface AdaptiveSearchOptions {
   maximumTotalBranches?: number;
   availableBranches(frontier?: readonly (SearchNode | undefined)[]): number;
   concurrencyCapacity?(): number;
-  cancel?(nodeId: string): Promise<void>;
+  cancel?(nodeId: string): Promise<void | boolean>;
+  singleFinalVerification?: boolean;
+  onProvisional?(input: { nodeId: string; expansion: SearchExpansion }): void | number;
   onDecision?(decision: { summary: string; nodeId?: string; parentNodeId?: string }): void;
+  /** Advisory ordering only: must return an exact permutation of these IDs. */
+  rankFrontier?(nodes: readonly SearchNode[]): Promise<readonly string[]>;
   expand(context: SearchExpansionContext): Promise<SearchExpansion>;
   /**
    * Fully verifies a provisionally green candidate. Diagnosed-test green only
@@ -130,49 +136,91 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
         `search-${String(nodes.length + start + index + 1).padStart(3, '0')}`,
       );
       let cancellationStarted = false;
-      const expansions = await Promise.all(batch.map(async (parent, index) => {
+      let selectedIndex: number | undefined;
+      let drainSeconds = 15;
+      let notifySelected!: () => void;
+      const selection = new Promise<void>(resolve => { notifySelected = resolve; });
+      const completedValues: Array<SearchExpansion | undefined> = batch.map(() => undefined);
+      const draining = new Set<number>();
+      const cancellationRequests: Promise<unknown>[] = [];
+      const raw = batch.map(async (parent, index) => {
         const id = ids[index]!;
-        options.onDecision?.({
-          summary: `Expand branch ${start + index + 1} at depth ${depth}`,
-          nodeId: id,
-          ...(parent === undefined ? {} : { parentNodeId: parent.id }),
-        });
-        const expansion = await options.expand({
-          parent,
-          parentImageId: parent?.imageId ?? options.baselineImageId,
-          depth,
-          branch: start + index + 1,
-          nodeId: id,
-          operationId: id,
-          signal: controllers[index]!.signal,
-        });
-        settled[index] = true;
-        const provisional = expansion.policyEvidence.valid &&
-          expansion.testEvidence.exitCode === 0 &&
-          expansion.candidate !== undefined;
-        // A provisional branch is verified before it may cancel anything. Only a
-        // fully accepted result ends the race; a refused one keeps its reason and
-        // leaves the remaining frontier running.
-        const admission = provisional && options.admit !== undefined
-          ? await options.admit({ nodeId: id, expansion })
-          : { accepted: provisional };
-        if (!cancellationStarted && admission.accepted) {
-          cancellationStarted = true;
-          await Promise.all(ids.flatMap((otherId, otherIndex) => {
-            if (otherIndex === index || settled[otherIndex]) return [];
-            controllers[otherIndex]!.abort();
-            return options.cancel === undefined ? [] : [options.cancel(otherId)];
-          }));
+        options.onDecision?.({ summary: `Expand branch ${start + index + 1} at depth ${depth}`, nodeId: id,
+          ...(parent === undefined ? {} : { parentNodeId: parent.id }) });
+        const expansion = await options.expand({ parent, parentImageId: parent?.imageId ?? options.baselineImageId,
+          depth, branch: start + index + 1, nodeId: id, operationId: id, signal: controllers[index]!.signal });
+        settled[index] = true; completedValues[index] = expansion;
+        if (options.singleFinalVerification && selectedIndex === undefined && expansion.policyEvidence.valid && processSucceeded(expansion.testEvidence) && expansion.candidate !== undefined) {
+          selectedIndex = index;
+          // This synchronous hook non-refundably binds the selected candidate and
+          // closes ordinary ports before any cancellation/drain await.
+          if (!options.onProvisional || !options.admit) throw new Error('Single final verification requires controller admission');
+          const allotted = options.onProvisional({ nodeId: id, expansion });
+          if (allotted !== undefined) { if (!Number.isFinite(allotted) || allotted <= 0 || allotted > 60) throw new Error('Invalid final cancellation allocation'); drainSeconds = allotted; }
+          notifySelected();
+          ids.forEach((otherId, otherIndex) => {
+            if (otherIndex === index || settled[otherIndex]) return;
+            draining.add(otherIndex); controllers[otherIndex]!.abort();
+            if (options.cancel) cancellationRequests.push(Promise.resolve().then(() => options.cancel!(otherId)));
+          });
         }
-        return { expansion, admission };
-      }));
+        return expansion;
+      });
+      let expansions: Array<{ expansion: SearchExpansion; admission: { accepted: boolean; reason?: string } }>;
+      if (options.singleFinalVerification) {
+        const all = Promise.all(raw);
+        await Promise.race([selection, all]);
+        let completed: SearchExpansion[];
+        let confirmed = true;
+        if (selectedIndex === undefined) completed = await all;
+        else {
+          try {
+            completed = await withinRecoveryDeadline(drainSeconds, undefined, async () => {
+              const values = await all;
+              await Promise.allSettled(cancellationRequests);
+              for (const index of draining) {
+                try { if (!options.cancel || await options.cancel(ids[index]!) !== true) confirmed = false; }
+                catch { confirmed = false; }
+              }
+              return values;
+            });
+          } catch {
+            confirmed = false;
+            completed = completedValues.map((value, index) => value ?? {
+              imageId: batch[index]?.imageId ?? options.baselineImageId,
+              cumulativeDiff: batch[index]?.cumulativeDiff ?? '',
+              testEvidence: { commandId: 'diagnosed', imageId: batch[index]?.imageId ?? options.baselineImageId, exitCode: -1, output: 'Controller stop: cancelled branch has no terminal observation within the drain allowance' },
+              policyEvidence: { valid: false, violations: ['cancellation-unresolved'], changedFiles: [], diffBytes: 0 },
+              stageEvidence: [], transcriptReference: ids[index]!, terminalReason: 'cancelled' as const,
+            });
+          }
+        }
+        const admission = selectedIndex === undefined ? undefined : !confirmed
+          ? { accepted: false, reason: 'Final verification blocked: cancellation/drain terminal evidence is unresolved within the approved deadline' }
+          : await options.admit!({ nodeId: ids[selectedIndex]!, expansion: completed[selectedIndex]! });
+        expansions = completed.map((expansion, index) => ({ expansion, admission: index === selectedIndex && admission ? admission : { accepted: false, reason: 'Single final verification selected another candidate' } }));
+      } else {
+        expansions = await Promise.all(raw.map(async (pending, index) => {
+          const expansion = await pending;
+          const provisional = expansion.policyEvidence.valid && processSucceeded(expansion.testEvidence) && expansion.candidate !== undefined;
+          const admission = provisional && options.admit !== undefined ? await options.admit({ nodeId: ids[index]!, expansion }) : { accepted: provisional };
+          if (!cancellationStarted && admission.accepted) {
+            cancellationStarted = true;
+            await Promise.all(ids.flatMap((otherId, otherIndex) => {
+              if (otherIndex === index || settled[otherIndex]) return [];
+              controllers[otherIndex]!.abort(); return options.cancel === undefined ? [] : [options.cancel(otherId)];
+            }));
+          }
+          return { expansion, admission };
+        }));
+      }
       for (const [index, { expansion, admission }] of expansions.entries()) {
         const parent = batch[index];
         const id = ids[index]!;
       const fingerprint = `${diffFingerprint(expansion.cumulativeDiff)}:${errorFingerprint(expansion.testEvidence.output)}`;
       const repeated = visited.has(fingerprint);
       visited.add(fingerprint);
-      const provisional = expansion.testEvidence.exitCode === 0 && expansion.candidate !== undefined;
+      const provisional = processSucceeded(expansion.testEvidence) && expansion.candidate !== undefined;
       const terminalReason = !expansion.policyEvidence.valid
         ? 'policy' as const
         : provisional
@@ -211,7 +259,7 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
         if (child.policyEvidence.changedFiles.length > 0) appliedProposals += 1;
         if (child.terminalReason === 'completion-limit') completionLimits += 1;
       }
-      if (children.some(({ terminalReason }) => terminalReason === 'passed')) break;
+      if (children.some(({ terminalReason }) => terminalReason === 'passed') || selectedIndex !== undefined) break;
       if (completionLimits > appliedProposals) {
         nodes.push(...children);
         return { nodes, candidates: [], terminalReason: 'completion-limit' };
@@ -221,10 +269,28 @@ export async function adaptiveSearch(options: AdaptiveSearchOptions): Promise<Ad
     nodes.push(...children);
     const candidates = children.filter(({ terminalReason }) => terminalReason === 'passed').sort(compareSearchNodes);
     if (candidates.length > 0) return { nodes, candidates, terminalReason: 'candidate-found' };
-    frontier = children
+    if (options.singleFinalVerification && children.some(node => node.terminalReason === 'verification-refused')) return { nodes, candidates: [], terminalReason: 'frontier-exhausted' };
+    const baseline = children
       .filter(({ terminalReason }) => terminalReason === undefined || terminalReason === 'failed')
-      .sort(compareSearchNodes)
-      .slice(0, beamWidth);
+      .sort(compareSearchNodes);
+    const eligible = baseline.filter(node => !processSucceeded(node.testEvidence));
+    if (options.rankFrontier && eligible.length > 1 && nodes.length < maximumTotalBranches) {
+      try {
+        // The hook sees a copy and returns IDs; it cannot replace executable evidence.
+        const suggested = await options.rankFrontier(structuredClone(eligible));
+        const byId = new Map(eligible.map(node => [node.id, node]));
+        if (Array.isArray(suggested) && suggested.length === eligible.length &&
+          new Set(suggested).size === eligible.length && suggested.every(id => byId.has(id))) {
+          const positions = new Map(suggested.map((id, index) => [id, index]));
+          const ordered = eligible.toSorted((left, right) => compareSearchNodePriorities(left, right) || positions.get(left.id)! - positions.get(right.id)!);
+          let next = 0;
+          for (let index = 0; index < baseline.length; index++) {
+            if (byId.has(baseline[index]!.id)) baseline[index] = ordered[next++]!;
+          }
+        } else options.onDecision?.({ summary: 'semantic-ranking-invalid-permutation' });
+      } catch { options.onDecision?.({ summary: 'semantic-ranking-unavailable' }); }
+    }
+    frontier = baseline.slice(0, beamWidth);
   }
   return { nodes, candidates: [], terminalReason: frontier.length === 0 ? 'frontier-exhausted' : 'depth' };
 }

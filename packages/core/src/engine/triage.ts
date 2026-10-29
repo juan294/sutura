@@ -1,3 +1,5 @@
+import { isResolvedReproductionPlan } from './reproduction-plan.js';
+import { processCompletedNormally } from '../executor/types.js';
 import type { TriageVerdict } from '../domain.js';
 import {
   SNAPSHOT_CWD,
@@ -71,14 +73,14 @@ export async function triage(
         (_, offset) =>
           `SUTURA_TRIAGE_ATTEMPT=${shellQuote(String(firstAttempt + offset))} sh -lc ${shellQuote(failingCmd)}`,
       ),
-      { cwd: SNAPSHOT_CWD },
+      { cwd: isResolvedReproductionPlan(native?.reproductionPlan) ? native.reproductionPlan.cwd : SNAPSHOT_CWD, ...(isResolvedReproductionPlan(native?.reproductionPlan) ? { timeoutSec: native.reproductionPlan.profile.probeTimeoutSec } : {}) },
     );
     if (results.length !== batchSize) throw new Error('executor returned an unexpected triage result count');
     // Every result was already executed, even if another result invalidates this batch.
     for (const [offset, result] of results.entries()) {
       observe?.(result, firstAttempt + offset + 1);
       if (reproduction && reproduction.status !== 'matched') continue;
-      if (result.exitCode !== 0) reproduction = probeIdentity(native, failingCmd, result);
+      if (!processCompletedNormally(result) || result.exitCode !== 0) reproduction = probeIdentity(native, failingCmd, result);
       if (!reproduction || reproduction.status === 'matched') exitCodes.push(result.exitCode);
     }
     if (reproduction && reproduction.status !== 'matched') {
@@ -170,6 +172,7 @@ function probeIdentity(native: NativeFailureEvidence | undefined, command: strin
     log: `${result.stdout}\n${result.stderr}`,
     exitCode: result.exitCode,
     truncated: result.truncated,
+    ...(result.processState === undefined ? {} : { processState: result.processState }),
   });
 }
 
@@ -227,17 +230,23 @@ export async function boundedTriage(
     const results = await executor.runMany(
       failingImage,
       [`SUTURA_TRIAGE_ATTEMPT=${shellQuote(String(attempt))} sh -lc ${shellQuote(command)}`],
-      { cwd: SNAPSHOT_CWD },
+      { cwd: isResolvedReproductionPlan(native?.reproductionPlan) ? native.reproductionPlan.cwd : SNAPSHOT_CWD, ...(isResolvedReproductionPlan(native?.reproductionPlan) ? { timeoutSec: native.reproductionPlan.profile.probeTimeoutSec } : {}) },
     );
     const result = results[0];
     if (results.length !== 1 || result === undefined) throw new Error('executor returned an unexpected triage result count');
     probes += 1;
-    const seconds = result.metrics.elapsedTimeSec;
+    const seconds = result.metrics.wallTimeSec ?? result.metrics.elapsedTimeSec;
     if (typeof seconds === 'number' && Number.isFinite(seconds) && seconds >= 0) {
       spentSec += seconds;
       probeSec = Math.max(probeSec, seconds);
     } else {
       enforced = false;
+    }
+    if (!processCompletedNormally(result)) {
+      reproduction = probeIdentity(native, failingCmd, result);
+      if (focused && focusEvidence) focusEvidence.rejected += 1;
+      observe?.(result, probes, focused ? 'focused-rejected' : 'full');
+      return;
     }
     let kind: TriageProbeKind = 'full';
     if (focused && focus && focusEvidence) {

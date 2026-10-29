@@ -357,3 +357,81 @@ describe('verified admission', () => {
     expect(admit).not.toHaveBeenCalled();
   });
 });
+it.each([true, false])('consumes one final phase, drains siblings and never selects another candidate after audit accepted=%s', async accepted => {
+  const events: string[] = [];
+  let provisional = 0; let audit = 0;
+  const expand = vi.fn(async ({ branch, signal }: { branch: number; signal: AbortSignal }) => {
+    if (branch === 1) return expansion('first', 0);
+    await new Promise<void>(resolve => { if (signal.aborted) resolve(); else signal.addEventListener('abort', () => resolve(), { once: true }); });
+    events.push('sibling-drained'); return expansion('second', 0);
+  });
+  const result = await adaptiveSearch({ baselineImageId: 'base', initialBranches: 3, maximumDepth: 3, maximumTotalBranches: 6, availableBranches: () => 6, concurrencyCapacity: () => 2,
+    singleFinalVerification: true, onProvisional: () => { provisional++; events.push('consumed'); },
+    cancel: async () => { events.push('cancel'); return true; }, expand,
+    admit: async () => { audit++; events.push('audit'); expect(events).toContain('sibling-drained'); return { accepted }; } });
+  expect(provisional).toBe(1); expect(audit).toBe(1); expect(expand).toHaveBeenCalledTimes(2);
+  expect(events.indexOf('consumed')).toBeLessThan(events.indexOf('sibling-drained'));
+  expect(result.candidates).toHaveLength(accepted ? 1 : 0);
+});
+it('consumes but refuses the final audit when sibling cancellation remains unresolved', async () => {
+  let consumed = 0; const admit = vi.fn(async () => ({ accepted: true }));
+  const result = await adaptiveSearch({ baselineImageId: 'base', initialBranches: 2, maximumTotalBranches: 2, availableBranches: () => 2, concurrencyCapacity: () => 2,
+    singleFinalVerification: true, onProvisional: () => { consumed++; }, cancel: async () => false,
+    expand: async ({ branch }) => expansion(`candidate-${branch}`, 0), admit });
+  expect(consumed).toBe(1); expect(admit).not.toHaveBeenCalled(); expect(result.candidates).toHaveLength(0);
+  expect(result.nodes[0]?.verificationReason).toContain('cancellation');
+});
+it('ends the consumed attempt when a sibling ignores cancellation beyond its bounded drain', async () => {
+  vi.useFakeTimers();
+  try {
+    const admit = vi.fn(async () => ({ accepted: true }));
+    const pending = adaptiveSearch({ baselineImageId: 'base', initialBranches: 2, maximumTotalBranches: 2, availableBranches: () => 2, concurrencyCapacity: () => 2,
+      singleFinalVerification: true, onProvisional: () => 1, cancel: async () => false,
+      expand: async ({ branch }) => branch === 1 ? expansion('selected', 0) : new Promise(() => {}), admit });
+    const observed = pending.then(result => result);
+    await vi.advanceTimersByTimeAsync(1001);
+    const result = await observed;
+    expect(admit).not.toHaveBeenCalled(); expect(result.candidates).toHaveLength(0);
+    expect(result.nodes[0]?.verificationReason).toContain('cancellation');
+    expect(result.nodes[1]?.terminalReason).toBe('policy');
+  } finally { vi.useRealTimers(); }
+});
+
+describe('optional frontier ordering boundary', () => {
+  async function run(rankFrontier: (nodes: readonly import('./search.js').SearchNode[]) => Promise<readonly string[]>, onDecision = vi.fn()) {
+    return adaptiveSearch({ baselineImageId: 'base', initialBranches: 2, beamWidth: 1,
+      maximumDepth: 2, maximumTotalBranches: 3, availableBranches: () => 3, rankFrontier, onDecision,
+      admit: async () => ({ accepted: false, reason: 'mandatory verification refused' }),
+      expand: async ({ depth, branch }) => depth === 1 ? expansion(`branch-${branch}`, 1, `error ${branch}`) : expansion('visible-green', 0) });
+  }
+  it('uses only supplied eligible IDs to change the next parent and still requires admission', async () => {
+    const rank = vi.fn(async (nodes: readonly import('./search.js').SearchNode[]) => nodes.map(n => n.id).reverse());
+    const result = await run(rank);
+    expect(rank).toHaveBeenCalledOnce(); expect(rank.mock.calls[0]![0].map(n => n.id)).toEqual(['search-001', 'search-002']);
+    expect(result.nodes[2]?.parentId).toBe('search-002'); expect(result.candidates).toEqual([]);
+    expect(result.nodes[2]?.terminalReason).toBe('verification-refused');
+  });
+  it.each([['search-001'], ['search-002', 'search-002'], ['search-002', 'foreign']].map(ids => ({ ids })))('rejects invalid permutations $ids as a whole', async ({ ids }) => {
+    const onDecision = vi.fn(); const result = await run(async () => ids, onDecision);
+    expect(result.nodes[2]?.parentId).toBe('search-001');
+    expect(onDecision).toHaveBeenCalledWith({ summary: 'semantic-ranking-invalid-permutation' });
+  });
+  it('retains the baseline when the hook fails', async () => {
+    const onDecision = vi.fn();
+    expect((await run(async () => { throw new Error('secret transport text'); }, onDecision)).nodes[2]?.parentId).toBe('search-001');
+    expect(onDecision).toHaveBeenCalledWith({ summary: 'semantic-ranking-unavailable' });
+    expect(JSON.stringify(onDecision.mock.calls)).not.toContain('secret transport text');
+  });
+  it('never invokes the hook for passed, policy, refused, cancelled, empty or singleton frontiers', async () => {
+    for (const kind of ['passed', 'policy', 'verification-refused', 'cancelled', 'singleton'] as const) {
+      const rank = vi.fn(async (nodes: readonly import('./search.js').SearchNode[]) => nodes.map(n => n.id));
+      await adaptiveSearch({ baselineImageId: 'base', initialBranches: kind === 'singleton' ? 1 : 2,
+        maximumDepth: 2, maximumTotalBranches: 4, availableBranches: () => 4, rankFrontier: rank,
+        admit: async () => ({ accepted: kind === 'passed' }),
+        expand: async ({ branch }) => kind === 'policy' ? { ...expansion(`b-${branch}`, 1), policyEvidence: { valid: false, violations: ['denied'], changedFiles: [], diffBytes: 0 } }
+          : kind === 'cancelled' ? { ...expansion(`b-${branch}`, 1), terminalReason: 'cancelled' }
+          : expansion(`b-${branch}`, kind === 'singleton' ? 1 : 0) });
+      expect(rank, kind).not.toHaveBeenCalled();
+    }
+  });
+});

@@ -1,3 +1,15 @@
+import type { ControllerClockDomain } from './replay/controller-clock.js';
+import { RecordedExecutor } from './replay/replay-executor.js';
+import { createHash } from 'node:crypto';
+import { isActionReadAuthority, type ActionReadAuthority } from './engine/action-verification-authority.js';
+import { verifyReproductionRuntime } from './engine/reproduction-runtime.js';
+import { preparationDeadlineExecutor } from './executor/deadlines.js';
+import { allowanceMatchesPlan, type VerificationAllowance } from './engine/verification-allowance.js';
+import { resolveReproductionAtSource } from './engine/reproduction-source.js';
+import type { ResolvedReproductionPlan } from './engine/reproduction-plan.js';
+import type { NativeDiagnostics } from './engine/native-diagnostics.js';
+import { admitNativeCommand } from './engine/native-command-admission.js';
+import { processSucceeded } from './executor/types.js';
 import { freezeRepositorySource } from './replay/source-snapshot.js';
 import type { FrozenVerificationSource } from './heal.js';
 import { VerificationExecutionRecorder } from './verification/execution-record.js';
@@ -31,6 +43,8 @@ import {
   AllowlistedExecutor,
   StageLedger,
   noReproductionCaseFile,
+  nativeCommandAdmissionCaseFile,
+  reproductionProfileStopCaseFile,
   prepareSandbox,
   preparationFailureCaseFile,
   missingSandboxPrerequisite,
@@ -102,6 +116,7 @@ const FIX_COMMIT_MESSAGE = [
 ].join('\n');
 
 export interface FailedStepLog {
+  diagnostics?: NativeDiagnostics;
   jobId?: number;
   jobName: string;
   stepNumber?: number;
@@ -113,6 +128,7 @@ export interface FailedStepLog {
 }
 
 export interface FailingWorkflowRun {
+  runAttempt?: number;
   runId: string;
   repo: string;
   prNumber?: number;
@@ -235,6 +251,13 @@ export type OrchestratorLlm = HealLlm;
 
 export interface OrchestrationContext {
   evidenceMode?: VerificationMode;
+  controllerStartedAt?: number;
+  clockNow?(domain: ControllerClockDomain): number;
+  onFinalVerification?(input: { imageId: string; diffSha256: string; sharedBudget: import('./engine/repair-budget.js').RepairBudgetSnapshot }): void;
+  legacyRecordedExecution?: boolean;
+  /** Exact outbound report bytes only; never changes audit authority or returned metadata. */
+  legacyAuditPresentation?: boolean;
+  recordedControllerWallTimeSec?: number;
   runId: string;
   github: GitHubOrchestrationPort;
   repository: RepositoryPort;
@@ -244,9 +267,12 @@ export interface OrchestrationContext {
   secondOpinion?: AuditLlm;
   /** Optional veto-only TypeSafe Jev calibrated audit. Absent when TYPESAFE_API_KEY is unconfigured. */
   typesafeAudit?: TypeSafeAuditClient;
+  semantic?: import('./heal.js').RepairFailureContext['semantic'];
   cost: CostLedger;
   triageN: number;
   raceK: number;
+  explicitAuthority?: ActionReadAuthority;
+  authorizeVerification?(plan: ResolvedReproductionPlan): Promise<VerificationAllowance>;
   repairBudgets?: RepairBudgetOverrides;
   search?: SearchLimits;
   tavily?: TavilySearch;
@@ -617,13 +643,14 @@ async function prepareReport(
   run: FailingWorkflowRun,
   caseFile: CaseFile,
   marker: string,
+  legacyAuditPresentation = false,
 ): Promise<{ body: string; artifactUrl: string }> {
   const artifactName = `sutura-case-file-${run.runId}.html`;
   const artifact = await github.uploadCaseFile(
     artifactName,
     renderCaseFile(caseFile),
   );
-  const body = `${marker}\n${renderComment(caseFile, artifact.url)}`;
+  const body = `${marker}\n${renderComment(caseFile, artifact.url, { legacyAuditPresentation })}`;
   return { body, artifactUrl: artifact.url };
 }
 
@@ -653,8 +680,9 @@ async function publishReport(
   target: AttemptTarget,
   checkoutDir: string,
   replay?: ReplayRecorder,
+  legacyAuditPresentation = false,
 ): Promise<void> {
-  const report = await prepareReport(github, run, caseFile, marker);
+  const report = await prepareReport(github, run, caseFile, marker, legacyAuditPresentation);
   await github.updateAttempt(target, report.body);
   await github.completeCheck(target, { caseFile, artifactUrl: report.artifactUrl, checkoutDir });
   await uploadReplay(github, run, caseFile, replay);
@@ -675,6 +703,11 @@ export function resolveAuditedCandidate(
 }
 
 export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> {
+  if (ctx.semantic) ctx.replay?.recordSemanticConfiguration(ctx.semantic.config);
+  const controllerStartedAt = ctx.controllerStartedAt ?? Date.now();
+  const clockNow = ctx.clockNow ?? (ctx.replay ? (domain: ControllerClockDomain) => ctx.replay!.clockNow(domain) : () => Date.now());
+  const legacyRecorded = ctx.legacyRecordedExecution === true && ctx.evidenceMode === 'replay' && ctx.executor instanceof RecordedExecutor;
+  if (ctx.legacyRecordedExecution && !legacyRecorded) throw new OrchestrationError('Legacy execution semantics require the owned offline replay executor');
   const run = await ctx.github.getFailingRun(ctx.runId);
   validateRun(run, ctx.runId);
   if (run.headRef.startsWith(REPAIR_BRANCH_PREFIX)) {
@@ -699,7 +732,9 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     network: 'disabled',
     note: 'Repository policy validated before provider execution',
   });
-  const marker = attemptMarker(run.runId);
+  const explicitAuthority = isActionReadAuthority(ctx.explicitAuthority) ? ctx.explicitAuthority : undefined;
+  const executionSuffix = explicitAuthority ? `-dispatch-${createHash('sha256').update(explicitAuthority.provenance).digest('hex').slice(0, 16)}` : '';
+  const marker = attemptMarker(`${run.runId}${executionSuffix}`) + (explicitAuthority ? `\n<!-- sutura-source-incident:${run.repo}:${run.runId}:${run.runAttempt ?? 0}:${run.headSha} -->` : '');
   const rankedSteps = rankFailedSteps(run.failedSteps);
   // Only a step whose own log shows a command can be diagnosed; otherwise the
   // header carried past truncation would come from a different step.
@@ -728,6 +763,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
   if (target === null) {
     throw new AlreadyAttemptedError(run.runId);
   }
+  ctx.replay?.bindControllerStart(controllerStartedAt);
 
   const checkoutDir = await ctx.repository.checkoutHead(
     run.repo,
@@ -764,13 +800,50 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       'runtime-detection',
     );
   }
+  const stopForAdmission = async (): Promise<CaseFile | undefined> => {
+    const admission = admitNativeCommand(mechanical.failingCmd);
+    if (!admission) return undefined;
+    const file = nativeCommandAdmissionCaseFile({ runId: run.runId, repo: run.repo, cost: ctx.cost, policyEvidence, stageLedger, traceRecorder, runtime }, mechanical.failingCmd, admission);
+    await publishReport(ctx.github, run, file, marker, target, checkoutDir, ctx.replay, ctx.legacyAuditPresentation);
+    return file;
+  };
+  const admissionStop = await stopForAdmission();
+  if (admissionStop) return admissionStop;
+  let plan: ResolvedReproductionPlan | undefined;
+  let verificationAllowance: VerificationAllowance | undefined;
+  const resolveProfile = async (fallback = false): Promise<CaseFile | undefined> => {
+    const resolution = await resolveReproductionAtSource(checkoutDir, { policy: loadedPolicy.policy, policySha256: loadedPolicy.sha, command: mechanical.failingCmd,
+      runtimeId: runtime.id, sourceSha: run.headSha, native: rankedSteps[chosenStep]?.diagnostics });
+    if (fallback && resolution.status === 'ready') {
+      const file = reproductionProfileStopCaseFile({ runId: run.runId, repo: run.repo, cost: ctx.cost, policyEvidence, stageLedger, traceRecorder, runtime }, mechanical.failingCmd, { status: 'stopped', reason: 'reproduction-profile-preparation-mismatch', nextAction: 'Select this profiled native step as the primary step in a separately authorized attempt; the existing sandbox was prepared for another command' });
+      await publishReport(ctx.github, run, file, marker, target, checkoutDir, ctx.replay, ctx.legacyAuditPresentation);
+      return file;
+    }
+    if (resolution.status === 'stopped') {
+      const file = reproductionProfileStopCaseFile({ runId: run.runId, repo: run.repo, cost: ctx.cost, policyEvidence, stageLedger, traceRecorder, runtime }, mechanical.failingCmd, resolution);
+      await publishReport(ctx.github, run, file, marker, target, checkoutDir, ctx.replay, ctx.legacyAuditPresentation);
+      return file;
+    }
+    plan = resolution.status === 'ready' ? resolution.plan : undefined;
+    if (plan) {
+      verificationAllowance = ctx.authorizeVerification ? await ctx.authorizeVerification(plan) : undefined;
+      if ((verificationAllowance && !allowanceMatchesPlan(verificationAllowance, plan)) || (!verificationAllowance && plan.profile.fullTimeoutSec > 60)) {
+        const file = reproductionProfileStopCaseFile({ runId: run.runId, repo: run.repo, cost: ctx.cost, policyEvidence, stageLedger, traceRecorder, runtime }, mechanical.failingCmd, { status: 'stopped', reason: 'full-verification-budget-incompatible', nextAction: `The unchanged full audit requires ${plan.profile.fullTimeoutSec}s plus required policy/challenge/adjudication obligations; obtain a separately approved compatible one-attempt packet before paid preparation` });
+        await publishReport(ctx.github, run, file, marker, target, checkoutDir, ctx.replay, ctx.legacyAuditPresentation); return file;
+      }
+    }
+    return undefined;
+  };
+  const profileStop = await resolveProfile();
+  if (profileStop) return profileStop;
   const executionRecorder = loadedPolicy.policy.verification?.mode === 'required'
     ? new VerificationExecutionRecorder({ executor: ctx.executor, llm: ctx.llm, mode: ctx.evidenceMode ?? 'local' }) : undefined;
   const executor = new AllowlistedExecutor(executionRecorder?.executor ?? ctx.executor);
-  const imageRef = ctx.imageRef ?? (runtime.id === 'node'
+  const imageRef = plan?.profile.imageRef ?? ctx.imageRef ?? (runtime.id === 'node'
     ? await nodeImageRefForRepository(checkoutDir)
     : runtime.imageRef);
-  const baseImage = await executor.importImage(imageRef);
+  const preparationExecutor = new AllowlistedExecutor(legacyRecorded ? executionRecorder?.executor ?? ctx.executor : preparationDeadlineExecutor(executionRecorder?.executor ?? ctx.executor, controllerStartedAt, () => clockNow('preparation'), `prepare-${run.runId}`));
+  const baseImage = await preparationExecutor.importImage(imageRef);
   stageLedger.record({
     stage: 'preparation',
     attempt: 0,
@@ -779,13 +852,13 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     note: 'Base image imported',
   });
   const setup = await prepareSandbox(
-    executor,
+    preparationExecutor,
     checkoutDir,
     baseImage,
     mechanical.failingCmd,
     stageLedger,
     runtime,
-    (loadedPolicy.policy.verification?.contracts.length ?? 0) > 0
+    plan !== undefined || (loadedPolicy.policy.verification?.contracts.length ?? 0) > 0
       ? () => freezeRepositorySource(ctx.repository, checkoutDir, ctx.replay)
       : false,
   );
@@ -803,15 +876,30 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       setup.command,
       setup.result,
     );
-    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir, ctx.replay);
+    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir, ctx.replay, ctx.legacyAuditPresentation);
     return caseFile;
   }
   try {
+  if (plan && setup.sourceDir) {
+    const frozen = await resolveReproductionAtSource(setup.sourceDir, { policy: plan.policy, policySha256: plan.policySha256, command: mechanical.failingCmd, runtimeId: runtime.id, sourceSha: run.headSha, native: plan.native });
+    if (frozen.status !== 'ready') {
+      const file = reproductionProfileStopCaseFile({ runId: run.runId, repo: run.repo, cost: ctx.cost, policyEvidence, stageLedger, traceRecorder, runtime }, mechanical.failingCmd, frozen.status === 'stopped' ? frozen : { status: 'stopped', reason: 'reproduction-profile-source-mismatch', nextAction: 'Review the frozen source profile' });
+      await publishReport(ctx.github, run, file, marker, target, checkoutDir, ctx.replay, ctx.legacyAuditPresentation); return file;
+    }
+  }
+  if (plan) {
+    const observed = await verifyReproductionRuntime(preparationExecutor, setup.imageId, plan);
+    stageLedger.record({ stage: 'preparation', attempt: 1, network: 'disabled', result: observed.result, parentImageId: setup.imageId, note: 'Exact protected profile sandbox runtime' });
+    if (!observed.ok) {
+      const file = reproductionProfileStopCaseFile({ runId: run.runId, repo: run.repo, cost: ctx.cost, policyEvidence, stageLedger, traceRecorder, runtime }, mechanical.failingCmd, { status: 'stopped', reason: 'reproduction-profile-runtime-unavailable', nextAction: `The approved sandbox requires exact Node ${plan.profile.sandboxNodeVersion}; retain the actual runtime result and review the immutable image` });
+      await publishReport(ctx.github, run, file, marker, target, checkoutDir, ctx.replay, ctx.legacyAuditPresentation); return file;
+    }
+  }
   const reproduce = async (attempt: number) => {
-    const result = await executor.run(
+    const result = await preparationExecutor.run(
       setup.imageId,
-      sandboxTargetCommand(mechanical.failingCmd, runtime),
-      { cwd: SNAPSHOT_CWD },
+      plan?.probeCommand ?? sandboxTargetCommand(mechanical.failingCmd, runtime),
+      legacyRecorded && !plan ? { cwd: SNAPSHOT_CWD } : { cwd: plan?.cwd ?? SNAPSHOT_CWD, timeoutSec: plan?.profile.probeTimeoutSec ?? 120 },
     );
     stageLedger.record({
       stage: 'reproduction',
@@ -824,7 +912,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     return result;
   };
   let reproduction = await reproduce(1);
-  if (reproduction.exitCode === 0) {
+  if (processSucceeded(reproduction) && !plan) {
     // One more candidate, not a loop: the next-earliest failed step whose
     // observed command differs, for a chosen step that was flaky or only
     // reflected another job's failure.
@@ -839,11 +927,15 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       chosenStep = next.index;
       failedLog = next.log;
       mechanical = next.diagnosis;
+      const fallbackStop = await stopForAdmission();
+      if (fallbackStop) return fallbackStop;
+      const fallbackProfileStop = await resolveProfile(true);
+      if (fallbackProfileStop) return fallbackProfileStop;
       reproduction = await reproduce(2);
     }
   }
 
-  if (reproduction.exitCode === 0) {
+  if (processSucceeded(reproduction)) {
     const caseFile = noReproductionCaseFile(
       {
         runId: run.runId,
@@ -856,7 +948,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       },
       mechanical,
     );
-    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir, ctx.replay);
+    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir, ctx.replay, ctx.legacyAuditPresentation);
     return caseFile;
   }
 
@@ -865,18 +957,26 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       runId: run.runId, repo: run.repo, cost: ctx.cost,
       policyEvidence, stageLedger, traceRecorder, runtime,
     }, mechanical.failingCmd, reproduction);
-    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir, ctx.replay);
+    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir, ctx.replay, ctx.legacyAuditPresentation);
     return caseFile;
   }
 
+  const onFinalVerification = ctx.onFinalVerification ?? (ctx.replay ? (input: Parameters<ReplayRecorder['recordFinalVerification']>[0]) => ctx.replay!.recordFinalVerification(input) : undefined);
   const caseFile = await repairFailure({
     ...(executionRecorder === undefined ? {} : { executionRecorder }),
     evidenceMode: ctx.evidenceMode ?? 'local',
     runId: run.runId,
     repo: run.repo,
+    controllerStartedAt,
+    ...(ctx.recordedControllerWallTimeSec === undefined ? {} : { recordedControllerWallTimeSec: ctx.recordedControllerWallTimeSec }),
+    clockNow,
+    ...(onFinalVerification === undefined ? {} : { onFinalVerification }),
     failedLog,
+    ...(plan === undefined ? {} : { reproductionPlan: plan }),
+    ...(verificationAllowance === undefined ? {} : { verificationAllowance }),
     nativeFailure: {
       ...await readNativeFailureEvidence(setup.sourceDir ?? checkoutDir, mechanical.failingCmd, failedLog),
+      ...(rankedSteps[chosenStep]?.diagnostics === undefined ? {} : { diagnostics: rankedSteps[chosenStep]!.diagnostics! }),
       truncated: rankedSteps[chosenStep]?.truncated === true ||
         boundedCommandLog(rankedSteps[chosenStep]?.log ?? '') !== (rankedSteps[chosenStep]?.log ?? ''),
       selectedStep: {
@@ -892,6 +992,7 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
     llm: ctx.llm,
     ...(ctx.secondOpinion === undefined ? {} : { secondOpinion: ctx.secondOpinion }),
     ...(ctx.typesafeAudit === undefined ? {} : { typesafeAudit: ctx.typesafeAudit }),
+    ...(ctx.semantic === undefined ? {} : { semantic: ctx.semantic }),
     cost: ctx.cost,
     triageN: ctx.triageN,
     raceK: ctx.raceK,
@@ -903,12 +1004,12 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       setup.sourceDir ?? checkoutDir,
       failedLog,
       diagnosis,
-      loadedPolicy.policy,
+      plan?.policy ?? loadedPolicy.policy,
       runtime.id,
       ctx.sourceReferenceOrder,
       competingClasses,
     ),
-    policy: loadedPolicy.policy,
+    policy: plan?.policy ?? loadedPolicy.policy,
     policyEvidence,
     stageLedger,
     traceRecorder,
@@ -922,14 +1023,16 @@ export async function orchestrate(ctx: OrchestrationContext): Promise<CaseFile> 
       ? {}
       : { lockfileDiff: ctx.lockfileDiff }),
   });
+  ctx.replay?.recordControllerWallTime(caseFile.controllerWallTimeSec);
+  if (caseFile.semanticDecisions) ctx.replay?.recordSemanticBudget(caseFile.semanticDecisions.budget);
   if (caseFile.outcome !== 'fixed') {
-    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir, ctx.replay);
+    await publishReport(ctx.github, run, caseFile, marker, target, checkoutDir, ctx.replay, ctx.legacyAuditPresentation);
     return caseFile;
   }
 
   const winner = resolveAuditedCandidate(caseFile);
-  const branch = `${REPAIR_BRANCH_PREFIX}${run.runId}`;
-  const report = await prepareReport(ctx.github, run, caseFile, marker);
+  const branch = `${REPAIR_BRANCH_PREFIX}${run.runId}${executionSuffix}`;
+  const report = await prepareReport(ctx.github, run, caseFile, marker, ctx.legacyAuditPresentation);
   await ctx.repository.publishFix({
     branch,
     checkoutDir,

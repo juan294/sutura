@@ -112,7 +112,7 @@ export class InMemoryExecutor implements Executor {
       const scripted = await this.script(cmd, parent, callIndex, opts);
       if (operation?.cancelled) throw new Error(`Operation ${operationId} was cancelled`);
       if (operationId && operation && !operation.terminal) {
-        operation.terminal = scripted.exitCode === 0 ? 'succeeded' : 'failed';
+        operation.terminal = 'succeeded';
         this.completions.push({ operationId, cancellationRequested: false, terminal: operation.terminal });
       }
       return {

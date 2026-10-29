@@ -1,3 +1,4 @@
+import { processSucceeded } from '../executor/types.js';
 import { createHash } from 'node:crypto';
 
 import { type AuditLlm } from '../audit/audit.js';
@@ -97,7 +98,7 @@ function refusedVerdict(reasoning: string, checks: AuditVerdict['checks'] = []):
  */
 function classifyRejection(
   verdict: AuditVerdict,
-  raceResult: Pick<RaceResult, 'held' | 'exitCode'>,
+  raceResult: Pick<RaceResult, 'held' | 'exitCode' | 'processState'>,
 ): CounterfactualRejection | undefined {
   if (verdict.approved) return undefined;
   const mechanical = verdict.checks.find(
@@ -110,7 +111,7 @@ function classifyRejection(
       evidence: bounded(mechanical.evidence ?? verdict.reasoning),
     };
   }
-  if (!raceResult.held || raceResult.exitCode !== 0) {
+  if (!raceResult.held || !processSucceeded(raceResult)) {
     return {
       gate: 'verification',
       rule: 'verification-command',
@@ -185,7 +186,7 @@ export async function evaluateCounterfactuals(
       const diffHash = digest(alternative.diff);
       const record = (
         verdict: AuditVerdict,
-        raceResult: Pick<RaceResult, 'held' | 'exitCode'>,
+        raceResult: Pick<RaceResult, 'held' | 'exitCode' | 'processState'>,
         nodeId: string,
       ): void => {
         const rejectedBy = classifyRejection(verdict, raceResult);

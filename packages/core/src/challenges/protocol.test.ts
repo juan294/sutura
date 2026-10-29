@@ -14,6 +14,10 @@ function probe(contract: unknown, args: unknown[]) {
 }
 const result = (stdout: string) => ({ stdout, stderr: '', exitCode: 0, truncated: false });
 
+it('rejects a terminated process even when it prints a valid observation with exit zero', () => {
+  expect(() => decodeObservation({ ...result('{"version":1,"value":3}'), processState: { timedOut: true } })).toThrow();
+});
+
 describe('bounded observation protocol', () => {
   it.each([
     '{"version":1,"value":3,"success":true}',

@@ -1,3 +1,4 @@
+import { remainingFinalVerificationSec, type FinalVerificationPhase } from './verification-allowance.js';
 export interface RepairBudgetLimits {
   modelTurns: number;
   toolCalls: number;
@@ -121,13 +122,17 @@ export class RepairBudget {
   };
   private readonly held = new Map<RepairCapacityReservation, Record<CapacityKey, number>>();
   private readonly startedAt: number;
+  private ordinaryClosed = false;
+  private readonly finalReservations = new Map<RepairCapacityReservation, FinalVerificationPhase>();
 
   constructor(
     limits: RepairBudgetOverrides = DEFAULT_REPAIR_BUDGET_LIMITS,
     private readonly now: () => number = Date.now,
+    startedAt?: number,
   ) {
     this.limits = repairBudgetLimits(limits);
-    this.startedAt = now();
+    this.startedAt = startedAt ?? now();
+    if (!Number.isFinite(this.startedAt) || this.startedAt > now()) throw new RangeError('Invalid controller start time');
   }
 
   private assertElapsed(reservation?: RepairCapacityReservation): void {
@@ -182,6 +187,16 @@ export class RepairBudget {
   releaseCapacity(reservation: RepairCapacityReservation): void {
     this.capacityFor(reservation);
     this.held.delete(reservation);
+    this.finalReservations.delete(reservation);
+  }
+
+  /** Transfer existing held counts/USD, never a new inference or operation pool. */
+  transferToFinalVerification(reservation: RepairCapacityReservation, phase: FinalVerificationPhase): void {
+    this.capacityFor(reservation);
+    this.assertElapsed(reservation);
+    if (this.ordinaryClosed || remainingFinalVerificationSec(phase) <= 0) throw new BudgetExceededError('elapsedTimeSec');
+    this.ordinaryClosed = true;
+    this.finalReservations.set(reservation, phase);
   }
 
   reserveToolCall(reservation?: RepairCapacityReservation): void { this.reserveCount('toolCalls', reservation); }
@@ -222,8 +237,8 @@ export class RepairBudget {
     this.inferenceCostUsd -= reserved - actualUsd;
   }
 
-  private reserveUsdPool(key: UsdPoolKey, label: string, worstCaseUsd: number): SecondOpinionReservation {
-    this.assertElapsed();
+  private reserveUsdPool(key: UsdPoolKey, label: string, worstCaseUsd: number, capacity?: RepairCapacityReservation): SecondOpinionReservation {
+    this.assertElapsed(capacity);
     if (!Number.isFinite(worstCaseUsd) || worstCaseUsd <= 0) {
       throw new RangeError(`Worst-case ${label} cost must be positive`);
     }
@@ -250,8 +265,8 @@ export class RepairBudget {
   }
 
   /** Independent of inferenceCostUsd: caps only the optional veto-only second opinion. */
-  reserveSecondOpinion(worstCaseUsd: number): SecondOpinionReservation {
-    return this.reserveUsdPool('secondOpinionUsd', 'second-opinion', worstCaseUsd);
+  reserveSecondOpinion(worstCaseUsd: number, capacity?: RepairCapacityReservation): SecondOpinionReservation {
+    return this.reserveUsdPool('secondOpinionUsd', 'second-opinion', worstCaseUsd, capacity);
   }
 
   settleSecondOpinion(reservation: SecondOpinionReservation, actualUsd: number): void {
@@ -259,8 +274,8 @@ export class RepairBudget {
   }
 
   /** Independent of inferenceCostUsd and secondOpinionUsd: caps only the optional TypeSafe Jev calibrated audit. */
-  reserveTypeSafeAudit(worstCaseUsd: number): TypeSafeAuditReservation {
-    return this.reserveUsdPool('typesafeAuditUsd', 'TypeSafe audit', worstCaseUsd);
+  reserveTypeSafeAudit(worstCaseUsd: number, capacity?: RepairCapacityReservation): TypeSafeAuditReservation {
+    return this.reserveUsdPool('typesafeAuditUsd', 'TypeSafe audit', worstCaseUsd, capacity);
   }
 
   settleTypeSafeAudit(reservation: TypeSafeAuditReservation, actualUsd: number): void {
@@ -275,7 +290,12 @@ export class RepairBudget {
   }
 
   remainingElapsedTimeSec(reservation?: RepairCapacityReservation): number {
-    if (reservation !== undefined) this.capacityFor(reservation);
+    if (reservation !== undefined) {
+      this.capacityFor(reservation);
+      const phase = this.finalReservations.get(reservation);
+      if (phase) return remainingFinalVerificationSec(phase);
+    }
+    if (this.ordinaryClosed) return 0;
     const protectedTime = [...this.held].reduce((sum, [owner, capacity]) => sum + (owner === reservation ? 0 : capacity.elapsedTimeSec), 0);
     return Math.max(
       0,

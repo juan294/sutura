@@ -37,6 +37,11 @@ describe('GitHub Action metadata', () => {
       'model-nano',
       'model-super',
       'model-ultra',
+      'jev-ranking',
+      'jev-grounding',
+      'jev-classification',
+      'jev-recovery',
+      'jev-budget-usd',
     ]) {
       expect(metadata).toContain(`  ${input}:\n`);
     }
@@ -52,4 +57,14 @@ describe('GitHub Action metadata', () => {
     expect(metadata).toMatch(/^author: Sutura$/mu);
     expect(metadata).toMatch(/^branding:\n  icon: activity\n  color: red$/mu);
   });
+});
+
+
+it('keeps new Jev modes disabled and shared spend zero by default', async () => {
+  const metadata = await readFile(metadataUrl, 'utf8');
+  for (const role of ['ranking', 'grounding', 'classification', 'recovery']) {
+    expect(metadata).toMatch(new RegExp(`  jev-${role}:\\n    description: [^\\n]+\\n    required: false\\n    default: off`));
+  }
+  expect(metadata).toMatch(/  jev-budget-usd:\n    description: [^\n]+\n    required: false\n    default: '0'/);
+  expect(metadata).toContain('  semantic-shadow-path:\n');
 });

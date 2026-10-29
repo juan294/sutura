@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ReplayRecorder } from '@sutura/core';
+import { ContreeError, ReplayRecorder } from '@sutura/core';
 
 import { createTerminalFailureEvidence } from './terminal-failure.js';
 import { resolveActionIdentity } from './terminal-failure.js';
@@ -55,7 +55,7 @@ describe('terminal failure evidence', () => {
         pullRequestNumber: 114,
       },
       packageIdentity: {
-        name: 'sutura', version: '0.4.1', actionSha: SHA,
+        name: 'sutura', version: '0.5.0', actionSha: SHA,
         actionShaSource: 'runner-action-path',
       },
       actionRunId: '88',
@@ -113,4 +113,10 @@ describe('terminal failure evidence', () => {
       },
     });
   });
+});
+
+it('preserves origin-owned disk recovery with unavailable costs and operation identity', () => {
+  const error = new ContreeError('retained provider failure', undefined, undefined, { code: 'provider-disk-exhausted', stage: 'provider-operation', details: { providerOperationId: 'operation-1' } });
+  const evidence = createTerminalFailureEvidence(error, { repository: 'acme/widget', actionRunId: '12', targetRunId: '11', actionSha: SHA });
+  expect(evidence).toMatchObject({ outcome: 'infra-stop', costStatus: 'unavailable', failure: { code: 'provider-disk-exhausted', stage: 'provider-operation', details: { providerOperationId: 'operation-1' } }, recovery: { nextAction: expect.stringContaining('ENOSPC') }, observedCosts: { sandboxUsd: null } });
 });

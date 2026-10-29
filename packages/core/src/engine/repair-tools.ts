@@ -1,3 +1,4 @@
+import { processCompletedNormally, processSucceeded } from '../executor/types.js';
 import { randomUUID } from 'node:crypto';
 import { withinRecoveryDeadline } from '../diagnose/hypotheses-budget.js';
 import { Buffer } from 'node:buffer';
@@ -68,6 +69,7 @@ export interface RepairTestEvidence {
   imageId: ImageId;
   exitCode: number;
   output: string;
+  processState?: NonNullable<RunResult['processState']>;
   metrics?: RunResult['metrics'];
   readonly outputTruncated?: boolean;
 }
@@ -103,6 +105,7 @@ export interface RepairToolRuntimeOptions {
   policy: RepositoryPolicy;
   budget: RepairBudget;
   trustedCommands: Readonly<Record<string, string>>;
+  testRunOptions?: Readonly<Record<string, { cwd: string; timeoutSec: number }>>;
   sourceContext: RepairSourceContext;
   authorization?: RepairAuthorizationContext;
   signal?: AbortSignal;
@@ -164,6 +167,7 @@ export class RepairToolRuntime {
     command: string,
     parent = this.current.editableImageId,
     maximumTimeoutSec = MAX_TOOL_TIMEOUT_SEC,
+    cwd = '/workspace',
   ): Promise<RunResult> {
     this.options.budget.reserveSandboxOperation();
     const timeoutSec = Math.min(
@@ -174,7 +178,7 @@ export class RepairToolRuntime {
     const operationId = `${this.options.operationIdPrefix ?? `repair-${randomUUID()}`}-op-${String(this.operationIndex).padStart(3, '0')}`;
     this.options.onOperationStart?.(operationId);
     return withinRecoveryDeadline(timeoutSec, this.options.signal, () => this.options.executor.run(parent, command, {
-      cwd: '/workspace', timeoutSec, operationId, network: 'disabled',
+      cwd, timeoutSec, operationId, network: 'disabled',
     }), async () => this.options.executor.cancel(operationId));
   }
 
@@ -279,7 +283,7 @@ export class RepairToolRuntime {
     if (result.truncated || Buffer.byteLength(result.stdout, 'utf8') > MAX_READ_BYTES) {
       return { result: failure('sandbox', 'File output exceeded the bounded tool limit') };
     }
-    if (result.exitCode !== 0) return { result: failure('sandbox', 'File is missing, binary, oversized, or symlinked') };
+    if (!processSucceeded(result)) return { result: failure('sandbox', 'File is missing, binary, oversized, or symlinked') };
     const resolution = result.stderr.trim();
     const resolvedPath = fallbackPaths.find((candidate) => resolution === `${RESOLVED_SOURCE_PREFIX}${candidate}`);
     if (resolution && resolvedPath === undefined) return { result: failure('sandbox', 'File resolution metadata was invalid') };
@@ -305,7 +309,7 @@ export class RepairToolRuntime {
     const result = await this.run(command);
     this.observe(result, this.current.editableImageId, `resolve_file_suffix ${path}`);
     if (
-      result.exitCode !== 0 ||
+      !processSucceeded(result) ||
       result.truncated ||
       Buffer.byteLength(result.stdout, 'utf8') > MAX_SUFFIX_RESOLUTION_BYTES
     ) return undefined;
@@ -360,7 +364,7 @@ export class RepairToolRuntime {
       const resultPath = line.slice(0, separator);
       return safePath(resultPath) !== null && allowsSourceRead(resultPath, this.options.policy);
     }).join('\n');
-    return result.exitCode <= 1
+    return processCompletedNormally(result) && result.exitCode <= 1
       ? { ok: true, message: bounded(filtered || 'No matches'), imageId: result.imageId, exitCode: result.exitCode }
       : failure('sandbox', `Repository search failed with exit ${result.exitCode}`);
   }
@@ -370,15 +374,18 @@ export class RepairToolRuntime {
     if (!args || typeof args.commandId !== 'string') return failure('invalid', 'run_test requires commandId');
     const command = this.options.trustedCommands[args.commandId];
     if (command === undefined) return failure('policy', 'run_test commandId is not trusted');
-    const result = await this.run(command, this.current.editableImageId, MAX_TEST_TIMEOUT_SEC);
+    delete this.current.latestTest;
+    const result = await this.run(command, this.current.editableImageId, this.options.testRunOptions?.[args.commandId]?.timeoutSec ?? MAX_TEST_TIMEOUT_SEC, this.options.testRunOptions?.[args.commandId]?.cwd ?? '/workspace');
     const combined = [result.stdout, result.stderr].filter(Boolean).join('\n');
     const outputTruncated = result.truncated || Buffer.byteLength(combined, 'utf8') > MAX_TOOL_OUTPUT_BYTES;
     const output = bounded(combined);
+    this.observe(result, this.current.editableImageId, `run_test ${args.commandId}${outputTruncated ? ' (output truncated)' : ''}`);
+    if (!processCompletedNormally(result)) return failure('sandbox', 'Test process timed out or was terminated; review its deadline before a new authorized attempt');
     this.current.latestTest = {
       commandId: args.commandId, imageId: result.imageId, exitCode: result.exitCode, output, metrics: result.metrics,
+      ...(result.processState === undefined ? {} : { processState: result.processState }),
       ...(outputTruncated ? { outputTruncated: true } : {}),
     };
-    this.observe(result, this.current.editableImageId, `run_test ${args.commandId}${outputTruncated ? ' (output truncated)' : ''}`);
     const note = outputTruncated ? `\n[output truncated to the last ${MAX_TOOL_OUTPUT_BYTES} bytes; exit code ${result.exitCode} is authoritative]` : '';
     return { ok: true, message: `${output || `Test exited ${result.exitCode}`}${note}`, imageId: result.imageId, exitCode: result.exitCode };
   }
@@ -431,14 +438,14 @@ export class RepairToolRuntime {
     const command = `printf '%s' ${shellQuote(encoded)} | base64 --decode | git apply - && git diff --no-ext-diff --no-renames --binary HEAD --`;
     const parent = this.current.editableImageId;
     const result = await this.run(command, parent);
-    if (result.exitCode !== 0) return failure('sandbox', bounded(result.stderr || 'Patch did not apply'));
+    const nodeId = this.observe(result, parent, 'apply_patch execution');
+    if (!processSucceeded(result)) return failure('sandbox', bounded(result.stderr || 'Patch did not apply'));
     if (result.truncated) return failure('sandbox', 'Cumulative diff output was truncated');
     const cumulative = result.stdout;
     const validation = await this.validateDiff(cumulative);
     if (!validation.ok) return failure('policy', validation.violations.join('; '));
     this.options.budget.assertDiffBytes(validation.diffBytes);
     this.invalidateSourceExcerpts(proposed.changedFiles);
-    const nodeId = this.observe(result, parent, 'apply_patch accepted');
     this.current = {
       editableImageId: result.imageId,
       cumulativeDiff: cumulative,
@@ -462,8 +469,8 @@ export class RepairToolRuntime {
     const validation = await this.validateDiff(result.stdout);
     this.observe(result, this.current.editableImageId, 'inspect_diff');
     return {
-      ok: result.exitCode === 0,
-      ...(result.exitCode === 0 ? {} : { kind: 'sandbox' as const }),
+      ok: processSucceeded(result),
+      ...(processSucceeded(result) ? {} : { kind: 'sandbox' as const }),
       message: bounded(JSON.stringify({ diff: result.stdout, changedFiles: validation.changedFiles, bytes: validation.diffBytes, findings: validation.violations })),
       imageId: result.imageId,
       exitCode: result.exitCode,
@@ -476,7 +483,7 @@ export class RepairToolRuntime {
       return failure('invalid', 'submit_candidate requires non-empty id and rationale');
     }
     if (!this.current.cumulativeDiff) return failure('invalid', 'A non-empty cumulative diff is required');
-    if (!this.current.latestTest || this.current.latestTest.exitCode !== 0) return failure('invalid', 'The latest trusted test must pass before submission');
+    if (!this.current.latestTest || !processSucceeded(this.current.latestTest)) return failure('invalid', 'The latest trusted test must pass before submission');
     const candidate = { id: args.id.slice(0, 80), rationale: args.rationale.slice(0, 240), diff: this.current.cumulativeDiff };
     return {
       ok: true,

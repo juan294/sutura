@@ -187,3 +187,22 @@ describe('recordingRepositoryPort', () => {
       .not.toContain('repository');
   });
 });
+it('captures declared protected inputs but never a policy-denied profile file', async () => {
+  const checkoutDir = await mkdtemp(join(tmpdir(), 'sutura-profile-capture-'));
+  try {
+    await mkdir(join(checkoutDir, 'scripts'));
+    await writeFile(join(checkoutDir, 'package.json'), '{}');
+    await writeFile(join(checkoutDir, 'scripts/test.mjs'), 'reviewed wrapper');
+    await writeFile(join(checkoutDir, 'scripts/denied.mjs'), 'DO-NOT-CAPTURE');
+    const content = JSON.stringify({ version: 1, deniedReadPaths: ['scripts/denied.mjs'], reproductionProfiles: [{ id: 'pilot', nativeCommand: 'node scripts/test.mjs', cwd: '.', argv: ['node', '--test'], sourceInputs: ['package.json', 'scripts/test.mjs', 'scripts/denied.mjs'].map(path => ({ path, sha256: 'a'.repeat(64) })), nativeNodeVersion: '22.22.2', sandboxNodeVersion: '22.22.2', imageRef: `node@sha256:${'b'.repeat(64)}`, probeTimeoutSec: 120, fullCommand: 'node scripts/test.mjs', fullTimeoutSec: 1200, callers: [], approverIds: [] }] });
+    const port = { readPolicyAtSha: async () => content, checkoutHead: async () => checkoutDir } as unknown as RepositoryPort;
+    const recorder = new ReplayRecorder('77001', 'acme/widget', 'a'.repeat(40), CONFIG);
+    const wrapped = recordingRepositoryPort(port, recorder);
+    await wrapped.readPolicyAtSha('acme/widget', 'a'.repeat(40));
+    await wrapped.checkoutHead('acme/widget', 'a'.repeat(40));
+    const recorded = JSON.stringify(recorder.finish('gave-up').repository[1]?.result);
+    expect(recorded).toContain('reviewed wrapper');
+    expect(recorded).not.toContain('DO-NOT-CAPTURE');
+    expect(recorded).not.toContain('scripts/denied.mjs');
+  } finally { await rm(checkoutDir, { recursive: true, force: true }); }
+});

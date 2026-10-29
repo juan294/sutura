@@ -1,3 +1,6 @@
+import { isResolvedReproductionPlan, type ResolvedReproductionPlan } from './reproduction-plan.js';
+import { compareNodeDiagnostics, type NativeDiagnostics } from './native-diagnostics.js';
+import { processCompletedNormally, type ProcessState } from '../executor/types.js';
 import { createHash } from 'node:crypto';
 import { vitestRunner } from './focus/vitest.js';
 import { jestRunner } from './focus/jest.js';
@@ -13,6 +16,8 @@ export interface ScriptProvenance {
   packageName?: string;
 }
 export interface NativeFailureEvidence {
+  diagnostics?: NativeDiagnostics;
+  reproductionPlan?: ResolvedReproductionPlan;
   command: string;
   log: string;
   truncated?: boolean;
@@ -138,6 +143,7 @@ function underlying(evidence: NativeFailureEvidence): string | undefined {
 
 /** The exact supported tool command resolved from supplied manifest provenance. */
 export function nativeExecutionCommand(evidence: NativeFailureEvidence): string | undefined {
+  if (isResolvedReproductionPlan(evidence.reproductionPlan)) return evidence.reproductionPlan.probeCommand;
   const command = underlying(evidence);
   return command && toolsFor(command) ? command : undefined;
 }
@@ -309,11 +315,13 @@ function parseEvidence(log: string, evidence: NativeFailureEvidence, tools: read
 }
 
 /** A nonzero exit is necessary, but never sufficient, evidence of original reproduction. */
-export function compareFailureIdentity(native: NativeFailureEvidence | undefined, sandbox: { log: string; exitCode: number; truncated?: boolean }): FailureIdentityEvidence {
+export function compareFailureIdentity(native: NativeFailureEvidence | undefined, sandbox: { log: string; exitCode: number; truncated?: boolean; processState?: ProcessState }): FailureIdentityEvidence {
   const base = { version: 'sutura-failure-identity-v1' as const, parser: 'unavailable', ...(native?.selectedStep ? { selectedStep: native.selectedStep } : {}) };
   const unavailable = (reason: string): FailureIdentityEvidence => ({ ...base, status: 'unavailable', reason });
+  if (!processCompletedNormally(sandbox)) return unavailable('Sandbox process did not complete normally; review retained timeout/signal evidence before a newly authorized probe');
   if (!native) return unavailable('Native selected-step evidence is required');
   if (sandbox.exitCode === 0) return unavailable('A passing probe is not failure reproduction');
+  if (isResolvedReproductionPlan(native.reproductionPlan) && native.reproductionPlan.native === native.diagnostics && native.command === native.reproductionPlan.fullCommand) return compareNodeDiagnostics(native.reproductionPlan.native, sandbox.log, sandbox);
   if (native.truncated || sandbox.truncated || native.log.length > 1_000_000 || sandbox.log.length > 1_000_000 || !native.log.trim()) return unavailable('Complete native and sandbox diagnostic logs are required');
   const command = underlying(native), tools = command ? toolsFor(command) : undefined;
   if (!tools) return unavailable('Supported tool command and exact package-script provenance are required');

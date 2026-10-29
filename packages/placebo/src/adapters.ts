@@ -1,3 +1,4 @@
+import { semanticConfig, type SemanticConfig } from '@sutura/core';
 import { spawn } from 'node:child_process';
 
 import {
@@ -327,13 +328,16 @@ export class CliAdapter implements Adapter {
   }
 }
 
-export interface SuturaAdapterOptions extends Omit<CliAdapterOptions, 'command' | 'args'> { command?: string }
+export interface SuturaAdapterOptions extends Omit<CliAdapterOptions, 'command' | 'args'> { command?: string; semantic?: SemanticConfig }
 
 export class SuturaAdapter extends CliAdapter {
   override readonly name = 'sutura';
+  private readonly semantic: SemanticConfig | undefined;
   constructor(options: SuturaAdapterOptions = {}) {
     super({ command: options.command ?? 'sutura', args: ['heal', '--format', 'json'], ...options });
+    this.semantic = options.semantic === undefined ? undefined : semanticConfig(options.semantic, true);
   }
+  semanticConfiguration(): SemanticConfig | undefined { return this.semantic === undefined ? undefined : structuredClone(this.semantic); }
   protected override commandArgs(caseDir: string, context?: AdapterContext): string[] {
     return [
       'heal', '--case-dir', caseDir, '--format', 'json',
@@ -342,11 +346,13 @@ export class SuturaAdapter extends CliAdapter {
       ...(context?.alternativesFile ? ['--alternatives-file', context.alternativesFile] : []),
       ...(context?.failingCommand ? ['--failing-command', context.failingCommand] : []),
       ...(!this.tavilyEnabled ? ['--no-tavily'] : []),
+      ...(this.semantic === undefined ? [] : [...Object.entries(this.semantic.modes).flatMap(([role, mode]) => [`--jev-${role}`, mode]), '--jev-budget-usd', String(this.semantic.maxUsd)]),
     ];
   }
   override withTavily(enabled: boolean): Adapter {
     return new SuturaAdapter({
       command: this.command, tavilyEnabled: enabled, timeoutMs: this.timeoutMs,
+      ...(this.semantic === undefined ? {} : { semantic: this.semantic }),
       maxOutputBytes: this.maxOutputBytes, execute: this.execute,
       ...(this.env === undefined ? {} : { env: this.env }),
     });

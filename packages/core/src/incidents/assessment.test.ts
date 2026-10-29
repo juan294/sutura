@@ -22,6 +22,13 @@ function pythonInput(): JobAssessmentInput {
 }
 
 describe('shared static job assessment', () => {
+  it('reports the same positively evidenced native control blocker before dynamic syntax inference', () => {
+    const input = nodeInput();
+    input.job.command = readFileSync(new URL('../engine/__fixtures__/native-ci-control.sh', import.meta.url), 'utf8');
+    input.job.dynamicConfiguration = 'unknown';
+    expect(assessJobSupport(input)).toMatchObject({ support: 'unsupported', reason: 'native-command-admission', nextAction: expect.stringContaining('Sutura') });
+  });
+
   it('assesses a package-script Node job without claiming preparation, reproduction or execution authority', () => {
     const input = nodeInput(), before = structuredClone(input);
     const result = assessJobSupport(input);
@@ -345,4 +352,10 @@ describe('Python declaration scanner on repository metadata', () => {
     input.files = { ...input.files, 'pyproject.toml': '[project]\nname="fixture"\nrequires-python=">=3.13"\ndynamic = ["version", "description"]\n' };
     expect(assessJobSupport(input).support).toBe('candidate-supported');
   });
+});
+it('requests protected wrapper evidence and an explicit budget rather than claiming static repair readiness', () => {
+  const input = nodeInput(); input.job.command = 'node scripts/test-select.mjs run terminal:rest';
+  expect(assessJobSupport(input)).toMatchObject({ support: 'unknown', reason: 'reproduction-profile-required', executionAuthorized: false });
+  input.target.runtimeContractVersion = 'sutura-runtime-support-v1';
+  expect(assessJobSupport(input).reason).toBe('target-contract-unavailable');
 });

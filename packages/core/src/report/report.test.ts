@@ -8,6 +8,32 @@ import type { CaseFile, CostLedger, GreenwashCheck } from '../domain.js';
 import { renderCaseFile } from './casefile.js';
 import { renderComment } from './markdown.js';
 
+it('renders explicit identity-stop metadata and preserved process evidence', async () => {
+  const file = await loadFixture('gave-up');
+  file.triage.stopReason = 'failure-identity';
+  file.triage.reproduction = { version: 'sutura-failure-identity-v1', status: 'unavailable', parser: 'unavailable', reason: 'Process timed out; review deadline before a new authorized probe' };
+  file.stages.push({ stage: 'reproduction', attempt: 1, nodeId: 'timeout', exitCode: -1, processState: { timedOut: true, signal: 9 }, metrics: { wallTimeSec: 60.1, cost: 0.01 }, network: 'disabled' });
+  expect(renderCaseFile(file)).toContain('data-sutura-stop-reason="failure-identity"');
+  expect(renderCaseFile(file)).toContain('Wall s');
+  expect(renderComment(file)).toContain('timedOut');
+  expect(renderComment(file)).toContain('60.1');
+});
+
+it('uses explicit legacy audit presentation only for recorded outbound report compatibility', async () => {
+  const file = await loadFixture('fixed');
+  file.audit = { approved: true, checks: [{ name: 'typesafe-audit', passed: true, evidence: 'legacy evidence bytes', metadata: { status: 'skipped', requestedModel: 'jev-latest', policyVersion: 'legacy-v1', policyHash: 'a'.repeat(64) } }], reasoning: 'unchanged authority' };
+  const current = renderComment(file, ARTIFACT_URL);
+  expect(current).toContain('| typesafe-audit | **SKIPPED** |');
+  expect(current).toContain('requested model=');
+  expect(current).toContain('Optional voice status');
+  const legacy = renderComment(file, ARTIFACT_URL, { legacyAuditPresentation: true });
+  expect(legacy).toContain('| typesafe-audit | **PASS** | legacy evidence bytes |');
+  expect(legacy).not.toContain('requested model=');
+  expect(legacy).not.toContain('Optional voice status');
+  expect(file.audit.checks[0]?.metadata?.status).toBe('skipped');
+  expect(file.audit.checks[0]?.passed).toBe(true);
+});
+
 const FIXTURES = ['fixed', 'flaky-no-patch', 'refused', 'gave-up', 'infra-stop', 'triage-budget'] as const;
 const ARTIFACT_URL = 'https://github.com/acme/repo/actions/runs/42/artifacts/7';
 
@@ -576,4 +602,52 @@ it('renders retained initial diagnosis, alternatives and controller grants with 
     expect(report).toContain('&lt;script&gt;'); expect(report).not.toContain('<script>not executable');
     expect(report).toContain('live repair quality');
   }
+});
+it('reports the actual controller clock separately from overlapping operation durations', async () => {
+  const file = await loadFixture('gave-up'); file.controllerWallTimeSec = 1500;
+  file.stages.push({ stage: 'audit', attempt: 1, nodeId: 'long', exitCode: 0, metrics: { wallTimeSec: 1300 }, network: 'disabled' });
+  expect(renderCaseFile(file)).toContain('Controller wall time');
+  expect(renderComment(file)).toContain('1500.000 s, including preparation');
+});
+
+it('renders optional decision provenance as judgment with baseline fallback',async()=>{
+ const file=await loadFixture('gave-up');
+ file.semanticDecisions={schemaVersion:'sutura-semantic-decisions-v1',budget:{maxUsd:.02,attempts:1,reservedUsd:.001,actualUsd:0},records:[{role:'ranking',mode:'assist',outcome:'unavailable',policyVersion:'semantic-v1',policyHash:'a'.repeat(64),inputHash:'b'.repeat(64),requestedModel:'jev-1.14.0',usage:null,attempts:1,reservedUsd:.001,actualUsd:0,latencyMs:5000,reason:'timeout',fallback:'baseline-order',candidateIds:[],baseline:[]}]};
+ for(const output of [renderComment(file),renderCaseFile(file)]) {
+  expect(output).toContain('baseline-order');expect(output).toContain('jev-1.14.0');expect(output).toContain('judgment');expect(output).toContain('timeout');
+ }
+});
+
+describe('grounding source judgment provenance', () => {
+  it('renders selected and excluded original evidence as escaped judgments, never new link authority', async () => {
+    const file = await loadFixture('fixed');
+    const originals = [
+      { id: `citation-${'a'.repeat(64)}`, title: 'Contradictory source', url: 'https://docs.example.test/current', snippet: 'The release preserves the old API.' },
+      { id: `citation-${'b'.repeat(64)}`, title: '<script>alert(1)</script>', url: 'https://docs.example.test/excluded', snippet: '[execute](javascript:alert(1))\n`rm -rf .`' },
+    ];
+    file.diagnosis.grounding = { query: 'pkg@2.0.0', skipped: false, citations: [originals[0]!], selection: {
+      schemaVersion: 'sutura-grounding-selection-v1', mode: 'assist', applied: true, reason: 'semantic-selection', originals,
+      selectedIds: [originals[0]!.id], excluded: [{ id: originals[1]!.id, reason: 'irrelevant-insufficient' }],
+      judgments: [{ id: originals[0]!.id, relevance: 'relevant', support: 'contradicts' }, { id: originals[1]!.id, relevance: 'irrelevant', support: 'insufficient' }],
+      versionComparisons: [{ id: originals[1]!.id, package: 'pkg', expectedVersion: '2.0.0', mentionedVersion: '1.0.0', matches: false }],
+    } };
+    const markdown = renderComment(file), html = renderCaseFile(file);
+    for (const output of [markdown, html]) {
+      expect(output).toContain('semantic judgments, not proof that the repair works');
+      expect(output).toContain('support=contradicts');
+      expect(output).toContain(`excluded: ${originals[1]!.id}`);
+      expect(output).toContain('expected=2.0.0; mentioned=1.0.0; matches=false');
+      expect(output).not.toContain('<script>alert(1)</script>');
+    }
+    expect(markdown).toContain('\\[execute\\](javascript:alert(1))');
+    expect(markdown).toContain('\\`rm -rf .\\`');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html).not.toContain('href="https://docs.example.test/excluded"');
+    expect(html).not.toContain('href="javascript:');
+    const selection = file.diagnosis.grounding.selection!;
+    file.diagnosis.grounding.citations = selection.originals;
+    Object.assign(selection, { applied: false, reason: 'no-qualified-source', warning: 'no-qualified-source', selectedIds: selection.originals.map(c => c.id), excluded: [], judgments: selection.originals.map(c => ({ id: c.id, relevance: 'irrelevant', support: 'insufficient' })) });
+    expect(renderComment(file)).toContain('Warning: no-qualified-source');
+    expect(renderCaseFile(file)).toContain('All original sources retained');
+  });
 });

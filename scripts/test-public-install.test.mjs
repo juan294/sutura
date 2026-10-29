@@ -81,7 +81,7 @@ test('public install uses only sutura@0.3.9 and verifies the independently resol
 });
 
 test('public wrapper accepts one explicit exact semver and rejects mutable or ranged releases', async () => {
-  assert.equal(parseReleaseVersion([]), '0.4.1');
+  assert.equal(parseReleaseVersion([]), '0.5.0');
   assert.equal(parseReleaseVersion(['--release', '1.2.3']), '1.2.3');
   assert.deepEqual(parsePublicInstallOptions([
     '--candidate-evidence', '/tmp/candidate.json', '--release', '1.2.3',

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { MAX_POLICY_BYTES } from '@sutura/core';
 
 import { capturedJobLog } from './__fixtures__/captured/test-helper.js';
-import { GitRepository, readBoundedPolicyFile } from './repository.js';
+import { GitRepository, RepositoryError, readBoundedPolicyFile } from './repository.js';
 
 const created: string[] = [];
 
@@ -249,6 +249,40 @@ describe('GitRepository exact-SHA operations', () => {
     await expect(repository.checkoutHead('owner/repo', 'a'.repeat(40))).rejects.toThrow(
       'Could not fetch the exact failing SHA',
     );
+  });
+
+  it('tags only exhausted exact-source fetches and recovers through a restored exact ref', async () => {
+    const root = await temporaryDirectory();
+    const sourceSha = 'a'.repeat(40);
+    const calls: Array<readonly string[]> = [];
+    let restored = false;
+    const repository = new GitRepository({ token: 'test', workspaceRoot: root, run: async (_command, args) => {
+      calls.push(args);
+      if (args.includes('fetch') && args.at(-1) !== 'refs/heads/feature/safe') throw new Error('unadvertised object');
+      if (args.includes('rev-parse')) return `${restored ? sourceSha : 'b'.repeat(40)}\n`;
+      return '';
+    } });
+
+    await expect(repository.checkoutHead('owner/repo', sourceSha, 'feature/safe', 12)).rejects.toMatchObject({
+      name: 'RepositoryError', message: 'Could not fetch the exact failing SHA',
+      code: 'exact-source-unavailable', stage: 'source-checkout', details: { sourceSha, attemptedRefCount: 3 },
+    });
+    expect(calls.some(args => args.includes('checkout'))).toBe(false);
+    expect(calls.some(args => args.includes('HEAD'))).toBe(false);
+    restored = true;
+    await expect(repository.checkoutHead('owner/repo', sourceSha, 'feature/safe', 12)).resolves.toEqual(expect.any(String));
+    expect(calls.filter(args => args.includes('checkout'))).toEqual([
+      expect.arrayContaining(['checkout', '--quiet', '--detach', sourceSha]),
+    ]);
+  });
+
+  it('preserves legacy RepositoryError options and leaves generic failures untyped', async () => {
+    const cause = new Error('original failure');
+    expect(new RepositoryError('legacy', { cause })).toMatchObject({ message: 'legacy', cause });
+    expect(new RepositoryError('Could not fetch the exact failing SHA')).not.toHaveProperty('code', 'exact-source-unavailable');
+    const root = await temporaryDirectory();
+    const repository = new GitRepository({ token: 'test', workspaceRoot: root, run: async () => { throw new RepositoryError('git init failed'); } });
+    await expect(repository.checkoutHead('owner/repo', 'a'.repeat(40))).rejects.toMatchObject({ message: 'git init failed', code: undefined, stage: undefined, details: undefined });
   });
 
   it.each(['regular', 'symlink'] as const)(

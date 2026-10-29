@@ -1,7 +1,9 @@
+import type { SemanticDecisions } from './decisions/evidence.js';
+import type { GroundingSelection, GroundingCitation } from './decisions/grounding-evidence.js';
 import type { RuntimeCandidateEvidence } from './verification/runtime-evidence.js';
 import type { ChallengePreparationDiagnostics } from './challenges/runtime.js';
 import type { CounterfactualEvidence } from './counterfactual/types.js';
-import type { RunMetrics } from './executor/types.js';
+import type { ProcessState, RunMetrics } from './executor/types.js';
 import type { TraceEvent } from './trace/types.js';
 import type { VerificationArtifact, VerificationEvidence } from './verification/types.js';
 import type { DiagnosisRecoveryEvidence } from './diagnose/hypotheses.js';
@@ -20,11 +22,8 @@ export type FailureClass =
 
 export interface Grounding {
   query: string;
-  citations: Array<{
-    title: string;
-    url: string;
-    snippet: string;
-  }>;
+  citations: GroundingCitation[];
+  selection?: GroundingSelection;
   skipped: boolean;
   reason?: 'disabled' | 'not-applicable';
 }
@@ -72,6 +71,7 @@ export interface RaceResult {
   imageId: string;
   nodeId: string;
   exitCode: number;
+  processState?: ProcessState;
   held: boolean;
   note?: string;
 }
@@ -92,12 +92,22 @@ export type GreenwashCheck =
   | 'paired-evidence'
   | 'policy-patch';
 
+/** Optional presentation evidence; authority remains in approved/passed. */
+export interface AuditCheckMetadata {
+  status: 'approved' | 'refused' | 'uncertain' | 'skipped';
+  requestedModel: string;
+  resolvedModel?: string;
+  policyVersion: string;
+  policyHash: string;
+}
+
 export interface AuditVerdict {
   approved: boolean;
   checks: Array<{
     name: GreenwashCheck;
     passed: boolean;
     evidence?: string;
+    metadata?: AuditCheckMetadata;
   }>;
   reasoning: string;
 }
@@ -129,6 +139,7 @@ export interface StageEvidence {
   nodeId: string;
   parentNodeId?: string;
   exitCode?: number;
+  processState?: ProcessState;
   metrics: RunMetrics;
   network: 'disabled' | 'enabled';
   note?: string;
@@ -157,6 +168,9 @@ export interface PolicyEvidence {
 }
 
 export interface CaseFile {
+  semanticDecisions?: SemanticDecisions;
+  /** Actual controller case clock, including preparation and drain; never summed operation durations. */
+  controllerWallTimeSec?: number;
   runId: string;
   repo: string;
   runtime: 'node' | 'python';

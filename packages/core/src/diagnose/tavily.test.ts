@@ -3,15 +3,28 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Diagnosis } from '../domain.js';
+import { DecisionSession } from '../decisions/call.js';
+import { semanticConfig } from '../decisions/config.js';
+import { selectGrounding } from '../decisions/select-grounding.js';
+import { TypeSafeClient, type TypeSafeQuestion, type TypeSafeAnswer } from '../llm/typesafe.js';
+import type { NebiusFetch } from '../llm/nebius.js';
+import { Ledger } from '../llm/cost.js';
 import {
   TavilyClient,
   TavilyConfigError,
   TavilyRequestError,
   ground,
+  packageNameAndVersion,
   promoteUpstreamDependencyDiagnosis,
   type TavilyHttpRequestInit,
   type TavilyHttpResponse,
 } from './tavily.js';
+
+it('parses exact build metadata only for the new explicit comparison caller', () => {
+  expect(packageNameAndVersion('@scope/pkg@1.2.3-rc.1+build.4')).toBeNull();
+  expect(packageNameAndVersion('@scope/pkg@1.2.3-rc.1+build.4', true)).toEqual({ name: '@scope/pkg', version: '1.2.3-rc.1+build.4' });
+  for (const hint of ['pkg@1.2.3+', 'pkg@1.2.3+bad suffix', 'pkg@1.2.3+a+b']) expect(packageNameAndVersion(hint, true)).toBeNull();
+});
 
 function response(body: unknown, status = 200): TavilyHttpResponse {
   return {
@@ -39,6 +52,27 @@ const BUILD_DIAGNOSIS: Diagnosis = {
 };
 
 describe('Tavily grounding', () => {
+  it('post-processes the existing 403 registry/extraction fallback without another retrieval', async () => {
+    const releaseUrl = 'https://github.com/sindresorhus/execa/releases/tag/v6.0.0';
+    const fetch = vi.fn().mockResolvedValueOnce(response({}, 403)).mockResolvedValueOnce(response({}, 403))
+      .mockResolvedValueOnce(response({ name: 'execa', version: '6.0.0', repository: 'https://github.com/sindresorhus/execa' }))
+      .mockResolvedValueOnce(response({ results: [{ url: releaseUrl, raw_content: 'execa 6.0.0 is pure ESM.' }] }));
+    const diagnosis = { ...BUILD_DIAGNOSIS, errorExcerpt: 'TypeError: execa is not a function' };
+    const original = await ground(new TavilyClient('test', { fetch }), diagnosis, { tavilyEnabled: true, dependencyHints: ['execa@6.0.0'] });
+    const semanticFetch = vi.fn(async (_url: string, request: Parameters<NebiusFetch>[1]) => {
+      const { questions } = JSON.parse(request.body!) as { questions: Record<string, TypeSafeQuestion> };
+      const answers: Record<string, TypeSafeAnswer> = {};
+      for (const [id, question] of Object.entries(questions)) answers[id] = question.type === 'noul' ? { type: 'noul', noul: .95 } : { type: 'choice', choice: 'supports', confidence: .95, probabilities: Object.fromEntries(Object.keys(question.criteria).map(key => [key, key === 'supports' ? .9 : .05])) };
+      return new Response(JSON.stringify({ model: 'jev-1.14.0', answers, usage: { input_tokens: 100, output_tokens: 0 } }));
+    });
+    const session = new DecisionSession({ config: semanticConfig({ modes: { grounding: 'assist' }, maxUsd: .02 }, true), deadline: Date.now() + 5000,
+      client: new TypeSafeClient({ apiKey: 'test', model: 'jev-1.14.0', ledger: new Ledger({}) }, { fetch: semanticFetch }) });
+    const selected = await selectGrounding(session, original, diagnosis, ['execa@6.0.0']);
+    expect(fetch).toHaveBeenCalledTimes(4); expect(semanticFetch).toHaveBeenCalledOnce();
+    expect(selected.citations).toEqual(original.citations); expect(selected.selection?.originals[0]?.url).toBe(releaseUrl);
+    expect(selected.selection?.versionComparisons).toContainEqual(expect.objectContaining({ package: 'execa', expectedVersion: '6.0.0', mentionedVersion: '6.0.0', matches: true }));
+    expect(diagnosis.confidence).toBe(BUILD_DIAGNOSIS.confidence);
+  });
   it('uses the labeled synthetic search fixture until Phase 5 capture', async () => {
     const fetch = vi.fn().mockResolvedValue(response(await syntheticFixture('search')));
     const tavily = new TavilyClient('test-key', { fetch });

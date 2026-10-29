@@ -1,3 +1,4 @@
+import type { VerificationOperationPermit } from '../engine/verification-allowance.js';
 export type ImageId = string;
 export const SNAPSHOT_CWD = '/workspace';
 
@@ -13,6 +14,10 @@ export interface SnapshotOptions {
 export interface RunOptions {
   env?: Readonly<Record<string, string>>;
   timeoutSec?: number;
+  /** Opaque controller permit; serialized records carry evidence only. */
+  verificationPermit?: VerificationOperationPermit;
+  /** Controller annotation; never grants a clock or provider permit. */
+  verificationKind?: 'full' | 'policy' | 'challenge';
   cwd?: string;
   network?: 'disabled' | 'enabled';
   operationId?: string;
@@ -38,7 +43,14 @@ export interface OperationCompletion {
   cancellationRequested: boolean;
 }
 
+export interface ProcessState {
+  timedOut?: boolean;
+  signal?: number;
+}
+
 export interface RunMetrics {
+  /** Provider operation duration in seconds; absent historical duration is unknown. */
+  wallTimeSec?: number;
   cost?: number;
   elapsedTimeSec?: number;
   maxRssKb?: number;
@@ -54,6 +66,7 @@ export interface RunResult {
   truncated: boolean;
   metrics: RunMetrics;
   operation?: OperationCompletion;
+  processState?: ProcessState;
 }
 
 export interface Executor {
@@ -71,4 +84,14 @@ export interface Executor {
   ): Promise<RunResult[]>;
   operationCapacity(): OperationCapacity;
   cancel(operationId: string): Promise<CancellationResult>;
+}
+
+/** Process termination and provider-operation completion are separate facts. */
+export function processCompletedNormally(result: { exitCode: number; processState?: ProcessState }): boolean {
+  return result.exitCode >= 0 && result.processState?.timedOut !== true &&
+    (result.processState?.signal === undefined || result.processState.signal === 0);
+}
+
+export function processSucceeded(result: { exitCode: number; processState?: ProcessState }): boolean {
+  return result.exitCode === 0 && processCompletedNormally(result);
 }

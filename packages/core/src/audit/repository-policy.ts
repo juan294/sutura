@@ -1,3 +1,4 @@
+import { processCompletedNormally, processSucceeded } from '../executor/types.js';
 import type { AuditVerdict, RaceResult } from '../domain.js';
 import { sandboxTargetCommand } from '../engine/sandbox-command.js';
 import {
@@ -64,8 +65,12 @@ export async function enforceRepositoryPolicy(
       parentImageId: winner.imageId,
       note: `Required command ${index + 1} candidate`,
     });
-    if (candidate.exitCode !== 0) {
+    if (!processSucceeded(candidate)) {
       commandFailures.push(`required command ${index + 1} exited ${candidate.exitCode}`);
+    }
+    if (!processCompletedNormally(baseline)) {
+      commandFailures.push(`required command ${index + 1} baseline did not complete normally`);
+      continue;
     }
     resourceFailures.push(...evaluateResourceThresholds(
       `required command ${index + 1}`,

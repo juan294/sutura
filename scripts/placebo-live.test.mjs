@@ -1,3 +1,4 @@
+import { RELEASE_VERSION } from './install-test-lib.mjs';
 import assert from 'node:assert/strict';
 import { readFile, mkdtemp, writeFile, mkdir, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -155,7 +156,7 @@ function artifact(caseId, overrides = {}) {
   return createPlaceboCaseArtifact({
     controllerSha: CONTROLLER_SHA,
     githubRunId: String(1000 + caseIndex),
-    subjectVersion: '0.4.1',
+    subjectVersion: RELEASE_VERSION,
     subjectSha: SUBJECT_SHA,
     packageContentHash: PACKAGE_HASH,
     packageIntegrity: PACKAGE_INTEGRITY,
@@ -669,12 +670,30 @@ test('artifact/ledger crash recovery records a completed job once', async (t) =>
   const bytes = Buffer.from(JSON.stringify(value));
   const input = { artifact:value, bytes, run:{url:`https://github.com/juan294/sutura/actions/runs/${value.githubRunId}`}, stateDirectory:directory };
   await assert.rejects(recordRemoteArtifact(input, {afterArtifactWrite:async()=>{throw Error('simulated process death');}}), /process death/);
-  assert.deepEqual(JSON.parse(await readFile(join(directory,'placebo-v0.4.1-live-artifacts/repair-off-by-one.json'))), value);
+  assert.deepEqual(JSON.parse(await readFile(join(directory,`placebo-v${RELEASE_VERSION}-live-artifacts/repair-off-by-one.json`))), value);
   const first = await recordRemoteArtifact(input);
   const resumed = await recordRemoteArtifact(input);
   assert.equal(first.entries.length,1); assert.deepEqual(resumed,first);
   const changed = artifact('repair-off-by-one',{githubRunId:'999'});
   await assert.rejects(recordRemoteArtifact({...input,artifact:changed,bytes:Buffer.from(JSON.stringify(changed))}), /conflict/);
+});
+test('current-release recording preserves historical version state without reading or migrating it', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'placebo-version-state-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const historicalVersion = '0.4.1';
+  const historicalLedger = join(directory, `placebo-v${historicalVersion}-live-ledger.json`);
+  const historicalArtifacts = join(directory, `placebo-v${historicalVersion}-live-artifacts`);
+  await mkdir(historicalArtifacts);
+  const retainedLedger = 'opaque prior-release ledger bytes';
+  const retainedArtifact = 'opaque prior-release artifact bytes';
+  await writeFile(historicalLedger, retainedLedger);
+  await writeFile(join(historicalArtifacts, 'repair-off-by-one.json'), retainedArtifact);
+  const value = artifact('repair-off-by-one');
+  await recordRemoteArtifact({ artifact: value, bytes: Buffer.from(JSON.stringify(value)), run: { url: `https://github.com/juan294/sutura/actions/runs/${value.githubRunId}` }, stateDirectory: directory });
+  assert.equal((JSON.parse(await readFile(join(directory, `placebo-v${RELEASE_VERSION}-live-ledger.json`), 'utf8'))).entries.length, 1);
+  assert.deepEqual(JSON.parse(await readFile(join(directory, `placebo-v${RELEASE_VERSION}-live-artifacts/repair-off-by-one.json`), 'utf8')), value);
+  assert.equal(await readFile(historicalLedger, 'utf8'), retainedLedger);
+  assert.equal(await readFile(join(historicalArtifacts, 'repair-off-by-one.json'), 'utf8'), retainedArtifact);
 });
 test('reattach pending job and retry interrupted download without dispatch', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'placebo-download-'));

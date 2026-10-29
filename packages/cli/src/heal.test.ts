@@ -1,10 +1,11 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
   InMemoryExecutor,
+  isSensitiveRepositoryPath,
   DEFAULT_MODELS,
   DEFAULT_MODEL_PRICES,
   DEFAULT_ROUTING_PROFILE_ID,
@@ -20,6 +21,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AuditArguments, HealArguments } from './args.js';
 import {
   auditRuntimeFromEnvironment,
+  captureSemanticShadow,
   auditWithRuntime,
   CliConfigError,
   healWithRuntime,
@@ -210,6 +212,35 @@ describe('healWithRuntime Placebo integration', () => {
 });
 
 describe('CLI runtime configuration and source boundaries', () => {
+  it('requires explicit Jev key and retains independent pinned and legacy clients', () => {
+    const selected = { ...request('repair-off-by-one', undefined, false), semantic: { schemaVersion: 'sutura-semantic-config-v1' as const, model: 'jev-1.14.0' as const, policyVersion: 'semantic-v1' as const, modes: { ranking: 'shadow' as const, grounding: 'off' as const, classification: 'off' as const, recovery: 'off' as const }, maxUsd: 0.01 } };
+    const env = { NEBIUS_API_KEY: 'nebius', CONTREE_TOKEN: 'token', CONTREE_PROJECT: 'project' };
+    expect(() => runtimeFromEnvironment(selected, env)).toThrow(/TYPESAFE_API_KEY/u);
+    const result = runtimeFromEnvironment(selected, { ...env, TYPESAFE_API_KEY: 'test-only' });
+    expect(result.semantic?.config).toEqual(selected.semantic);
+    expect(result.semantic?.client?.modelId()).toBe('jev-1.14.0');
+    expect(result.typesafeAudit?.modelId()).toBe('jev-latest');
+    expect(runtimeFromEnvironment(request('repair-off-by-one', undefined, false), env)).not.toHaveProperty('semantic');
+  });
+
+  it('writes private bounded shadow input and refuses symlink capture destinations', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-shadow-'));
+    const input = { schemaVersion: 'sutura-semantic-shadow-v1' as const, role: 'ranking' as const, policyVersion: 'semantic-v1', policyHash: 'a'.repeat(64), inputHash: 'b'.repeat(64), requestedModel: 'jev-1.14.0', state: { redacted: true }, questions: {}, candidateIds: ['candidate'], baseline: ['candidate'] };
+    try {
+      await captureSemanticShadow(directory)(input);
+      const target = join(directory, '.sutura-controller', 'semantic-shadow.jsonl');
+      expect(isSensitiveRepositoryPath('.sutura-controller/semantic-shadow.jsonl')).toBe(true);
+      expect((await stat(target)).mode & 0o777).toBe(0o600);
+      expect(JSON.parse((await readFile(target, 'utf8')).trim())).toEqual(input);
+      await rm(target);
+      const outside = join(directory, 'outside');
+      await writeFile(outside, 'untouched');
+      await symlink(outside, target);
+      await expect(captureSemanticShadow(directory)(input)).rejects.toThrow();
+      expect(await readFile(outside, 'utf8')).toBe('untouched');
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+
   it('constructs audit-only runtime with only NEBIUS_API_KEY', () => {
     expect(auditRuntimeFromEnvironment({ NEBIUS_API_KEY: 'test-key' })).toMatchObject({
       llm: expect.any(Object), cost: expect.any(Object),

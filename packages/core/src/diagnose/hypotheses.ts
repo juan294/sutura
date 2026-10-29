@@ -1,3 +1,7 @@
+import { chooseRecovery } from '../decisions/recovery.js';
+import type { DecisionSession } from '../decisions/call.js';
+import type { VerificationAllowance } from '../engine/verification-allowance.js';
+import { processCompletedNormally } from '../executor/types.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Diagnosis, FailureClass } from '../domain.js';
 import type { Executor, RunResult } from '../executor/types.js';
@@ -40,6 +44,8 @@ export interface RecoveryInput {
   baseline: ControllerBaselineBinding; policy: RepositoryPolicy; executor: Executor; llm: HealLlm;
   budget: RepairBudget; trustedCommand: string; repairReservationUsd: number; signal?: AbortSignal;
   operationIdPrefix?: string;
+  decisionSession?: DecisionSession;
+  verificationAllowance?: VerificationAllowance;
   observe(input: { result?: RunResult; parentImageId: string; note: string }): void;
 }
 export interface RecoveryResult {
@@ -187,23 +193,33 @@ export async function recoverDiagnosis(input: RecoveryInput): Promise<RecoveryRe
     const controllerSelection = await controllerPromiseHypotheses({ signals, sources }, input.failedLog);
     let hypotheses = controllerSelection?.hypotheses ?? [];
     if (hypotheses.length === 0) {
-      const messages = redactExternalMessages([
-        { role: 'system' as const, content: 'Investigate at most two alternative diagnoses. Return exactly {"hypotheses":[{"signalIndex":0,"sourceIndex":0,"intent":"await-operation","probeId":"async-completion"}]}. Choose only supplied source and observed signal indices. Intents: await-operation, await-setup (probe async-completion), restore-strict-config (probe strict-json). Do not supply commands, paths, grants, expected values or replacement code. Use an empty array when evidence does not support these narrow repairs.' },
-        { role: 'user' as const, content: JSON.stringify({ initialClass: input.initialDiagnosis.class, signals, sources: sources.map((source, sourceIndex) => ({ sourceIndex, ...source })) }) },
-      ]);
-      const options = hypothesisOptions();
-      let reply: Awaited<ReturnType<HealLlm['chat']>>;
-      try {
-        reply = await recoveryPorts.llm.chat('super', messages, options);
-      } catch (error) {
-        Object.assign(evidence, recoveryFailure(error, stopped(), 'hypothesis-provider-failed'));
-        return result;
+      const semantic = input.decisionSession;
+      const selected = semantic?.options.config.modes.recovery === 'assist'
+        ? await chooseRecovery(semantic, { signals, sources }, value => validateHypotheses(value, { signals, sources }))
+        : undefined;
+      if (selected !== undefined) hypotheses = selected;
+      else {
+        const messages = redactExternalMessages([
+          { role: 'system' as const, content: 'Investigate at most two alternative diagnoses. Return exactly {"hypotheses":[{"signalIndex":0,"sourceIndex":0,"intent":"await-operation","probeId":"async-completion"}]}. Choose only supplied source and observed signal indices. Intents: await-operation, await-setup (probe async-completion), restore-strict-config (probe strict-json). Do not supply commands, paths, grants, expected values or replacement code. Use an empty array when evidence does not support these narrow repairs.' },
+          { role: 'user' as const, content: JSON.stringify({ initialClass: input.initialDiagnosis.class, signals, sources: sources.map((source, sourceIndex) => ({ sourceIndex, ...source })) }) },
+        ]);
+        const options = hypothesisOptions();
+        let reply: Awaited<ReturnType<HealLlm['chat']>>;
+        try {
+          reply = await recoveryPorts.llm.chat('super', messages, options);
+        } catch (error) {
+          Object.assign(evidence, recoveryFailure(error, stopped(), 'hypothesis-provider-failed'));
+          return result;
+        }
+        if (stopped()) { evidence.status = 'insufficient'; evidence.reason = 'cancelled'; return result; }
+        try {
+          if (reply.finishReason === 'length' || Buffer.byteLength(reply.text) > 16_000) throw new Error('Truncated recovery proposal');
+          hypotheses = validateHypotheses(JSON.parse(reply.text), { signals, sources });
+        } catch { evidence.status = 'insufficient'; evidence.reason = 'invalid-hypotheses'; return result; }
+        if (semantic?.options.config.modes.recovery === 'shadow') {
+          await chooseRecovery(semantic, { signals, sources }, value => validateHypotheses(value, { signals, sources }), hypotheses);
+        }
       }
-      if (stopped()) { evidence.status = 'insufficient'; evidence.reason = 'cancelled'; return result; }
-      try {
-        if (reply.finishReason === 'length' || Buffer.byteLength(reply.text) > 16_000) throw new Error('Truncated recovery proposal');
-        hypotheses = validateHypotheses(JSON.parse(reply.text), { signals, sources });
-      } catch { evidence.status = 'insufficient'; evidence.reason = 'invalid-hypotheses'; return result; }
     }
     result.hypotheses.push(...hypotheses);
     evidence.status = hypotheses.length ? 'insufficient' : 'not-run'; evidence.reason = hypotheses.length ? 'no-authorized-recovery' : 'no-supported-hypothesis';
@@ -220,6 +236,7 @@ export async function recoverDiagnosis(input: RecoveryInput): Promise<RecoveryRe
         observation.probeOutputSha256 = digest(output);
         const matches = [...executed.stdout.matchAll(/^SUTURA_SOURCE_SHA256=([a-f0-9]{64})$/gmu)];
         if (executed.truncated || Buffer.byteLength(output) > 16_384 || matches.length !== 1 || matches[0]?.[1] !== hypothesis.sourceSha256) { observation.status = 'insufficient'; observation.reason = 'source-identity-mismatch'; continue; }
+        if (!processCompletedNormally(executed)) { observation.status = 'insufficient'; observation.reason = 'process-terminated'; continue; }
         if (executed.exitCode === 0) { observation.status = 'insufficient'; observation.reason = 'failure-not-reproduced'; continue; }
         if (stopped()) { observation.status = 'insufficient'; observation.reason = 'cancelled'; continue; }
         const session = createRepairAuthorizationSession({ baseline: input.baseline, failingCommand: input.initialDiagnosis.failingCmd, policy: input.policy, sources });
@@ -235,7 +252,7 @@ export async function recoverDiagnosis(input: RecoveryInput): Promise<RecoveryRe
           pythonLine === pythonUnittestStackLine(output, source.path) &&
           await controllerPythonAwaitReplacement(source.content, source.path, pythonLine) !== undefined;
         const stackLine = stackConfirmed ? controllerSelection!.line : pythonStackConfirmed ? pythonLine : undefined;
-        const grant = await deriveRepairAuthorization(session, { kind: hypothesis.intent as RepairAuthorizationKind, path: source.path, evidenceReferences: [hypothesis.signal, `source:${hypothesis.sourceSha256}`, ...(stackLine === undefined ? [] : [`controller-stack-line:${stackLine}`])], controllerProbe: { id: hypothesis.probeId!, imageId: input.baseline.baselineImageId, exitCode: executed.exitCode, output: output.replace(/^SUTURA_SOURCE_SHA256=.*\n/u, ''), sourceSha256: matches[0]![1]!, failingCommand: input.initialDiagnosis.failingCmd }, ...(hypothesis.intent === 'restore-strict-config' ? { strictKey } : {}) });
+        const grant = await deriveRepairAuthorization(session, { kind: hypothesis.intent as RepairAuthorizationKind, path: source.path, evidenceReferences: [hypothesis.signal, `source:${hypothesis.sourceSha256}`, ...(stackLine === undefined ? [] : [`controller-stack-line:${stackLine}`])], controllerProbe: { id: hypothesis.probeId!, imageId: input.baseline.baselineImageId, exitCode: executed.exitCode, ...(executed.processState === undefined ? {} : { processState: executed.processState }), output: output.replace(/^SUTURA_SOURCE_SHA256=.*\n/u, ''), sourceSha256: matches[0]![1]!, failingCommand: input.initialDiagnosis.failingCmd }, ...(hypothesis.intent === 'restore-strict-config' ? { strictKey } : {}) });
         if (!grant.ok) { observation.status = 'insufficient'; observation.reason = grant.reason; continue; }
         observation.status = 'passed'; observation.reason = 'narrow-grant-issued';
         result.attempts.push({ hypothesisId: hypothesis.id, diagnosis: { ...input.initialDiagnosis, class: hypothesis.class, signals: [...input.initialDiagnosis.signals, `recovery:${hypothesis.id}`] }, authorization: { session, baseline: input.baseline } });

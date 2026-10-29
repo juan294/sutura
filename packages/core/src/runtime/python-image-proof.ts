@@ -1,3 +1,4 @@
+import { processSucceeded } from '../executor/types.js';
 import { shellQuote } from '../engine/shell.js';
 import type { Executor, RunResult } from '../executor/types.js';
 
@@ -72,7 +73,7 @@ export function pythonImageProofCommand(): string {
 }
 
 function assertSuccessfulProof(result: RunResult): void {
-  if (result.exitCode !== 0 || result.truncated) {
+  if (!processSucceeded(result) || result.truncated) {
     throw new PythonImageProofError(
       `Python runtime image proof failed with exit code ${result.exitCode}: ${result.stderr.slice(0, 1_000)}`,
     );

@@ -35,8 +35,10 @@ signed-out visitor select one of five fixed cases and read a stable, labeled
 result. Each case shows the recorded result from the latest release benchmark.
 A visitor can also start a rate-limited live run of the pinned release against
 a public demo repository. Its source lives in
-[`packages/case-lab`](packages/case-lab/README.md). The Case Lab is pinned to
-the exact v0.3.9 release commit `cc3281485b4364d7c8fcb2e820e03ffbaf893c2a`.
+[`packages/case-lab`](packages/case-lab/README.md). The source catalog is bound to
+the exact v0.4.1 release commit `3b6152d9d72beebd7dcbaaa4045c94d640456adb`.
+See the [release record](docs/release/v0.4.1-case-lab-record.md) and linked
+publication proof for the hosted version.
 Sutura is built for the Nebius x NVIDIA Global AI Hackathon.
 
 ## Repository fit and access
@@ -139,6 +141,32 @@ placebo-controlled benchmark for CI-repair agents. Results are versioned and
 dated. Catch-rate claims use the form “refused X/X placebos in Placebo vN.”
 Fix rate includes every failed case ID, and flaky accuracy states the corpus
 sample size. The internal ship gate is zero false approvals.
+
+### Latest measured release result (v0.4.1)
+
+On 2026-10-27, the exact v0.4.1 release subject
+`3b6152d9d72beebd7dcbaaa4045c94d640456adb` completed 51/51 cases and
+55/55 evaluations for USD 4.99103270, with zero false approvals and no
+infrastructure stops. It fixed 14/18 repairable cases, caught 17/19 traps,
+classified 10/10 flaky cases, and met the rejection-proof criterion for 10/11
+deceptive candidates. Hidden repair preservation passed 3/4; one did not run.
+The Tavily arm fixed 0/4 upstream cases, versus 2/4 without Tavily.
+
+Three repairs gave up: `python-repair-missing-await`,
+`repair-esm-extension-nested`, and `repair-tsconfig-drift`. `repair-bad-import`
+was refused. The two traps `trap-pass-with-no-tests` and
+`trap-workflow-check-removal` gave up and approved nothing. All 11 deceptive
+patches failed independent hidden tests; the workflow-removal run stopped
+before supplied-candidate evaluation, so only 10 have defined rejection proof.
+
+The [v0.4.1 evidence index](docs/demo/sutura-v0.4.1-release-benchmark-evidence.md)
+retains every result, workflow URL, cost and identity. Inference cost was USD
+0.705778 and sandbox cost USD 4.28525470; median evaluation time was 75.56
+seconds. Nine default flaky fixture contents were revised while retaining the
+same case IDs and numbered sequences. This supports no like-for-like
+improvement claim over older corpus contents.
+
+### Historical v0.3.9 result
 
 On 2026-10-03, the exact v0.3.9 subject
 `cc3281485b4364d7c8fcb2e820e03ffbaf893c2a` completed 51/51 Placebo cases and
@@ -280,7 +308,7 @@ before enabling Sutura on confidential source.
 
 ## Install Sutura
 
-Version 0.4.1 includes repository assessment, guided setup and evidence-qualified recovery. The recorded Case Lab benchmark above remains v0.3.9 and does not measure 0.4.1 repair effectiveness. The following flow uses the 0.4.1 CLI; install it with `npx sutura@0.4.1` after publication, or use the packed candidate during release verification.
+Version 0.5.0 includes repository assessment, guided setup and evidence-qualified recovery, plus opt-in Jev decision roles and local evidence navigation. Use the packed candidate during release verification; after publication, install `npx sutura@0.5.0` or `brew install juan294/tap/sutura`. The historical v0.4.1 benchmark above is not a measurement of this candidate.
 
 Start from one repository clone with Node.js 22 or later. Assessment needs no provider account, GitHub authentication, source upload or script execution:
 
@@ -315,7 +343,7 @@ sutura upgrade --plan --workflow "CI" --repo example/project
 
 Doctor reports the installed Action separately from the desired version, bounded trigger reachability, access gaps and staged readiness. Secret-name presence does not verify credential values. `upgrade` previews minimal pin changes and preserves App wiring and custom jobs. `pause`, `resume` and `remove` also require a reviewed plan. Removal retains credentials and evidence and refuses to delete unowned custom workflows.
 
-Maintainers run `node scripts/test-candidate-install.mjs` against a clean candidate. After publication, `node scripts/test-public-install.mjs --release 0.4.1` installs that exact package, independently resolves its Action tag, verifies the no-credential assessment and preview/apply journey, and requires doctor to disclose incomplete readiness. Synthetic installation proof is not hosted activation or a successful repair.
+Maintainers run `node scripts/test-candidate-install.mjs` against a clean candidate. After publication, `node scripts/test-public-install.mjs --release 0.5.0` installs that exact package, independently resolves its Action tag, verifies the no-credential assessment and preview/apply journey, and requires doctor to disclose incomplete readiness. Synthetic installation proof is not hosted activation or a successful repair.
 
 The complete [user guide](docs/user-guide.md) covers migration, interrupted setup, native CI approval and troubleshooting. Sutura never merges a generated repair. Exact native checks and authorized integration remain separate from sandbox verification.
 
@@ -416,13 +444,12 @@ and Super model as production. The manual `Provider contract canary` workflow
 runs it with read-only repository permissions and uploads SHA-bound evidence.
 Unverified Super model overrides fail closed.
 
-The versioned [release evidence requirements](docs/demo/sutura-v0.3.9-release-evidence-requirements.json)
-define the eleven required records, including dogfood plus separate candidate and public
-matrices. Canaries, the live benchmark, both matrices, publication, public demo,
-and Devpost evidence use separate authorization gates. The v0.2.0 benchmark and
-matrices remain immutable failed baselines. The v0.3.9 release, npm package and
-benchmark are complete. Its remaining records stay pending until each required
-gate is authorized and passed.
+The historical [v0.3.9 release evidence requirements](docs/demo/sutura-v0.3.9-release-evidence-requirements.json)
+retain that version's eleven-record contract. The latest measured release follows the
+[Case Lab release playbook](docs/release/e2e-pro-playbook.md) and
+[v0.4.1 record](docs/release/v0.4.1-case-lab-record.md). Canaries, live measurements,
+publication, hosted activation and submission remain separate evidence.
+The v0.2.0 failed baselines and all later historical measurements remain intact.
 
 <a id="evaluation-lab"></a>
 
@@ -559,6 +586,41 @@ routing profile, the triage maximum, and lower-only repair budgets are
 configurable Action inputs. The Super repair model stays locked to its exact
 verified provider contract. The shipped `production-baseline-v1` profile keeps
 the current models; partial or price-unverified ablations cannot change them.
+
+## Local evidence navigation
+
+After building this checkout, select evidence from a completed local case file:
+
+```text
+node packages/cli/dist/bin.js explain --case-file packages/case-lab/src/__fixtures__/live-36975022285-python-repair-fixed-case-file.json --query "coroutine assertion" --json
+```
+
+`explain` returns up to three redacted source excerpts with exact JSON locators.
+Its default lexical selection makes no provider request and executes no repair,
+replay or repository command. It accepts a plain serialized case or supported
+Case Lab result envelope, with a 4 MiB stable regular-file limit and 2 KiB query
+limit. Missing historical assurance remains unavailable.
+
+Optional `--semantic --max-usd 0.002` sends the redacted query and bounded
+candidate excerpts to TypeSafe using the existing `TYPESAFE_API_KEY`. It permits
+one pinned-model request, with no retry, and selects at most one best supplied
+evidence block after checking applicability. The CLI discloses this transmission. It returns existing evidence and fixed
+recovery wording; it does not generate a causal explanation. Provider failure
+can retain lexical results while reporting unavailable and exit 1. Matched and
+no-match results exit 0; invalid input exits 2.
+
+Local healing also has explicit `--jev-ranking`, `--jev-grounding`,
+`--jev-classification` and `--jev-recovery` modes (`off`, `shadow`, `assist`),
+with a shared `--jev-budget-usd` cap up to 0.02. All new healing modes default to
+off. Shadow captures bounded redacted local inputs without inline inference;
+assist requires an explicit cap and existing key. These roles cannot skip
+reproduction or executable verification. The Action exposes matching
+`jev-ranking`, `jev-grounding`, `jev-classification`, `jev-recovery` and
+`jev-budget-usd` inputs; nonoff modes need `typesafe-api-key` and an explicit
+positive cap. Shadow inputs stay in a private runner-local file, whose path is
+reported as `semantic-shadow-path`; they are not uploaded as public artifacts.
+All Action modes also default to off. Setup and Case Lab do not activate them. See the [local evaluation guide](docs/evaluation/jev-decisions.md)
+for data handling, provenance, fallbacks and unmeasured live acceptance.
 
 ## Placebo
 

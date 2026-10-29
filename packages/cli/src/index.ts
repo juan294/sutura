@@ -6,6 +6,8 @@ export { doctorSutura } from './doctor.js';
 export { healFromEnvironment, healWithRuntime, readLocalSourceContext } from './heal.js';
 export { installSutura } from './setup.js';
 export { MAX_REPLAY_BUNDLE_BYTES, replayFromFile } from './replay.js';
+export { EXPLAIN_SEMANTIC_DISCLOSURE, explainFromFile, explainExitCode, renderEvidenceAnswer } from './explain.js';
+export type { ExplainFileDependencies } from './explain.js';
 export { resolveActionCommit, ReleaseResolutionError } from './release.js';
 export type {
   CliArguments,
@@ -13,6 +15,7 @@ export type {
   DoctorArguments,
   EvalExportArguments,
   EvalValidateArguments,
+  ExplainArguments,
   HealArguments,
   InitArguments,
   ReplayArguments,

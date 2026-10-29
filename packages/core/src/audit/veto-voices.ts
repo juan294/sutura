@@ -1,8 +1,11 @@
 import type { AuditVerdict } from '../domain.js';
-import type { SecondOpinionResult } from './adjudicate.js';
+import { createHash } from 'node:crypto';
+import { ADVERSARIAL_AUDIT_PROMPT, type SecondOpinionResult } from './adjudicate.js';
 import { typesafeAuditEvidence, type TypeSafeAuditResult } from './typesafe-audit.js';
 
 export type VetoVoiceRow = AuditVerdict['checks'][number];
+
+const SECOND_OPINION_POLICY_HASH = createHash('sha256').update(ADVERSARIAL_AUDIT_PROMPT).digest('hex');
 
 /** The optional voice that actively refused, named the way the verdict reasoning attributes it. */
 export interface VetoedBy {
@@ -30,7 +33,12 @@ export function vetoVoiceRows(
     { name: 'second-opinion' as const, label: 'second opinion' as const, result: second, evidence: secondOpinionEvidence(second) },
     { name: 'typesafe-audit' as const, label: 'calibrated audit' as const, result: third, evidence: typesafeAuditEvidence(third) },
   ];
-  const rows = voices.map(({ name, result, evidence }) => ({ name, passed: result.status !== 'refused', evidence }));
+  const rows: VetoVoiceRow[] = voices.map(({ name, result, evidence }) => ({
+    name, passed: result.status !== 'refused', evidence,
+    ...(name === 'typesafe-audit'
+      ? (third.metadata === undefined ? {} : { metadata: third.metadata })
+      : { metadata: { status: result.status, requestedModel: result.model, policyVersion: 'second-opinion-v1', policyHash: SECOND_OPINION_POLICY_HASH } }),
+  }));
   const vetoed = voices.find(({ result }) => result.status === 'refused');
   return {
     rows,

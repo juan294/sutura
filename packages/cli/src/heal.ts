@@ -1,5 +1,6 @@
+import { prepareCliVerificationAuthorization } from './verification-authorization.js';
 import { constants } from 'node:fs';
-import { lstat, open, realpath, stat } from 'node:fs/promises';
+import { lstat, mkdir, open, realpath, stat } from 'node:fs/promises';
 import { basename, resolve, sep } from 'node:path';
 
 import {
@@ -12,6 +13,9 @@ import {
   healCase,
   isSensitiveRepositoryPath,
   loadConfig,
+  semanticConfig,
+  type ShadowInput,
+  type SemanticPort,
   loadRepositoryPolicy,
   MAX_POLICY_BYTES,
   readRepairSourceContext,
@@ -53,6 +57,7 @@ const PACKAGE_NAME = /^@?[a-z0-9][\w./-]*$/iu;
 const PACKAGE_VERSION = /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/u;
 
 export interface HealRuntime {
+  semantic?: SemanticPort;
   evidenceMode?: VerificationMode;
   executor: Executor;
   llm: HealLlm;
@@ -83,6 +88,10 @@ export class CliConfigError extends Error {
     super(message);
     this.name = 'CliConfigError';
   }
+}
+
+export class CliSemanticConfigError extends CliConfigError {
+  constructor(message: string) { super(message); this.name = 'CliSemanticConfigError'; }
 }
 
 function isInside(root: string, path: string): boolean {
@@ -401,12 +410,39 @@ export async function readCounterfactualAlternatives(
   }
 }
 
+/** Opt-in evaluation input stays in a bounded owner-only local file, never a public CaseFile. */
+export function captureSemanticShadow(caseDir: string): (input: ShadowInput) => Promise<void> {
+  return async (input) => {
+    const directory = resolve(await realpath(caseDir), '.sutura-controller');
+    await mkdir(directory, { mode: 0o700, recursive: true });
+    const beforeDirectory = await lstat(directory);
+    if (!beforeDirectory.isDirectory() || beforeDirectory.isSymbolicLink() || await realpath(directory) !== directory) {
+      throw new CliConfigError('Shadow capture requires the actual local .sutura-controller directory; remove a symlink or select a stable case directory');
+    }
+    const handle = await open(resolve(directory, 'semantic-shadow.jsonl'), constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW, 0o600);
+    try {
+      const before = await handle.stat();
+      const line = `${JSON.stringify(input)}\n`;
+      if (!before.isFile() || before.nlink !== 1 || (before.mode & 0o777) !== 0o600 || (process.getuid && before.uid !== process.getuid())) {
+        throw new CliConfigError('Shadow capture requires an owner-only regular file (mode 0600); select a private local capture file');
+      }
+      if (before.size + Buffer.byteLength(line, 'utf8') > 4 * 1024 * 1024) throw new CliConfigError('Shadow capture exceeds 4 MiB; preserve the existing file and start a new bounded capture');
+      const currentDirectory = await lstat(directory);
+      if (currentDirectory.ino !== beforeDirectory.ino || currentDirectory.dev !== beforeDirectory.dev) throw new CliConfigError('Shadow capture directory changed; select a stable local case directory');
+      await handle.writeFile(line, 'utf8');
+    } finally { await handle.close(); }
+  };
+}
+
 export async function healWithRuntime(
   request: HealArguments,
   runtime: HealRuntime,
 ): Promise<CaseFile> {
+  const controllerStartedAt = Date.now();
   const caseDir = await canonicalCaseDirectory(request.caseDir);
-  const loadedPolicy = loadRepositoryPolicy(await readLocalPolicy(caseDir));
+  const authorization = request.verificationPacket === undefined ? undefined : await prepareCliVerificationAuthorization({ caseDir, envelopePath: request.verificationPacket, operatorDigest: request.authorizeLongVerification });
+  if (authorization && request.failingCommand !== undefined && request.failingCommand !== authorization.failureCommand) throw new CliConfigError('Explicit command differs from the approved packet');
+  const loadedPolicy = authorization ? { policy: authorization.policy, sha: authorization.policyEvidence.policySha } : loadRepositoryPolicy(await readLocalPolicy(caseDir));
   const dependencyHints = await readDependencyHints(caseDir);
   const counterfactuals = request.alternativesFile === undefined
     ? undefined
@@ -414,13 +450,16 @@ export async function healWithRuntime(
   const caseName = basename(caseDir).replace(/[^A-Za-z0-9_.-]+/gu, '-') || 'case';
   return healCase({
     evidenceMode: runtime.evidenceMode ?? 'local',
-    runId: `local-${caseName}`,
-    repo: `local/${caseName}`,
+    runId: authorization?.nativeFailure.diagnostics?.binding.runId ?? `local-${caseName}`,
+    repo: authorization?.nativeFailure.diagnostics?.binding.repository ?? `local/${caseName}`,
+    controllerStartedAt,
+    ...(authorization === undefined ? {} : { nativeFailure: authorization.nativeFailure, sourceIdentity: authorization.sourceIdentity, authorizeVerification: async plan => { if (runtime.evidenceMode === 'live') { if (!(runtime.executor instanceof ContreeExecutor)) throw new CliConfigError('Authenticated provider preflight is unavailable'); await runtime.executor.verifyDeadlineSupport(plan.profile.providerTimeoutLimitKey, authorization.packet.providerMaxTimeoutSec); } return authorization.authorizeVerification(plan); } }),
     caseDir,
     executor: runtime.executor,
     llm: runtime.llm,
     ...(runtime.secondOpinion === undefined ? {} : { secondOpinion: runtime.secondOpinion }),
     ...(runtime.typesafeAudit === undefined ? {} : { typesafeAudit: runtime.typesafeAudit }),
+    ...(runtime.semantic === undefined ? {} : { semantic: { ...runtime.semantic, capture: runtime.semantic.capture ?? captureSemanticShadow(caseDir) } }),
     cost: runtime.cost,
     triageN: runtime.triageN,
     ...(runtime.triagePolicy === undefined ? {} : { triagePolicy: runtime.triagePolicy }),
@@ -436,7 +475,7 @@ export async function healWithRuntime(
       competingClasses,
     ),
     policy: loadedPolicy.policy,
-    policyEvidence: {
+    policyEvidence: authorization?.policyEvidence ?? {
       baseRef: 'local',
       baseSha: 'local',
       policySha: loadedPolicy.sha,
@@ -446,7 +485,7 @@ export async function healWithRuntime(
     ...(runtime.runtimeId ? { runtimeId: runtime.runtimeId } : {}),
     ...(dependencyHints.length === 0 ? {} : { dependencyHints }),
     ...(request.candidateDiff === undefined ? {} : { candidateDiff: request.candidateDiff }),
-    ...(request.failingCommand === undefined ? {} : { failureCommand: request.failingCommand }),
+    ...(authorization ? { failureCommand: authorization.failureCommand } : request.failingCommand === undefined ? {} : { failureCommand: request.failingCommand }),
     ...(counterfactuals === undefined ? {} : { counterfactuals }),
   });
 }
@@ -475,6 +514,12 @@ export function runtimeFromEnvironment(
   request: HealArguments,
   environment: ConfigEnvironment = process.env,
 ): HealRuntime {
+  let selectedSemantic: ReturnType<typeof semanticConfig> | undefined;
+  if (request.semantic !== undefined) {
+    try { selectedSemantic = semanticConfig(request.semantic, Boolean(environment.TYPESAFE_API_KEY?.trim())); } catch (error) {
+      throw new CliSemanticConfigError(`${error instanceof Error ? error.message : String(error)}; configure TYPESAFE_API_KEY or select --jev roles off`);
+    }
+  }
   const config = loadConfig({
     ...environment,
     ...(request.routingProfile === undefined
@@ -500,6 +545,7 @@ export function runtimeFromEnvironment(
     : undefined;
   return {
     evidenceMode: 'live',
+    ...(selectedSemantic === undefined ? {} : { semantic: { config: selectedSemantic, ...(config.typesafeApiKey ? { client: new TypeSafeClient({ apiKey: config.typesafeApiKey, ledger: llm.ledger, model: selectedSemantic.model }) } : {}) } }),
     executor: new ContreeExecutor({
       token: config.contreeToken,
       project: config.contreeProject,

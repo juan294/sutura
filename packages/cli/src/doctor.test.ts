@@ -25,7 +25,7 @@ async function fixture(source = workflow(), overrides: Record<string, unknown> =
     'repos/octo/example/commits/main': { sha: HEAD },
     [`repos/octo/example/contents/.github/workflows/sutura.yml?ref=${HEAD}`]: content(source),
     [`repos/octo/example/contents/.github/workflows/ci.yml?ref=${HEAD}`]: content(ci),
-    [`repos/juan294/sutura/contents/packages/core/src/incidents/types.ts?ref=${ACTION_SHA}`]: content("export const RUNTIME_SUPPORT_CONTRACT = 'sutura-runtime-support-v1' as const;"),
+    [`repos/juan294/sutura/contents/packages/core/src/incidents/types.ts?ref=${ACTION_SHA}`]: content("export const RUNTIME_SUPPORT_CONTRACT = 'sutura-runtime-support-v2' as const;"),
     'repos/octo/example/actions/workflows?per_page=100': { total_count: 2, workflows: [{ id: 1, name: 'CI', path: '.github/workflows/ci.yml' }, { id: 2, name: 'Sutura', path: '.github/workflows/sutura.yml' }] },
     [`repos/octo/example/commits?path=.github%2Fworkflows%2Fsutura.yml&sha=${HEAD}&per_page=1`]: [{ commit: { committer: { date: '2026-10-24T12:00:00Z' } } }],
     'repos/octo/example/actions/runs?per_page=100': { total_count: 0, workflow_runs: [] },
@@ -76,8 +76,8 @@ describe('doctor readiness stages and scoped observation', () => {
     expect(result.lines).toContain('[FAIL] Workflow wires github-token.');
     expect(result.lines).toContain('[FAIL] Workflow grants checks: write.');
   });
-  it('keeps an older installed contract unknown instead of assigning CLI capabilities', async () => {
-    const result = await (await fixture(workflow(), { [`repos/juan294/sutura/contents/packages/core/src/incidents/types.ts?ref=${ACTION_SHA}`]: new Error('404') })).invoke();
+  it.each([new Error('404'), { type: 'file', encoding: 'base64', content: Buffer.from("export const RUNTIME_SUPPORT_CONTRACT = 'sutura-runtime-support-v1' as const;").toString('base64') }])('keeps an older or unavailable installed contract unknown instead of assigning CLI capabilities (%j)', async contract => {
+    const result = await (await fixture(workflow(), { [`repos/juan294/sutura/contents/packages/core/src/incidents/types.ts?ref=${ACTION_SHA}`]: contract })).invoke();
     expect(result.exitCode).toBe(2);
     expect(result.lines.join('\n')).toContain('target-contract-unavailable');
   });

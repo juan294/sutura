@@ -53,7 +53,7 @@ export function focusedTriage(command: string, failedLog: string): FocusResult {
 
 /** A focused probe counts only when it fails the same test with the same message. */
 export function sameFailure(focus: FocusedTriage, output: string, exitCode: number): boolean {
-  if (exitCode === 0) return false;
+  if (exitCode <= 0) return false;
   const runner = RUNNERS.find(({ name }) => name === focus.runner);
   if (runner === undefined) return false;
   const { failures, loadErrors } = runner.scan(logLines(output));

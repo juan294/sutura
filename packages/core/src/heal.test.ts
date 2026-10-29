@@ -1,3 +1,5 @@
+import { semanticConfig } from './decisions/config.js';
+import { TavilyClient } from './diagnose/tavily.js';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -9,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { AuditVerdict, Candidate, CostLedger, Diagnosis } from './domain.js';
 import { DEFAULT_MODELS, MAX_STAGE_EVIDENCE_ENTRIES } from './config.js';
+import { reproductionProfile } from './policy/reproduction-profile.test-helper.js';
 import { nativeFailureForCommand } from './engine/failure-identity.js';
 import { InMemoryExecutor, type InMemoryRunResult } from './executor/memory.js';
 import {
@@ -30,13 +33,35 @@ import {
   type HealCaseContext,
 } from './heal.js';
 import type { ChatMessage, TierLlm } from './llm/types.js';
-import { TYPESAFE_AUDIT_MODEL, type TypeSafeAuditClient, type TypeSafeDecision } from './llm/typesafe.js';
-import { DEFAULT_MODEL_PRICES } from './llm/cost.js';
+import { TypeSafeClient, TYPESAFE_AUDIT_MODEL, type TypeSafeAuditClient, type TypeSafeDecision, type TypeSafeQuestion, type TypeSafeAnswer } from './llm/typesafe.js';
+import type { NebiusFetch } from './llm/nebius.js';
+import { Ledger, DEFAULT_MODEL_PRICES } from './llm/cost.js';
 import { DEFAULT_ROUTING_PROFILE_ID } from './llm/router.js';
 import { parseRepositoryPolicy } from './policy/schema.js';
 import { createDefaultRepositoryPolicy } from './policy/load.js';
 import { repairProposalReply } from './testing/repair-proposal.test-helper.js';
 import { TraceRecorder } from './trace/recorder.js';
+
+it('stops a known native CI control command before every executor/model operation', async () => {
+  const command = await readFile(new URL('./engine/__fixtures__/native-ci-control.sh', import.meta.url), 'utf8');
+  const { ctx, executor, chat } = context('repair-off-by-one', [], 'test-assertion', { runtimeId: 'node', failureCommand: command });
+  const file = await healCase(ctx);
+  expect(file).toMatchObject({ outcome: 'gave-up', diagnosis: { signals: ['native-command-admission:ci-control'] }, triage: { status: 'not-run', stopReason: 'failure-identity', reproduced: 0 }, race: [] });
+  expect(file.reproduction?.reason).toContain('Sutura');
+  expect(executor.calls).toEqual([]);
+  expect(chat).not.toHaveBeenCalled();
+});
+
+it('stops a profiled wrapper without complete native evidence before paid preparation', async () => {
+  const profile = reproductionProfile();
+  const { ctx, executor, chat } = context('repair-off-by-one', [], 'test-assertion', { runtimeId: 'node', failureCommand: profile.nativeCommand,
+    policy: { ...createDefaultRepositoryPolicy(), reproductionProfiles: [profile] } });
+  const file = await healCase(ctx);
+  expect(file.outcome).toBe('gave-up');
+  expect(file.reproduction?.reason).toContain('native-diagnostics-incomplete');
+  expect(executor.calls).toEqual([]);
+  expect(chat).not.toHaveBeenCalled();
+});
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'placebo', 'corpus');
 const HONEST_DIFF = [
@@ -2048,3 +2073,112 @@ it('heals a required local contract using one frozen source manifest through the
     await expect(readFile(join(snapshots[0]!, 'page-count.js'))).rejects.toThrow();
   } finally { await rm(directory, { recursive: true, force: true }); }
 }, 30_000);
+
+it('records the selected semantic configuration without skipping reproduction or making speculative calls',async()=>{
+ const config=semanticConfig({modes:{ranking:'assist'},maxUsd:.01},true);
+ const value=context('repair-off-by-one',[],'test-assertion');
+ const file=await repairFailure({...value.ctx,semantic:{config},failingImage:'baseline',failedLog:`Run pnpm test\n${FAILURE_LOG}`,baselineResult:{...result(0),imageId:'baseline'}});
+ expect(file.outcome).toBe('infra-stop');expect(file.semanticDecisions?.configuration).toEqual(config);expect(file.semanticDecisions?.records).toEqual([]);expect(value.chat).not.toHaveBeenCalled();
+ config.modes.ranking='off';expect(file.semanticDecisions?.configuration?.modes.ranking).toBe('assist');
+});
+
+it.each(['shadow', 'assist'] as const)('uses %s ranking in real healing while preserving executable admission', async mode => {
+  let applyCount = 0; const outputs = new Map<string, string>();
+  const executor = new InMemoryExecutor((command, parent) => {
+    const imageId = executor.calls.at(-1)!.imageId; const output = outputs.get(parent);
+    if (output !== undefined) outputs.set(imageId, output);
+    if (command.includes('corepack pnpm install --frozen-lockfile') || command.includes('git init --quiet')) return result(0);
+    if (command.includes('git apply - && git diff')) {
+      applyCount++;
+      outputs.set(imageId, applyCount === 1 ? FAILURE_LOG : Array.from({ length: 20 }, (_, index) => `TypeError: new observed failure ${String.fromCharCode(65 + index)}`).join('\n'));
+      return { ...result(0), stdout: applyCount === 1 ? WRONG_REPLACEMENT_DIFF : HONEST_DIFF };
+    }
+    return result(1, output);
+  });
+  let proposal = 0;
+  const value = context('repair-off-by-one', [], 'test-assertion', { executor,
+    search: { initialBranches: 2, beamWidth: 1, maximumDepth: 2, maximumTotalBranches: 3 } });
+  const capture = vi.fn();
+  const fetch = vi.fn(async (_url: string, request: Parameters<NebiusFetch>[1]) => {
+    const body = JSON.parse(request.body!) as { questions: Record<string, TypeSafeQuestion> };
+    const answers: Record<string, TypeSafeAnswer> = {};
+    for (const [id, question] of Object.entries(body.questions)) {
+      if (question.type === 'noul') answers[id] = { type: 'noul', noul: id.endsWith('sufficient') || id === 'node_0_original' ? .95 : .05 };
+      else { const selected = id.startsWith('node_0_') ? 'same_failure' : 'original_resolved_new_failure';
+        answers[id] = { type: 'choice', choice: selected, confidence: .95, probabilities: Object.fromEntries(Object.keys(question.criteria).map(key => [key, key === selected ? .9 : .05])) }; }
+    }
+    return new Response(JSON.stringify({ model: 'jev-1.14.0', answers, usage: { input_tokens: 100, output_tokens: 0 } }));
+  });
+  value.ctx.semantic = { config: semanticConfig({ modes: { ranking: mode }, maxUsd: .02 }, true), client: new TypeSafeClient({ apiKey: 'test', model: 'jev-1.14.0', ledger: new Ledger({}) }, { fetch }), capture };
+  value.ctx.llm = { ...value.ctx.llm, chat: async tier => {
+    if (tier === 'nano') return { text: JSON.stringify(diagnosis('test-assertion')) };
+    if (tier === 'super') { const diff = proposal++ === 0 ? WRONG_REPLACEMENT_DIFF : HONEST_DIFF; return repairProposalReply({ id: 'fixture', diff, rationale: 'source repair' }, diff === HONEST_DIFF ? HONEST_REPLACEMENT : WRONG_REPLACEMENT); }
+    return { text: JSON.stringify({ approved: true, reasoning: 'unused without passing execution' }) };
+  } };
+  const file = await healCase(value.ctx);
+  expect(capture).toHaveBeenCalledTimes(mode === 'shadow' ? 1 : 0); expect(fetch).toHaveBeenCalledTimes(mode === 'assist' ? 1 : 0);
+  expect(file.semanticDecisions?.records[0]).toMatchObject({ role: 'ranking', mode, reason: mode === 'shadow' ? 'shadow-captured' : 'ranking-applied', baseline: ['search-001', 'search-002'], suggested: mode === 'shadow' ? ['search-001', 'search-002'] : ['search-002', 'search-001'] });
+  expect(file.outcome).toBe('gave-up'); expect(file.search?.[2]?.parentNodeId).toBe(mode === 'shadow' ? 'search-001' : 'search-002');
+  expect(file.audit).toBeUndefined();
+});
+
+it.each(['shadow', 'assist'] as const)('uses %s grounding after retrieval and keeps excluded provenance out of repair prompts', async mode => {
+  const citations = [{ title: 'Relevant package source', url: 'https://example.com/relevant', content: 'RETAINED_PUBLIC_EVIDENCE: node-fetch is ESM-only.' },
+    { title: 'Unrelated source', url: 'https://example.com/unrelated', content: 'EXCLUDED_PUBLIC_EVIDENCE: an unrelated package and error.' }];
+  const tavilyFetch = vi.fn(async () => new Response(JSON.stringify({ results: citations })));
+  const semanticFetch = vi.fn(async (_url: string, request: Parameters<NebiusFetch>[1]) => {
+    const body = JSON.parse(request.body!) as { questions: Record<string, TypeSafeQuestion> };
+    const answers: Record<string, TypeSafeAnswer> = {};
+    for (const [id, question] of Object.entries(body.questions)) {
+      if (question.type === 'noul') answers[id] = { type: 'noul', noul: id.startsWith('citation_0_') ? .95 : .05 };
+      else { const selected = id.startsWith('citation_0_') ? 'supports' : 'insufficient';
+        answers[id] = { type: 'choice', choice: selected, confidence: .95, probabilities: Object.fromEntries(Object.keys(question.criteria).map(key => [key, key === selected ? .9 : .05])) }; }
+    }
+    return new Response(JSON.stringify({ model: 'jev-1.14.0', answers, usage: { input_tokens: 100, output_tokens: 0 } }));
+  });
+  const capture = vi.fn();
+  const value = context('upstream-parser-release', [1, 1, 1, 1, 1, 0, 0], 'dep-upstream-breaking', {
+    tavily: new TavilyClient('test-key', { fetch: tavilyFetch }), dependencyHints: [],
+    semantic: { config: semanticConfig({ modes: { grounding: mode }, maxUsd: .02 }, true), capture,
+      client: new TypeSafeClient({ apiKey: 'test-key', model: 'jev-1.14.0', ledger: new Ledger({}) }, { fetch: semanticFetch }) },
+  });
+  const file = await healCase(value.ctx);
+  expect(file.outcome).toBe('fixed'); expect(tavilyFetch).toHaveBeenCalledOnce();
+  expect(file.diagnosis.grounding?.selection?.originals).toHaveLength(2);
+  expect(file.diagnosis.grounding?.citations).toHaveLength(mode === 'assist' ? 1 : 2);
+  const prompt = JSON.stringify(value.chat.mock.calls.filter(([tier]) => tier === 'super'));
+  expect(prompt).toContain('RETAINED_PUBLIC_EVIDENCE');
+  if (mode === 'assist') { expect(prompt).not.toContain('EXCLUDED_PUBLIC_EVIDENCE'); expect(prompt).toContain('supports'); }
+  else expect(prompt).toContain('EXCLUDED_PUBLIC_EVIDENCE');
+  expect(JSON.stringify(file.diagnosis.grounding)).toContain('EXCLUDED_PUBLIC_EVIDENCE');
+  expect(semanticFetch).toHaveBeenCalledTimes(mode === 'assist' ? 1 : 0); expect(capture).toHaveBeenCalledTimes(mode === 'shadow' ? 1 : 0);
+});
+
+it.each(['shadow', 'assist'] as const)('uses %s classification after reproduction and still requires final execution', async mode => {
+  const fetch = vi.fn(async (_url: string, request: Parameters<NebiusFetch>[1]) => {
+    const { questions } = JSON.parse(request.body!) as { questions: Record<string, TypeSafeQuestion> };
+    const answers = Object.fromEntries(Object.entries(questions).map(([id, question]) => {
+      if (question.type === 'noul') return [id, { type: 'noul', noul: .99 }];
+      const keys = Object.keys(question.criteria), selected = id === 'failure_class' ? 'test-assertion' : keys[0]!;
+      return [id, { type: 'choice', choice: selected, confidence: .99, probabilities: Object.fromEntries(keys.map(key => [key, keys.length === 1 ? 1 : key === selected ? .99 : .01 / (keys.length - 1)])) }];
+    }));
+    return new Response(JSON.stringify({ model: 'jev-1.14.0', answers, usage: { input_tokens: 100, output_tokens: 0 } }));
+  });
+  const capture = vi.fn();
+  const value = context('repair-off-by-one', [1, 1, 1, 1, 1, 0, 0], 'test-assertion', {
+    semantic: { config: semanticConfig({ modes: { classification: mode }, maxUsd: .02 }, true), capture,
+      client: new TypeSafeClient({ apiKey: 'test', model: 'jev-1.14.0', ledger: new Ledger({}) }, { fetch }) },
+  });
+  const file = await healCase(value.ctx);
+  expect(file.outcome).toBe('fixed'); expect(file.reproduction?.status).toBe('matched');
+  expect(file.diagnosis.failingCmd).toBe('pnpm test');
+  expect(value.executor.calls.length).toBeGreaterThan(5); expect(file.audit?.approved).toBe(true);
+  expect(fetch).toHaveBeenCalledTimes(mode === 'assist' ? 1 : 0); expect(capture).toHaveBeenCalledTimes(mode === 'shadow' ? 1 : 0);
+  expect(file.semanticDecisions?.records[0]).toMatchObject({ reason: mode === 'assist' ? 'classification-applied' : 'shadow-captured' });
+  expect(value.chat.mock.calls.filter(([tier]) => tier === 'nano')).toHaveLength(mode === 'assist' ? 0 : 1);
+  expect(file.semanticDecisions?.records[0]).toMatchObject({ role: 'classification', mode, reason: mode === 'assist' ? 'classification-applied' : 'shadow-captured' });
+  if (mode === 'assist') expect(file.diagnosis.confidence).toBe(.65 + 2 * .1);
+  const before = fetch.mock.calls.length;
+  const stopped = await repairFailure({ ...value.ctx, failingImage: 'baseline', failedLog: `Run pnpm test\n${FAILURE_LOG}`, baselineResult: { ...result(0), imageId: 'baseline' } });
+  expect(stopped.outcome).toBe('infra-stop'); expect(fetch.mock.calls).toHaveLength(before);
+});

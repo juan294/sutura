@@ -1,3 +1,4 @@
+import type { SemanticConfig } from '../decisions/config.js';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -89,7 +90,7 @@ class CompleteReplayExecutor implements Executor {
   }
 }
 
-export async function createCompleteReplayBundleForTest(): Promise<ReplayBundle> {
+export async function createCompleteReplayBundleForTest(semantic?: SemanticConfig): Promise<ReplayBundle> {
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'sutura-complete-replay-'));
   const checkoutDir = join(temporaryRoot, 'checkout');
   await mkdir(checkoutDir);
@@ -131,6 +132,8 @@ export async function createCompleteReplayBundleForTest(): Promise<ReplayBundle>
   });
   try {
     const caseFile = await orchestrate({
+      replay: recorder,
+      ...(semantic === undefined ? {} : { semantic: { config: semantic } }),
       runId: RUN_ID,
       github: new GitHubAdapter(recordingGitHubApi(githubApi({
         logLines: [

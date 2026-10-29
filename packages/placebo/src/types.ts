@@ -1,3 +1,4 @@
+import type { JevControllerObservation } from './jev-observation.js';
 import type {
   CaseFile as CoreCaseFile,
   CounterfactualEvidence,
@@ -173,6 +174,7 @@ export interface BenchmarkManifestOptions {
 }
 
 export interface BenchmarkReport {
+  jevComparison?: JevControllerObservation;
   adapter: string;
   results: BenchmarkResult[];
   score: Score;

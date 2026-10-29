@@ -89,11 +89,55 @@ function withCurrentGitBaseline(recorded: ReplayBundle): ReplayBundle {
 }
 
 describe('replayBundle', () => {
+  it.each(['assist', 'shadow'] as const)('replays enabled %s classification and recovery through full orchestration', async mode => {
+    for (const role of ['classification', 'recovery'] as const) {
+      const bundle = await createAuditPathReplayBundleForTest(false, undefined, undefined, role === 'classification' ? mode : undefined, role === 'recovery' ? mode : undefined);
+      expect(bundle.configuration.semantic?.modes[role]).toBe(mode);
+      const result = await replayBundle(bundle);
+      expect(result.caseFile.outcome).toBe('fixed');
+      expect(result.caseFile.semanticDecisions?.records[0]).toMatchObject({ role, mode, reason: mode === 'shadow' ? 'shadow-captured' : role === 'classification' ? 'classification-applied' : 'recovery-none-supported' });
+      expect(result.caseFile.semanticDecisions?.budget).toEqual(bundle.configuration.semanticBudget);
+      expect(result.caseFile.audit?.approved).toBe(true);
+    }
+  }, 30_000);
+
+  it.each(['assist', 'shadow'] as const)('replays enabled %s grounding with original provenance and selected prompt sources', async mode => {
+    const bundle = await createAuditPathReplayBundleForTest(false, undefined, mode);
+    expect(bundle.configuration.semantic?.modes.grounding).toBe(mode);
+    const result = await replayBundle(bundle);
+    expect(result.caseFile.outcome).toBe('fixed');
+    expect(result.caseFile.diagnosis.grounding?.selection?.originals).toHaveLength(2);
+    expect(result.caseFile.diagnosis.grounding?.citations).toHaveLength(mode === 'assist' ? 1 : 2);
+    expect(result.caseFile.semanticDecisions?.records[0]).toMatchObject({ role: 'grounding', mode, latencyMs: expect.any(Number) });
+    expect(result.caseFile.semanticDecisions?.records[0]?.latencyMs).toBeGreaterThanOrEqual(20);
+    expect(result.caseFile.semanticDecisions?.budget).toEqual(bundle.configuration.semanticBudget);
+  }, 30_000);
+  it.each(['assist', 'shadow'] as const)('replays enabled %s ranking and its delayed timing through full orchestration', async mode => {
+    const bundle = await createAuditPathReplayBundleForTest(false, mode);
+    expect(bundle.configuration.semantic?.modes.ranking).toBe(mode);
+    expect(bundle.http.filter(exchange => exchange.boundary === 'typesafe')).toHaveLength(mode === 'assist' ? 2 : 1);
+    const result = await replayBundle(bundle);
+    expect(result.caseFile.outcome).toBe('fixed');
+    expect(result.caseFile.search?.[2]?.parentNodeId).toBe(mode === 'assist' ? 'search-002' : 'search-001');
+    expect(result.caseFile.semanticDecisions?.records[0]).toMatchObject({ role: 'ranking', mode, latencyMs: expect.any(Number) });
+    expect(result.caseFile.semanticDecisions?.records[0]?.latencyMs).toBeGreaterThanOrEqual(20);
+    expect(result.caseFile.semanticDecisions?.budget).toEqual(bundle.configuration.semanticBudget);
+  }, 30_000);
   it('rejects a partial bundle before constructing replay dependencies', async () => {
     await expect(replayBundle(baseBundle())).rejects.toThrow(
       'bundle is partial; complete provider, repository, and sandbox recordings are required',
     );
   });
+
+  it('replays explicit all-off semantic identity without live fallback and verifies final semantic counters', async () => {
+    const bundle = await createCompleteReplayBundleForTest({ schemaVersion: 'sutura-semantic-config-v1', model: 'jev-1.14.0', policyVersion: 'semantic-v1', maxUsd: 0, modes: { ranking: 'off', grounding: 'off', classification: 'off', recovery: 'off' } });
+    expect(bundle.http.some(({ boundary }) => boundary === 'typesafe')).toBe(false);
+    const result = await replayBundle(bundle);
+    expect(result.caseFile.outcome).toBe(bundle.outcome);
+    expect(result.caseFile.semanticDecisions?.budget).toEqual(bundle.configuration.semanticBudget);
+    bundle.configuration.semanticBudget!.attempts = 1;
+    await expect(replayBundle(bundle)).rejects.toThrow(/semanticBudget.*differs/u);
+  }, 30_000);
 
   it('replays every recorded boundary through the real offline orchestration path', async () => {
     const bundle = await createCompleteReplayBundleForTest();
@@ -115,6 +159,15 @@ describe('replayBundle', () => {
       'updateCheckRun',
     ]);
   });
+
+  it.each([false, true])('retains exact synthetic outbound audit bytes with legacy presentation=%s', async (legacy) => {
+    const bundle = await createAuditPathReplayBundleForTest(legacy);
+    expect(bundle.configuration.auditPresentation).toBe(legacy ? undefined : 'typed-status-v1');
+    expect(recordedReport(bundle)).toContain(`| typesafe-audit | **${legacy ? 'PASS' : 'APPROVED'}** |`);
+    const result = await replayBundle(bundle);
+    expect(result.caseFile.audit?.checks).toContainEqual(expect.objectContaining({ name: 'typesafe-audit', passed: true, metadata: expect.objectContaining({ status: 'approved' }) }));
+    expect(result.caseFile.outcome).toBe('fixed');
+  }, 30_000);
 
   it('replays a bundle recorded with an openai second-opinion and a typesafe calibrated-audit exchange', async () => {
     const bundle = await createAuditPathReplayBundleForTest();

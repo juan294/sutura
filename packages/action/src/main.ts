@@ -1,10 +1,13 @@
+import { prepareActionVerificationAuthorization } from './verification-authorization.js';
 import { runActionVerification, type ActionVerificationContext, type ActionVerificationOutcome } from './verify-execution.js';
 import { mapVerifyInputs, type ActionVerifyInputs } from './verify.js';
 import { DefaultArtifactClient } from '@actions/artifact';
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import {
+  authorizeActionVerification,
   AlreadyAttemptedError,
+  describeTerminalRecovery,
   ContreeExecutor,
   RepairBranchRunError,
   OpenAiClient,
@@ -20,9 +23,11 @@ import {
   recordingOpenAiFetch,
   recordingTavilyFetch,
   recordingTypeSafeFetch,
+  semanticConfig,
   type Config,
   type ConfigEnvironment,
   type OrchestrationContext,
+  type SemanticPort,
 } from '@sutura/core';
 
 import { ActionTextArtifactPort, GitHubAdapter } from './github.js';
@@ -38,6 +43,7 @@ import { GitRepository } from './repository.js';
 import { recordingGitHubApi } from './replay-github.js';
 import { recordingRepositoryPort } from './replay-repository.js';
 import { createTerminalFailureEvidence, resolveActionIdentity } from './terminal-failure.js';
+import { createActionSemanticShadow } from './semantic-shadow.js';
 
 export interface RunActionDependencies {
   readAction(): ActionConfiguration;
@@ -75,6 +81,7 @@ export async function runAction(
   overrides: Partial<RunActionDependencies> = {},
 ): Promise<void> {
   const dependencies = { ...DEFAULT_DEPENDENCIES, ...overrides };
+  const controllerStartedAt = Date.now();
   let requireFixed = false;
   let actionMode: 'heal' | 'verify' | 'inspect' = 'heal';
   let selectedRunId: string | undefined;
@@ -89,6 +96,8 @@ export async function runAction(
       return;
     }
     const config = dependencies.loadConfiguration(action.environment);
+    const selectedSemantic = action.semantic === undefined ? undefined : semanticConfig(action.semantic, Boolean(config.typesafeApiKey));
+    if (action.mode === 'verify' && selectedSemantic) throw new ActionInputError('Jev role inputs require mode heal', action.requireFixed, action.runId, 'verify');
     if (!config.contreeToken || !config.contreeProject) {
       throw new Error('ConTree token and project are required by the GitHub Action');
     }
@@ -99,7 +108,8 @@ export async function runAction(
     }
     if (action.mode === 'verify') {
       const result = await dependencies.verify(dependencies.readVerification(), {
-        owner, repo, runId: action.runId, githubToken: action.githubToken, config,
+        owner, repo, runId: action.runId, githubToken: action.githubToken, config, controllerStartedAt, engineSha: resolveActionIdentity(dependencies.environment).sha ?? '',
+        ...(action.verificationPacket ? { verificationPacket: action.verificationPacket, authorizeLongVerification: action.authorizeLongVerification!, callerRunId: Number(actionRunId) } : {}),
       });
       if (result.status !== 'verified-supplied-patch') {
         dependencies.setFailed(`Sutura verification: ${result.status}`);
@@ -111,6 +121,8 @@ export async function runAction(
       throw new Error('capture-replay requires Sutura to be pinned to an exact Action commit SHA');
     }
     const octokit = github.getOctokit(action.githubToken);
+    const longVerification = action.verificationPacket ? await prepareActionVerificationAuthorization({ octokit, owner, repo, callerRunId: Number(actionRunId), packetInput: action.verificationPacket, packetDigestInput: action.authorizeLongVerification! }) : undefined;
+    if (longVerification && (longVerification.packet.runId !== action.runId || longVerification.packet.engineSha !== actionIdentity.sha)) throw new Error('Selected source or engine differs from authenticated dispatch packet');
     const orchestrationOptions = {
       triageN: config.triageN,
       raceK: config.raceK,
@@ -133,6 +145,8 @@ export async function runAction(
           actionIdentity.sha ?? '',
           {
             ...orchestrationOptions,
+            operationDeadlines: 'sutura-operation-deadlines-v1',
+            ...(longVerification ? { longVerification: { packet: longVerification.packet, provenance: longVerification.authority.provenance, admitted: false } } : {}),
             models: config.models,
             routingProfileId: config.routingProfileId,
             maxOps: config.maxOps,
@@ -174,9 +188,27 @@ export async function runAction(
           ),
         } : {})
       : undefined;
+    let shadowCapture: SemanticPort['capture'];
+    if (selectedSemantic && Object.values(selectedSemantic.modes).includes('shadow')) {
+      try {
+        const shadow = await createActionSemanticShadow();
+        shadowCapture = shadow.capture;
+        core.setOutput('semantic-shadow-path', shadow.path);
+      } catch {
+        core.warning('Jev shadow capture could not be initialized; native decisions continue and shadow evidence is unavailable.');
+        shadowCapture = () => { throw new Error('Jev shadow capture unavailable'); };
+      }
+    }
+    const semantic = selectedSemantic === undefined ? undefined : {
+      config: selectedSemantic,
+      ...(Object.values(selectedSemantic.modes).includes('assist') ? { client: new TypeSafeClient({ apiKey: config.typesafeApiKey!, ledger: nebius.ledger, model: selectedSemantic.model }, recorder ? {
+        fetch: recordingTypeSafeFetch(recorder, globalThis.fetch as Parameters<typeof recordingTypeSafeFetch>[1]),
+      } : {}) } : {}),
+      ...(shadowCapture ? { capture: shadowCapture } : {}),
+    };
     let publicationSource: AuthenticatedSourceRun | undefined;
     let publishedPrNumber: number | undefined;
-    const baseGithubApi = createGitHubApi(octokit, owner, repo, { onSourceRun: source => {
+    const baseGithubApi = createGitHubApi(octokit, owner, repo, { ...(longVerification ? { sourceAttempt: longVerification.authority.actual.attempt } : {}), onSourceRun: source => {
       if (source.runId !== Number(action.runId) || source.repository.toLowerCase() !== `${owner}/${repo}`.toLowerCase() ||
         !Number.isSafeInteger(source.attempt) || source.attempt < 1 || !Number.isSafeInteger(source.repositoryId) || source.repositoryId < 1 ||
         !Number.isSafeInteger(source.workflowId) || source.workflowId < 1 || !/^[a-f0-9]{40}$/u.test(source.sha) || !source.branch) throw new Error('Publication source identity unavailable');
@@ -196,6 +228,7 @@ export async function runAction(
         owner,
         repo,
         runId: action.runId,
+        ...(longVerification ? { explicitAuthority: longVerification.authority } : {}),
         actionRunId,
         artifact: new DefaultArtifactClient(),
       },
@@ -231,6 +264,8 @@ export async function runAction(
 
     const result = await withFailureSafeCheck(adapter, () => orchestrate({
       evidenceMode: 'live',
+      controllerStartedAt,
+      ...(longVerification ? { explicitAuthority: longVerification.authority, authorizeVerification: async plan => { await baseExecutor.verifyDeadlineSupport(plan.profile.providerTimeoutLimitKey, longVerification.packet.providerMaxTimeoutSec); const capability = await authorizeActionVerification({ packet: longVerification.packet, plan, authority: longVerification.authority, ...(recorder ? { now: () => recorder!.clockNow('verification') } : {}) }); recorder?.recordVerificationAdmission(capability); return capability; } } : {}),
       runId: action.runId,
       github: adapter,
       repository,
@@ -238,6 +273,7 @@ export async function runAction(
       llm: nebius,
       ...(secondOpinion ? { secondOpinion } : {}),
       ...(typesafeAudit ? { typesafeAudit } : {}),
+      ...(semantic ? { semantic } : {}),
       cost: nebius.ledger,
       ...orchestrationOptions,
       ...(tavily ? { tavily } : {}),
@@ -253,7 +289,7 @@ export async function runAction(
       if (!publicationSource || publishedPrNumber === undefined || actionIdentity.sha === null) throw new Error('Fixed publication lacks authenticated receipt inputs');
       const monitorAttempt = Number(dependencies.environment.GITHUB_RUN_ATTEMPT);
       const receipt = await buildPublicationReceipt({ octokit: github.getOctokit(action.githubToken, { request: { fetch: inspectionFetch() } }), source: publicationSource, monitorRunId: Number(actionRunId), monitorAttempt,
-        actionSha: actionIdentity.sha, prNumber: publishedPrNumber });
+        actionSha: actionIdentity.sha, prNumber: publishedPrNumber, ...(longVerification ? { explicitAuthority: longVerification.authority } : {}) });
       const artifact = await new ActionTextArtifactPort(`${owner}/${repo}`, actionRunId, new DefaultArtifactClient()).uploadTextArtifact(
         `sutura-publication-v1-${actionRunId}-${monitorAttempt}`, JSON.stringify(receipt), 'json');
       core.setOutput('publication-receipt-url', artifact.url);
@@ -292,8 +328,10 @@ export async function runAction(
       return;
     }
     core.setOutput('outcome', 'monitor-failed');
-    core.setOutput('terminal-reason', 'unexpected-exception');
-    core.setOutput('next-action', 'Inspect the exact failed Action run and retained terminal diagnostics before a new authorized event.');
+    const recovery = describeTerminalRecovery(error);
+    core.setOutput('terminal-reason', recovery?.code ?? 'unexpected-exception');
+    if (recovery) core.setOutput('failing-stage', recovery.stage);
+    core.setOutput('next-action', recovery?.nextAction ?? 'Inspect the exact failed Action run and retained terminal diagnostics before a new authorized event.');
     dependencies.setFailed(error instanceof Error ? error.message : String(error));
   }
 }

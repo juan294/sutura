@@ -23,6 +23,12 @@ async function setup(content = before, path = 'case.test.js') {
   return { session, source, policy, context: { session, baseline } };
 }
 
+it('does not grant recovery authority from a killed controller probe', async () => {
+  const source = { path: 'case.test.js', startLine: 1, content: before, truncated: false };
+  const session = createRepairAuthorizationSession({ baseline, failingCommand: 'pnpm test', policy: createDefaultRepositoryPolicy(), sources: [source] });
+  expect(await deriveRepairAuthorization(session, { kind: 'await-operation', path: source.path, evidenceReferences: ['assertion'], controllerProbe: { id: 'async-completion', imageId: baseline.baselineImageId, exitCode: 1, processState: { signal: 9 }, output: 'Expected promise/coroutine result to equal a value', sourceSha256: hash(before), failingCommand: 'pnpm test' } })).toMatchObject({ ok: false });
+});
+
 describe('controller repair authorization', () => {
   it('authenticates exact baseline/path/source and certifies only the checked diff', async () => {
     const { session, source, policy, context } = await setup();

@@ -318,7 +318,7 @@ export {
   redactExternalText,
 } from './security/external-text.js';
 
-export const VERSION = '0.4.1';
+export const VERSION = '0.5.0';
 
 export type {
   HealCaseContext,
@@ -452,6 +452,7 @@ export type {
   Executor,
   ImageId,
   RunMetrics,
+  ProcessState,
   RunOptions,
   RunResult,
   SnapshotMode,
@@ -647,3 +648,27 @@ export { validatePythonDependencyContents } from './runtime/python.js';
 
 export { rankFailedSteps, diagnosisLog } from './orchestrate.js';
 export { selectFailedStepLog } from './github/adapter.js';
+
+export { admitNativeCommand, CI_CONTROL_NEXT_ACTION } from './engine/native-command-admission.js';
+
+export { describeTerminalRecovery } from './report/terminal-recovery.js';
+
+export { captureNodeDiagnostics, type DiagnosticBinding, type NativeDiagnostics } from './engine/native-diagnostics.js';
+
+export { resolveReproductionAtSource } from './engine/reproduction-source.js';
+export { resolveReproductionPlan, type ResolvedReproductionPlan } from './engine/reproduction-plan.js';
+export { authorizeCliVerification, canonicalPacketDigest, parseVerificationPacket, validateVerificationPacket, type VerificationPacket, type VerificationBinding, type VerificationAllowance } from './engine/verification-allowance.js';
+
+export { authenticateActionVerification, isAuthenticatedActionAuthority, type AuthenticatedActionAuthority, type ActionAuthorityApi, type ActionGrantBinding } from './engine/action-verification-authority.js';
+export { authorizeActionVerification } from './engine/verification-allowance.js';
+
+export { nodeRuntimeFromJobLog } from './github/adapter.js';
+
+export * from './decisions/config.js';
+export * from './decisions/call.js';
+export * from './decisions/evidence.js';
+export * from './decisions/grounding-evidence.js';
+export type { JsonValue, TypeSafeQuestion, TypeSafeAnswer } from './llm/typesafe.js';
+export * from './explain/types.js';
+export { parseEvidenceCase, validateEvidenceQuery } from './explain/projection.js';
+export { lexicalEvidence, navigatorRequest, explainEvidence } from './explain/select.js';

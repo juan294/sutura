@@ -15,6 +15,37 @@ test('authenticated ordinary integration work is fast independently of any mode 
   const result = plan(); assert.equal(result.full, false); assert.equal(result.trust, 'owner'); assert.equal(result.schemaVersion, 2);
   assert.equal(result.allowPrivileged, false); assert.equal(result.allowDeploy, false); assert.deepEqual(result.identity, identity);
 });
+test('owner integration push release intent requires full without granting authority', () => {
+  for (const changedPaths of [['docs/release.md'], ['src/app.ts']]) {
+    const result = plan({context:{...context,eventName:'push',ref:'refs/heads/develop',releaseIntent:true},changedPaths});
+    assert.equal(result.full,true); assert.equal(result.reason,'release-intent'); assert.equal(result.trust,'owner');
+    assert.equal(result.allowPrivileged,false); assert.equal(result.allowDeploy,false); assert.deepEqual(result.identity,identity);
+  }
+  for (const releaseIntent of [undefined,false]) {
+    const result = plan({context:{...context,eventName:'push',ref:'refs/heads/develop',releaseIntent},changedPaths:['docs/release.md']});
+    assert.equal(result.full,false); assert.equal(result.reason,'owner-integration');
+  }
+});
+test('release intent preserves stronger routing reasons and applies only to pushes', () => {
+  for (const [fields,changedPaths,reason] of [
+    [{eventName:'push',ref:'refs/heads/main'},['docs/release.md'],'production'],
+    [{eventName:'push',ref:'refs/heads/develop',actor:'repair[bot]'},['docs/release.md'],'untrusted'],
+    [{eventName:'workflow_dispatch'},['docs/release.md'],'explicit-full'],
+    [{eventName:'push',ref:'refs/heads/develop'},['package.json'],'control-change'],
+    [{eventName:'push',ref:'refs/heads/feature'},['docs/release.md'],'other-branch'],
+    [{},['docs/release.md'],'owner-integration'],
+  ]) {
+    const result=plan({context:{...context,...fields,releaseIntent:true},changedPaths});
+    assert.equal(result.reason,reason); assert.equal(result.full,reason!=='owner-integration');
+    assert.equal(result.allowPrivileged,false); assert.equal(result.allowDeploy,false);
+  }
+  assert.equal(plan({context:{...context,releaseIntent:true},installed:false}).reason,'installation-missing');
+});
+test('present malformed release intent fails visibly', () => {
+  for (const releaseIntent of ['true','false',1,0,null,{},[]]) {
+    assert.throws(()=>plan({context:{...context,releaseIntent}}),/release.intent.*boolean/i);
+  }
+});
 test('wrong numeric identity, bot author, fork and bot rerun always require full readonly verification', () => {
   for (const fields of [{actorId: 43}, {actorId:'42e0'}, {author: 'repair[bot]', authorId: 99}, {headRepository: 'fork/project', headRepositoryId: 8}, {authorId: '42'}, {actor: 'unknown'}]) {
     const result = plan({ context: {...context,...fields} }); assert.equal(result.full,true); assert.equal(result.trust,'untrusted'); assert.equal(result.allowDeploy,false);
@@ -60,6 +91,42 @@ test('push source must be checked out and protected before must be an ancestor',
  const native={eventName:'push',payload:{repository:{full_name:policy.repository,id:7},before:base,after:tested,sender:{login:'owner',id:42}},sha:tested,ref:'refs/heads/develop',actor:'owner',actorId:'42'};
  assert.equal(inspectCheckout({root,native,base}).identity.sourceSha,tested);
  assert.throws(()=>inspectCheckout({root,native:{...native,payload:{...native.payload,after:head}},base}),/checkout/);
+}));
+test('push release intent comes from the verified physical Git subject, never payload text',()=>fixture(({root,git,base})=>{
+ const nativeFor=(tested,message)=>({eventName:'push',payload:{repository:{full_name:policy.repository,id:7},before:base,after:tested,head_commit:{id:tested,message}},sha:tested,ref:'refs/heads/develop',actor:'owner',actorId:'42'});
+ for(const [subject,expected] of [
+   ['chore(release): 4.9.3',true],
+   ['chore(release): prepare release',true],
+   ['docs: ordinary release notes',false],
+   ['chore(release):',false],
+   ['chore(release): ',false],
+   ['chore(release):4.9.3',false],
+   ['chore(release):  4.9.3',false],
+   ['Chore(release): 4.9.3',false],
+   ['docs: notes\n\nchore(release): 4.9.3',false],
+ ]) {
+   git('checkout','-B','develop',base);mkdirSync(join(root,'docs'),{recursive:true});writeFileSync(join(root,'docs/release.md'),'release notes');git('add','.');git('commit','-m',subject);
+   const tested=git('rev-parse','HEAD');
+   for(const payloadMessage of [undefined,'docs: ordinary change','chore(release): forged']) {
+     const inspected=inspectCheckout({root,native:nativeFor(tested,payloadMessage),base});
+     assert.equal(inspected.context.releaseIntent,expected,`${subject}: ${payloadMessage}`);
+     const result=planVerification({policy,...inspected});
+     assert.equal(result.reason,expected?'release-intent':'owner-integration');assert.equal(result.full,expected);
+     assert.equal(result.allowPrivileged,false);assert.equal(result.allowDeploy,false);
+   }
+   // A local replacement cannot suppress or forge the physical commit subject.
+   const replacement=git('commit-tree',`${tested}^{tree}`,'-p',base,'-m',expected?'docs: replacement':'chore(release): replacement');
+   git('replace',tested,replacement);
+   try {assert.equal(inspectCheckout({root,native:nativeFor(tested,'chore(release): forged'),base}).context.releaseIntent,expected);}
+   finally {git('replace','-d',tested);}
+ }
+}));
+test('PR checkout subject cannot declare push release intent',()=>fixture(({root,git,base,head})=>{
+ git('commit','--amend','-m','chore(release): 4.9.3');const tested=git('rev-parse','HEAD');
+ const payload={repository:{full_name:policy.repository,id:7},pull_request:{user:{login:'owner',id:42},head:{sha:head,repo:{full_name:policy.repository,id:7}},base:{sha:base,ref:'develop'}}};
+ const native={eventName:'pull_request',payload,sha:tested,ref:context.ref,actor:'owner',actorId:'42'};
+ const inspected=inspectCheckout({root,native,base});assert.equal(inspected.context.releaseIntent,false);
+ assert.equal(planVerification({policy,...inspected}).reason,'owner-integration');
 }));
 test('CLI emits fail-safe full before a malformed identity failure and a useful recovery message',()=>fixture(({root,base,head,tested,env})=>{
  const event=join(root,'event.json'),output=join(root,'output');writeFileSync(event,JSON.stringify({repository:{full_name:policy.repository,id:7},before:base,after:head}));

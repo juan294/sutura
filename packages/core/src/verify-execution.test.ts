@@ -73,6 +73,13 @@ function testRuns(executor: InMemoryExecutor): string[] {
   return executor.calls.filter((call) => call.kind === 'run').map((call) => call.cmd);
 }
 
+it('stops a supplied-patch baseline terminated after printing the assertion', async () => {
+  const executor = sandbox(cmd => cmd === 'pnpm test' ? { ...result(-1, 'AssertionError: expected 2 to be 3'), processState: { timedOut: true, signal: 9 } } : undefined);
+  const reproduction = await prepareAndReproduce(request(), ports(executor));
+  expect(reproduction.status).toBe('infra-stop');
+  expect(reproduction.exitCodes).toEqual([-1]);
+});
+
 describe('preparation and reproduction', () => {
   it('reproduces the failure on the untouched baseline before anything is applied', async () => {
     const executor = sandbox((cmd) => (cmd === 'pnpm test' ? result(1, '1 failed') : undefined));

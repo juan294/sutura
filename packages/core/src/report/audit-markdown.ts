@@ -1,9 +1,10 @@
+import { auditCheckEvidence, auditCheckLabel, auditVoiceDisclosure } from './audit-status.js';
 import type { AuditFile } from '../domain.js';
 import { escapeMarkdown, formatUsd } from './format.js';
 
 export function renderAuditMarkdown(auditFile: AuditFile): string {
   const rows = auditFile.audit.checks.map((check) =>
-    `| ${escapeMarkdown(check.name)} | ${check.passed ? 'PASS' : 'FAIL'} | ${escapeMarkdown(check.evidence ?? 'No evidence recorded')} |`,
+    `| ${escapeMarkdown(check.name)} | ${auditCheckLabel(check)} | ${escapeMarkdown(auditCheckEvidence(check))} |`,
   );
   return [
     '# Sutura reduced-assurance audit',
@@ -19,6 +20,7 @@ export function renderAuditMarkdown(auditFile: AuditFile): string {
     '| Audit check | Result | Evidence |',
     '| --- | :---: | --- |',
     ...rows,
+    ...(auditVoiceDisclosure(auditFile.audit.checks) ? ['', auditVoiceDisclosure(auditFile.audit.checks)] : []),
     '',
     `**Inference cost:** ${formatUsd(auditFile.cost.totalUsd())}`,
     '',

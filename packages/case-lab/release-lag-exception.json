@@ -1,6 +1,0 @@
-{
-  "tag": "v0.4.0",
-  "reason": "Synchronize develop with the already-published v0.4.0 release while retaining the accurately labeled v0.3.9 Case Lab benchmark; new paid benchmark and demo deployment remain separately scoped.",
-  "expires": "2026-11-02T00:00:00Z",
-  "approvedBy": "Juan, 2026-10-26 (explicit go ahead)"
-}

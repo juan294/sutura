@@ -29,6 +29,7 @@ function fixture() {
   const runs = [run(300, 10, sha('c'), 'sutura/fix-100', 'pull_request'), run(301, 11, sha('c'), 'sutura/fix-100', 'pull_request'),
     run(400, 10, sha('e'), 'develop', 'push'), run(401, 11, sha('e'), 'develop', 'push')];
   const monitorRun = run(200, 20, sha('b'), 'develop', 'workflow_run');
+  const pr = { number: 5, head: { sha: sha('c'), ref: 'sutura/fix-100', repo: { id: 42 } }, base: { sha: sha('b'), ref: 'develop', repo: { id: 42 } }, merged: true, merge_commit_sha: sha('e') };
   const publication = { schemaVersion: 'sutura-publication-receipt-v1', complete: true, repositoryId: 42, runId: 200, attempt: 1, workflowId: 20,
     workflowBlobSha: workflowContent.sha, source: { runId: 100, attempt: 2, sha: sha('a'), workflowId: 10, branch: 'develop' },
     actionSha: sha('b'), outcome: 'fixed', publication: { prNumber: 5, headSha: sha('c'), diffDigest: digest } };
@@ -68,7 +69,7 @@ function fixture() {
     }
     if ((m = /^\/actions\/runs\/(\d+)\/attempts\/(\d+)\/jobs\?per_page=100&page=(\d+)$/.exec(suffix))) { const jobs_ = jobMap.get(`${m[1]}:${m[2]}`) ?? jobMap.get(Number(m[1])); return { total_count: jobs_.length, jobs: jobs_ }; }
     if (suffix === '/pulls/5/files?per_page=100&page=1') return diffFiles;
-    if (suffix === '/pulls/5') return { number: 5, head: { sha: sha('c'), ref: 'sutura/fix-100', repo: { id: 42 } }, base: { sha: sha('b'), ref: 'develop', repo: { id: 42 } }, merged: true, merge_commit_sha: sha('e') };
+    if (suffix === '/pulls/5') return pr;
     if (suffix === `/commits/${sha('c')}`) return { sha: sha('c'), parents: [{ sha: sha('a') }] };
     if (suffix === `/commits/${sha('f')}`) return { sha: sha('f'), parents: [{ sha: sha('b') }, { sha: sha('c') }] };
     throw new Error(`unexpected API ${path}`);
@@ -76,8 +77,63 @@ function fixture() {
   const client = { api, async listCiRuns() { throw new Error('Unbounded helper must not be used'); },
     async listArtifacts() { throw new Error('Unbounded helper must not be used'); },
     async downloadArtifact(_repository, runId, artifact) { const attempt = artifact.name.split('-').at(-1); return JSON.stringify(receipts.get(`${runId}:${attempt}`) ?? receipts.get(runId)); } };
-  return { input: { client, repository, source, monitor, repairPr, contract }, calls, runs, receipts, artifacts, jobMap, policy, monitorRun };
+  return { input: { client, repository, source, monitor, repairPr, contract }, calls, runs, receipts, artifacts, jobMap, policy, monitorRun, pr };
 }
+function dispatchFixture() {
+  const f = fixture(), publication = f.receipts.get(200), packetDigest = 'd'.repeat(64);
+  const provenance = `authenticated-workflow-dispatch:${f.input.repository}:${f.monitorRun.id}:1:900:${publication.workflowBlobSha}:${packetDigest}`;
+  publication.authorization = { kind: 'authenticated-owner-dispatch', provenance, packetDigest };
+  f.monitorRun.event = 'workflow_dispatch';
+  dispatchBranch(f, provenance);
+  return f;
+}
+function dispatchBranch(f, provenance) {
+  f.pr.head.ref = `sutura/fix-${f.input.source.id}-dispatch-${createHash('sha256').update(provenance).digest('hex').slice(0, 16)}`;
+  for (const run of f.runs.filter(run => run.event === 'pull_request')) run.head_branch = f.pr.head.ref;
+}
+test('collects an enrolled authenticated owner dispatch for the exact suffixed source repair branch', async () => {
+  const f = dispatchFixture(), result = await collectNativeVerification(f.input);
+  assert.equal(result.complete, true, JSON.stringify(result.requiredInput));
+  assert.equal(result.proof.repairPr.headBranch, f.pr.head.ref);
+  assert.equal(result.proof.monitor.sourceAttempt, 2);
+  assert.equal(result.proof.native.length, 4);
+  const source = { repositoryId: 42, sourceRunId: 100, sourceAttempt: 2, sourceSha: sha('a'), workflowId: 10, branch: 'develop' };
+  const record = sealIncidentEvidence({ schemaVersion: 'sutura-incident-evidence-v1', source, observedAt: '2026-10-25T09:00:00.000Z', classificationRevision: 'v1',
+    policyDigest: f.input.contract.policyDigest, completeness: { collection: true, source: true, native: true, logs: false }, proof: result.proof });
+  assert.equal(qualifyIncident(source, [record], f.input.contract).integration, 'qualified');
+});
+for (const [name, mutate] of [
+  ['bare dispatch', f => { delete f.receipts.get(200).authorization; }],
+  ['wrong authorization kind', f => { f.receipts.get(200).authorization.kind = 'recorded-only'; }],
+  ['extra authorization field', f => { f.receipts.get(200).authorization.sourceRunId = 100; }],
+  ['invalid packet digest', f => { f.receipts.get(200).authorization.packetDigest = 'unbound'; }],
+  ['copied repository provenance', f => { f.receipts.get(200).authorization.provenance = f.receipts.get(200).authorization.provenance.replace('example/project', 'other/project'); }],
+  ['copied monitor provenance', f => { f.receipts.get(200).authorization.provenance = f.receipts.get(200).authorization.provenance.replace(':200:1:', ':201:1:'); }],
+  ['rerun provenance', f => { f.receipts.get(200).authorization.provenance = f.receipts.get(200).authorization.provenance.replace(':200:1:', ':200:2:'); }],
+  ['zero caller job', f => { f.receipts.get(200).authorization.provenance = f.receipts.get(200).authorization.provenance.replace(':900:', ':0:'); }],
+  ['noncanonical caller job', f => { f.receipts.get(200).authorization.provenance = f.receipts.get(200).authorization.provenance.replace(':900:', ':0900:'); }],
+  ['unsafe caller job', f => { f.receipts.get(200).authorization.provenance = f.receipts.get(200).authorization.provenance.replace(':900:', ':9007199254740992:'); }],
+  ['wrong workflow blob provenance', f => { const value = f.receipts.get(200); value.authorization.provenance = value.authorization.provenance.replace(value.workflowBlobSha, sha('a')); }],
+  ['mismatched digest provenance', f => { f.receipts.get(200).authorization.packetDigest = 'e'.repeat(64); }],
+  ['wrong source receipt', f => { f.receipts.get(200).source.runId = 101; }],
+  ['ordinary unsuffixed head', f => { f.pr.head.ref = 'sutura/fix-100'; }],
+  ['copied source branch', f => { f.pr.head.ref = f.pr.head.ref.replace('fix-100-', 'fix-101-'); }],
+  ['wrong suffix', f => { f.pr.head.ref += '0'; }],
+  ['wrong published head', f => { f.pr.head.sha = sha('d'); }],
+  ['rerun monitor', f => { f.monitorRun.run_attempt = 2; f.input.monitor.runAttempt = 2; }],
+  ['unsupported monitor event', f => { f.monitorRun.event = 'push'; }],
+  ['dispatch authorization on workflow_run', f => { f.monitorRun.event = 'workflow_run'; }],
+  ['wrong pinned Action', f => { f.receipts.get(200).actionSha = sha('a'); }],
+  ['unenrolled producer', f => { f.policy.receiptProducers = f.policy.receiptProducers.filter(producer => producer.kind !== 'publication'); }],
+]) test(`dispatch refuses ${name}`, async () => {
+  const f = dispatchFixture(), originalBranch = f.pr.head.ref; mutate(f);
+  // A matching suffix cannot make copied or malformed provenance authoritative.
+  if (f.pr.head.ref === originalBranch && f.receipts.get(200).authorization?.provenance) dispatchBranch(f, f.receipts.get(200).authorization.provenance);
+  const result = await collectNativeVerification(f.input);
+  assert.equal(result.complete, false);
+  assert.ok(result.requiredInput.length > 0);
+  assert.equal(result.proof.monitor, undefined);
+});
 test('collects every explicit workflow and matrix child and qualifies only independently checked receipts', async () => {
   const f = fixture(), client = new GhFleetClient('example');
   client.api = f.input.client.api;

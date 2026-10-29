@@ -1,4 +1,7 @@
 import { parseDiagnosisRecoveryEvidence, findSelectedCandidate, summarizeVerificationCosts, parseVerificationEvidence, type CaseFile, type VerificationCostSummary } from '@sutura/core';
+import { parseAuditCheckMetadata } from '@sutura/core/audit-status';
+import { validateSemanticDecisions } from '@sutura/core/semantic-evidence';
+import { validateGroundingSelection } from '@sutura/core/grounding-evidence';
 
 import { canonicalJson, contentHash } from './canonical.js';
 import {
@@ -328,6 +331,11 @@ export function validateCaseLabCaseFile(value: unknown, expectedOutcome: CaseLab
         throw new CaseLabResultError(`caseFile.diagnosis.grounding.citations[${index}].url must be an https URL`);
       }
     }
+    if (grounding.selection !== undefined) {
+      const selection = grounding.selection;
+      if (!validateGroundingSelection(selection, grounding.citations)) throw new CaseLabResultError('caseFile.diagnosis.grounding.selection contains invalid citation provenance; regenerate the report');
+      if (selection.originals.some(c => !isPublicHttpsUrl(c.url))) throw new CaseLabResultError('caseFile.diagnosis.grounding.selection originals must retain public https URLs');
+    }
   }
   const triage = record(file.triage, 'caseFile.triage');
   text(triage.status, 'caseFile.triage.status', 32);
@@ -348,6 +356,13 @@ export function validateCaseLabCaseFile(value: unknown, expectedOutcome: CaseLab
       const check = record(entry, `caseFile.audit.checks[${index}]`);
       text(check.name, `caseFile.audit.checks[${index}].name`, 64);
       boolean(check.passed, `caseFile.audit.checks[${index}].passed`);
+      if (check.metadata !== undefined) {
+        try {
+          parseAuditCheckMetadata(check.metadata);
+        } catch (error) {
+          throw new CaseLabResultError(`caseFile.audit.checks[${index}].${error instanceof Error ? error.message : 'metadata is invalid'}; use a report with valid recorded audit metadata`);
+        }
+      }
     }
     if (typeof audit.reasoning !== 'string') throw new CaseLabResultError('caseFile.audit.reasoning must be a string');
   }
@@ -365,12 +380,24 @@ export function validateCaseLabCaseFile(value: unknown, expectedOutcome: CaseLab
     const stage = record(entry, `caseFile.stages[${index}]`);
     text(stage.stage, `caseFile.stages[${index}].stage`, 32);
     text(stage.nodeId, `caseFile.stages[${index}].nodeId`, 128);
-    record(stage.metrics, `caseFile.stages[${index}].metrics`);
+    const metrics = record(stage.metrics, `caseFile.stages[${index}].metrics`);
+    if (metrics.wallTimeSec !== undefined && (typeof metrics.wallTimeSec !== 'number' || !Number.isFinite(metrics.wallTimeSec) || metrics.wallTimeSec < 0)) throw new CaseLabResultError('stage wallTimeSec must be finite and nonnegative');
+    if (stage.processState !== undefined) {
+      const state = record(stage.processState, `caseFile.stages[${index}].processState`);
+      if (Object.keys(state).some(key => !['timedOut', 'signal'].includes(key))) throw new CaseLabResultError('stage processState contains unknown fields');
+      if (state.timedOut !== undefined) boolean(state.timedOut, 'stage.processState.timedOut');
+      if (state.signal !== undefined && (!Number.isInteger(state.signal) || (state.signal as number) < 0 || (state.signal as number) > 255)) throw new CaseLabResultError('stage signal must be between 0 and 255');
+    }
     if (stage.network !== 'disabled' && stage.network !== 'enabled') {
       throw new CaseLabResultError(`caseFile.stages[${index}].network must be disabled or enabled`);
     }
   }
   if (file.search !== undefined) array(file.search, 'caseFile.search', 256);
+  if (file.semanticDecisions !== undefined) {
+    const candidateIds = (file.search === undefined ? [] : array(file.search, 'caseFile.search', 256))
+      .map((node, index) => text(record(node, `caseFile.search[${index}]`).nodeId, `caseFile.search[${index}].nodeId`, 128));
+    if (!validateSemanticDecisions(file.semanticDecisions, candidateIds)) throw new CaseLabResultError('caseFile.semanticDecisions contains invalid decision evidence; regenerate the report with valid candidate references');
+  }
   if (file.counterfactual !== undefined) validateCounterfactual(file.counterfactual);
   const verification = file.verification === undefined ? undefined : parseVerificationEvidence(file.verification);
   const recovery = Object.hasOwn(file, 'recovery') ? parseDiagnosisRecoveryEvidence(file.recovery, {

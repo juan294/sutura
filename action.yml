@@ -23,7 +23,7 @@ inputs:
     description: Optional OpenAI key for the GPT-6 Astra second-opinion audit. Veto-only; never widens acceptance.
     required: false
   typesafe-api-key:
-    description: Optional TypeSafe API key for the Jev calibrated audit. Veto-only; never widens acceptance.
+    description: Optional TypeSafe API key for the existing veto-only audit and explicitly selected Jev roles. Never widens executable acceptance.
     required: false
   contree-token:
     description: Nebius ConTree token used for sandbox operations.
@@ -99,6 +99,26 @@ inputs:
     description: Lower-only TypeSafe Jev calibrated audit cost limit in USD, separate from repair-inference-cost-usd and repair-second-opinion-usd.
     required: false
     default: '0.02'
+  jev-ranking:
+    description: Explicit Jev repair frontier ranking mode, off, shadow, or assist, in heal mode only. Nonoff requires typesafe-api-key and a positive jev-budget-usd; shadow writes private runner-local inputs without inline inference.
+    required: false
+    default: off
+  jev-grounding:
+    description: Explicit Jev grounding evidence selection mode, off, shadow, or assist, in heal mode only. Nonoff requires typesafe-api-key and a positive jev-budget-usd; shadow writes private runner-local inputs without inline inference.
+    required: false
+    default: off
+  jev-classification:
+    description: Explicit Jev failure classification mode, off, shadow, or assist, in heal mode only. Nonoff requires typesafe-api-key and a positive jev-budget-usd; shadow writes private runner-local inputs without inline inference.
+    required: false
+    default: off
+  jev-recovery:
+    description: Explicit Jev recovery hypothesis selection mode, off, shadow, or assist, in heal mode only. Nonoff requires typesafe-api-key and a positive jev-budget-usd; shadow writes private runner-local inputs without inline inference.
+    required: false
+    default: off
+  jev-budget-usd:
+    description: Shared new-role Jev cap from 0 to 0.02 USD, separate from legacy audit, generation and sandbox budgets. Positive explicit authorization is required for shadow or assist; zero leaves roles off.
+    required: false
+    default: '0'
   repair-diff-bytes:
     description: Lower-only cumulative repair diff limit in bytes.
     required: false
@@ -129,9 +149,17 @@ inputs:
     description: Optional Nemotron adversarial-audit model override.
     required: false
 
+  verification-packet:
+    description: 'Canonical one-attempt long-verification packet; only an authenticated enrolled owner dispatch can authorize it.'
+    required: false
+  authorize-long-verification:
+    description: 'Separate SHA-256 of the canonical verification packet. Profiles and packet files alone grant no allowance.'
+    required: false
 outputs:
   outcome:
     description: Final Sutura outcome for the failed run, or already-attempted or repair-branch-skipped when Sutura did not start an attempt.
+  semantic-shadow-path:
+    description: Owner-only runner-local JSONL path when a Jev shadow role is selected. Raw comparison inputs are not uploaded automatically; preserve privately within the same job if needed.
   verification-status:
     description: Terminal supplied-patch verification status in verify mode.
 

@@ -1,10 +1,11 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  ContreeError,
   completedTriageVerdict,
   createCompleteReplayBundleForTest,
   notRunTriageVerdict,
@@ -34,6 +35,20 @@ function fixed(): CaseFile {
 }
 
 describe('runCli', () => {
+  it('reports a missing semantic key as usage error before any runtime/provider work', async () => {
+    const stdout: string[] = [], stderr: string[] = [];
+    const network = vi.fn(async () => { throw new Error('unexpected provider request'); });
+    vi.stubGlobal('fetch', network);
+    vi.stubEnv('TYPESAFE_API_KEY', '');
+    try {
+      const code = await runCli(['heal', '--case-dir', '/does-not-exist', '--format', 'json', '--jev-ranking', 'assist', '--jev-budget-usd', '0.01'], { write: value => stdout.push(value), writeError: value => stderr.push(value) });
+      expect(code).toBe(2);
+      expect(stdout).toEqual([]);
+      expect(stderr.join('')).toContain('TYPESAFE_API_KEY');
+      expect(network).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
+  });
+
   it('replays a complete bundle offline and prints matching CaseFile JSON', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'sutura-cli-complete-replay-'));
     const bundlePath = join(directory, 'bundle.json');
@@ -238,5 +253,53 @@ describe('executed verification exit status', () => {
   }
   it('returns zero only for a verified supplied patch', async () => {
     expect(await runCli(argv, { write: () => {} }, { verify: async () => ({ status: 'verified-supplied-patch' }) })).toBe(0);
+  });
+});
+
+it('includes typed provider recovery in CLI evidence without declaring a repair', async () => {
+  let output = '';
+  await runCli(['heal', '--case-dir', '/tmp/example', '--format', 'json'], { write: value => { output += value; } }, { heal: async () => { throw new ContreeError('provider failed', undefined, undefined, { code: 'provider-disk-exhausted', stage: 'provider-operation' }); } });
+  const file = JSON.parse(output);
+  expect(file.outcome).toBe('infra-stop');
+  expect(file.diagnosis.errorExcerpt).toContain('ENOSPC');
+  expect(file.stages[0].note).toContain('cost are unavailable');
+});
+
+describe('explain command dispatch', () => {
+  it('uses the real local evidence parser with zero provider or repair/replay dispatch', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-cli-explain-'));
+    const stdout: string[] = [], stderr: string[] = [];
+    const forbidden = vi.fn(async () => { throw new Error('explain must not dispatch another operation'); });
+    const fetch = vi.fn(async () => { throw new Error('lexical navigation must not fetch'); });
+    vi.stubGlobal('fetch', fetch);
+    try {
+      const path = join(directory, 'case.json');
+      await writeFile(path, await readFile(new URL('../../core/src/report/fixtures/fixed.json', import.meta.url)));
+      const code = await runCli(['explain', '--case-file', path, '--query', 'Cannot find module', '--json'], { write: value => stdout.push(value), writeError: value => stderr.push(value) }, { heal: forbidden, replay: forbidden, verify: forbidden, audit: forbidden, assess: forbidden, init: forbidden, doctor: forbidden });
+      expect(code).toBe(0); expect(JSON.parse(stdout.join(''))).toMatchObject({ schemaVersion: 'sutura-evidence-answer-v1', status: 'matched', mode: 'lexical' });
+      expect(stderr).toEqual([]); expect(fetch).not.toHaveBeenCalled(); expect(forbidden).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); await rm(directory, { recursive: true, force: true }); }
+  });
+  it('returns literal no-match/unavailable/invalid-input exit codes and semantic disclosure even with JSON', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sutura-cli-explain-status-'));
+    const fetch = vi.fn(async () => { throw new Error('missing-key navigation must not fetch'); });
+    vi.stubGlobal('fetch', fetch); vi.stubEnv('TYPESAFE_API_KEY', '');
+    try {
+      const path = join(directory, 'case.json'); await writeFile(path, await readFile(new URL('../../core/src/report/fixtures/fixed.json', import.meta.url)));
+      const prefix = ['explain', '--case-file', path];
+      for (const item of [
+        { flags: ['--query', 'interstellar marshmallow quantum agriculture', '--json'], expected: 'no-match', code: 0 },
+        { flags: ['--query', 'Cannot find module', '--semantic', '--max-usd', '.001', '--json'], expected: 'unavailable', code: 1 },
+      ]) {
+        const out: string[] = [], errors: string[] = [];
+        expect(await runCli([...prefix, ...item.flags], { write: value => out.push(value), writeError: value => errors.push(value) })).toBe(item.code);
+        expect(JSON.parse(out.join('')).status).toBe(item.expected);
+        if (item.expected === 'unavailable') expect(errors.join('')).toContain('redacted query');
+      }
+      await writeFile(path, '{invalid'); const out: string[] = [];
+      expect(await runCli([...prefix, '--query', 'cause', '--json'], { write: value => out.push(value), writeError: () => {} })).toBe(2);
+      expect(JSON.parse(out.join(''))).toMatchObject({ status: 'invalid-input', results: [], nextAction: expect.stringContaining('actual stable regular JSON file') });
+      expect(fetch).not.toHaveBeenCalled();
+    } finally { vi.unstubAllEnvs(); vi.unstubAllGlobals(); await rm(directory, { recursive: true, force: true }); }
   });
 });

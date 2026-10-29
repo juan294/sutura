@@ -1,3 +1,17 @@
+import { classifyWithSemantic } from './decisions/classify.js';
+import { DecisionSession, type SemanticPort } from './decisions/call.js';
+import { rankRepairFrontier } from './decisions/rank-frontier.js';
+import { selectGrounding } from './decisions/select-grounding.js';
+import type { ControllerClockDomain } from './replay/controller-clock.js';
+import { verifyReproductionRuntime } from './engine/reproduction-runtime.js';
+import { preparationDeadlineExecutor } from './executor/deadlines.js';
+import { allowanceMatchesPlan, type VerificationAllowance } from './engine/verification-allowance.js';
+import { resolveReproductionAtSource } from './engine/reproduction-source.js';
+import { isResolvedReproductionPlan, type ResolvedReproductionPlan, type ReproductionResolution } from './engine/reproduction-plan.js';
+import { SUTURA_SANDBOX_ENV } from './executor/environment.js';
+export { SUTURA_SANDBOX_ENV } from './executor/environment.js';
+import { admitNativeCommand, type NativeCommandAdmission } from './engine/native-command-admission.js';
+import { processCompletedNormally, processSucceeded } from './executor/types.js';
 import { VerificationExecutionRecorder } from './verification/execution-record.js';
 import { GeneratedVerificationRecorder } from './verification/generated-record.js';
 import type { VerificationMode } from './verification/types.js';
@@ -121,19 +135,24 @@ export function defaultFailureCommand(runtimeId: RuntimeId | undefined): string 
 }
 const DEPENDENCY_INSTALL_COMMAND = /(?:^|(?:&&|;|\|\|)\s*)(?:(?:corepack\s+)?pnpm\s+(?:install|i)\b|npm\s+(?:ci|install|i)\b|(?:corepack\s+)?yarn\s+(?:install\b|--immutable\b))/iu;
 
-export const SUTURA_SANDBOX_ENV = Object.freeze({
-  CI: 'true',
-  NODE_ENV: 'test',
-});
 
 export type HealLlm = DiagnosisLlm & RepairLlm & AuditLlm;
 export type RepairVerificationScope = 'full' | 'failing-workspace';
 
 export interface RepairFailureContext {
+  semantic?: SemanticPort;
+  decisionSession?: DecisionSession;
   runId: string;
   repo: string;
+  controllerStartedAt?: number;
+  clockNow?(domain: ControllerClockDomain): number;
   failedLog: string;
   nativeFailure?: NativeFailureEvidence;
+  reproductionPlan?: ResolvedReproductionPlan;
+  verificationAllowance?: VerificationAllowance;
+  recordedControllerWallTimeSec?: number;
+  onFinalVerification?(input: { imageId: string; diffSha256: string; sharedBudget: ReturnType<RepairBudget['snapshot']> }): void;
+  authorizeVerification?(plan: ResolvedReproductionPlan): Promise<VerificationAllowance>;
   baselineResult?: RunResult;
   reproduction?: FailureIdentityEvidence;
   failingImage: ImageId;
@@ -244,7 +263,7 @@ export class StageLedger {
       attempt: input.attempt,
       nodeId,
       ...(parentNodeId === undefined ? {} : { parentNodeId }),
-      ...(input.result === undefined ? {} : { exitCode: input.result.exitCode }),
+      ...(input.result === undefined ? {} : { exitCode: input.result.exitCode, ...(input.result.processState === undefined ? {} : { processState: { ...input.result.processState } }) }),
       ...(operation === undefined ? {} : {
         operationId: operation.operationId,
         ...(operation.terminal === undefined ? {} : { operationTerminal: operation.terminal }),
@@ -498,6 +517,27 @@ function noReproductionDiagnosis(mechanical: Diagnosis): Diagnosis {
   };
 }
 
+export function nativeCommandAdmissionCaseFile(
+  ctx: Pick<HealCaseContext, 'runId' | 'repo' | 'cost' | 'policyEvidence' | 'stageLedger' | 'traceRecorder' | 'runtime'>,
+  command: string,
+  admission: NativeCommandAdmission,
+): CaseFile {
+  const reproduction = { version: 'sutura-failure-identity-v1' as const, status: 'unavailable' as const, parser: 'native-command-admission',
+    reason: `${admission.reason}: protected CI control command is outside application repair. ${admission.nextAction}` };
+  return makeCaseFile({ ...ctx, reproduction }, {
+    class: 'infra', confidence: 1, signals: ['native-command-admission:ci-control'], failingCmd: command, errorExcerpt: reproduction.reason,
+  }, { ...notRunTriageVerdict(), stopReason: 'failure-identity', reproduction }, [], 'gave-up');
+}
+
+export function reproductionProfileStopCaseFile(
+  ctx: Parameters<typeof nativeCommandAdmissionCaseFile>[0], command: string,
+  stop: Extract<ReproductionResolution, { status: 'stopped' }>,
+): CaseFile {
+  const reproduction = { version: 'sutura-failure-identity-v1' as const, status: 'unavailable' as const, parser: 'reproduction-profile', reason: `${stop.reason}: ${stop.nextAction}` };
+  return makeCaseFile({ ...ctx, reproduction }, { class: 'infra', confidence: 1, signals: [stop.reason], failingCmd: command, errorExcerpt: reproduction.reason },
+    { ...notRunTriageVerdict(), stopReason: 'failure-identity', reproduction }, [], 'gave-up');
+}
+
 export function noReproductionCaseFile(
   ctx: Pick<
     HealCaseContext,
@@ -723,7 +763,7 @@ async function prepareSandboxFromSource(
     parentImageId: dependencyImage,
     note: `${runtime.id} dependencies prepared without repository hooks`,
   });
-  if (preparation.exitCode !== 0) {
+  if (!processSucceeded(preparation)) {
     return {
       ok: false,
       command: DEPENDENCY_INSTALL_COMMAND.test(observedCommand)
@@ -758,7 +798,7 @@ async function prepareSandboxFromSource(
     parentImageId: sourceImage,
     note: 'Hook-disabled Git baseline initialized',
   });
-  if (initialized.exitCode !== 0) {
+  if (!processSucceeded(initialized)) {
     return { ok: false, command: INITIALIZE_REPOSITORY_COMMAND, result: initialized };
   }
   return { ok: true, imageId: initialized.imageId };
@@ -792,7 +832,7 @@ export function focusedTriageProbe(
   if (!('focus' in focus)) return undefined;
   return {
     command: wrap(focus.focus.command),
-    sameFailure: (result) => sameFailure(focus.focus, `${result.stdout}\n${result.stderr}`, result.exitCode),
+    sameFailure: (result) => processCompletedNormally(result) && sameFailure(focus.focus, `${result.stdout}\n${result.stderr}`, result.exitCode),
   };
 }
 
@@ -860,6 +900,11 @@ function makeCaseFile(
     | 'verificationRuns'
     | 'preparedChallenges'
     | 'reproduction'
+    | 'reproductionPlan'
+    | 'controllerStartedAt'
+    | 'recordedControllerWallTimeSec'
+    | 'evidenceMode'
+    | 'decisionSession'
   >,
   diagnosis: Diagnosis,
   triageVerdict: CaseFile['triage'],
@@ -886,6 +931,8 @@ function makeCaseFile(
   return {
     runId: ctx.runId,
     repo: ctx.repo,
+    ...(ctx.decisionSession ? { semanticDecisions: { schemaVersion: 'sutura-semantic-decisions-v1' as const, configuration: structuredClone(ctx.decisionSession.options.config), records: ctx.decisionSession.records, budget: ctx.decisionSession.snapshot() } } : {}),
+    ...(ctx.reproductionPlan && ctx.controllerStartedAt !== undefined ? { controllerWallTimeSec: ctx.evidenceMode === 'replay' && ctx.recordedControllerWallTimeSec !== undefined ? ctx.recordedControllerWallTimeSec : Math.max(0, (Date.now() - ctx.controllerStartedAt) / 1000) } : {}),
     runtime: (ctx.runtime ?? NODE_RUNTIME).id,
     diagnosis,
     triage: triageVerdict,
@@ -1001,6 +1048,7 @@ export async function readNativeFailureEvidence(root: string, command: string, l
 }
 
 export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile> {
+  if (ctx.verificationAllowance && (!isResolvedReproductionPlan(ctx.reproductionPlan) || !allowanceMatchesPlan(ctx.verificationAllowance, ctx.reproductionPlan) || (ctx.sourceIdentity?.policyBaseSha !== undefined && ctx.sourceIdentity.policyBaseSha !== ctx.verificationAllowance.packet.policyBaseSha))) return reproductionProfileStopCaseFile(ctx, ctx.nativeFailure?.command ?? 'unknown', { status: 'stopped', reason: 'full-verification-budget-incompatible', nextAction: 'The controller source/policy/profile differs from the approved fresh grant, or its capability is consumed' });
   const policy = policyFor(ctx);
   const generated = policy.verification?.mode === 'required' ? new GeneratedVerificationRecorder({
     executor: ctx.executor, llm: ctx.llm, baselineImageId: ctx.failingImage, policy,
@@ -1014,10 +1062,20 @@ export async function repairFailure(ctx: RepairFailureContext): Promise<CaseFile
   const budget = new RepairBudget({
     ...configuredBudgets,
     diffBytes: Math.min(configuredBudgets.diffBytes, policy.maxDiffBytes),
-  });
+  }, ctx.clockNow ? () => ctx.clockNow!('repair') : Date.now, ctx.controllerStartedAt);
   const trace = ctx.traceRecorder ?? new TraceRecorder(ctx.runId);
   const ledger = ctx.stageLedger ?? new StageLedger(trace);
+  let decisionSession: DecisionSession | undefined;
+  if (ctx.semantic) {
+    // Use the existing recorded controller clock for both deadlines and public
+    // latency. Offline replay must reproduce evidence, not its own wall time.
+    const now = ctx.clockNow ? () => ctx.clockNow!('repair') : Date.now;
+    const started = now();
+    decisionSession = new DecisionSession({ ...ctx.semantic, now, deadline: started + budget.remainingElapsedTimeSec() * 1000,
+      remainingMs: () => budget.remainingElapsedTimeSec() * 1000 });
+  }
   const fullContext = {
+    ...(decisionSession ? { decisionSession } : {}),
     ...ctx, policy, llm: tracedLlm(ctx.llm, trace),
     ...(ctx.secondOpinion === undefined ? {} : { secondOpinion: tracedAuditLlm(ctx.secondOpinion, trace) }),
     ...(ctx.typesafeAudit === undefined ? {} : { typesafeAudit: tracedTypeSafeAudit(ctx.typesafeAudit, trace) }),
@@ -1057,27 +1115,28 @@ async function repairFailureWithinBudget(
   };
   const providerLog = filterPolicyDeniedText(ctx.failedLog, policy);
   const mechanical = classifyMechanically(providerLog);
-  const native = ctx.nativeFailure ?? nativeFailureForCommand(mechanical.failingCmd, providerLog);
+  const plan = isResolvedReproductionPlan(ctx.reproductionPlan) ? ctx.reproductionPlan : undefined;
+  const native = { ...(ctx.nativeFailure ?? nativeFailureForCommand(mechanical.failingCmd, providerLog)), ...(plan === undefined ? {} : { reproductionPlan: plan }) };
   const baseline = ctx.baselineResult ?? await charged.executor.run(ctx.failingImage,
-    sandboxExecutableCommand(mechanical.failingCmd, ctx.runtime ?? NODE_RUNTIME), { cwd: SNAPSHOT_CWD, network: 'disabled' });
+    plan?.probeCommand ?? sandboxExecutableCommand(mechanical.failingCmd, ctx.runtime ?? NODE_RUNTIME), { cwd: plan?.cwd ?? SNAPSHOT_CWD, network: 'disabled', timeoutSec: plan?.profile.probeTimeoutSec ?? 120 });
   if (ctx.baselineResult === undefined) ledger.record({ stage: 'reproduction', attempt: 1,
     network: 'disabled', result: baseline, parentImageId: ctx.failingImage, note: 'Original failure identity probe' });
-  if (baseline.exitCode === 0) return noReproductionCaseFile(fullContext, mechanical);
+  if (processSucceeded(baseline)) return noReproductionCaseFile(fullContext, mechanical);
   const identity = compareFailureIdentity(native, { log: `${baseline.stdout}\n${baseline.stderr}`,
-    exitCode: baseline.exitCode, truncated: baseline.truncated });
+    exitCode: baseline.exitCode, truncated: baseline.truncated, ...(baseline.processState === undefined ? {} : { processState: baseline.processState }) });
   ctx.reproduction = identity;
   fullContext.reproduction = identity;
   if (identity.status !== 'matched') {
     return makeCaseFile(fullContext, { ...mechanical, signals: [...mechanical.signals, `reproduction:${identity.status}`] },
       { ...notRunTriageVerdict(), maximumAttempts: ctx.triageN, stopReason: 'failure-identity', reproduction: identity }, [], 'gave-up');
   }
-  const chargedContext = { ...fullContext, ...charged };
-  let diagnosis = await classify(charged.llm, providerLog);
+  const chargedContext = { ...fullContext, ...charged, ...(ctx.verificationAllowance === undefined ? {} : { counterfactuals: [] }) };
+  let diagnosis = fullContext.decisionSession && fullContext.decisionSession.options.config.modes.classification !== 'off'
+    ? await classifyWithSemantic(fullContext.decisionSession, charged.llm, providerLog)
+    : await classify(charged.llm, providerLog);
   progress.diagnosis = diagnosis;
   diagnosis = promoteUpstreamDependencyDiagnosis(diagnosis, ctx.dependencyHints);
-  diagnosis = withGrounding(
-    diagnosis,
-    await withinRecoveryDeadline(budget.remainingElapsedTimeSec(), undefined, () => ground(
+  const retrievedGrounding = await withinRecoveryDeadline(budget.remainingElapsedTimeSec(), undefined, () => ground(
       ctx.tavily ?? { search: async () => [] },
       diagnosis,
       {
@@ -1087,8 +1146,11 @@ async function repairFailureWithinBudget(
           ? {}
           : { dependencyHints: ctx.dependencyHints }),
       },
-    )),
-  );
+    ));
+  const selectedGrounding = fullContext.decisionSession && fullContext.decisionSession.options.config.modes.grounding !== 'off'
+    ? await selectGrounding(fullContext.decisionSession, retrievedGrounding, diagnosis, ctx.dependencyHints)
+    : retrievedGrounding;
+  diagnosis = withGrounding(diagnosis, selectedGrounding);
   ledger.record({
     stage: 'search',
     attempt: 1,
@@ -1098,8 +1160,8 @@ async function repairFailureWithinBudget(
       : 'Grounding skipped',
   });
   const runtime = ctx.runtime ?? NODE_RUNTIME;
-  const executableCommand = sandboxExecutableCommand(diagnosis.failingCmd, runtime);
-  const verificationCommand = sandboxExecutableCommand(
+  const executableCommand = plan?.probeCommand ?? sandboxExecutableCommand(diagnosis.failingCmd, runtime);
+  const verificationCommand = plan?.fullCommand ?? sandboxExecutableCommand(
     repairVerificationCommand(
       diagnosis,
       providerLog,
@@ -1109,7 +1171,7 @@ async function repairFailureWithinBudget(
   );
 
   const triagePolicy = ctx.triagePolicy ?? LEGACY_TRIAGE_POLICY;
-  const focus = triagePolicy.scope === 'focused' ? focusedTriage(diagnosis.failingCmd, providerLog) : undefined;
+  const focus = !plan && triagePolicy.scope === 'focused' ? focusedTriage(diagnosis.failingCmd, providerLog) : undefined;
   const triageRun = await boundedTriage(
     charged.executor,
     ctx.failingImage,
@@ -1192,7 +1254,7 @@ async function repairFailureWithinBudget(
     });
     let candidateAttempt = 0;
     const trustedCommands = Object.fromEntries([
-      ['diagnosed', verificationCommand],
+      ['diagnosed', plan?.probeCommand ?? verificationCommand],
       ...policy.requiredCommands.map((command, index) => [
         `policy-${index + 1}`,
         sandboxExecutableCommand(command, runtime),
@@ -1231,6 +1293,8 @@ async function repairFailureWithinBudget(
       trustedCommand: executableCommand,
       operationIdPrefix: `repair-${ctx.runId}-recovery`,
       repairReservationUsd,
+      ...(fullContext.decisionSession ? { decisionSession: fullContext.decisionSession } : {}),
+      ...(ctx.verificationAllowance === undefined ? {} : { verificationAllowance: ctx.verificationAllowance }),
       observe: ({ result, parentImageId, note }) => {
         ledger.record({
           stage: 'search', attempt: ++candidateAttempt, network: 'disabled',
@@ -1271,6 +1335,7 @@ async function repairFailureWithinBudget(
       }
       const prepared = await prepareChallenges(sourceContext.sources);
       const verified = new Map<string, RuntimeCandidateResult>();
+      let selectedFinal: { imageId: string; diffSha256: string } | undefined;
       let firstAuditAvailable = true;
       const attemptContexts = new Map<string, ControlledRepairAttemptContext>();
       const nodeTargets = new Map<string, number>();
@@ -1297,6 +1362,7 @@ async function repairFailureWithinBudget(
           policy,
           budget,
           trustedCommands,
+          ...(plan === undefined ? {} : { testRunOptions: { diagnosed: { cwd: plan.cwd, timeoutSec: plan.profile.probeTimeoutSec } } }),
           sourceContext,
           runtimeId: (ctx.runtime ?? NODE_RUNTIME).id,
           ...(target.authorization === undefined ? {} : { authorization: target.authorization }),
@@ -1394,6 +1460,21 @@ async function repairFailureWithinBudget(
         maximumDepth: searchLimits.maximumDepth,
         maximumTotalBranches: Math.min(searchLimits.maximumTotalBranches, budget.limits.branches),
         availableBranches,
+        ...(fullContext.decisionSession && fullContext.decisionSession.options.config.modes.ranking !== 'off' ? {
+          rankFrontier: (nodes: readonly SearchNode[]) => rankRepairFrontier(fullContext.decisionSession!, providerLog, nodes),
+        } : {}),
+        ...(ctx.verificationAllowance === undefined ? {} : {
+          singleFinalVerification: true,
+          onProvisional: ({ expansion }: { expansion: import('./engine/search.js').SearchExpansion }) => {
+            if (!expansion.candidate || expansion.candidate.diff !== expansion.cumulativeDiff) throw new Error('Selected candidate diff differs from cumulative repair');
+            selectedFinal = { imageId: expansion.imageId, diffSha256: createHash('sha256').update(expansion.cumulativeDiff).digest('hex') };
+            Object.freeze(expansion.candidate);
+            recovery.audit!.beginFinalVerification!(selectedFinal);
+            ctx.onFinalVerification?.({ ...selectedFinal, sharedBudget: budget.snapshot() });
+            ledger.record({ stage: 'audit', attempt: 0, network: 'disabled', note: `One final phase consumed; allowanceSec=${ctx.verificationAllowance!.packet.finalAllowanceSec}; selectedDiff=${selectedFinal.diffSha256}; shared=${canonicalJson(budget.snapshot())}; heldAuditModelTurns=2` });
+            return recovery.audit!.cancellationTimeSec!();
+          },
+        }),
         concurrencyCapacity: () => ctx.search === undefined
           ? 1
           : Math.max(1, Math.min(
@@ -1403,6 +1484,7 @@ async function repairFailureWithinBudget(
         admit: async ({ nodeId, expansion }) => {
           const candidate = expansion.candidate;
           if (candidate === undefined) return { accepted: false };
+          if (ctx.verificationAllowance && (!selectedFinal || expansion.imageId !== selectedFinal.imageId || createHash('sha256').update(candidate.diff).digest('hex') !== selectedFinal.diffSha256)) return { accepted: false, reason: 'Selected repair image/diff differs from consumed final phase' };
           const target = targets[nodeTargets.get(nodeId) ?? 0]!;
           let ports;
           try {
@@ -1413,11 +1495,12 @@ async function repairFailureWithinBudget(
             firstAuditAvailable = false;
             const result = await evaluateRuntimeCandidate({
               ...ports, prepared, policy, baselineImage: ctx.failingImage,
-              ...(fullContext.secondOpinion === undefined ? {} : { secondOpinion: fullContext.secondOpinion, secondOpinionBudget: budget }),
-              ...(fullContext.typesafeAudit === undefined ? {} : { typesafeAudit: fullContext.typesafeAudit, typesafeAuditBudget: budget }),
+              ...(fullContext.secondOpinion === undefined ? {} : { secondOpinion: fullContext.secondOpinion, secondOpinionBudget: ports.vetoBudget ?? budget }),
+              ...(fullContext.typesafeAudit === undefined ? {} : { typesafeAudit: fullContext.typesafeAudit, typesafeAuditBudget: ports.vetoBudget ?? budget }),
               winner: {candidate, imageId: expansion.imageId, nodeId,
-                held: true, exitCode: expansion.testEvidence.exitCode},
+                held: true, exitCode: expansion.testEvidence.exitCode, ...(expansion.testEvidence.processState === undefined ? {} : { processState: expansion.testEvidence.processState })},
               diagnosis: target.diagnosis, beforeLog: providerLog, suiteCommand: verificationCommand,
+              ...(plan === undefined ? {} : { suiteRunOptions: { cwd: plan.cwd, timeoutSec: plan.profile.fullTimeoutSec } }),
               ...(target.authorization === undefined ? {} : {authorization: target.authorization}),
               runtime,
               observe: (result, parentImageId, note) => { ledger.record({stage: 'audit', attempt: ++candidateAttempt, network: 'disabled', result, parentImageId, note}); },
@@ -1432,13 +1515,13 @@ async function repairFailureWithinBudget(
           } finally { ports?.finish(); }
         },
         cancel: async (nodeId) => {
-          const activeOperation = activeOperations.get(nodeId);
+          const activeOperation = activeOperations.get(nodeId) ?? lastOperations.get(nodeId);
           if (!activeOperation) {
             ledger.record({
               stage: 'search', attempt: ++candidateAttempt, network: 'disabled',
               note: `Cancellation requested for ${nodeId} before a sandbox operation started`,
             });
-            return;
+            return true;
           }
           const cancellation = await ctx.executor.cancel(activeOperation);
           ledger.record({
@@ -1450,6 +1533,7 @@ async function repairFailureWithinBudget(
             },
             note: `Cancellation ${cancellation.requested ? 'requested' : 'observed'} for ${nodeId}`,
           });
+          return cancellation.terminal !== undefined;
         },
         onDecision: ({ summary, nodeId, parentNodeId }) => trace.record({
           type: 'search-decision',
@@ -1593,7 +1677,7 @@ async function repairFailureWithinBudget(
       }
       const raceResults: RaceResult[] = result.candidates.map((node) => ({
         candidate: node.candidate!, imageId: node.imageId, nodeId: node.id,
-        exitCode: node.testEvidence.exitCode, held: true,
+        exitCode: node.testEvidence.exitCode, held: true, ...(node.testEvidence.processState === undefined ? {} : { processState: node.testEvidence.processState }),
         note: `Adaptive search passed at depth ${node.depth}`,
       }));
       const winner = raceResults[0]!;
@@ -1618,7 +1702,7 @@ async function repairFailureWithinBudget(
     }
   }
 
-  const suppliedAudit = reserveRecoveryAudit({budget, llm: fullContext.llm, executor: ctx.executor, policy});
+  const suppliedAudit = reserveRecoveryAudit({budget, llm: fullContext.llm, executor: ctx.executor, policy, operationIdPrefix: `repair-${ctx.runId}-supplied`, ...(ctx.verificationAllowance === undefined ? {} : { verificationAllowance: ctx.verificationAllowance })});
   try {
   const sources = policy.verification?.contracts.length
     ? (await ctx.readSourceContext(ctx.failedLog, diagnosis, runtime)).sources : [];
@@ -1682,7 +1766,7 @@ async function repairFailureWithinBudget(
     charged.executor,
     ctx.failingImage,
     approvedCandidates,
-    verificationCommand,
+    plan?.probeCommand ?? verificationCommand,
     (result, attempt) => ledger.record({
       stage: 'candidate',
       attempt,
@@ -1691,6 +1775,7 @@ async function repairFailureWithinBudget(
       parentImageId: ctx.failingImage,
       note: 'Candidate verification race',
     }),
+    plan === undefined ? undefined : { cwd: plan.cwd, timeoutSec: plan.profile.probeTimeoutSec },
   );
   const racedById = new Map(raced.map((result) => [result.candidate.id, result]));
   // race() enforces one result per approved candidate; every other candidate
@@ -1732,11 +1817,15 @@ async function repairFailureWithinBudget(
     );
   }
 
+  const selectedFinal = { imageId: winner.imageId, diffSha256: createHash('sha256').update(winner.candidate.diff).digest('hex') };
+  suppliedAudit.beginFinalVerification?.(selectedFinal);
+  if (suppliedAudit.beginFinalVerification) ctx.onFinalVerification?.({ ...selectedFinal, sharedBudget: budget.snapshot() });
   const suppliedVerification = await evaluateRuntimeCandidate({
     ...suppliedAudit, winner, prepared, policy, baselineImage: ctx.failingImage,
-    ...(fullContext.secondOpinion === undefined ? {} : { secondOpinion: fullContext.secondOpinion, secondOpinionBudget: budget }),
-    ...(fullContext.typesafeAudit === undefined ? {} : { typesafeAudit: fullContext.typesafeAudit, typesafeAuditBudget: budget }),
-    diagnosis, beforeLog: providerLog, suiteCommand: verificationCommand, runtime,
+    ...(fullContext.secondOpinion === undefined ? {} : { secondOpinion: fullContext.secondOpinion, secondOpinionBudget: suppliedAudit.vetoBudget ?? budget }),
+    ...(fullContext.typesafeAudit === undefined ? {} : { typesafeAudit: fullContext.typesafeAudit, typesafeAuditBudget: suppliedAudit.vetoBudget ?? budget }),
+    diagnosis, beforeLog: providerLog, suiteCommand: verificationCommand,
+              ...(plan === undefined ? {} : { suiteRunOptions: { cwd: plan.cwd, timeoutSec: plan.profile.fullTimeoutSec } }), runtime,
     observe: (result, parentImageId, note) => { ledger.record({stage:'audit',attempt:1,network:'disabled',result,parentImageId,note}); },
   });
   recordVerification(winner.candidate, prepared, suppliedVerification);
@@ -1766,6 +1855,7 @@ function failureLog(command: string, result: RunResult): string {
 }
 
 export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
+  ctx = { ...ctx, controllerStartedAt: ctx.controllerStartedAt ?? Date.now() };
   if (ctx.policy?.verification?.mode === 'required' && ctx.executionRecorder === undefined) {
     const executionRecorder = new VerificationExecutionRecorder({ executor: ctx.executor, llm: ctx.llm, mode: ctx.evidenceMode ?? 'local' });
     ctx = { ...ctx, executionRecorder, executor: executionRecorder.executor, llm: executionRecorder.llm };
@@ -1799,11 +1889,23 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
   if (runtime.id === 'python' && ctx.imageRef !== undefined && ctx.imageRef !== runtime.imageRef) {
     throw new HealCaseError('Python runtime image must use the verified exact digest');
   }
+  const admission = admitNativeCommand(command);
+  if (admission) return nativeCommandAdmissionCaseFile(fullContext, command, admission);
+  const resolution = await resolveReproductionAtSource(ctx.caseDir, { policy: ctx.policy ?? createDefaultRepositoryPolicy(), policySha256: ctx.policyEvidence?.policySha ?? '', command,
+    runtimeId: runtime.id, sourceSha: ctx.sourceIdentity?.sourceSha ?? '', native: ctx.nativeFailure?.diagnostics });
+  if (resolution.status === 'stopped') return reproductionProfileStopCaseFile(fullContext, command, resolution);
+  const plan = resolution.status === 'ready' ? resolution.plan : undefined;
+  if (plan) {
+    const allowance = ctx.authorizeVerification ? await ctx.authorizeVerification(plan) : ctx.verificationAllowance;
+    if ((allowance !== undefined && !allowanceMatchesPlan(allowance, plan)) || (!allowance && plan.profile.fullTimeoutSec > 60)) return reproductionProfileStopCaseFile(fullContext, command, { status: 'stopped', reason: 'full-verification-budget-incompatible', nextAction: `The unchanged full audit requires ${plan.profile.fullTimeoutSec}s plus required policy/challenge/adjudication obligations; provide a separately approved compatible one-attempt execution packet before paid preparation` });
+    ctx = { ...ctx, policy: plan.policy, reproductionPlan: plan, ...(allowance === undefined ? {} : { verificationAllowance: allowance }) }; fullContext.policy = plan.policy;
+  }
   const executor = new AllowlistedExecutor(ctx.executor);
-  const imageRef = ctx.imageRef ?? (runtime.id === 'node'
+  const imageRef = plan?.profile.imageRef ?? ctx.imageRef ?? (runtime.id === 'node'
     ? await nodeImageRefForRepository(ctx.caseDir)
     : runtime.imageRef);
-  const baseImage = await executor.importImage(imageRef);
+  const preparationExecutor = new AllowlistedExecutor(preparationDeadlineExecutor(ctx.executor, ctx.controllerStartedAt!, ctx.clockNow ? () => ctx.clockNow!('preparation') : Date.now, `prepare-${ctx.runId}`));
+  const baseImage = await preparationExecutor.importImage(imageRef);
   ledger.record({
     stage: 'preparation',
     attempt: 0,
@@ -1812,22 +1914,31 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     note: 'Base image imported',
   });
   const setup = await prepareSandbox(
-    executor,
+    preparationExecutor,
     ctx.caseDir,
     baseImage,
     command,
     ledger,
     runtime,
-    (ctx.policy?.verification?.contracts.length ?? 0) > 0,
+    plan !== undefined || (ctx.policy?.verification?.contracts.length ?? 0) > 0,
   );
   if (!setup.ok) {
     return preparationFailureCaseFile(fullContext, setup.command, setup.result);
   }
   try {
-  const reproduction = await executor.run(
+  if (plan && setup.sourceDir) {
+    const frozen = await resolveReproductionAtSource(setup.sourceDir, { policy: plan.policy, policySha256: plan.policySha256, command, runtimeId: runtime.id, sourceSha: plan.native.binding.sourceSha, native: plan.native });
+    if (frozen.status !== 'ready') return reproductionProfileStopCaseFile(fullContext, command, frozen.status === 'stopped' ? frozen : { status: 'stopped', reason: 'reproduction-profile-source-mismatch', nextAction: 'Review the frozen source profile' });
+  }
+  if (plan) {
+    const observed = await verifyReproductionRuntime(preparationExecutor, setup.imageId, plan);
+    ledger.record({ stage: 'preparation', attempt: 1, network: 'disabled', result: observed.result, parentImageId: setup.imageId, note: 'Exact protected profile sandbox runtime' });
+    if (!observed.ok) return reproductionProfileStopCaseFile(fullContext, command, { status: 'stopped', reason: 'reproduction-profile-runtime-unavailable', nextAction: `The approved sandbox requires exact Node ${plan.profile.sandboxNodeVersion}; retain the actual runtime result and review the immutable image` });
+  }
+  const reproduction = await preparationExecutor.run(
     setup.imageId,
-    sandboxTargetCommand(command, runtime),
-    { cwd: SNAPSHOT_CWD },
+    plan?.probeCommand ?? sandboxTargetCommand(command, runtime),
+    { cwd: plan?.cwd ?? SNAPSHOT_CWD, timeoutSec: plan?.profile.probeTimeoutSec ?? 120 },
   );
   ledger.record({
     stage: 'reproduction',
@@ -1838,7 +1949,7 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     note: 'Observed failing command reproduction',
   });
   const failedLog = failureLog(command, reproduction);
-  if (reproduction.exitCode === 0) {
+  if (processSucceeded(reproduction)) {
     const mechanical = classifyMechanically(failedLog);
     return noReproductionCaseFile(fullContext, mechanical);
   }
@@ -1852,7 +1963,11 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     evidenceMode: ctx.evidenceMode ?? 'local',
     runId: ctx.runId,
     repo: ctx.repo,
+    controllerStartedAt: ctx.controllerStartedAt!,
+    ...(ctx.clockNow === undefined ? {} : { clockNow: ctx.clockNow }),
     failedLog,
+    ...(plan === undefined ? {} : { reproductionPlan: plan }),
+    ...(ctx.verificationAllowance === undefined ? {} : { verificationAllowance: ctx.verificationAllowance }),
     nativeFailure: ctx.nativeFailure ?? await readNativeFailureEvidence(setup.sourceDir ?? ctx.caseDir, command, failedLog),
     baselineResult: reproduction,
     failingImage: setup.imageId,
@@ -1860,6 +1975,7 @@ export async function healCase(ctx: HealCaseContext): Promise<CaseFile> {
     llm: fullContext.llm,
     ...(ctx.secondOpinion === undefined ? {} : { secondOpinion: ctx.secondOpinion }),
     ...(ctx.typesafeAudit === undefined ? {} : { typesafeAudit: ctx.typesafeAudit }),
+    ...(ctx.semantic === undefined ? {} : { semantic: ctx.semantic }),
     cost: ctx.cost,
     triageN: ctx.triageN,
     raceK: ctx.raceK,

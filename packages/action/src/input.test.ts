@@ -198,3 +198,37 @@ it('parses inspect before provider inputs are requested', () => {
   expect(result).toMatchObject({ mode: 'inspect', environment: {}, runId: '7' });
   expect(names).not.toContain('nebius-api-key');
 });
+
+
+describe('explicit Jev role controls', () => {
+  const map = (values: Record<string, string>) => mapActionInputs(name => ({ ...REQUIRED, ...values })[name] ?? '');
+
+  it('leaves default and explicitly off roles absent without new spend authority', () => {
+    expect(map({})).not.toHaveProperty('semantic');
+    expect(map({ 'jev-ranking': 'off', 'jev-grounding': 'off', 'jev-classification': 'off', 'jev-recovery': 'off', 'jev-budget-usd': '0' })).not.toHaveProperty('semantic');
+  });
+
+  it('maps all four role modes and one independently bounded shared budget', () => {
+    const result = map({ 'typesafe-api-key': 'typesafe_test', 'jev-ranking': 'assist', 'jev-grounding': 'shadow', 'jev-classification': 'assist', 'jev-recovery': 'shadow', 'jev-budget-usd': '0.01' });
+    expect(result.semantic).toEqual({ schemaVersion: 'sutura-semantic-config-v1', model: 'jev-1.14.0', policyVersion: 'semantic-v1', modes: { ranking: 'assist', grounding: 'shadow', classification: 'assist', recovery: 'shadow' }, maxUsd: 0.01 });
+    expect(result.environment.SUTURA_TYPESAFE_AUDIT_USD).toBe('0.02');
+    expect(result.environment.SUTURA_REPAIR_INFERENCE_COST_USD).toBe('0.25');
+  });
+
+  it.each(['ranking', 'grounding', 'classification', 'recovery'])('rejects unsupported %s mode and identifies its input', role => {
+    expect(() => map({ [`jev-${role}`]: 'on' })).toThrow(`jev-${role} must be off, shadow, or assist`);
+  });
+
+  it.each(['-0.01', '0.020001', 'NaN', 'Infinity', 'invalid'])('rejects invalid shared cap %s', cap => {
+    expect(() => map({ 'jev-budget-usd': cap })).toThrow(/jev-budget-usd/);
+  });
+
+  it.each(['shadow', 'assist'])('requires an explicit positive cap and existing key for %s', mode => {
+    expect(() => map({ 'jev-ranking': mode, 'typesafe-api-key': 'typesafe_test' })).toThrow(/jev-budget-usd/);
+    expect(() => map({ 'jev-ranking': mode, 'jev-budget-usd': '0.01' })).toThrow(/typesafe-api-key/);
+  });
+
+  it('does not silently accept repair role selection in supplied-patch verification', () => {
+    expect(() => map({ mode: 'verify', 'typesafe-api-key': 'typesafe_test', 'jev-recovery': 'assist', 'jev-budget-usd': '0.01' })).toThrow(/Jev role inputs require mode heal/);
+  });
+});

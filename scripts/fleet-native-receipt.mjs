@@ -1,4 +1,5 @@
 import { execFile as callbackExecFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { readdir, open } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -36,9 +37,18 @@ export function buildNativeReceipt({ repository, runId, attempt, policySha, poli
     workflowId: run.workflow_id, workflowBlobSha, headSha: run.head_sha, testedSha, policySourceSha: policySha,
     policyDigest: verificationContractDigest(contract), jobs: records };
 }
+function decodePolicy(content, requireBlobIdentity = false) {
+  requireFact(content?.type === 'file' && content.encoding === 'base64' && Number.isSafeInteger(content.size) && content.size >= 0 && content.size <= 1024 * 1024 && typeof content.content === 'string' && content.content.length <= 2 * 1024 * 1024, 'policy content');
+  const bytes = Buffer.from(content.content, 'base64');
+  requireFact(bytes.length <= 1024 * 1024 && bytes.length === content.size, 'policy decoded byte count');
+  new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  if (requireBlobIdentity) requireFact(SHA.test(content.sha ?? '') && createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex') === content.sha, 'policy blob identity');
+  return bytes;
+}
 async function main(args) {
-  const [repository, runText, attemptText, policyRef, directory] = args;
-  requireFact(args.length === 5 && /^[\w.-]+\/[\w.-]+$/u.test(repository) && /^refs\/heads\/[\w./-]+$/u.test(policyRef) && !policyRef.includes('..'), 'CLI scope');
+  const [repository, runText, attemptText, policyRef, directory, policySourceSha] = args;
+  requireFact((args.length === 5 || args.length === 6) && /^[\w.-]+\/[\w.-]+$/u.test(repository) && /^refs\/heads\/[\w./-]+$/u.test(policyRef) && !policyRef.includes('..'), 'CLI scope');
+  requireFact(policySourceSha === undefined || SHA.test(policySourceSha), 'exact optional policy source SHA');
   let calls = 0;
   const api = async endpoint => {
     requireFact(++calls <= 12, 'API bound');
@@ -49,12 +59,21 @@ async function main(args) {
   requireFact(Number.isSafeInteger(runId) && runId > 0 && Number.isSafeInteger(attempt) && attempt > 0, 'CLI run identity');
   const run = await api(`actions/runs/${runId}/attempts/${attempt}`);
   requireFact(run.repository?.full_name.toLowerCase() === repository.toLowerCase(), 'repository identity');
-  const commit = await api(`commits/${encodeURIComponent(policyRef)}`), policySha = commit.sha, policyPath = '.github/native-policy.json';
-  requireFact(SHA.test(policySha), 'policy commit');
+  const commit = await api(`commits/${encodeURIComponent(policyRef)}`), tipSha = commit.sha, policySha = policySourceSha ?? tipSha, policyPath = '.github/native-policy.json';
+  requireFact(SHA.test(tipSha) && SHA.test(policySha), 'policy commit');
+  if (policySourceSha !== undefined && policySourceSha !== tipSha) {
+    const source = await api(`commits/${policySourceSha}`);
+    requireFact(source.sha === policySourceSha, 'exact policy source commit identity');
+    const comparison = await api(`compare/${policySourceSha}...${tipSha}?per_page=1&page=1`);
+    requireFact(comparison.status === 'ahead' && comparison.behind_by === 0 && comparison.base_commit?.sha === policySourceSha && comparison.merge_base_commit?.sha === policySourceSha, 'policy source ancestry');
+  }
   const content = await api(`contents/${policyPath}?ref=${policySha}`);
-  requireFact(content.type === 'file' && content.encoding === 'base64' && Number.isSafeInteger(content.size) && content.size >= 0 && content.size <= 1024 * 1024 && typeof content.content === 'string' && content.content.length <= 2 * 1024 * 1024, 'policy content');
-  const policyBytes = Buffer.from(content.content, 'base64');
-  requireFact(policyBytes.length <= 1024 * 1024 && policyBytes.length === content.size, 'policy decoded byte count');
+  const policyBytes = decodePolicy(content, policySourceSha !== undefined);
+  if (policySourceSha !== undefined && policySha !== tipSha) {
+    const current = await api(`contents/${policyPath}?ref=${tipSha}`);
+    const currentBytes = decodePolicy(current, true);
+    requireFact(current.sha === content.sha && currentBytes.equals(policyBytes), 'protected policy changed since enrolled source');
+  }
   const policy = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(policyBytes));
   requireFact(policyRef === `refs/heads/${policy.obligations?.baseBranch}`, 'policy branch');
   const workflowPath = run.path?.split('@')[0];

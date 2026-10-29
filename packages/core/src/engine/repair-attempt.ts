@@ -234,7 +234,7 @@ function buildProposalTemplate(
     );
   }
   const evidence = {
-    diagnosis: redactExternalJsonValue(ctx.diagnosis),
+    diagnosis: redactExternalJsonValue(diagnosisForRepairPrompt(ctx.diagnosis)),
     sources: sources.map((source): SourceEvidence => ({
       path: source.path,
       startLine: source.startLine,
@@ -663,6 +663,7 @@ export async function runControlledRepairAttempt(
     policy: ctx.policy,
     budget: ctx.budget,
     trustedCommands: ctx.trustedCommands,
+    ...(ctx.testRunOptions === undefined ? {} : { testRunOptions: ctx.testRunOptions }),
     sourceContext: ctx.sourceContext,
     ...(ctx.authorization === undefined ? {} : { authorization: ctx.authorization }),
     ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
@@ -731,3 +732,4 @@ export async function runControlledRepairAttempt(
     ...(submitted.nodeId === undefined ? {} : { nodeId: submitted.nodeId }), test: state.latestTest,
   };
 }
+import { diagnosisForRepairPrompt } from '../decisions/grounding-prompt.js';
