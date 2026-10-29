@@ -13,6 +13,7 @@
 
 ### Fixed
 
+- Prevent regex backtracking in native command parsing on whitespace-heavy input.
 - Semantic evidence navigation and recovery selection no longer depend on independent model questions coordinating optional ranked choices. Required judgments retain the existing strict probability thresholds.
 - Navigator evaluation scores actual selected evidence, excludes a declared no-result sentinel and rejects false retrieval credit from unselected probability alternatives.
 - Action shadow capture stays private and preserves native repair when its capture file cannot be initialized or written.
