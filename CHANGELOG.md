@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-29
+
+### Fixed
+
+- Split large repository overlays into sequential archives capped at 64 MiB, preserving prepared dependencies and the complete source manifest. Refuse unsplittable files and enforce one shared deadline across chunk uploads and extraction.
+- Preserve provider failure metadata and add the failed chunk's position and size to overlay errors.
+
+### Changed
+
+- Updated Devpost for the published Jev release while preserving historical benchmark identities. Recorded one successful live 144 MiB Node overlay repair; this does not establish fleet recovery or a new benchmark score.
+- Retained the owner-approved Case Lab refresh deferral through November 5 without extending its expiry; its exact previous and new tags remain covered during publication.
+
+Retired guidance: none.
+
 ## [0.5.0] - 2026-10-29
 
 ### Added

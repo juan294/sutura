@@ -369,6 +369,41 @@ test('check passes a lagging Case Lab under a recorded, unexpired exception for 
   });
 });
 
+test('a release transition covers only its two owner-approved exact tags at the same expiry', async () => {
+  for (const publishedTag of [NEWEST_TAG, 'v0.3.1']) {
+    await withTempDirectory(async (directory) => {
+      await buildLaggingTree(directory);
+      await writeFixtureFile(directory, LAG_EXCEPTION_FILE, JSON.stringify({
+        ...LAG_EXCEPTION, tag: 'v0.3.1', previousTag: NEWEST_TAG,
+      }));
+      const baseGit = simpleGitStub();
+      const dependencies = dependenciesFor(directory, {
+        now: () => BEFORE_EXPIRY,
+        git: async (args) => (await baseGit(args)).replaceAll(NEWEST_TAG, publishedTag),
+      });
+      const release = await check(dependencies);
+      assert.equal(release.tag, publishedTag);
+      assert.deepEqual(release.exception, { expires: LAG_EXCEPTION.expires });
+      await assert.rejects(() => check({ ...dependencies, now: () => Date.parse(LAG_EXCEPTION.expires) }), /expired at/u);
+      await writeFixtureFile(directory, LEDGER_PATH, JSON.stringify({ resultHash: 'tampered' }));
+      await assert.rejects(() => check(dependencies), /resultHash is tampered/u);
+    });
+  }
+});
+
+test('a transition refuses malformed or unrelated previous tags', async () => {
+  for (const previousTag of ['*', 3, 'v0.2.9']) {
+    await withTempDirectory(async (directory) => {
+      await buildLaggingTree(directory);
+      await writeFixtureFile(directory, LAG_EXCEPTION_FILE, JSON.stringify({
+        ...LAG_EXCEPTION, tag: 'v0.3.1', previousTag,
+      }));
+      await assert.rejects(() => check(dependenciesFor(directory, { now: () => BEFORE_EXPIRY })),
+        /previousTag must name an exact release tag|exception names/u);
+    });
+  }
+});
+
 test('check refuses a lagging Case Lab when the exception has expired', async () => {
   await withTempDirectory(async (directory) => {
     await buildLaggingTree(directory);
