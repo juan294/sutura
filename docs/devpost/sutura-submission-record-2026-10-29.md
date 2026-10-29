@@ -8,4 +8,4 @@ The existing [Devpost entry](https://devpost.com/software/sutura-zgrhl6) remains
 - The historical sandbox resource figure is qualified as unreconciled to billed USD. The original benchmark artifact remains unchanged.
 - The video remains [5Pxpaa41fl8](https://www.youtube.com/watch?v=5Pxpaa41fl8), labeled historical v0.3.9. Embedded video frames and audio playback were observed in Chrome after saving.
 
-The Case Lab remains on v0.4.1 under the owner-approved refresh exception through November 5. Live large-overlay recovery is a separate verification task and is not established by this submission edit.
+The Case Lab remains on v0.4.1 under the owner-approved refresh exception through November 5. A separate [live overlay smoke](../evaluation/2026-10-29-overlay-smoke.md) subsequently passed for an unpublished repair candidate; this submission edit does not imply publication of that fix.
