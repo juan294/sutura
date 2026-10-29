@@ -42,6 +42,28 @@ function setup(mode: DecisionMode = 'assist', change?: (answers: Record<string, 
 }
 
 describe('semantic frontier judgments', () => {
+  it('defines original failure identity by the failing check or mechanism rather than literal diagnostic text', async () => {
+    const original = 'Run node check.cjs\nCHECK conserved-sum invariant\nAssertionError: expected total(3, 4) to equal 7; received 8\n at check.cjs:4:1';
+    const input = [
+      node('same-check', 'Run node check.cjs\nCHECK conserved-sum invariant\nAssertionError: expected total(3, 4) to equal 7; received 9\n at check.cjs:12:1'),
+      node('different-check', 'Run node check.cjs\nCHECK conserved-sum invariant passed\nCHECK empty-sum invariant\nAssertionError: expected total(0, 0) to equal 0; received 1\n at check.cjs:15:1'),
+    ];
+    const { session, fetch } = setup();
+    await rankRepairFrontier(session, original, input);
+    const request = JSON.parse(fetch.mock.calls[0]![1]!.body as string) as { questions: Record<string, TypeSafeQuestion> };
+    for (const index of [0, 1]) {
+      const remaining = request.questions[`node_${index}_original`], progress = request.questions[`node_${index}_progress`];
+      expect(remaining).toMatchObject({ type: 'noul', criteria: { true: expect.stringContaining('same failing check'), false: expect.stringContaining('no longer reported') } });
+      expect(remaining!.criteria!.true).toContain('actual values');
+      expect(remaining!.criteria!.true).toContain('stack locations');
+      if (progress?.type !== 'choice') throw new Error('Expected Choice');
+      expect(Object.keys(progress.criteria)).toEqual(['same_failure', 'original_resolved_new_failure', 'unclear']);
+      expect(progress.criteria.same_failure).toContain('same failing check');
+      expect(progress.criteria.same_failure).toContain('actual values');
+      expect(progress.criteria.original_resolved_new_failure).toContain('different failed check');
+      expect(progress.criteria.original_resolved_new_failure).toContain('not proof');
+    }
+  });
   it('binds every judgment to its exact array entry and retains known versus absent observation metadata', async () => {
     const input = nodes();
     input[1]!.testEvidence = { ...input[1]!.testEvidence, commandId: 'diagnosed', outputTruncated: false, processState: { timedOut: false, signal: 0 } };

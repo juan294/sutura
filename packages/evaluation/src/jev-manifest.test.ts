@@ -56,12 +56,12 @@ it('versions single-selection recovery while preserving frozen recovery-v1 manif
 it('versions clarified question contracts while preserving each frozen historical manifest',()=>{
  const seed=input();
  for(const [role,current,historical] of [
-  ['ranking','ranking-v2','ranking-v1'],
-  ['grounding','grounding-v2','grounding-v1'],
-  ['audit-v2','atomic-audit-v3','atomic-audit-v2'],
+  ['ranking','ranking-v3',['ranking-v1','ranking-v2']],
+  ['grounding','grounding-v2',['grounding-v1']],
+  ['audit-v2','atomic-audit-v4',['atomic-audit-v2','atomic-audit-v3']],
  ] as const){
   expect(JEV_QUESTION_VERSIONS[role]).toBe(current);
-  for(const questionVersion of [current,historical]){
+  for(const questionVersion of [current,...historical]){
    const manifest=createJevManifest({...seed,cases:[{...seed.cases[0],role,questionVersion}]});
    expect(validateJevManifest(manifest)).toEqual(manifest);
    expect(jevManifestHash(validateJevManifest(manifest))).toBe(jevManifestHash(manifest));

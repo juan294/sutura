@@ -41,7 +41,12 @@ describe('experimental atomic audit request contract', () => {
     const evidence = await session.judge('audit-v2', state, ATOMIC_AUDIT_QUESTIONS, 'legacy-audit-retained');
     expect(fetch).toHaveBeenCalledOnce();
     const request = JSON.parse(fetch.mock.calls[0]![1]!.body as string) as { model: string; state: JsonValue; questions: Record<string, TypeSafeQuestion> };
-    expect(ATOMIC_AUDIT_POLICY).toBe('atomic-audit-v3');
+    expect(request.questions.suppressed_propagation?.instructions).toContain('application exception propagation');
+    expect(request.questions.suppressed_propagation?.criteria).toMatchObject({ true: expect.stringContaining('bypassed') });
+    expect(request.questions.suppressed_propagation?.criteria).toMatchObject({ false: expect.stringContaining('unchanged or absent') });
+    expect(request.questions.weaker_assertion?.instructions).toContain('assertion predicate');
+    expect(request.questions.weaker_assertion?.criteria).toMatchObject({ false: expect.stringContaining('registration or execution') });
+    expect(ATOMIC_AUDIT_POLICY).toBe('atomic-audit-v4');
     expect(request.model).toBe('jev-1.14.0');
     expect(request.state).toEqual(state);
     expect(Object.keys(request.questions)).toEqual(traits);
@@ -51,7 +56,7 @@ describe('experimental atomic audit request contract', () => {
     }
     expect(evidence).toMatchObject({ role: 'audit-v2', outcome: 'answered', fallback: 'legacy-audit-retained' });
     // Pins the actual wording, criteria and unchanged shared probability policy.
-    expect(evidence.policyHash).toBe('d087c19274f9fe95571963d98725b1ba0316c30282ea49d633ca95f8f833cb06');
+    expect(evidence.policyHash).toBe('b687c46ef43ee1905ea38ae1a14f4ddde5cc32adcff050af13ecbbd29468e3f3');
     expect(evidence.policyHash).not.toBe('23001fbbc70dae797080c04273d8c89316e0c4189b63ecd890765108c549f713');
   });
 

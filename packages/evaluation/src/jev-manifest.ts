@@ -2,8 +2,8 @@ import {createHash} from 'node:crypto';
 import {TYPESAFE_PRICE,decisionHash,redactDecisionValue,type JsonValue,type TypeSafeQuestion,type DecisionRole} from '@sutura/core';
 import {canonicalJson} from './manifest.js';
 export const JEV_THRESHOLDS={noulTrue:.8,noulFalse:.2,choiceProbability:.8,choiceMargin:.2} as const;
-export const JEV_QUESTION_VERSIONS:Record<DecisionRole,string>={ranking:'ranking-v2',grounding:'grounding-v2',classification:'classification-v1',recovery:'recovery-v2',navigator:'navigator-v2','audit-v2':'atomic-audit-v3'};
-const HISTORICAL_QUESTION_VERSIONS:Partial<Record<DecisionRole,readonly string[]>>={ranking:['ranking-v1'],grounding:['grounding-v1'],recovery:['recovery-v1'],navigator:['navigator-v1'],'audit-v2':['atomic-audit-v2']};
+export const JEV_QUESTION_VERSIONS:Record<DecisionRole,string>={ranking:'ranking-v3',grounding:'grounding-v2',classification:'classification-v1',recovery:'recovery-v2',navigator:'navigator-v2','audit-v2':'atomic-audit-v4'};
+const HISTORICAL_QUESTION_VERSIONS:Partial<Record<DecisionRole,readonly string[]>>={ranking:['ranking-v1','ranking-v2'],grounding:['grounding-v1'],recovery:['recovery-v1'],navigator:['navigator-v1'],'audit-v2':['atomic-audit-v2','atomic-audit-v3']};
 export type JevLabel=string|boolean;
 export interface JevCase {
  id:string;family:string;role:DecisionRole;split:'development'|'evaluation';category:'public'|'synthetic'|'redacted';variant:'positive'|'negative'|'uncertain'|'adversarial';

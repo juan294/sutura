@@ -16,7 +16,7 @@
 - Semantic evidence navigation and recovery selection no longer depend on independent model questions coordinating optional ranked choices. Required judgments retain the existing strict probability thresholds.
 - Navigator evaluation scores actual selected evidence, excludes a declared no-result sentinel and rejects false retrieval credit from unselected probability alternatives.
 - Action shadow capture stays private and preserves native repair when its capture file cannot be initialized or written.
-- Ranking retains native order for incomplete process evidence and compares explicit node diagnostics; grounding relevance includes applicable contradicting sources. Experimental atomic audit questions distinguish deletion, skipping, weakened assertions and suppressed runtime errors.
+- Ranking retains native order for incomplete process evidence and compares failing checks independently from changes to observed values; grounding relevance includes applicable contradicting sources. Experimental atomic audit questions distinguish deletion, skipping, weakened assertions and suppressed runtime errors.
 
 ### Changed
 
