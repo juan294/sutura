@@ -1,11 +1,26 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { compareFailureIdentity, nativeFailureForCommand, type NativeFailureEvidence } from './failure-identity.js';
+import { compareFailureIdentity, nativeExecutionCommand, nativeFailureForCommand, type NativeFailureEvidence } from './failure-identity.js';
 
 const testLog = ' FAIL src/add.test.ts > adds\nAssertionError: expected 2 to be 3\n';
 const native: NativeFailureEvidence = { command: 'pnpm exec vitest run', log: testLog };
 
 describe('original failure identity', () => {
+  it('handles long internal whitespace without quadratic command parsing', () => {
+    const command = `vitest${' '.repeat(100_000)}run`;
+    const started = performance.now();
+    expect(nativeExecutionCommand({ command, log: testLog })).toBe(command);
+    // A linear scan has ample headroom; the former overlapping whitespace scan takes seconds.
+    expect(performance.now() - started).toBeLessThan(1000);
+  }, 30_000);
+  it('preserves whitespace-delimited AND-chain admission', () => {
+    for (const command of ['tsc --noEmit\t&&  vitest run', 'tsc --noEmit &&\n vitest run', 'tsc --noEmit\n && vitest run']) {
+      expect(nativeExecutionCommand({ command, log: testLog })).toBe(command);
+    }
+    for (const command of ['tsc&& vitest run', 'tsc &&vitest run']) {
+      expect(nativeExecutionCommand({ command, log: testLog })).toBeUndefined();
+    }
+  });
   it('matches actual assertions with harmless runner timestamps and workspace paths', () => {
     expect(compareFailureIdentity(native, { log: testLog.replace('src/', '/workspace/src/'), exitCode: 1 }).status).toBe('matched');
   });

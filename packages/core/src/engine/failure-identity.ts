@@ -183,10 +183,10 @@ function assertionBlock(lines: readonly string[]): string[] {
 interface Parsed { parser: string; entries: string[]; incomplete: boolean }
 function toolsFor(command: string): string[] | undefined {
   // Only straight AND chains of supported tools. Source is inspected, never evaluated.
-  const stages = terminalCommand(command).split(/\s+&&\s+/u);
+  const stages = terminalCommand(command).split(/(?<=\s)&&(?=\s)/u);
   const tools: string[] = [];
   for (const stage of stages) {
-    const words = shellWords(stage);
+    const words = shellWords(stage.trim());
     if (!words?.length) return undefined;
     let index = 0;
     while (/^[A-Z_][A-Z0-9_]*=/u.test(words[index] ?? '')) index += 1;
