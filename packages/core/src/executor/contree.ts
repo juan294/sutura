@@ -22,6 +22,7 @@ import {
   isPublicSnapshotPath,
 } from '../security/snapshot-inputs.js';
 import { snapshotSelectedSource } from '../verification/source.js';
+import { OverlayChunkError, planOverlayChunks } from './overlay-chunks.js';
 import {
   SNAPSHOT_CWD,
   type Executor,
@@ -45,6 +46,9 @@ const DEFAULT_OPERATION_TIMEOUT_MS = 10 * 60 * 1_000;
 const DEFAULT_CANCEL_TIMEOUT_MS = 5_000;
 const SNAPSHOT_PATH = '/tmp/sutura-snapshot.tar';
 const SNAPSHOT_MANIFEST_PATH = '/tmp/sutura-repository-overlay.manifest';
+const OVERLAY_MEMBERS_PATH = '/tmp/sutura-overlay-chunk.members';
+// Overlays of 134,963,200 bytes or more failed with ENOSPC; 132,956,160 bytes extracted.
+const DEFAULT_OVERLAY_CHUNK_BYTES = 64 * 1_024 * 1_024;
 const DEPENDENCY_MANIFEST_PATH = '/tmp/sutura-dependency-inputs.manifest';
 const MAX_DEPENDENCY_CONTROL_BYTES = 1 * 1_024 * 1_024;
 const MAX_DEPENDENCY_INPUT_FILE_BYTES = 32 * 1_024 * 1_024;
@@ -117,6 +121,8 @@ export interface ContreeExecutorConfig {
   project: string;
   baseUrl?: string;
   maxOps?: number;
+  /** Largest uncompressed tar the repository overlay sends in one instance. */
+  overlayChunkBytes?: number;
   fetch?: typeof globalThis.fetch;
   pollIntervalMs?: number;
   operationTimeoutMs?: number;
@@ -160,6 +166,7 @@ export class ContreeExecutor implements Executor {
   private readonly operationTimeoutMs: number;
   private readonly cancelTimeoutMs: number;
   private readonly operationLimit: number;
+  private readonly overlayChunkBytes: number;
   private readonly operations = new Map<string, {
     operationUrl?: string;
     cancellationRequested: boolean;
@@ -176,6 +183,10 @@ export class ContreeExecutor implements Executor {
     const maxOps = config.maxOps ?? DEFAULT_MAX_OPS;
     if (!Number.isSafeInteger(maxOps) || maxOps <= 0) {
       throw new ContreeError('ConTree maxOps must be a positive integer');
+    }
+    this.overlayChunkBytes = config.overlayChunkBytes ?? DEFAULT_OVERLAY_CHUNK_BYTES;
+    if (!Number.isSafeInteger(this.overlayChunkBytes) || this.overlayChunkBytes <= 0) {
+      throw new ContreeError('ConTree overlayChunkBytes must be a positive integer');
     }
 
     this.baseUrl = new URL(ensureTrailingSlash(config.baseUrl ?? DEFAULT_BASE_URL));
@@ -213,26 +224,13 @@ export class ContreeExecutor implements Executor {
     options: SnapshotOptions,
   ): Promise<ImageId> {
     assertSnapshotOptions(options);
-    const archive = await createSnapshotArchive(dir, options);
+    const archive = await createSnapshotArchive(dir, options, this.overlayChunkBytes);
+    if (archive.chunks) return this.snapshotChunks(archive, archive.chunks, options, base);
     let fileId: string;
-    let manifestFileId: string | undefined;
+    let manifestFileId: string;
     try {
-      const body = Readable.toWeb(createReadStream(archive.path));
-      const upload = await this.requestJson<FileUploadResponse>('files', {
-        method: 'POST',
-        headers: this.headers('application/octet-stream'),
-        body,
-        duplex: 'half',
-      } as RequestInit & { duplex: 'half' });
-      fileId = requiredString(upload.uuid, 'file upload uuid');
-      const manifestBody = Readable.toWeb(createReadStream(archive.manifestPath));
-      const manifestUpload = await this.requestJson<FileUploadResponse>('files', {
-        method: 'POST',
-        headers: this.headers('application/octet-stream'),
-        body: manifestBody,
-        duplex: 'half',
-      } as RequestInit & { duplex: 'half' });
-      manifestFileId = requiredString(manifestUpload.uuid, 'manifest upload uuid');
+      fileId = await this.uploadFile(archive.path);
+      manifestFileId = await this.uploadFile(archive.manifestPath);
     } finally {
       await archive.cleanup();
     }
@@ -244,24 +242,10 @@ export class ContreeExecutor implements Executor {
         shell: true,
         networking: { enabled: false },
         files: {
-          [SNAPSHOT_PATH]: {
-            uuid: fileId,
-            uid: 0,
-            gid: 0,
-            mode: '0600',
-          },
-          ...(manifestFileId
-            ? {
-                [options.profile === 'repository'
-                  ? SNAPSHOT_MANIFEST_PATH
-                  : DEPENDENCY_MANIFEST_PATH]: {
-                  uuid: manifestFileId,
-                  uid: 0,
-                  gid: 0,
-                  mode: '0600',
-                },
-              }
-            : {}),
+          [SNAPSHOT_PATH]: uploadedFile(fileId),
+          [options.profile === 'repository'
+            ? SNAPSHOT_MANIFEST_PATH
+            : DEPENDENCY_MANIFEST_PATH]: uploadedFile(manifestFileId),
         },
       }),
     );
@@ -271,6 +255,81 @@ export class ContreeExecutor implements Executor {
       );
     }
     return result.imageId;
+  }
+
+  /**
+   * Extracts a large repository overlay one bounded tar at a time, each on the
+   * image the previous chunk produced. Chunk 1 also carries the complete
+   * manifest, which stays in the final image for the Git baseline.
+   */
+  private async snapshotChunks(
+    archive: SnapshotArchive,
+    chunks: readonly SnapshotArchiveChunk[],
+    options: SnapshotOptions,
+    base: ImageId,
+  ): Promise<ImageId> {
+    const command = snapshotCommand(options, {
+      ...DEFAULT_SNAPSHOT_COMMAND_PATHS,
+      membersPath: OVERLAY_MEMBERS_PATH,
+    });
+    try {
+      // One allowance covers uploads, admission waits and every chunk's polling.
+      const deadline = Date.now() + this.operationTimeoutMs;
+      const remaining = () => {
+        const milliseconds = deadline - Date.now();
+        if (milliseconds <= 0) throw new ContreeError(
+          `ConTree repository overlay exceeded ${this.operationTimeoutMs} ms`,
+        );
+        return milliseconds;
+      };
+      const manifestFileId = await this.uploadFile(archive.manifestPath, remaining());
+      let image = base;
+      for (const [index, chunk] of chunks.entries()) {
+        try {
+          const fileId = await this.uploadFile(chunk.path, remaining());
+          const membersFileId = await this.uploadFile(chunk.membersPath, remaining());
+          const result = await this.withTimeout(remaining(), () => this.instanceLimit(() => {
+            remaining();
+            return this.spawn({
+              image,
+              command,
+              shell: true,
+              networking: { enabled: false },
+              files: {
+                [SNAPSHOT_PATH]: uploadedFile(fileId),
+                [OVERLAY_MEMBERS_PATH]: uploadedFile(membersFileId),
+                ...(index === 0 ? { [SNAPSHOT_MANIFEST_PATH]: uploadedFile(manifestFileId) } : {}),
+              },
+            }, undefined, undefined, deadline);
+          }));
+          remaining();
+          if (!processSucceeded(result)) {
+            throw new ContreeError(
+              `ConTree snapshot extraction failed with exit code ${result.exitCode}: ${result.stderr}`,
+            );
+          }
+          image = result.imageId;
+        } catch (error) {
+          const cause = error instanceof RequestTimeoutError
+            ? new ContreeError(`ConTree repository overlay exceeded ${this.operationTimeoutMs} ms`)
+            : error;
+          throw withChunkContext(cause, index + 1, chunks.length, chunk.bytes);
+        }
+      }
+      return image;
+    } finally {
+      await archive.cleanup();
+    }
+  }
+
+  private async uploadFile(path: string, timeoutMs = this.operationTimeoutMs): Promise<string> {
+    const upload = await this.requestJson<FileUploadResponse>('files', {
+      method: 'POST',
+      headers: this.headers('application/octet-stream'),
+      body: Readable.toWeb(createReadStream(path)),
+      duplex: 'half',
+    } as RequestInit & { duplex: 'half' }, timeoutMs);
+    return requiredString(upload.uuid, 'file upload uuid');
   }
 
   async run(
@@ -343,7 +402,7 @@ export class ContreeExecutor implements Executor {
     return { operationId, requested: true };
   }
 
-  private async spawn(body: SpawnBody, operationId?: string, pollTimeoutMs?: number): Promise<RunResult> {
+  private async spawn(body: SpawnBody, operationId?: string, pollTimeoutMs?: number, deadline?: number): Promise<RunResult> {
     const tracked = operationId === undefined ? undefined : this.operations.get(operationId);
     if (tracked?.terminal === 'cancelled') {
       throw new ContreeError(`ConTree operation ${operationId} was cancelled before it started`);
@@ -353,7 +412,7 @@ export class ContreeExecutor implements Executor {
       method: 'POST',
       headers: this.jsonHeaders(),
       body: JSON.stringify(body),
-    });
+    }, deadline === undefined ? undefined : Math.max(1, deadline - Date.now()));
     const operationUrl = this.resolveOperationLocation(this.operationLocation(response));
     if (tracked) tracked.operationUrl = operationUrl;
     if (tracked?.cancellationRequested) {
@@ -365,7 +424,7 @@ export class ContreeExecutor implements Executor {
     }
     let operation: OperationResponse;
     try {
-      operation = await this.poll(operationUrl, pollTimeoutMs);
+      operation = await this.poll(operationUrl, pollTimeoutMs, deadline);
     } catch (error) {
       if (tracked && operationId && !tracked.terminal && error instanceof ContreeError && error.providerTerminal !== undefined) {
         tracked.terminal = error.providerTerminal;
@@ -400,9 +459,9 @@ export class ContreeExecutor implements Executor {
     return runResult;
   }
 
-  private async poll(location: string, timeoutMs = this.operationTimeoutMs): Promise<OperationResponse> {
+  private async poll(location: string, timeoutMs = this.operationTimeoutMs, operationDeadline?: number): Promise<OperationResponse> {
     const operationUrl = this.resolveOperationLocation(location);
-    const deadline = Date.now() + timeoutMs;
+    const deadline = Math.min(Date.now() + timeoutMs, operationDeadline ?? Infinity);
     let pollIntervalMs = this.pollIntervalMs;
 
     try {
@@ -417,6 +476,7 @@ export class ContreeExecutor implements Executor {
           remainingMs,
         );
 
+        if (operationDeadline !== undefined && Date.now() >= deadline) break;
         if (operation.status === 'SUCCESS') return operation;
         if (operation.status === 'FAILED' || operation.status === 'CANCELLED') {
           const detail =
@@ -706,6 +766,8 @@ interface SnapshotCommandPaths {
   snapshotPath: string;
   manifestPath: string;
   dependencyManifestPath: string;
+  /** Per-chunk member list to validate instead of the full manifest. */
+  membersPath?: string;
 }
 
 const DEFAULT_SNAPSHOT_COMMAND_PATHS: SnapshotCommandPaths = {
@@ -735,9 +797,9 @@ function snapshotCommand(
   return [
     `if [ -L ${shellQuote(paths.cwd)} ]; then echo "ConTree snapshot refuses symlink parent: ${paths.cwd}" >&2; exit 65; fi`,
     `mkdir -p ${shellQuote(paths.cwd)}`,
-    `xargs -0 -n 1 sh -c ${shellQuote(validateMember)} sh ${shellQuote(paths.cwd)} ${shellQuote(paths.dependencyManifestPath)} < ${shellQuote(paths.manifestPath)}`,
+    `xargs -0 -n 1 sh -c ${shellQuote(validateMember)} sh ${shellQuote(paths.cwd)} ${shellQuote(paths.dependencyManifestPath)} < ${shellQuote(paths.membersPath ?? paths.manifestPath)}`,
     `tar -xf ${shellQuote(paths.snapshotPath)} -C ${shellQuote(paths.cwd)}`,
-    `rm -f -- ${shellQuote(paths.snapshotPath)}`,
+    `rm -f -- ${shellQuote(paths.snapshotPath)}${paths.membersPath === undefined ? '' : ` ${shellQuote(paths.membersPath)}`}`,
   ].join(' && ');
 }
 
@@ -1241,15 +1303,62 @@ async function validateSnapshotFiles(
   }
 }
 
+interface SnapshotArchiveChunk {
+  path: string;
+  membersPath: string;
+  bytes: number;
+}
+
 interface SnapshotArchive {
   path: string;
   manifestPath: string;
+  /** Present only when a repository overlay was split into several tars. */
+  chunks?: readonly SnapshotArchiveChunk[];
   cleanup(): Promise<void>;
+}
+
+function uploadedFile(uuid: string): { uuid: string; uid: number; gid: number; mode: string } {
+  return { uuid, uid: 0, gid: 0, mode: '0600' };
+}
+
+/** Keeps the provider's metadata and tells the owner which chunk failed. */
+function withChunkContext(error: unknown, chunk: number, total: number, bytes: number): unknown {
+  if (!(error instanceof ContreeError)) return error;
+  return new ContreeError(
+    `${error.message.trimEnd()} (repository overlay chunk ${chunk} of ${total}, ${bytes} archive bytes)`,
+    error.status,
+    error.body,
+    {
+      ...(error.code === undefined ? {} : { code: error.code }),
+      ...(error.providerTerminal === undefined ? {} : { providerTerminal: error.providerTerminal }),
+      ...(error.stage === undefined ? {} : { stage: error.stage }),
+      ...(error.details === undefined ? {} : { details: error.details }),
+    },
+  );
+}
+
+async function planRepositoryOverlayChunks(
+  dir: string,
+  files: readonly string[],
+  budget: number,
+): Promise<string[][]> {
+  const sized = [];
+  for (const path of files) {
+    const metadata = await lstat(join(dir, path));
+    sized.push({ path, size: metadata.isFile() ? metadata.size : 0 });
+  }
+  try {
+    return planOverlayChunks(sized, budget);
+  } catch (error) {
+    if (error instanceof OverlayChunkError) throw new ContreeError(error.message);
+    throw error;
+  }
 }
 
 async function createSnapshotArchive(
   dir: string,
   options: SnapshotOptions,
+  overlayChunkBytes: number,
 ): Promise<SnapshotArchive> {
   const files = options.includePaths === undefined
     ? await listSnapshotFiles(dir, options.profile)
@@ -1258,46 +1367,77 @@ async function createSnapshotArchive(
     await rejectRegistryCredentials(dir, files);
   }
   const configFiles = files.filter(isNpmrcPath);
-  const input = Buffer.from(files.filter(path => !isNpmrcPath(path)).map((path) => `${path}\0`).join(''));
+  const groups = options.profile === 'repository'
+    ? await planRepositoryOverlayChunks(dir, files, overlayChunkBytes)
+    : [];
   const archiveDir = await mkdtemp(join(tmpdir(), 'sutura-contree-'));
   const archivePath = join(archiveDir, 'snapshot.tar');
   const manifestPath = join(archiveDir, 'manifest.bin');
   let frozenConfig: Awaited<ReturnType<typeof snapshotSelectedSource>> | undefined;
+  const cleanup = () => rm(archiveDir, { recursive: true, force: true });
+  const nulList = (paths: readonly string[]) => Buffer.from(paths.map((path) => `${path}\0`).join(''));
+  // Writes one tar of `members`; configuration files come from the frozen copy.
+  const writeTar = async (target: string, members: readonly string[], configName: string): Promise<number> => {
+    const configMembers = members.filter(isNpmrcPath);
+    const configArguments: string[] = [];
+    if (frozenConfig && configMembers.length) {
+      const configManifestPath = join(archiveDir, configName);
+      await writeFile(configManifestPath, nulList(configMembers));
+      configArguments.push('-C', frozenConfig.dir, '-T', configManifestPath);
+    }
+    await runProcess(
+      'tar',
+      ['-cf', target, '--no-recursion', '--null', '-T', '-', ...configArguments],
+      dir,
+      nulList(members.filter((path) => !isNpmrcPath(path))),
+      { ...process.env, COPYFILE_DISABLE: '1' },
+    );
+    return (await stat(target)).size;
+  };
+  const archiveCapError = () => new ContreeError(
+    `ConTree snapshot archive exceeds ${MAX_SNAPSHOT_ARCHIVE_BYTES} bytes`,
+  );
   try {
     // Tar rereads its inputs. Freeze validated configuration so a concurrent
     // safe-to-credential swap cannot upload bytes the validator never checked.
     if (configFiles.length) frozenConfig = await snapshotSelectedSource(dir, configFiles, async () => {});
-    await writeFile(manifestPath, Buffer.from(files.map(path => `${path}\0`).join('')));
-    const configManifestPath = join(archiveDir, 'configuration.bin');
+    await writeFile(manifestPath, nulList(files));
     if (frozenConfig) {
-      await writeFile(configManifestPath, Buffer.from(configFiles.map(path => `${path}\0`).join('')));
       for (const path of configFiles) {
         if ((await stat(join(frozenConfig.dir, path))).size > MAX_DEPENDENCY_CONTROL_BYTES) {
           throw new ContreeError(`ConTree dependency preparation refuses oversized .npmrc: ${path}`);
         }
       }
     }
-    await runProcess(
-      'tar',
-      ['-cf', archivePath, '--no-recursion', '--null', '-T', '-',
-        ...(frozenConfig ? ['-C', frozenConfig.dir, '-T', configManifestPath] : [])],
-      dir,
-      input,
-      { ...process.env, COPYFILE_DISABLE: '1' },
-    );
-    const archive = await stat(archivePath);
-    if (archive.size > MAX_SNAPSHOT_ARCHIVE_BYTES) {
-      throw new ContreeError(
-        `ConTree snapshot archive exceeds ${MAX_SNAPSHOT_ARCHIVE_BYTES} bytes`,
-      );
+    if (groups.length > 1) {
+      const chunks: SnapshotArchiveChunk[] = [];
+      let total = 0;
+      for (const [index, group] of groups.entries()) {
+        const path = join(archiveDir, `chunk-${index}.tar`);
+        const membersPath = join(archiveDir, `chunk-${index}.members`);
+        await writeFile(membersPath, nulList(group));
+        const bytes = await writeTar(path, group, `chunk-${index}.configuration.bin`);
+        if (bytes > overlayChunkBytes) {
+          throw new ContreeError(
+            `ConTree repository overlay chunk ${index + 1} of ${groups.length} is ${bytes} archive bytes, above the ${overlayChunkBytes}-byte chunk limit`,
+          );
+        }
+        total += bytes;
+        chunks.push({ path, membersPath, bytes });
+      }
+      if (total > MAX_SNAPSHOT_ARCHIVE_BYTES) throw archiveCapError();
+      return { path: archivePath, manifestPath, chunks, cleanup };
     }
-    return {
-      path: archivePath,
-      manifestPath,
-      cleanup: () => rm(archiveDir, { recursive: true, force: true }),
-    };
+    const bytes = await writeTar(archivePath, files, 'configuration.bin');
+    if (options.profile === 'repository' && bytes > overlayChunkBytes) {
+      throw new ContreeError(`ConTree repository overlay chunk 1 of 1 is ${bytes} archive bytes, above the ${overlayChunkBytes}-byte chunk limit`);
+    }
+    if (bytes > MAX_SNAPSHOT_ARCHIVE_BYTES) {
+      throw archiveCapError();
+    }
+    return { path: archivePath, manifestPath, cleanup };
   } catch (error) {
-    await rm(archiveDir, { recursive: true, force: true });
+    await cleanup();
     throw error;
   } finally {
     await frozenConfig?.cleanup();

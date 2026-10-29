@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import { ContreeError, ReplayRecorder } from '@sutura/core';
@@ -55,7 +57,7 @@ describe('terminal failure evidence', () => {
         pullRequestNumber: 114,
       },
       packageIdentity: {
-        name: 'sutura', version: '0.5.0', actionSha: SHA,
+        name: 'sutura', version: '0.5.1', actionSha: SHA,
         actionShaSource: 'runner-action-path',
       },
       actionRunId: '88',
@@ -119,4 +121,27 @@ it('preserves origin-owned disk recovery with unavailable costs and operation id
   const error = new ContreeError('retained provider failure', undefined, undefined, { code: 'provider-disk-exhausted', stage: 'provider-operation', details: { providerOperationId: 'operation-1' } });
   const evidence = createTerminalFailureEvidence(error, { repository: 'acme/widget', actionRunId: '12', targetRunId: '11', actionSha: SHA });
   expect(evidence).toMatchObject({ outcome: 'infra-stop', costStatus: 'unavailable', failure: { code: 'provider-disk-exhausted', stage: 'provider-operation', details: { providerOperationId: 'operation-1' } }, recovery: { nextAction: expect.stringContaining('ENOSPC') }, observedCosts: { sandboxUsd: null } });
+});
+
+it('retains captured ENOSPC and chunk context in terminal-failure-v2', () => {
+  const captured = JSON.parse(readFileSync(new URL(
+    '../../core/src/executor/__fixtures__/operation-provider-disk-exhausted.json', import.meta.url,
+  ), 'utf8')) as { error: string };
+  const message = `ConTree operation ended with FAILED: ${captured.error} (repository overlay chunk 2 of 3, 67108864 archive bytes)`;
+  const error = new ContreeError(message, undefined, undefined, {
+    code: 'provider-disk-exhausted', stage: 'provider-operation', providerTerminal: 'failed',
+    details: { providerOperationId: 'op-2' },
+  });
+  const evidence = createTerminalFailureEvidence(error, {
+    repository: 'acme/widget', actionRunId: '12', targetRunId: '11', actionSha: SHA,
+  });
+  expect(evidence).toMatchObject({
+    schemaVersion: 'sutura-terminal-failure-v2', errorMessage: message,
+    outcome: 'infra-stop', costStatus: 'unavailable',
+    failure: {
+      code: 'provider-disk-exhausted', stage: 'provider-operation',
+      details: { providerOperationId: 'op-2' },
+    },
+    recovery: { nextAction: expect.stringContaining('ENOSPC') },
+  });
 });

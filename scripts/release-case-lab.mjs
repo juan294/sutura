@@ -33,8 +33,8 @@ export const FILES = Object.freeze({
   replay: 'packages/case-lab/src/replay.ts',
 });
 
-// A committed, owner-approved record that lets the Case Lab lag exactly one
-// release tag until it expires. Anything else about it fails the gate.
+// A committed, owner-approved record for an exact release tag. A previousTag
+// can cover the transition to a new release without extending the expiry.
 export const LAG_EXCEPTION_FILE = 'packages/case-lab/release-lag-exception.json';
 const LAG_EXCEPTION_MAX_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -56,6 +56,10 @@ async function readLagException(dependencies) {
   if (required.some((key) => typeof record?.[key] !== 'string' || record[key].trim() === '') ||
       !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/u.test(record.expires) || !Number.isFinite(Date.parse(record.expires))) {
     throw new ReleaseCaseLabError(`${LAG_EXCEPTION_FILE}: tag, reason, approvedBy and an ISO expires are required`);
+  }
+  if (record.previousTag !== undefined &&
+      (typeof record.previousTag !== 'string' || !/^v\d+\.\d+\.\d+$/u.test(record.previousTag))) {
+    throw new ReleaseCaseLabError(`${LAG_EXCEPTION_FILE}: previousTag must name an exact release tag`);
   }
   return record;
 }
@@ -299,7 +303,7 @@ export async function check(dependencies = defaultDependencies(), options = {}) 
   if (exception !== undefined) {
     const now = dependencies.now?.() ?? Date.now();
     const expires = Date.parse(exception.expires);
-    if (exception.tag !== release.tag) {
+    if (exception.tag !== release.tag && exception.previousTag !== release.tag) {
       refusals.push(`${LAG_EXCEPTION_FILE}: the exception names ${exception.tag} but the newest release tag is ${release.tag}`);
     } else if (now >= expires) {
       refusals.push(`${LAG_EXCEPTION_FILE}: the exception for ${exception.tag} expired at ${exception.expires}`);

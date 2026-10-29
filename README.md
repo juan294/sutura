@@ -308,7 +308,7 @@ before enabling Sutura on confidential source.
 
 ## Install Sutura
 
-Version 0.5.0 includes repository assessment, guided setup and evidence-qualified recovery, plus opt-in Jev decision roles and local evidence navigation. Use the packed candidate during release verification; after publication, install `npx sutura@0.5.0` or `brew install juan294/tap/sutura`. The historical v0.4.1 benchmark above is not a measurement of this candidate.
+Version 0.5.1 includes repository assessment, guided setup and evidence-qualified recovery, plus opt-in Jev decision roles and local evidence navigation. Use the packed candidate during release verification; after publication, install `npx sutura@0.5.1` or `brew install juan294/tap/sutura`. The historical v0.4.1 benchmark above is not a measurement of this candidate.
 
 Start from one repository clone with Node.js 22 or later. Assessment needs no provider account, GitHub authentication, source upload or script execution:
 
@@ -343,7 +343,7 @@ sutura upgrade --plan --workflow "CI" --repo example/project
 
 Doctor reports the installed Action separately from the desired version, bounded trigger reachability, access gaps and staged readiness. Secret-name presence does not verify credential values. `upgrade` previews minimal pin changes and preserves App wiring and custom jobs. `pause`, `resume` and `remove` also require a reviewed plan. Removal retains credentials and evidence and refuses to delete unowned custom workflows.
 
-Maintainers run `node scripts/test-candidate-install.mjs` against a clean candidate. After publication, `node scripts/test-public-install.mjs --release 0.5.0` installs that exact package, independently resolves its Action tag, verifies the no-credential assessment and preview/apply journey, and requires doctor to disclose incomplete readiness. Synthetic installation proof is not hosted activation or a successful repair.
+Maintainers run `node scripts/test-candidate-install.mjs` against a clean candidate. After publication, `node scripts/test-public-install.mjs --release 0.5.1` installs that exact package, independently resolves its Action tag, verifies the no-credential assessment and preview/apply journey, and requires doctor to disclose incomplete readiness. Synthetic installation proof is not hosted activation or a successful repair.
 
 The complete [user guide](docs/user-guide.md) covers migration, interrupted setup, native CI approval and troubleshooting. Sutura never merges a generated repair. Exact native checks and authorized integration remain separate from sandbox verification.
 
