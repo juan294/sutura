@@ -107,6 +107,7 @@ function executor(fetch: typeof globalThis.fetch, overrides: Record<string, unkn
 
 const created: string[] = [];
 afterEach(async () => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   await Promise.all(created.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
@@ -371,6 +372,7 @@ describe('chunked repository overlay', { timeout: 30_000 }, () => {
 
   it('does not start a queued instance after its cumulative deadline', async () => {
     const { dir } = await sourceTree();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     let now = 0;
     vi.spyOn(Date, 'now').mockImplementation(() => now);
     let release!: () => void;
@@ -395,12 +397,13 @@ describe('chunked repository overlay', { timeout: 30_000 }, () => {
     const first = client.run('base-image', 'true');
     await firstStarted;
     const snapshot = client.snapshot(dir, 'base-image', REPOSITORY_OVERLAY);
+    const rejected = expect(snapshot).rejects.toThrow(/overlay.*exceeded 100 ms/u);
     await uploadsComplete;
     await new Promise<void>(resolve => setImmediate(resolve));
     now = 101;
     release();
     await first;
-    await expect(snapshot).rejects.toThrow(/overlay.*exceeded 100 ms/u);
+    await rejected;
     expect(provider.instances).toHaveLength(1);
   });
 
