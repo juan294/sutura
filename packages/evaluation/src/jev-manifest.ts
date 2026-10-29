@@ -2,7 +2,8 @@ import {createHash} from 'node:crypto';
 import {TYPESAFE_PRICE,decisionHash,redactDecisionValue,type JsonValue,type TypeSafeQuestion,type DecisionRole} from '@sutura/core';
 import {canonicalJson} from './manifest.js';
 export const JEV_THRESHOLDS={noulTrue:.8,noulFalse:.2,choiceProbability:.8,choiceMargin:.2} as const;
-export const JEV_QUESTION_VERSIONS:Record<DecisionRole,string>={ranking:'ranking-v1',grounding:'grounding-v1',classification:'classification-v1',recovery:'recovery-v2',navigator:'navigator-v2','audit-v2':'atomic-audit-v2'};
+export const JEV_QUESTION_VERSIONS:Record<DecisionRole,string>={ranking:'ranking-v2',grounding:'grounding-v2',classification:'classification-v1',recovery:'recovery-v2',navigator:'navigator-v2','audit-v2':'atomic-audit-v3'};
+const HISTORICAL_QUESTION_VERSIONS:Partial<Record<DecisionRole,readonly string[]>>={ranking:['ranking-v1'],grounding:['grounding-v1'],recovery:['recovery-v1'],navigator:['navigator-v1'],'audit-v2':['atomic-audit-v2']};
 export type JevLabel=string|boolean;
 export interface JevCase {
  id:string;family:string;role:DecisionRole;split:'development'|'evaluation';category:'public'|'synthetic'|'redacted';variant:'positive'|'negative'|'uncertain'|'adversarial';
@@ -31,7 +32,7 @@ export function jevAttemptReservation(v:JevCase):number{return Math.ceil(Buffer.
 function validateCase(raw:unknown):asserts raw is JevCase {
  if(!obj(raw))fail('cases');keys(raw,['id','family','role','split','category','variant','questionVersion','policyHash','inputHash','state','questions','candidateIds','baselineIds','labels','baselineLabels','legacyDecision'],'case.fields');
  for(const k of ['id','family']){text(raw[k],`case.${k}`);if(!/^[a-z0-9][a-z0-9._-]*$/u.test(raw[k] as string))fail(`case.${k}`);}
- if(!Object.hasOwn(JEV_QUESTION_VERSIONS,String(raw.role))||raw.questionVersion!==JEV_QUESTION_VERSIONS[raw.role as DecisionRole]&&!(['navigator','recovery'].includes(raw.role as string)&&raw.questionVersion===`${raw.role}-v1`))fail('case.questionVersion');
+ if(!Object.hasOwn(JEV_QUESTION_VERSIONS,String(raw.role))||raw.questionVersion!==JEV_QUESTION_VERSIONS[raw.role as DecisionRole]&&!(HISTORICAL_QUESTION_VERSIONS[raw.role as DecisionRole]??[]).includes(raw.questionVersion as string))fail('case.questionVersion');
  if(!['development','evaluation'].includes(raw.split as string)||!['public','synthetic','redacted'].includes(raw.category as string)||!['positive','negative','uncertain','adversarial'].includes(raw.variant as string))fail('case.split/category/variant');
  for(const field of ['candidateIds','baselineIds'])if(!Array.isArray(raw[field])||(raw[field] as unknown[]).length>32||!(raw[field] as unknown[]).every(v=>typeof v==='string'&&v.length>0&&v.length<=200)||new Set(raw[field] as unknown[]).size!==(raw[field] as unknown[]).length)fail(`case.${field}`);
  if(!(raw.baselineIds as string[]).every(id=>(raw.candidateIds as string[]).includes(id)))fail('case.baselineIds');

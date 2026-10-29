@@ -44,6 +44,22 @@ describe('healing-only grounding selection', () => {
     expect(input).toEqual(before); expect(diagnosis.confidence).toBe(.91); expect(fetch).toHaveBeenCalledOnce();
   });
 
+  it('sends topical relevance criteria independently from support or contradiction', async () => {
+    const { session, fetch } = setup();
+    const result = await selectGrounding(session, original(), diagnosis, ['widget@2.0.0']);
+    const questions = body(fetch).questions as Record<string, TypeSafeQuestion>;
+    const question = questions.citation_1_relevance;
+    expect(question?.type).toBe('noul');
+    if (question?.type !== 'noul') throw new Error('Expected relevance judgment');
+    expect(question.instructions).toContain('citations[1]');
+    expect(question.instructions).toContain('topic');
+    expect(question.criteria?.true).toContain('contradicts');
+    expect(question.criteria?.false).toContain('different package');
+    expect(question.criteria?.false).toContain('unrelated error');
+    expect(result.citations.map(citation => citation.title)).toContain('contradiction');
+    expect(result.selection?.excluded.map(citation => citation.id)).not.toContain(result.selection?.originals[1]?.id);
+  });
+
   it.each(['off', 'shadow'] as const)('%s preserves citation order without inline provider calls', async mode => {
     const { session, fetch, capture } = setup(mode); const input = original();
     const result = await selectGrounding(session, input, diagnosis, ['widget@2.0.0']);

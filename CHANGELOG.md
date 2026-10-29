@@ -16,10 +16,11 @@
 - Semantic evidence navigation and recovery selection no longer depend on independent model questions coordinating optional ranked choices. Required judgments retain the existing strict probability thresholds.
 - Navigator evaluation scores actual selected evidence, excludes a declared no-result sentinel and rejects false retrieval credit from unselected probability alternatives.
 - Action shadow capture stays private and preserves native repair when its capture file cannot be initialized or written.
+- Ranking retains native order for incomplete process evidence and compares explicit node diagnostics; grounding relevance includes applicable contradicting sources. Experimental atomic audit questions distinguish deletion, skipping, weakened assertions and suppressed runtime errors.
 
 ### Changed
 
-- New navigator and recovery question contracts are versioned independently; frozen v1 manifests and their historical results remain readable.
+- Revised ranking, grounding, navigator, recovery and experimental audit question contracts are versioned independently; frozen historical manifests and their results remain readable.
 - New role activation remains explicit. Local verification and API compatibility do not establish improved repair yield, cost, latency or general model quality.
 
 Retired guidance: independent optional second/third semantic rank questions. Shared confidence thresholds, native executable verification, legacy audit veto behavior and human merge authority remain intact.

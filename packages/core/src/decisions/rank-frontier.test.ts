@@ -4,6 +4,7 @@ import type { NebiusFetch } from '../llm/nebius.js';
 import { Ledger } from '../llm/cost.js';
 import type { SearchNode } from '../engine/search.js';
 import { adaptiveSearch } from '../engine/search.js';
+import { compareSearchNodes } from '../engine/search-score.js';
 import { ReplayRecorder } from '../replay/bundle.js';
 import { recordingTypeSafeFetch } from '../replay/record-fetch.js';
 import { replayFetch } from '../replay/replay-fetch.js';
@@ -41,6 +42,45 @@ function setup(mode: DecisionMode = 'assist', change?: (answers: Record<string, 
 }
 
 describe('semantic frontier judgments', () => {
+  it('binds every judgment to its exact array entry and retains known versus absent observation metadata', async () => {
+    const input = nodes();
+    input[1]!.testEvidence = { ...input[1]!.testEvidence, commandId: 'diagnosed', outputTruncated: false, processState: { timedOut: false, signal: 0 } };
+    const { session, fetch } = setup();
+    expect(await rankRepairFrontier(session, 'original failure', input)).toEqual(['progress', 'short']);
+    const body = JSON.parse(fetch.mock.calls[0]![1]!.body as string) as { state: { nodes: unknown[] }; questions: Record<string, TypeSafeQuestion> };
+    expect(body.state.nodes[0]).toMatchObject({ commandId: 'test', outputTruncated: null, processState: null });
+    expect(body.state.nodes[1]).toMatchObject({ commandId: 'diagnosed', outputTruncated: false, processState: { timedOut: false, signal: 0 } });
+    for (const index of [0, 1]) {
+      for (const suffix of ['sufficient', 'original', 'unrelated', 'progress']) expect(body.questions[`node_${index}_${suffix}`]!.instructions).toContain(`nodes[${index}]`);
+      expect(body.questions[`node_${index}_sufficient`]!.instructions).toContain(`nodes[${index}].output`);
+      expect(body.questions[`node_${index}_sufficient`]!.instructions).toContain(`nodes[${index}].completeDiff`);
+      expect(body.questions[`node_${index}_original`]!.instructions).toContain(`nodes[${index}].output`);
+      expect(body.questions[`node_${index}_unrelated`]!.instructions).toContain(`nodes[${index}].completeDiff`);
+      expect(body.questions[`node_${index}_progress`]!.instructions).toContain(`nodes[${index}].output`);
+    }
+    const unrelated = body.questions.node_0_unrelated;
+    expect(unrelated).toMatchObject({ type: 'noul', criteria: { true: expect.any(String), false: expect.stringContaining('ineffective') } });
+  });
+  it.each(['assist', 'shadow'] as const)('%s retains the entire native order before provider or capture for incomplete observations', async mode => {
+    const invalid: Array<{ original?: string; change(input: SearchNode[]): void }> = [
+      { change: input => { input[1]!.testEvidence = { ...input[1]!.testEvidence, outputTruncated: true }; } },
+      { change: input => { input[1]!.testEvidence.processState = { timedOut: true }; } },
+      { change: input => { input[1]!.testEvidence.processState = { signal: 9 }; } },
+      { change: input => { input[1]!.testEvidence.exitCode = -1; } },
+      { change: input => { input[1]!.testEvidence.output = ' '; } },
+      { change: input => { input[1]!.cumulativeDiff = ' '; } },
+      { change: input => { input[1]!.testEvidence.commandId = ' '; } },
+      { original: ' ', change: () => {} },
+    ];
+    for (const value of invalid) {
+      const input = nodes(); value.change(input);
+      const baseline = input.toSorted(compareSearchNodes).map(node => node.id);
+      const { session, fetch, capture } = setup(mode);
+      expect(await rankRepairFrontier(session, value.original ?? 'original failure', input)).toEqual(baseline);
+      expect(fetch).not.toHaveBeenCalled(); expect(capture).not.toHaveBeenCalled();
+      expect(session.records[0]).toMatchObject({ outcome: 'unavailable', reason: 'missing-evidence', suggested: baseline, attempts: 0, actualUsd: 0, unknownSpendUsd: 0 });
+    }
+  });
   it('promotes real progress despite verbose output, preserves the exact set and records both orders', async () => {
     const { session, fetch } = setup();
     expect(await rankRepairFrontier(session, 'original failure', nodes())).toEqual(['progress', 'short']);

@@ -52,3 +52,21 @@ it('versions single-selection recovery while preserving frozen recovery-v1 manif
  }
  expect(()=>createJevManifest({...seed,cases:[{...seed.cases[0],role:'recovery',questionVersion:'recovery-v3'}]})).toThrow(/questionVersion/u);
 });
+
+it('versions clarified question contracts while preserving each frozen historical manifest',()=>{
+ const seed=input();
+ for(const [role,current,historical] of [
+  ['ranking','ranking-v2','ranking-v1'],
+  ['grounding','grounding-v2','grounding-v1'],
+  ['audit-v2','atomic-audit-v3','atomic-audit-v2'],
+ ] as const){
+  expect(JEV_QUESTION_VERSIONS[role]).toBe(current);
+  for(const questionVersion of [current,historical]){
+   const manifest=createJevManifest({...seed,cases:[{...seed.cases[0],role,questionVersion}]});
+   expect(validateJevManifest(manifest)).toEqual(manifest);
+   expect(jevManifestHash(validateJevManifest(manifest))).toBe(jevManifestHash(manifest));
+  }
+  expect(()=>createJevManifest({...seed,cases:[{...seed.cases[0],role,questionVersion:`${current}-unknown`}]})).toThrow(/questionVersion/u);
+  expect(()=>createJevManifest({...seed,cases:[{...seed.cases[0],role,questionVersion:'classification-v1'}]})).toThrow(/questionVersion/u);
+ }
+});
