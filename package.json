@@ -47,15 +47,15 @@
     "test:jev-decisions": "pnpm --filter @sutura/core build && pnpm --filter @sutura/evaluation build && node --test scripts/jev-decisions-journal.test.mjs scripts/jev-decisions-eval.test.mjs scripts/jev-controller-compare.test.mjs"
   },
   "devDependencies": {
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.5",
     "@vitest/coverage-v8": "4.1.12",
-    "eslint": "^10.12.0",
+    "eslint": "^10.13.0",
     "husky": "^9.1.7",
     "placebo": "workspace:*",
     "sutura": "workspace:*",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.71.1",
-    "vite": "8.2.4",
+    "typescript-eslint": "^8.72.1",
+    "vite": "8.3.5",
     "vitest": "^4.1.12",
     "yaml": "^2.9.1"
   }
