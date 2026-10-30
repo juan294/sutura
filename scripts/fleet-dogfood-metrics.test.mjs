@@ -365,6 +365,47 @@ test('public summary removes repository identities and daily snapshots are idemp
   }
 });
 
+test('daily snapshots keep retained v1 history and still reject unknown schemas', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sutura-fleet-metrics-v1-'));
+  try {
+    const result = {
+      summary: {
+        schemaVersion: 'sutura-fleet-summary-v2', collectedAt: '2026-10-30T12:00:00.000Z',
+        startedAt: '2026-09-13T00:00:00.000Z', actionCommit: 'a'.repeat(40), fleetRepositories: 1,
+        installedRepositories: 1, monitorRuns: 1, noRepairNeeded: 0, notTriggered: 0, repairAttempts: 1,
+        attemptStages: { attempted: 1, claimed: 1, searchStarted: 1, providerInvoked: 1, fixed: 1, recovered: null, recoveryEvidenceComplete: false },
+        failureCauses: {}, costCompleteness: { measured: 1, unavailable: 0 },
+        outcomes: { fixed: 1, 'flaky-no-patch': 0, refused: 0, 'gave-up': 0, 'infra-stop': 0, unknown: 0 },
+        repairPrsOpened: 1, inferenceCostUsd: 0.1, sandboxCostUsd: 0.2, totalCostUsd: 0.3,
+        medianAttemptDurationSec: 60,
+      },
+      events: [], installations: [],
+    };
+    const legacy = {
+      schemaVersion: 'sutura-fleet-summary-v1', collectedAt: '2026-09-13T13:40:08.439Z',
+      startedAt: '2026-09-13T00:00:00.000Z', actionCommit: 'b'.repeat(40), fleetRepositories: 21,
+      installedRepositories: 21, monitorRuns: 40, noRepairNeeded: 32, notTriggered: 1, repairAttempts: 7,
+      outcomes: { fixed: 0, 'flaky-no-patch': 0, refused: 0, 'gave-up': 1, 'infra-stop': 5, unknown: 1 },
+      repairPrsOpened: 0, inferenceCostUsd: 0.0037, sandboxCostUsd: 0.7251, totalCostUsd: 0.7288,
+      medianAttemptDurationSec: 55, privateSentinel: 'private-legacy-field',
+    };
+    await writeFile(join(directory, 'snapshots.jsonl'), JSON.stringify(legacy) + '\n');
+    await writeFleetMetrics(result, directory);
+    const retained = (await readFile(join(directory, 'snapshots.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+    assert.deepEqual(retained.map(({ schemaVersion }) => schemaVersion), ['sutura-fleet-summary-v1', 'sutura-fleet-summary-v2']);
+    assert.equal(retained[0].monitorRuns, 40);
+    assert.deepEqual(retained[0].outcomes, legacy.outcomes);
+    assert.equal(retained[0].totalCostUsd, 0.7288);
+    assert.equal(JSON.stringify(retained[0]).includes('private-legacy-field'), false);
+    assert.equal('attemptStages' in retained[0], false);
+
+    await writeFile(join(directory, 'snapshots.jsonl'), JSON.stringify({ ...legacy, schemaVersion: 'sutura-fleet-summary-v0' }) + '\n');
+    await assert.rejects(writeFleetMetrics(result, directory), /Invalid fleet summary schema/u);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('uninstalled monitor retains every discovered workflow disposition', async () => {
   const client = new GhFleetClient('owner');
   client.api = async path => {

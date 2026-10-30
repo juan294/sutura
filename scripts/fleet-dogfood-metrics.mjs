@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { collectRecoveryLedger, writeRecoveryLedger } from './fleet-recovery-ledger.mjs';
-import { sanitizeFleetSummary } from './fleet-public-summary.mjs';
+import { sanitizeFleetSnapshot, sanitizeFleetSummary } from './fleet-public-summary.mjs';
 import { decodeSingleFileArtifact } from './fleet-artifact.mjs';
 import { collectNativeVerification } from './fleet-native-verification.mjs';
 import { evaluateFleetDigest, withDigestEvaluation } from './fleet-digest-worker.mjs';
@@ -582,7 +582,7 @@ export async function writeFleetMetrics(result, outputDirectory, options = {}) {
   const snapshotsPath = join(outputDirectory, 'snapshots.jsonl');
   let snapshots = [];
   try {
-    snapshots = (await readFile(snapshotsPath, 'utf8')).split(/\r?\n/u).filter(Boolean).map((line) => publicFleetSummary(JSON.parse(line)));
+    snapshots = (await readFile(snapshotsPath, 'utf8')).split(/\r?\n/u).filter(Boolean).map((line) => sanitizeFleetSnapshot(JSON.parse(line)));
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
