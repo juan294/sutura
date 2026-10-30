@@ -117,11 +117,28 @@ function skippedProjectRoot(content: string, pyproject: string): string {
   return rootCount === 1 ? checked : content;
 }
 
+/**
+ * True when a `source = { ... }` table assigns an editable, path, git or url key. One left-to-right
+ * token pass tracks whether the scan is inside such a table (it ends at `}` or a line end), so the cost
+ * is linear in the input and repeated openers cannot cause backtracking (CodeQL js/polynomial-redos).
+ * A key that starts inside a table counts even when its `=` follows after whitespace or a line break.
+ */
+function sourceTableNamesLocation(content: string): boolean {
+  const tokens = /source\s*=\s*\{|[}\n]|(?:editable|path|git|url)\s*=/giu;
+  let inTable = false;
+  for (const [token] of content.matchAll(tokens)) {
+    if (token === '}' || token === '\n') inTable = false;
+    else if (/^source/iu.test(token)) inTable = true;
+    else if (inTable) return true;
+  }
+  return false;
+}
+
 function rejectUnsafeUvLock(content: string, pyproject: string): void {
   const dependencies = skippedProjectRoot(content, pyproject);
   if (
     /\b(?:editable|path|git)\s*=/iu.test(dependencies) ||
-    /source\s*=\s*\{[^}\n]*(?:editable|path|git|url)\s*=/iu.test(dependencies) ||
+    sourceTableNamesLocation(dependencies) ||
     /\b(?:file|git\+[^\s"']+):/iu.test(dependencies)
   ) {
     throw new PythonDependencyError('uv.lock contains a local, VCS, URL, editable, or source-build dependency');
