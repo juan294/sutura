@@ -17,3 +17,19 @@ it('does not bless Node summaries from a killed native process', () => {
   const selected = selectFailedStepLog(raw, { name: 'Tests', startedAt: '2026-10-27T00:00:00Z', completedAt: '2026-10-27T00:00:01Z' }, { binding, completion: 'normal' });
   expect(selected.diagnostics?.complete).toBe(false);
 });
+it('keeps a normal failed step normal when only passing test titles name a signal (gh-glance job 125482795195)', () => {
+  // Real gh-glance CI log, 2026-11-02: two PTY tests failed with exit code 1, and three
+  // passing tests are titled "SIGTERM ...". A test title is not evidence that the runner was killed.
+  const raw = readFileSync(new URL('./__fixtures__/gh-glance-pty-rest-125482795195.log', import.meta.url), 'utf8');
+  const step = { name: 'Run node scripts/test-select.mjs run pty:rest', startedAt: '2026-11-02T18:56:42Z', completedAt: '2026-11-02T19:31:07Z' };
+  const selected = selectFailedStepLog(raw, step, { binding, completion: 'normal' });
+  expect(raw).toContain('✔ SIGTERM exits 143');
+  expect(selected.diagnostics).toMatchObject({ complete: true, summary: { failed: 2 } });
+});
+it('still treats a runner-level signal line in that step as abnormal completion', () => {
+  const raw = readFileSync(new URL('./__fixtures__/gh-glance-pty-rest-125482795195.log', import.meta.url), 'utf8')
+    .replace('2026-11-02T19:31:07.4888275Z ##[error]Process completed with exit code 1.',
+      '2026-11-02T19:31:07.4880000Z /home/runner/work/_temp/x.sh: line 1:  2412 Killed  node scripts/test-select.mjs run pty:rest\n2026-11-02T19:31:07.4888275Z ##[error]Process completed with exit code 1.');
+  const step = { name: 'Run node scripts/test-select.mjs run pty:rest', startedAt: '2026-11-02T18:56:42Z', completedAt: '2026-11-02T19:31:07Z' };
+  expect(selectFailedStepLog(raw, step, { binding, completion: 'normal' }).diagnostics?.complete).toBe(false);
+});
