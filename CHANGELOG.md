@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-04
+
+### Fixed
+
+- Ignore signal names in Node test-result titles when checking failed-step completion. Actual runner termination output still blocks diagnosis, while passing tests named after SIGTERM or SIGKILL no longer make complete failure diagnostics appear incomplete.
+- Scan uv.lock source tables in linear time while preserving refusal of unsupported dependency sources.
+- Keep retained v1 daily fleet snapshots readable without inventing fields from newer schemas.
+
+### Changed
+
+- Add daily read-only judging-access collection and a pinned public evidence manifest.
+- Refresh development dependencies, grouped CodeQL references and the repository-scoped GitHub App token action.
+- Install the local resource ownership policy and retain the Devpost refresh and overlay investigation records.
+
+Retired guidance: none.
+
+The signal-title fix does not repair consumer test flakiness or admit dependency-changing commits whose reproduction-profile hashes do not match. The Case Lab still labels its v0.4.1 evidence; its existing v0.5.1 refresh deferral does not authorize this release. Publication remains pending a valid disposition of that release gate.
+
 ## [0.5.1] - 2026-10-29
 
 ### Fixed

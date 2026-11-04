@@ -60,7 +60,7 @@ import type {
 
 describe('@sutura/core entry point', () => {
   it('exports the release version', () => {
-    expect(VERSION).toBe('0.5.1');
+    expect(VERSION).toBe('0.5.2');
   });
 
   it('exports executor implementations and types from the package root', () => {
