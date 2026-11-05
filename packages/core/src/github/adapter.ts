@@ -23,6 +23,8 @@ const FAILED_STEP_LINES = 200;
 const FAILURE_BLOCKS = 2;
 const FAILURE_BLOCK_LINES = 40;
 const GROUP_RUN_MARKER = /^\S+Z ##\[group\]Run\s/;
+const RUNNER_SIGNAL = /\b(?:Killed|SIGKILL|SIGTERM|The operation was canceled|The operation was cancelled)\b/u;
+const NODE_TEST_TITLE = /^\s*(?:[✔✖﹣▶] |(?:not )?ok \d+ - |# Subtest: )/u;
 const TAP_FAILURE = /^\s*not ok \d+\b/u;
 const TAP_DIRECTIVE = /\s#\s*(?:TODO|SKIP)\b/iu;
 const TAP_PARENT_SUMMARY = /^\s*failureType: 'subtestsFailed'$/u;
@@ -117,9 +119,13 @@ function failedStepLog(
     throw new GitHubAdapterError(`Job logs contain no lines for failed step ${step.name}`);
   }
   const fullLog = matching.map(({ line }) => line).join('\n');
-  const hasNodeDiagnostics = matching.some(({ line }) => /^(?:test at |(?:ℹ |# )(?:tests|fail) \d+|\s*not ok \d+ - )/u.test(logPayload(line).replace(/\x1b\[[0-9;]*m/gu, '')));
+  const payloads = matching.map(({ line }) => logPayload(line).replace(/\x1b\[[0-9;]*m/gu, ''));
+  const hasNodeDiagnostics = payloads.some(line => /^(?:test at |(?:ℹ |# )(?:tests|fail) \d+|\s*not ok \d+ - )/u.test(line));
   const exits = [...fullLog.matchAll(/Process completed with exit code (\d+)\./gu)].map(match => Number(match[1]));
-  const normal = diagnosticContext?.completion === 'normal' && exits.length === 1 && exits[0] === 1 && !/\b(?:Killed|SIGKILL|SIGTERM|The operation was canceled|The operation was cancelled)\b/u.test(fullLog);
+  // A Node test-result title (spec `✔ SIGTERM exits 143`, TAP `ok 3 - SIGTERM ...`) can name a
+  // signal without being evidence that the runner killed the step.
+  const killed = payloads.some(line => !NODE_TEST_TITLE.test(line) && RUNNER_SIGNAL.test(line));
+  const normal = diagnosticContext?.completion === 'normal' && exits.length === 1 && exits[0] === 1 && !killed;
   const diagnostics = diagnosticContext && hasNodeDiagnostics ? captureNodeDiagnostics(fullLog, diagnosticContext.binding, normal ? 'normal' : 'unknown') : undefined;
   const structured = diagnostics === undefined ? {} : { diagnostics };
   if (matching.length <= FAILED_STEP_LINES) return { log: fullLog, truncated: false, ...structured };

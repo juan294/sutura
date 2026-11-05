@@ -48,3 +48,12 @@ export function sanitizeFleetSummary(summary) {
   }
   return result;
 }
+/** Daily history keeps the schema each row was written under; v1 rows stay v1 and gain no invented fields. */
+export function sanitizeFleetSnapshot(snapshot) {
+  if (snapshot?.schemaVersion !== 'sutura-fleet-summary-v1') return sanitizeFleetSummary(snapshot);
+  return { schemaVersion: 'sutura-fleet-summary-v1', collectedAt: instant(snapshot.collectedAt), startedAt: instant(snapshot.startedAt),
+    actionCommit: /^[a-f0-9]{40}$/u.test(snapshot.actionCommit ?? '') ? snapshot.actionCommit : null,
+    ...counts(snapshot, ['fleetRepositories', 'installedRepositories', 'monitorRuns', 'noRepairNeeded', 'notTriggered', 'repairAttempts', 'repairPrsOpened']),
+    outcomes: counts(snapshot.outcomes, OUTCOMES),
+    ...Object.fromEntries(['inferenceCostUsd', 'sandboxCostUsd', 'totalCostUsd', 'medianAttemptDurationSec'].map(key => [key, amount(snapshot[key])])) };
+}

@@ -1,0 +1,618 @@
+﻿2026-11-02T18:56:29.5010816Z Current runner version: '2.338.2'
+2026-11-02T18:56:29.5036267Z ##[group]Runner Image Provisioner
+2026-11-02T18:56:29.5037323Z Hosted Compute Agent
+2026-11-02T18:56:29.5038095Z Version: 20261021.618
+2026-11-02T18:56:29.5038777Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-11-02T18:56:29.5039486Z Build Date: 2026-10-21T00:45:21Z
+2026-11-02T18:56:29.5040125Z Worker ID: {7a003517-7199-473e-85ba-a8442b6339b0}
+2026-11-02T18:56:29.5040816Z Region: centralus
+2026-11-02T18:56:29.5041364Z Cloud: Azure
+2026-11-02T18:56:29.5041928Z ##[endgroup]
+2026-11-02T18:56:29.5043305Z ##[group]Operating System
+2026-11-02T18:56:29.5043904Z Ubuntu
+2026-11-02T18:56:29.5044437Z 24.04.5
+2026-11-02T18:56:29.5044950Z LTS
+2026-11-02T18:56:29.5045480Z ##[endgroup]
+2026-11-02T18:56:29.5046267Z ##[group]Runner Image
+2026-11-02T18:56:29.5046850Z Image: ubuntu-24.04
+2026-11-02T18:56:29.5047389Z Version: 20261025.353.1
+2026-11-02T18:56:29.5048633Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261025.353/images/ubuntu/Ubuntu2404-Readme.md
+2026-11-02T18:56:29.5050081Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261025.353
+2026-11-02T18:56:29.5050976Z ##[endgroup]
+2026-11-02T18:56:29.5052090Z ##[group]GITHUB_TOKEN Permissions
+2026-11-02T18:56:29.5054170Z Contents: read
+2026-11-02T18:56:29.5054741Z Metadata: read
+2026-11-02T18:56:29.5055319Z ##[endgroup]
+2026-11-02T18:56:29.5057468Z Secret source: Dependabot
+2026-11-02T18:56:29.5058425Z Cache mode: write
+2026-11-02T18:56:29.5059083Z Prepare workflow directory
+2026-11-02T18:56:29.5416781Z Prepare all required actions
+2026-11-02T18:56:29.5464159Z Getting action download info
+2026-11-02T18:56:29.8473042Z Download action repository 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+2026-11-02T18:56:29.9514493Z Download action repository 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9' (SHA:cf430e030ddbb5b0abf93d22962f4752f3646cd9)
+2026-11-02T18:56:30.0520925Z Download action repository 'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1' (SHA:949feb2413d6458794dcd2491c4babbbce0c15c1)
+2026-11-02T18:56:30.2609237Z Complete job name: PTY other files
+2026-11-02T18:56:30.3392409Z ##[group]Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+2026-11-02T18:56:30.3393375Z with:
+2026-11-02T18:56:30.3393938Z   repository: juan294/gh-glance
+2026-11-02T18:56:30.3398228Z   token: ***
+2026-11-02T18:56:30.3398717Z   ssh-strict: true
+2026-11-02T18:56:30.3399416Z   ssh-user: git
+2026-11-02T18:56:30.3399914Z   persist-credentials: true
+2026-11-02T18:56:30.3400462Z   clean: true
+2026-11-02T18:56:30.3400973Z   sparse-checkout-cone-mode: true
+2026-11-02T18:56:30.3401546Z   fetch-depth: 1
+2026-11-02T18:56:30.3402111Z   fetch-tags: false
+2026-11-02T18:56:30.3402608Z   show-progress: true
+2026-11-02T18:56:30.3403124Z   lfs: false
+2026-11-02T18:56:30.3403603Z   submodules: false
+2026-11-02T18:56:30.3404105Z   set-safe-directory: true
+2026-11-02T18:56:30.3404715Z   allow-unsafe-pr-checkout: false
+2026-11-02T18:56:30.3405498Z ##[endgroup]
+2026-11-02T18:56:30.5848493Z Syncing repository: juan294/gh-glance
+2026-11-02T18:56:30.5850561Z ##[group]Getting Git version info
+2026-11-02T18:56:30.5851462Z Working directory is '/home/runner/work/gh-glance/gh-glance'
+2026-11-02T18:56:30.5852538Z [command]/usr/bin/git version
+2026-11-02T18:56:30.5913030Z git version 2.56.0
+2026-11-02T18:56:30.5934275Z ##[endgroup]
+2026-11-02T18:56:30.5944597Z Temporarily overriding HOME='/home/runner/work/_temp/8389b817-1308-4b5f-a6f4-159420e23e20' before making global git config changes
+2026-11-02T18:56:30.5946825Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T18:56:30.5950302Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/gh-glance/gh-glance
+2026-11-02T18:56:30.5994105Z Deleting the contents of '/home/runner/work/gh-glance/gh-glance'
+2026-11-02T18:56:30.5997446Z ##[group]Determining repository object format
+2026-11-02T18:56:30.5999139Z ##[endgroup]
+2026-11-02T18:56:30.6000035Z ##[group]Initializing the repository
+2026-11-02T18:56:30.6002763Z [command]/usr/bin/git init /home/runner/work/gh-glance/gh-glance
+2026-11-02T18:56:30.6091023Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-11-02T18:56:30.6092567Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-11-02T18:56:30.6093571Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-11-02T18:56:30.6094393Z hint: call:
+2026-11-02T18:56:30.6094863Z hint:
+2026-11-02T18:56:30.6095426Z hint: 	git config --global init.defaultBranch <name>
+2026-11-02T18:56:30.6096398Z hint:
+2026-11-02T18:56:30.6097159Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-11-02T18:56:30.6098294Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-11-02T18:56:30.6099217Z hint:
+2026-11-02T18:56:30.6099876Z hint: 	git branch -m <name>
+2026-11-02T18:56:30.6100793Z hint:
+2026-11-02T18:56:30.6101677Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-11-02T18:56:30.6103307Z Initialized empty Git repository in /home/runner/work/gh-glance/gh-glance/.git/
+2026-11-02T18:56:30.6109418Z [command]/usr/bin/git remote add origin https://github.com/juan294/gh-glance
+2026-11-02T18:56:30.6577800Z ##[endgroup]
+2026-11-02T18:56:30.6579264Z ##[group]Disabling automatic garbage collection
+2026-11-02T18:56:30.6581944Z [command]/usr/bin/git config --local gc.auto 0
+2026-11-02T18:56:30.7097818Z ##[endgroup]
+2026-11-02T18:56:30.7099430Z ##[group]Setting up auth
+2026-11-02T18:56:30.7100315Z Removing SSH command configuration
+2026-11-02T18:56:30.7107072Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T18:56:30.7364542Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T18:56:30.7671996Z Removing HTTP extra header
+2026-11-02T18:56:30.7677578Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T18:56:30.7708348Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T18:56:30.7889507Z Removing includeIf entries pointing to credentials config files
+2026-11-02T18:56:30.7894859Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T18:56:30.7924470Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T18:56:30.8112251Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-debd8f53-94fc-4e3e-98e9-2fdd9669dc4a.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-11-02T18:56:30.8148017Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/gh-glance/gh-glance/.git.path /home/runner/work/_temp/git-credentials-debd8f53-94fc-4e3e-98e9-2fdd9669dc4a.config
+2026-11-02T18:56:30.8180669Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/gh-glance/gh-glance/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-debd8f53-94fc-4e3e-98e9-2fdd9669dc4a.config
+2026-11-02T18:56:30.8213295Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-debd8f53-94fc-4e3e-98e9-2fdd9669dc4a.config
+2026-11-02T18:56:30.8245647Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-debd8f53-94fc-4e3e-98e9-2fdd9669dc4a.config
+2026-11-02T18:56:30.8273427Z ##[endgroup]
+2026-11-02T18:56:30.8274793Z ##[group]Fetching the repository
+2026-11-02T18:56:30.8280808Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +345cafcb64fbd16a039ab649246b1c0c8c9c1cf5:refs/remotes/pull/160/merge
+2026-11-02T18:56:31.5789231Z From https://github.com/juan294/gh-glance
+2026-11-02T18:56:31.5792205Z  * [new ref]         345cafcb64fbd16a039ab649246b1c0c8c9c1cf5 -> pull/160/merge
+2026-11-02T18:56:31.5797929Z ##[endgroup]
+2026-11-02T18:56:31.5799965Z ##[group]Determining the checkout info
+2026-11-02T18:56:31.5802193Z ##[endgroup]
+2026-11-02T18:56:31.5803706Z [command]/usr/bin/git sparse-checkout disable
+2026-11-02T18:56:31.5854617Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-11-02T18:56:31.5887768Z ##[group]Checking out the ref
+2026-11-02T18:56:31.5889816Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/160/merge
+2026-11-02T18:56:31.6451864Z Note: switching to 'refs/remotes/pull/160/merge'.
+2026-11-02T18:56:31.6452959Z 
+2026-11-02T18:56:31.6453760Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-11-02T18:56:31.6456249Z changes and commit them, and you can discard any commits you make in this
+2026-11-02T18:56:31.6458328Z state without impacting any branches by switching back to a branch.
+2026-11-02T18:56:31.6459708Z 
+2026-11-02T18:56:31.6460677Z If you want to create a new branch to retain commits you create, you may
+2026-11-02T18:56:31.6462462Z do so (now or later) by using -c with the switch command. Example:
+2026-11-02T18:56:31.6463450Z 
+2026-11-02T18:56:31.6463906Z   git switch -c <new-branch-name>
+2026-11-02T18:56:31.6464637Z 
+2026-11-02T18:56:31.6465130Z Or undo this operation with:
+2026-11-02T18:56:31.6465886Z 
+2026-11-02T18:56:31.6466550Z   git switch -
+2026-11-02T18:56:31.6467190Z 
+2026-11-02T18:56:31.6468197Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-11-02T18:56:31.6469587Z 
+2026-11-02T18:56:31.6471238Z HEAD is now at 345cafc Merge fc41bd06f326c452d827db2a9fb33d85ebf03f2a into 90d1ad3b2ebe77aa4ce2b88437bfb731ad13796a
+2026-11-02T18:56:31.6477107Z ##[endgroup]
+2026-11-02T18:56:31.6505628Z [command]/usr/bin/git log -1 --format=%H
+2026-11-02T18:56:31.6529033Z 345cafcb64fbd16a039ab649246b1c0c8c9c1cf5
+2026-11-02T18:56:31.6863614Z ##[group]Run node --input-type=commonjs <<'NODE'
+2026-11-02T18:56:31.6865430Z [36;1mnode --input-type=commonjs <<'NODE'[0m
+2026-11-02T18:56:31.6867097Z [36;1mconst fs = require('node:fs');[0m
+2026-11-02T18:56:31.6868606Z [36;1mconst cp = require('node:child_process');[0m
+2026-11-02T18:56:31.6871971Z [36;1mconst testedSha = cp.execFileSync('git', ['--no-replace-objects', '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();[0m
+2026-11-02T18:56:31.6875806Z [36;1mif (!/^[a-f0-9]{40}$/.test(testedSha)) throw new Error('Exact native checkout unavailable');[0m
+2026-11-02T18:56:31.6881817Z [36;1mfs.writeFileSync(process.env.SUTURA_NATIVE_RECORD, JSON.stringify({ schemaVersion: 'sutura-native-checkout-v1', runId: Number(process.env.GITHUB_RUN_ID), attempt: Number(process.env.GITHUB_RUN_ATTEMPT), jobKey: process.env.SUTURA_NATIVE_JOB_KEY, testedSha }) + '\n', { flag: 'wx', mode: 0o600 });[0m
+2026-11-02T18:56:31.6887234Z [36;1mNODE[0m
+2026-11-02T18:56:31.6907303Z shell: /usr/bin/bash -e {0}
+2026-11-02T18:56:31.6908524Z env:
+2026-11-02T18:56:31.6909525Z   SUTURA_NATIVE_JOB_KEY: PTY other files
+2026-11-02T18:56:31.6911453Z   SUTURA_NATIVE_RECORD: /home/runner/work/_temp/native-checkout-pty-rest-0.json
+2026-11-02T18:56:31.6913307Z ##[endgroup]
+2026-11-02T18:56:31.8710297Z ##[group]Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+2026-11-02T18:56:31.8712050Z with:
+2026-11-02T18:56:31.8712984Z   name: sutura-checkout-pty-rest-0-1
+2026-11-02T18:56:31.8714506Z   path: /home/runner/work/_temp/native-checkout-pty-rest-0.json
+2026-11-02T18:56:31.8715972Z   overwrite: false
+2026-11-02T18:56:31.8717160Z   if-no-files-found: error
+2026-11-02T18:56:31.8718211Z   retention-days: 30
+2026-11-02T18:56:31.8719186Z   compression-level: 6
+2026-11-02T18:56:31.8720280Z   include-hidden-files: false
+2026-11-02T18:56:31.8721501Z   archive: true
+2026-11-02T18:56:31.8722392Z ##[endgroup]
+2026-11-02T18:56:32.0174413Z With the provided path, there will be 1 file uploaded
+2026-11-02T18:56:32.0188127Z Artifact name is valid!
+2026-11-02T18:56:32.0189159Z Root directory input is valid!
+2026-11-02T18:56:32.3122854Z Uploading artifact: sutura-checkout-pty-rest-0-1.zip
+2026-11-02T18:56:32.3156584Z Beginning upload of artifact content to blob storage
+2026-11-02T18:56:32.4914304Z Uploaded bytes 317
+2026-11-02T18:56:32.5332915Z Finished uploading artifact content to blob storage!
+2026-11-02T18:56:32.5334541Z SHA256 digest of uploaded artifact is ffc9dc32b41ada28c9edbada5fc55b2186c4d52f23aa989328a176ba5253cd57
+2026-11-02T18:56:32.5335960Z Finalizing artifact upload
+2026-11-02T18:56:33.0387837Z Artifact sutura-checkout-pty-rest-0-1 successfully finalized. Artifact ID 13169949039
+2026-11-02T18:56:33.0389196Z Artifact sutura-checkout-pty-rest-0-1 has been successfully uploaded! Final size is 317 bytes. Artifact ID is 13169949039
+2026-11-02T18:56:33.0392143Z Artifact download URL: https://github.com/juan294/gh-glance/actions/runs/41505207571/artifacts/13169949039
+2026-11-02T18:56:33.0590906Z ##[group]Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+2026-11-02T18:56:33.0591982Z with:
+2026-11-02T18:56:33.0592307Z   node-version: 22.22.2
+2026-11-02T18:56:33.0592684Z   cache: npm
+2026-11-02T18:56:33.0592984Z   check-latest: false
+2026-11-02T18:56:33.0595459Z   token: ***
+2026-11-02T18:56:33.0595847Z   package-manager-cache: true
+2026-11-02T18:56:33.0596496Z ##[endgroup]
+2026-11-02T18:56:33.1786795Z Attempting to download 22.22.2...
+2026-11-02T18:56:33.9873624Z Acquiring 22.22.2 - x64 from https://github.com/actions/node-versions/releases/download/22.22.2-23521889093/node-22.22.2-linux-x64.tar.gz
+2026-11-02T18:56:34.5452826Z Extracting ...
+2026-11-02T18:56:34.5564172Z [command]/usr/bin/tar xz --strip 1 --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/1b96a85e-1ca6-4700-884f-e0fa920bd23c -f /home/runner/work/_temp/3fa88c07-289f-43d3-a747-9871e74e91e4
+2026-11-02T18:56:35.8505995Z Adding to the cache ...
+2026-11-02T18:56:38.7736756Z ##[group]Environment details
+2026-11-02T18:56:38.9890821Z node: v22.22.2
+2026-11-02T18:56:38.9891340Z npm: 10.9.7
+2026-11-02T18:56:38.9891952Z yarn: 1.22.22
+2026-11-02T18:56:38.9892787Z ##[endgroup]
+2026-11-02T18:56:38.9908118Z [command]/opt/hostedtoolcache/node/22.22.2/x64/bin/npm config get cache
+2026-11-02T18:56:39.0813919Z /home/runner/.npm
+2026-11-02T18:56:39.2354955Z npm cache is not found
+2026-11-02T18:56:39.2490187Z ##[group]Run npm ci
+2026-11-02T18:56:39.2490586Z [36;1mnpm ci[0m
+2026-11-02T18:56:39.2509691Z shell: /usr/bin/bash -e {0}
+2026-11-02T18:56:39.2510088Z ##[endgroup]
+2026-11-02T18:56:42.3328411Z 
+2026-11-02T18:56:42.3338295Z > gh-glance@0.18.1 prepare
+2026-11-02T18:56:42.3339616Z > node -e "process.exit(require('fs').existsSync('.git')?0:1)" && husky || true
+2026-11-02T18:56:42.3340207Z 
+2026-11-02T18:56:42.4007042Z 
+2026-11-02T18:56:42.4008165Z added 164 packages, and audited 165 packages in 3s
+2026-11-02T18:56:42.4008839Z 
+2026-11-02T18:56:42.4009099Z 47 packages are looking for funding
+2026-11-02T18:56:42.4009604Z   run `npm fund` for details
+2026-11-02T18:56:42.4058254Z 
+2026-11-02T18:56:42.4058741Z 5 moderate severity vulnerabilities
+2026-11-02T18:56:42.4059180Z 
+2026-11-02T18:56:42.4059591Z To address all issues (including breaking changes), run:
+2026-11-02T18:56:42.4060355Z   npm audit fix --force
+2026-11-02T18:56:42.4060698Z 
+2026-11-02T18:56:42.4061074Z Run `npm audit` for details.
+2026-11-02T18:56:42.4365219Z ##[group]Run node scripts/test-select.mjs run pty:rest
+2026-11-02T18:56:42.4365716Z [36;1mnode scripts/test-select.mjs run pty:rest[0m
+2026-11-02T18:56:42.4380824Z shell: /usr/bin/bash -e {0}
+2026-11-02T18:56:42.4381263Z env:
+2026-11-02T18:56:42.4381645Z   GH_GLANCE_TEST_EVIDENCE_DIR: /home/runner/work/_temp/evidence
+2026-11-02T18:56:42.4382435Z ##[endgroup]
+2026-11-02T18:56:42.4738328Z ## selection pty:rest: full terminal suite shard: every other terminal file
+2026-11-02T18:56:42.4739692Z runtime: node v22.22.2 linux-x64
+2026-11-02T18:56:42.4744043Z files (33): test/pty/actions-setup.test.mjs test/pty/adaptive-polling.test.mjs test/pty/attention.test.mjs test/pty/background-progress.test.mjs test/pty/cache.test.mjs test/pty/capture.test.mjs test/pty/ci-details.test.mjs test/pty/ci-observations.test.mjs test/pty/collector.test.mjs test/pty/conditional-polling.test.mjs test/pty/context-help.test.mjs test/pty/e2e.test.mjs test/pty/evidence.test.mjs test/pty/fixture-api.test.mjs test/pty/focus.test.mjs test/pty/graphql-budget.test.mjs test/pty/identity-migration.test.mjs test/pty/identity-switch.test.mjs test/pty/jev-focus.test.mjs test/pty/keys.test.mjs test/pty/mouse.test.mjs test/pty/notifications.test.mjs test/pty/onboarding.test.mjs test/pty/pacing-credit.test.mjs test/pty/remote-collector.test.mjs test/pty/review-1031-clock.test.mjs test/pty/routing.test.mjs test/pty/runtime-remediation.test.mjs test/pty/secondary-limit.test.mjs test/pty/selection.test.mjs test/pty/shared-acquisition.test.mjs test/pty/status.test.mjs test/pty/throttle.test.mjs
+2026-11-02T18:56:42.4752193Z command: /opt/hostedtoolcache/node/22.22.2/x64/bin/node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=/tmp/gh-glance-select-L8HMqU/report.tap --test-concurrency=1 --test-timeout=900000 test/pty/actions-setup.test.mjs test/pty/adaptive-polling.test.mjs test/pty/attention.test.mjs test/pty/background-progress.test.mjs test/pty/cache.test.mjs test/pty/capture.test.mjs test/pty/ci-details.test.mjs test/pty/ci-observations.test.mjs test/pty/collector.test.mjs test/pty/conditional-polling.test.mjs test/pty/context-help.test.mjs test/pty/e2e.test.mjs test/pty/evidence.test.mjs test/pty/fixture-api.test.mjs test/pty/focus.test.mjs test/pty/graphql-budget.test.mjs test/pty/identity-migration.test.mjs test/pty/identity-switch.test.mjs test/pty/jev-focus.test.mjs test/pty/keys.test.mjs test/pty/mouse.test.mjs test/pty/notifications.test.mjs test/pty/onboarding.test.mjs test/pty/pacing-credit.test.mjs test/pty/remote-collector.test.mjs test/pty/review-1031-clock.test.mjs test/pty/routing.test.mjs test/pty/runtime-remediation.test.mjs test/pty/secondary-limit.test.mjs test/pty/selection.test.mjs test/pty/shared-acquisition.test.mjs test/pty/status.test.mjs test/pty/throttle.test.mjs
+2026-11-02T18:58:15.2467923Z ✖ SET-01/02/07/11/12 manual setup is isolated and cached at 45x24 (22359.684486ms)
+2026-11-02T18:58:15.2479876Z ℹ capture evidence retained: /home/runner/work/_temp/evidence/actions-setup.test.mjs-2425/capture-001
+2026-11-02T18:58:15.2492974Z ✖ SET-01/02/07/11/12 manual setup is isolated and cached at 24x10 (21031.09357ms)
+2026-11-02T18:58:15.2495540Z ℹ capture evidence retained: /home/runner/work/_temp/evidence/actions-setup.test.mjs-2425/capture-002
+2026-11-02T18:58:15.2500381Z ✔ SET-05/07 setup HTTP failure stays separate from the populated run list and key repeats respect cooldown (3469.567215ms)
+2026-11-02T18:58:15.2517929Z ✔ SET-09 local 45x24 setup is unsupported with no local API fallback (634.358052ms)
+2026-11-02T18:58:15.2521797Z ✔ SET-09 ssh:studio 45x24 setup is unsupported with no local API fallback (635.520979ms)
+2026-11-02T18:58:15.2523827Z ✔ SET-09 local 24x10 setup is unsupported with no local API fallback (628.30072ms)
+2026-11-02T18:58:15.2525474Z ✔ SET-09 ssh:studio 24x10 setup is unsupported with no local API fallback (627.940113ms)
+2026-11-02T18:58:15.2528072Z ✔ SET-10 browser failure is separate, retry opens the validated Actions URL, and help consumes g/s (5385.029024ms)
+2026-11-02T18:58:15.2530087Z ✔ SET-08 quit aborts a pending setup child and preserves its original charged receipt (5515.615333ms)
+2026-11-02T18:58:15.2531941Z ✔ SET-08/11 a tab switch retains setup; an account change aborts it and fences old evidence (6737.0256ms)
+2026-11-02T18:58:15.2533818Z ✔ SET-06/11 failed shared-hold publication pauses concurrent data and recovery resumes polling without a setup retry (10948.522161ms)
+2026-11-02T18:58:15.2567950Z ✔ SET-06 existing storage recovery keeps priority over a saved setup result at 24x10 (7488.661923ms)
+2026-11-02T18:58:15.2569872Z ✔ SET-06 existing storage recovery keeps priority over a saved setup result at 45x24 (7221.310477ms)
+2026-11-02T19:01:10.8379604Z ✔ POLL-02 running CI is checked every five seconds, not at the two-second floor (20911.1192ms)
+2026-11-02T19:01:10.8398737Z ✔ POLL-02 a quiet list waits its 30s interval and is checked within two seconds of it (50960.955301ms)
+2026-11-02T19:01:10.8407498Z ✔ POLL-01 --background off emits zero inactive data calls (10844.430987ms)
+2026-11-02T19:01:10.8408314Z ✔ POLL-03 complete run names never ask for the workflow catalog (8914.468184ms)
+2026-11-02T19:01:10.8409354Z ✔ POLL-03 a missing name asks for the catalog once and reuses it (9119.421504ms)
+2026-11-02T19:01:10.8410432Z ✔ REFRESH-01 r keeps If-None-Match and a quiet 304 spends nothing (11068.784774ms)
+2026-11-02T19:01:10.8411557Z ✔ REFRESH-03 Width mode keeps both width resets and starts no refresh (6711.198235ms)
+2026-11-02T19:01:10.8412524Z ✔ PAGE-01 scrolling toward the end acquires one page, and only then (8169.843136ms)
+2026-11-02T19:01:10.8417204Z ✔ PAGE-01 a list nobody scrolls never asks for a second page (8024.064948ms)
+2026-11-02T19:01:10.8420348Z ✔ default on-demand tabs stop after opening and refresh again with r (32939.5863ms)
+2026-11-02T19:01:10.8423515Z ✔ cached secondary age advances while no new observation is requested (7869.684414ms)
+2026-11-02T19:03:40.6842155Z ✔ attention 100: explicit details, deterministic queue, unknowns and metadata-only badges (9596.719754ms)
+2026-11-02T19:03:40.6843869Z ✔ attention 40: explicit details, deterministic queue, unknowns and metadata-only badges (7810.550702ms)
+2026-11-02T19:03:40.6848411Z ✔ attention cached human identity explicitly verifies /user and recovers without hidden detail acquisition (11457.402064ms)
+2026-11-02T19:03:40.6851350Z ✔ attention Bot identity remains unsupported after explicit proof and ordinary navigation stays usable (6016.776829ms)
+2026-11-02T19:03:40.6864716Z ✔ attention connected local is explicitly unsupported without local fallback (2219.173797ms)
+2026-11-02T19:03:40.6888640Z ✔ attention connected ssh:fixture is explicitly unsupported without local fallback (2202.115002ms)
+2026-11-02T19:03:40.6895383Z ✔ attention 25/25/remainder, no automatic drain, first-page refresh, prior-as-of error and retry (24460.487373ms)
+2026-11-02T19:03:40.6898057Z ✔ attention pending badges keep selection and GitHub navigation responsive; explicit refresh clears old badges (12290.779224ms)
+2026-11-02T19:03:40.6900143Z ✔ attention canceled list refresh retires old provenance before late source publication and explicit restart recovers (14526.298226ms)
+2026-11-02T19:03:40.6902089Z ✔ attention detail completion preserves pending Unknown navigation and composite browser selection (14910.461199ms)
+2026-11-02T19:03:40.6903745Z ✔ attention tab retirement cancels detail and badge flights before late render, cache or next model chunk (7411.530768ms)
+2026-11-02T19:03:40.6914637Z ✔ attention unloaded sources make zero requests until explicit r loads first pages and one detail batch (9042.898184ms)
+2026-11-02T19:03:40.6916941Z ✔ attention an intentional governor admission hold sends zero details and the displayed deadline permits one explicit retry (7805.175971ms)
+2026-11-02T19:03:40.6918736Z ✔ attention source changes during refreshed detail flight retire pending state and explicit refresh recovers (20038.447653ms)
+2026-11-02T19:04:51.0578193Z ✔ a slow background response cannot block active Actions publication (70319.680174ms)
+2026-11-02T19:05:24.3653761Z ✔ a healthy process writes dashboard state for restart (1.16082ms)
+2026-11-02T19:05:24.3656988Z ✔ same-target restart keeps cached Actions rows under a live rate-limit error (0.758673ms)
+2026-11-02T19:05:24.3660435Z ✔ a blind Security refresh preserves cached alerts (0.399963ms)
+2026-11-02T19:05:24.3673250Z ✔ a different repository target never receives cached rows (0.809857ms)
+2026-11-02T19:05:24.4287911Z ✔ terminal replay preserves a compact dashboard and its guard row (3.20112ms)
+2026-11-02T19:05:24.4300798Z ✔ terminal replay recognizes the digit-only tab bar of a narrow pane (0.802621ms)
+2026-11-02T19:05:24.4302368Z ✔ terminal replay applies incremental cursor updates without accumulating status lines (0.7095ms)
+2026-11-02T19:05:24.4312612Z ✔ terminal replay retains transient status accumulation evidence (0.788105ms)
+2026-11-02T19:05:24.4314041Z ✔ terminal replay drops only the PTY EOF echo and preserves printable caret-D text (1.323203ms)
+2026-11-02T19:05:26.4948673Z ✔ capture termination reaps the full stdin producer and script trees (2072.460246ms)
+2026-11-02T19:05:26.4950563Z ✔ terminal replay excludes contextual Checking panels from footer counts (0.504109ms)
+2026-11-02T19:07:27.9204466Z ✔ CI exact selected attempt/job/log and return at 100 columns (6627.571322ms)
+2026-11-02T19:07:27.9214074Z ✔ CI exact selected attempt/job/log and return at 40 columns (3142.467269ms)
+2026-11-02T19:07:27.9235175Z ✔ CI partial attempt page discloses incomplete coverage (3776.098856ms)
+2026-11-02T19:07:27.9236587Z ✔ connected CI details never acquire local GitHub or Jev evidence (657.114644ms)
+2026-11-02T19:07:27.9237660Z ✔ late actual closure permits explicit log retry and clears the held-charge UI (21655.06589ms)
+2026-11-02T19:07:27.9238498Z ✔ Escape cancels CI acquisition and preserves ordinary navigation for a fresh selection (4516.320429ms)
+2026-11-02T19:07:27.9239695Z ✔ source generation change retires pending CI facts before late metadata can publish (11945.826084ms)
+2026-11-02T19:07:27.9241046Z ✔ live protocol7 lease recovers on ordinary control wake at 100 columns (8326.52133ms)
+2026-11-02T19:07:27.9241830Z ✔ live protocol7 lease recovers on ordinary control wake at 40 columns (10697.31707ms)
+2026-11-02T19:07:27.9242732Z ✔ explicit setup check preserves the live-v7 restart reason and retries after control recovery (9399.645786ms)
+2026-11-02T19:07:27.9243602Z ✔ job navigation before metadata arrives leaves the pending evidence request usable (5430.525621ms)
+2026-11-02T19:07:27.9244530Z ✔ CI source refresh requests a fresh conditional observation instead of accepting its fresh cache (5743.403028ms)
+2026-11-02T19:07:27.9245486Z ✔ CI forced run admission hold requires an explicit metadata and log retry (14843.319092ms)
+2026-11-02T19:07:27.9246522Z ✔ CI forced jobs admission hold requires an explicit metadata and log retry (14312.460694ms)
+2026-11-02T19:08:12.5208127Z ✔ CI observations 100: every-send preview, exact wire, source facts, cancellation and revocation (4677.586574ms)
+2026-11-02T19:08:12.5228017Z ✔ CI observations 40: every-send preview, exact wire, source facts, cancellation and revocation (4806.011866ms)
+2026-11-02T19:08:12.5234144Z ✔ CI suspected secret blocks cloud input; range editor owns q and clean original lines can be explicitly sent (4624.377484ms)
+2026-11-02T19:08:12.5235916Z ✔ CI provider error retains local conclusion and an explicit fresh preview recovers to uncertainty (4442.299468ms)
+2026-11-02T19:08:12.5237532Z ✔ CI empty evidence has no model call and explicit log reload reaches usable preview (5085.643623ms)
+2026-11-02T19:08:12.5239051Z ✔ CI pending inference keeps page input responsive and source refresh cancels publication without acquiring details (5455.536845ms)
+2026-11-02T19:08:12.5240156Z ✔ CI unsupported Focus key leaves pending observations usable and J can review again (5014.521313ms)
+2026-11-02T19:08:12.5241692Z ✔ CI context rejection exposes a smaller-range correction and requires a fresh preview (4471.792381ms)
+2026-11-02T19:08:12.5242878Z ✔ CI changed Actions generation makes completed cached observations and excerpt unreachable (5954.794395ms)
+2026-11-02T19:08:13.0342469Z ✔ COL-05: serve and bridge run without a TTY or terminal escapes (172.553742ms)
+2026-11-02T19:08:13.3449401Z ✔ COL-05: Windows collector modes reject before endpoint creation (307.23342ms)
+2026-11-02T19:08:14.4660578Z ✔ COL-03: a real local dashboard renders shared collector data without GitHub preflight (1122.942991ms)
+2026-11-02T19:08:30.1638409Z ✔ COL-03: a cold local connection renders Disconnected before any snapshot (15698.300465ms)
+2026-11-02T19:08:51.2967426Z ✔ COL-01/06: foreground collector performs governor-backed acquisition while the client makes zero gh calls (21133.919825ms)
+2026-11-02T19:09:18.3780668Z ✔ COL on-demand: real collector refreshes secondary data exactly on request (27081.363667ms)
+2026-11-02T19:09:20.3904394Z ✔ FE-M1: repeated old collector snapshots stay Stale until disconnect (2010.773391ms)
+2026-11-02T19:09:22.6140601Z ✔ FE-M1: repeated old collector snapshots stay Cached until app-auth (2227.990521ms)
+2026-11-02T19:10:05.3362072Z ✔ a quiet Actions tab spends nothing after its first fetch (15905.950112ms)
+2026-11-02T19:10:05.3365809Z ✔ a changed Actions runs entity returns 200 and publishes the new row (9541.263375ms)
+2026-11-02T19:10:05.3373487Z ✔ R resynchronizes a quiet tab by dropping If-None-Match and spending again (17211.086078ms)
+2026-11-02T19:10:50.1101482Z ✔ NAV-01/06: HTTPS inferred target appears in the header and contextual help (3284.321285ms)
+2026-11-02T19:10:50.1103746Z ✔ NAV-01/06: SSH inferred target appears in the header and contextual help (3386.502511ms)
+2026-11-02T19:10:50.1116408Z ✔ NAV-05: closing help consumes action keys and width mode retains ownership (3720.553736ms)
+2026-11-02T19:10:50.1119319Z ✔ NAV-03: 24x10 pages expose the complete long target and storage remedy (5059.135666ms)
+2026-11-02T19:10:50.1120930Z ✔ NAV-03/06: narrow help retains the complete sanitized source diagnostic (6211.235999ms)
+2026-11-02T19:10:50.1122443Z ✔ NAV-03: live resize reflows help and clamps a later narrow page (8168.283881ms)
+2026-11-02T19:10:50.1124122Z ✔ NAV-02/05: unresolved help exposes an explicit target and consumes prompt Enter (660.145637ms)
+2026-11-02T19:10:50.1125514Z ✔ NAV-05: Escape still quits from contextual help (2600.083781ms)
+2026-11-02T19:10:50.1127156Z ✔ NAV-05: Ctrl+C still quits from contextual help (4550.52453ms)
+2026-11-02T19:10:50.1128610Z ✔ NAV-06: reader and no-color help include state, target, source and recovery controls (7075.802493ms)
+2026-11-02T19:11:23.2673822Z ✔ the app reaches the data layer at all (7055.180589ms)
+2026-11-02T19:11:23.2678228Z ✔ healthy startup does not probe optional failure context (0.272828ms)
+2026-11-02T19:11:23.2679899Z ✔ an inaccessible repository uses cached auth context and respects paced repository slots (3568.592021ms)
+2026-11-02T19:11:23.2707902Z ✔ the failure frame preserves terminal geometry and clean teardown (0.821951ms)
+2026-11-02T19:11:23.2718872Z ✔ detached missing-remote setup advertises no unavailable keys (7044.107454ms)
+2026-11-02T19:11:23.2720568Z ✔ the alternate screen is entered exactly once and left exactly once (0.347103ms)
+2026-11-02T19:11:23.2734420Z ✔ the cursor is restored before exit (0.170662ms)
+2026-11-02T19:11:23.2735525Z ✔ the final frame leaves one physical terminal row as a scroll guard (7043.242886ms)
+2026-11-02T19:11:23.2736815Z ✔ no rendered line exceeds the terminal width (0.622184ms)
+2026-11-02T19:11:23.2737991Z ✔ a pane narrower than the table minimum still renders its chrome (0.560553ms)
+2026-11-02T19:11:23.2739061Z ✔ the panel frame and tab bar are drawn at full width (0.313337ms)
+2026-11-02T19:11:23.2740119Z ✔ the frame does not repaint by full clear in steady state (0.254931ms)
+2026-11-02T19:11:23.2740915Z ✔ SIGTERM exits 143 (0.347242ms)
+2026-11-02T19:11:23.2741773Z ✔ SIGINT exits 130 and SIGHUP exits 129 (8086.881904ms)
+2026-11-02T19:11:23.2743132Z ✔ nothing is written to the primary buffer after the alternate screen is left (0.245666ms)
+2026-11-02T19:11:30.3055041Z ✔ EVIDENCE-01 a later assertion failure retains the redacted capture bundle (3150.158818ms)
+2026-11-02T19:11:30.3056672Z ✔ EVIDENCE-02 a passing test leaves no evidence behind (3143.224623ms)
+2026-11-02T19:11:30.3078629Z ✔ EVIDENCE-03 a shared capture is retained when a later test using it fails (97.602659ms)
+2026-11-02T19:11:30.3107815Z ✔ EVIDENCE-04 a child failure keeps its partial output and exit details (95.276851ms)
+2026-11-02T19:11:30.3117806Z ✔ EVIDENCE-05 a full evidence root keeps only a labeled metadata record (95.911918ms)
+2026-11-02T19:11:30.3119083Z ✔ EVIDENCE-07 several failed captures in one test stay inside the per-test limit (114.366476ms)
+2026-11-02T19:11:30.3120359Z ✔ EVIDENCE-08 the smoke guard rejects a capture taken outside any test (271.267754ms)
+2026-11-02T19:11:30.3121040Z ✔ EVIDENCE-06 bounds and redaction are explicit (1.004335ms)
+2026-11-02T19:11:31.0386941Z ✔ the shell fixture finds API paths and conditional headers independent of flag position (8.686743ms)
+2026-11-02T19:11:31.0390584Z ✔ the shared fixture makes conditional core observations free and pins rate_limit core wrong (285.974371ms)
+2026-11-02T19:11:31.0393959Z ✔ the shell fixture routes opt-in oracle GraphQL JSON input with independent charged evidence (43.866308ms)
+2026-11-02T19:11:31.0396677Z ✔ fixture token lookup is synthetic and local; user responses expose the chosen principal (78.756397ms)
+2026-11-02T19:11:31.0400058Z ✔ oracle token lookup emits only synthetic credentials without recording an HTTP request (39.34717ms)
+2026-11-02T19:11:31.0436426Z ✔ a workflows fixture completes independently when it owns the only HTTP slot (43.29038ms)
+2026-11-02T19:11:31.0437811Z ✔ setup workflow envelopes are independent of name catalog projections in every fixture (180.237002ms)
+2026-11-02T19:11:57.9776586Z ✔ Focus 40: editor, selection, q, escape and no acquisition on search (3422.593905ms)
+2026-11-02T19:11:57.9779928Z ✔ Focus 100: editor, selection, q, escape and no acquisition on search (2526.110999ms)
+2026-11-02T19:11:57.9781486Z ✔ Focus corrects an invalid date, opens original issue 41, and keeps source time on typing (3694.403806ms)
+2026-11-02T19:11:57.9783278Z ✔ Focus unsupported Actions notice recovers through Issues without acquiring on slash (5640.299117ms)
+2026-11-02T19:11:57.9784833Z ✔ Focus keeps 256-byte query coverage visible through CSI, mouse input and live resize (11285.878799ms)
+2026-11-02T19:11:59.2220596Z ✔ Focus connected source local recovers unloaded to empty to loaded and never opens a removed selection (1252.032319ms)
+2026-11-02T19:12:03.8197616Z ✔ Focus connected source ssh:studio recovers unloaded to empty to loaded and never opens a removed selection (1233.077336ms)
+2026-11-02T19:12:03.8199984Z ✔ Focus PR branch filter opens pull 40 and preserves the two original source rows (3368.927784ms)
+2026-11-02T19:12:04.3535550Z ✔ GQL-01 the observer and a data page are priced apart, and both meter themselves (78.6516ms)
+2026-11-02T19:12:04.3548407Z ✔ GQL-03 cursors advance explicitly and each page reports its own completeness (77.008926ms)
+2026-11-02T19:12:04.3553317Z ✔ GQL-04 the fixture refuses a document the app should never send (117.393127ms)
+2026-11-02T19:12:04.3555001Z ✔ GQL-06 the stateful fixture debits GraphQL by document and never by command shape (86.268988ms)
+2026-11-02T19:12:04.3564283Z ✔ GQL-03 a connection larger than one page is walked by explicit cursors (119.316199ms)
+2026-11-02T19:12:17.6312756Z ✔ ID-05: a discoverable live legacy lease requires restart and starts no GitHub work (4311.265551ms)
+2026-11-02T19:12:17.6317810Z ✔ ID-05: expired legacy leases do not forgive started uncertainty or a future hold (4299.935259ms)
+2026-11-02T19:12:17.6319367Z ✔ ID-05: corrupt legacy protocol fails closed without replacing its evidence (4300.512148ms)
+2026-11-02T19:12:33.2839297Z ✔ ID-08: two real panes share all four tabs and control requests through the bounded pool (12480.503561ms)
+2026-11-02T19:12:33.2859205Z ✔ cold identity verification keeps quit responsive and stops its owned HTTP child (1119.97255ms)
+2026-11-02T19:12:33.2860965Z ✔ SIGTERM during cold identity verification restores the terminal and stops its HTTP child (2066.834004ms)
+2026-11-02T19:12:34.2088221Z ✔ quit during cold identity completion lock contention stays prompt and preserves uncertainty (927.717758ms)
+2026-11-02T19:13:06.8925216Z ✔ ID-02/03/06: switched accounts fence delayed rows, settle the old ledger, and isolate restart caches (32633.582973ms)
+2026-11-02T19:13:38.4937925Z ✔ Jev Focus 40: explicit consent, uncertain coverage, revoke and local fallback (5238.813913ms)
+2026-11-02T19:13:38.4940042Z ✔ Jev Focus 100: explicit consent, uncertain coverage, revoke and local fallback (7638.191876ms)
+2026-11-02T19:13:38.4943642Z ✔ Jev Focus freezes loaded manifest and explicitly continues 60/60/30 while preserving partial source coverage (10353.61072ms)
+2026-11-02T19:13:38.4945705Z ✔ Jev key-only standalone startup, typing, disabled action and refresh import/send nothing (2666.404529ms)
+2026-11-02T19:13:38.4948414Z ✔ Jev retained rows refuse unknown identity; recovered account requires explicit scoped send (5653.916298ms)
+2026-11-02T19:14:35.6288939Z ✔ keys are advertised only when stdin is interactive (28783.396531ms)
+2026-11-02T19:14:35.6292821Z ✔ a digit switches tabs (0.34751ms)
+2026-11-02T19:14:35.6295698Z ✔ pasted numeric chunks are ignored while single-digit navigation still works (5226.688239ms)
+2026-11-02T19:14:35.6303786Z ✔ q quits cleanly and leaves nothing on the primary buffer (0.795377ms)
+2026-11-02T19:14:35.6306982Z ✔ keyboard width changes persist across processes and defaults remove deviations (11159.268565ms)
+2026-11-02T19:14:35.6320487Z ✔ compact width-mode input is a persistence no-op (6886.457419ms)
+2026-11-02T19:14:35.6321737Z ✔ quitting the missing-remote prompt makes no repository change (5027.433461ms)
+2026-11-02T19:15:25.1557344Z ✔ capture parsing strips SGR input and records mouse shutdown before screen restore (2.387185ms)
+2026-11-02T19:15:25.1600424Z ✔ a split press stops resizing after an outside-header release (8685.307361ms)
+2026-11-02T19:15:25.1601992Z ℹ dashboard=65; frame=0; width=1; preference=0 (50ms polls)
+2026-11-02T19:15:25.1603130Z ✔ SIGTERM disables active mouse reporting before restoring the screen (6399.956047ms)
+2026-11-02T19:15:25.1606210Z ✔ an uncaught crash disables mouse reporting before printing its primary-buffer diagnostic (7700.711024ms)
+2026-11-02T19:15:25.1607370Z ✔ remote setup disables mouse reporting before handing the terminal to gh (8284.32229ms)
+2026-11-02T19:15:25.1608620Z ✔ outside, wheel, non-left, and move-without-press reports do not persist widths (10188.734087ms)
+2026-11-02T19:15:25.1609938Z ✔ otherwise valid mouse drags are a compact-layout persistence no-op (7914.236373ms)
+2026-11-02T19:16:21.2279689Z ✔ a wait cause leaves the table in place, colours the badge yellow and is listed in Notifications (17314.779641ms)
+2026-11-02T19:16:21.2282114Z ✔ an action cause stays inline above the table with its remedy and a red badge (10748.342779ms)
+2026-11-02T19:16:21.2290900Z ✔ the tab bar keeps all five section digits on one row from 120 to 40 columns (20186.200777ms)
+2026-11-02T19:16:21.2306446Z ✔ Notifications keys: 5 opens, Esc and digits return, arrows cycle through five positions (7716.349325ms)
+2026-11-02T19:17:24.3428442Z ✔ a GitHub incident from the status page turns the badge red, heads the view and clears on r (63125.899621ms)
+2026-11-02T19:19:32.3556807Z ✔ CX-01/03/12/13: empty Actions is tableless at 24x10 (4199.722778ms)
+2026-11-02T19:19:32.3558647Z ✔ CX-01/03/12/13: empty Actions is tableless at 24x24 (4192.695653ms)
+2026-11-02T19:19:32.3561538Z ✔ CX-01/03/12/13: empty Actions is tableless at 45x10 (6549.071986ms)
+2026-11-02T19:19:32.3563202Z ✔ CX-01/03/12/13: empty Actions is tableless at 45x24 (5003.151431ms)
+2026-11-02T19:19:32.3565677Z ✔ CX-01/03/12/13: empty Actions is tableless at 80x10 (5939.861809ms)
+2026-11-02T19:19:32.3598082Z ✔ CX-01/03/12/13: empty Actions is tableless at 80x24 (3876.983933ms)
+2026-11-02T19:19:32.3600086Z ✔ CX-01/03/12/13: empty Actions is tableless at 120x10 (5830.726349ms)
+2026-11-02T19:19:32.3607957Z ✔ CX-01/03/12/13: empty Actions is tableless at 120x24 (5930.624251ms)
+2026-11-02T19:19:32.3609787Z ✔ CX-05/11: failed Actions load recovers to rows through explicit refresh (6054.47545ms)
+2026-11-02T19:19:32.3614451Z ✔ CX-03/10/13: reader output explains an empty Security result without clearance (3744.344997ms)
+2026-11-02T19:19:32.3616376Z ✔ CX-11/13: a table disappearing during width mode releases its keys and returns (9650.215854ms)
+2026-11-02T19:19:32.3618483Z ✔ CX-06/11: cached empty failure retains its source time then fresh success clears failure (11808.119824ms)
+2026-11-02T19:19:32.3620094Z ✔ CX-10/11: incomplete Security coverage clears after a successful source retry (10236.365749ms)
+2026-11-02T19:19:32.3621457Z ✔ CX-13/14: 24x10 failed load keeps the login remedy and quit/refresh (4916.938766ms)
+2026-11-02T19:19:32.3641841Z ✔ CX-13: a live narrow-to-wide resize restores the full empty-state explanation (8405.501098ms)
+2026-11-02T19:19:32.3648212Z ✔ CX-13/14: a one-row populated notice retains the required authorization remedy (11479.796881ms)
+2026-11-02T19:19:32.3649854Z ✔ P1-F08: Security all disabled reflects actual source coverage (4184.909283ms)
+2026-11-02T19:19:32.3651228Z ✔ P1-F08: Security partially disabled reflects actual source coverage (5420.227119ms)
+2026-11-02T19:19:32.3652746Z ✔ P1-F08: Security partially failed reflects actual source coverage (5933.842681ms)
+2026-11-02T19:19:32.3654373Z ✔ P1-F09: a future source clock renders Cached without a fabricated footer age (4599.014781ms)
+2026-11-02T19:20:13.0692194Z ✔ a sustained run of 304s returns pacing without letting charged work outrun it (40361.763374ms)
+2026-11-02T19:20:13.0693674Z ℹ spent=10 total=11 allowance=12.4 data=12 conditional=8 notModified=2 elapsed=37233
+2026-11-02T19:20:34.4994413Z ✔ SSH-01/05/07: three plus four remote panes share one stream and restore every terminal (21380.559801ms)
+2026-11-02T19:20:46.5439646Z ✔ RT-04: a running collector Actions row keeps advancing its TIME while connected (11704.665628ms)
+2026-11-02T19:21:07.7475484Z ✔ with no --repo, all-remotes inference routes API calls to github.com (1.192269ms)
+2026-11-02T19:21:07.7480275Z ✔ a two-part --repo pins github.com despite conflicting environment targets (0.39102ms)
+2026-11-02T19:21:07.7483602Z ✔ a host-qualified --repo routes BOTH halves to the host (0.374463ms)
+2026-11-02T19:21:07.7485067Z ✔ the budget probe is routed to the host too (0.514001ms)
+2026-11-02T19:23:38.7408894Z ✔ Checking colour state tolerates combined and split SGR sequences (2.385557ms)
+2026-11-02T19:23:38.7417716Z ✔ a timer-driven list failure recovers in the same process (0.531016ms)
+2026-11-02T19:23:38.7433976Z ✔ empty list output stays silent and retries on the next tick (10049.388724ms)
+2026-11-02T19:23:38.7441088Z ✔ empty Security source output preserves rows and retries without an internal note (23909.102652ms)
+2026-11-02T19:23:38.7442924Z ✔ R bypasses a source auth backoff that r deliberately leaves in place (0.659675ms)
+2026-11-02T19:23:38.7443936Z ✔ Ink screen-reader rendering has a linear content smoke test (0.237493ms)
+2026-11-02T19:23:38.7444774Z ✔ quitting aborts an in-flight open child instead of waiting for it (0.177524ms)
+2026-11-02T19:23:38.7464676Z ✔ selection stays visible and opens the same item after rows insert above it (0.220945ms)
+2026-11-02T19:23:38.7466747Z ✔ NO_COLOR retains an ASCII failure marker in the tab bar (0.371071ms)
+2026-11-02T19:23:38.7468071Z ✔ a narrow auth failure starts with the recovery action (0.370108ms)
+2026-11-02T19:23:38.7469519Z ✔ a cache-hydrated adapted check is static and settles before routine polls (0.710049ms)
+2026-11-02T19:23:38.7470835Z ✔ short contextual help keeps source context and explicit paging and exit (0.394041ms)
+2026-11-02T19:23:43.4535310Z ✔ SEC-01 a confirmed secondary limit holds the shared transport for one ladder step (4351.385254ms)
+2026-11-02T19:23:48.2031886Z ✔ SEC-02 a permission failure holds neither the transport nor the ladder (4750.975937ms)
+2026-11-02T19:24:23.3764421Z ✔ nothing is selected until you move (1.868174ms)
+2026-11-02T19:24:23.3765637Z ✔ moving the cursor marks exactly one row (0.516795ms)
+2026-11-02T19:24:23.3770231Z ✔ the cursor marker is plain ASCII so it survives NO_COLOR (0.511496ms)
+2026-11-02T19:24:23.3788098Z ✔ selection does not disturb the terminal lifecycle (0.645469ms)
+2026-11-02T19:24:23.3789823Z ✔ the frame keeps its geometry while a row is selected (0.158193ms)
+2026-11-02T19:24:23.3791290Z ✔ opening a run uses at most one paced databaseId call (0.153821ms)
+2026-11-02T19:24:25.7725246Z ✔ SHARE-01: twelve separate panes elect one acquisition producer (2064.826637ms)
+2026-11-02T19:24:27.1484528Z ✔ SHARE-01: simultaneous same-query refreshes recover an aged empty acquisition lock (1405.455709ms)
+2026-11-02T19:24:27.8559011Z ✔ SHARE-01: an open-before-write creator cannot remove a successor during two-recoverer race (687.014009ms)
+2026-11-02T19:24:31.1692421Z ✔ SHARE-01: concurrent recovery of an aged empty lock keeps critical sections exclusive and permits later publication (3336.00162ms)
+2026-11-02T19:24:36.5145243Z ✔ footer layout keeps semantic status and essential actions from 80 to 24 columns (4969.832238ms)
+2026-11-02T19:24:40.4477785Z ✔ four ample panes explain a shared lane without moving the hint group (3950.435621ms)
+2026-11-02T19:26:20.2891737Z ✔ a matching subscriber labels reused acquisition data Shared, not Watching (6268.607091ms)
+2026-11-02T19:26:20.2893763Z ✔ cached rows with no connected identity say Disconnected, never Watching (5406.28799ms)
+2026-11-02T19:26:20.2895638Z ✔ D6: cached collector disconnect gives an action and source age in normal, narrow, NO_COLOR and reader output (9655.511279ms)
+2026-11-02T19:26:20.2897357Z ✔ raw internal budget reasons never render in a PTY frame (5939.911723ms)
+2026-11-02T19:26:20.2898728Z ✔ D6: a provider rate limit keeps its request-limit cause and action (9214.121982ms)
+2026-11-02T19:26:20.2900045Z ✔ Setup and NO_COLOR footers keep explicit semantic labels (6749.181028ms)
+2026-11-02T19:26:20.2901289Z ✔ A folder with no remote enters setup before any coordination (816.297839ms)
+2026-11-02T19:26:20.2910266Z ✔ ASCII profile keeps the same status label and a width-one marker (2755.268352ms)
+2026-11-02T19:26:20.2928355Z ✔ delayed admitted startup animates Checking and settles to Watching (4712.132114ms)
+2026-11-02T19:26:20.2929962Z ✔ a future adapted check stays still, shows next, and then settles (14616.16574ms)
+2026-11-02T19:26:20.2931369Z ✔ a long future grant uses a coarse minute interval without moving full hints (24599.38812ms)
+2026-11-02T19:28:40.3547811Z ✔ manual refresh waits without motion and animates only after admission (20693.690115ms)
+2026-11-02T19:28:40.3558654Z ✔ a held core tab stays Paused while a selected GraphQL tab progresses (2652.669721ms)
+2026-11-02T19:28:40.3560141Z ✔ corrupt, live-locked, and blocked storage pause with no data calls (31311.353131ms)
+2026-11-02T19:28:40.3561607Z ✔ stale cached rows retain an acquisition cause through budget observation and clear after recovery (16341.964806ms)
+2026-11-02T19:28:40.3562822Z ✔ a sub-threshold coordination blip stays silent (8112.118784ms)
+2026-11-02T19:28:40.3566459Z ℹ blip observed cause→cleared Watching 758.3878410000007ms; journal cause→clear 764ms
+2026-11-02T19:28:40.3567655Z ✔ a sustained coordination notice can appear and clear without overflowing the frame (13104.350134ms)
+2026-11-02T19:28:40.3568384Z ℹ notification badge latency 725ms from visible Paused
+2026-11-02T19:28:40.3569106Z ✔ a non-budget failure settles on Failed and stops status motion (4705.976476ms)
+2026-11-02T19:28:40.3570056Z ✔ incomplete Security observation preserves known rows and shows Limited (7056.466634ms)
+2026-11-02T19:28:40.3570939Z ✔ linear screen-reader polling omits adapted Checking but retains manual Checking (11166.037653ms)
+2026-11-02T19:28:40.3571890Z ✔ linear screen-reader output retains startup, holds, failures, limits, stale rows, and errors (34033.960404ms)
+2026-11-02T19:28:40.8294227Z ✔ the shared fixture recovers a dead private lock without using governor state (53.958695ms)
+2026-11-02T19:28:40.8297970Z ✔ the shared fixture recovers an exact dead recovery marker (40.345831ms)
+2026-11-02T19:29:04.2895582Z ✔ manual refresh bursts create one unchanged held-sample probe demand (23475.972659ms)
+2026-11-02T19:29:14.3538673Z ✔ a held core resource leaves both GraphQL tabs usable (10058.544976ms)
+2026-11-02T19:29:48.2098822Z ✔ a real reset gets one fresh probe then one shared active acquisition (33818.673929ms)
+2026-11-02T19:29:48.2218144Z ℹ reset publication 1793647786330; slots 1793647786330; starts 1793647787385; horizon 1793647832229.4175; lane 899.4175
+2026-11-02T19:29:55.5510564Z ✔ twelve panes share probe and acquisition ownership within the policy horizon (7340.125268ms)
+2026-11-02T19:29:55.5803408Z ℹ {"publicationAt":1793647790711,"progressHorizonAt":1793647799725,"laneInterval":900,"progressObserved":true,"preReleaseActive":0,"preReleaseEvents":[{"sequence":1,"type":"start","at":1793647788544,"pid":42830,"ownerPid":42729,"pane":"pane-11","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":2,"type":"start","at":1793647788547,"pid":42799,"ownerPid":42653,"pane":"pane-3","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":3,"type":"start","at":1793647788564,"pid":42808,"ownerPid":42573,"pane":"pane-1","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":1,"type":"end","at":1793647788586,"pid":42830,"ownerPid":42729,"pane":"pane-11","argv":["--version"]},{"sequence":2,"type":"end","at":1793647788599,"pid":42799,"ownerPid":42653,"pane":"pane-3","argv":["--version"]},{"sequence":4,"type":"start","at":1793647788605,"pid":42852,"ownerPid":42704,"pane":"pane-7","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":3,"type":"end","at":1793647788615,"pid":42808,"ownerPid":42573,"pane":"pane-1","argv":["--version"]},{"sequence":5,"type":"start","at":1793647788648,"pid":42795,"ownerPid":42578,"pane":"pane-0","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":4,"type":"end","at":1793647788660,"pid":42852,"ownerPid":42704,"pane":"pane-7","argv":["--version"]},{"sequence":6,"type":"start","at":1793647788683,"pid":42872,"ownerPid":42717,"pane":"pane-6","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":5,"type":"end","at":1793647788693,"pid":42795,"ownerPid":42578,"pane":"pane-0","argv":["--version"]},{"sequence":7,"type":"start","at":1793647788705,"pid":42871,"ownerPid":42713,"pane":"pane-9","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":8,"type":"start","at":1793647788721,"pid":42848,"ownerPid":42705,"pane":"pane-8","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":6,"type":"end","at":1793647788734,"pid":42872,"ownerPid":42717,"pane":"pane-6","argv":["--version"]},{"sequence":9,"type":"start","at":1793647788736,"pid":42923,"ownerPid":42593,"pane":"pane-2","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":7,"type":"end","at":1793647788754,"pid":42871,"ownerPid":42713,"pane":"pane-9","argv":["--version"]},{"sequence":8,"type":"end","at":1793647788776,"pid":42848,"ownerPid":42705,"pane":"pane-8","argv":["--version"]},{"sequence":9,"type":"end","at":1793647788781,"pid":42923,"ownerPid":42593,"pane":"pane-2","argv":["--version"]},{"sequence":10,"type":"start","at":1793647788845,"pid":42949,"ownerPid":42701,"pane":"pane-5","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":11,"type":"start","at":1793647788852,"pid":42952,"ownerPid":42649,"pane":"pane-4","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":12,"type":"start","at":1793647788871,"pid":42986,"ownerPid":42731,"pane":"pane-10","argv":["--version"],"cost":{"core":0,"graphql":0}},{"sequence":10,"type":"end","at":1793647788888,"pid":42949,"ownerPid":42701,"pane":"pane-5","argv":["--version"]},{"sequence":11,"type":"end","at":1793647788896,"pid":42952,"ownerPid":42649,"pane":"pane-4","argv":["--version"]},{"sequence":12,"type":"end","at":1793647788914,"pid":42986,"ownerPid":42731,"pane":"pane-10","argv":["--version"]},{"sequence":13,"type":"start","at":1793647790601,"pid":43271,"ownerPid":42717,"pane":"pane-6","argv":["api","-i","user","--hostname","github.com"],"cost":{"core":1,"graphql":0},"before":{"core":{"limit":5000,"used":0,"remaining":5000,"resetMs":1793651388158}},"after":{"core":{"limit":5000,"used":1,"remaining":4999,"resetMs":1793651388158}}},{"sequence":13,"type":"end","at":1793647790667,"pid":43271,"ownerPid":42717,"pane":"pane-6","argv":["api","-i","user","--hostname","github.com"],"status":200},{"sequence":14,"type":"start","at":1793647790899,"pid":43336,"ownerPid":42717,"pane":"pane-6","argv":["api","-i","graphql","--input","-","--hostname","github.com"],"graphqlOperation":"graphql.observer","cost":{"core":0,"graphql":1},"before":{"graphql":{"limit":5000,"used":0,"remaining":5000,"resetMs":1793651388158}},"after":{"graphql":{"limit":5000,"used":1,"remaining":4999,"resetMs":1793651388158}}},{"sequence":14,"type":"end","at":1793647790942,"pid":43336,"ownerPid":42717,"pane":"pane-6","argv":["api","-i","graphql","--input","-","--hostname","github.com"]},{"sequence":15,"type":"start","at":1793647794403,"pid":43766,"ownerPid":42704,"pane":"pane-7","argv":["api","-i","repos/juan294/gh-glance/actions/runs?exclude_pull_requests=true&per_page=60","--hostname","github.com","--jq","[.workflow_runs[] | {databaseId: .id, displayTitle: .display_title, workflowName: .name, number: .run_number, headBranch: .head_branch, status, conclusion, startedAt: .run_started_at, updatedAt: .updated_at, workflowId: .workflow_id, url: .html_url}]"],"cost":{"core":1,"graphql":0},"before":{"core":{"limit":5000,"used":1,"remaining":4999,"resetMs":1793651388158}},"after":{"core":{"limit":5000,"used":2,"remaining":4998,"resetMs":1793651388158}}},{"sequence":15,"type":"end","at":1793647794445,"pid":43766,"ownerPid":42704,"pane":"pane-7","argv":["api","-i","repos/juan294/gh-glance/actions/runs?exclude_pull_requests=true&per_page=60","--hostname","github.com","--jq","[.workflow_runs[] | {databaseId: .id, displayTitle: .display_title, workflowName: .name, number: .run_number, headBranch: .head_branch, status, conclusion, startedAt: .run_started_at, updatedAt: .updated_at, workflowId: .workflow_id, url: .html_url}]"],"status":200}],"fixtureLockArtifacts":{},"probes":[{"at":1793647790899,"pane":"pane-6"}],"runs":[{"at":1793647794403,"pane":"pane-7"}],"maxDataConcurrency":1,"leases":{},"intents":{},"reservations":{"reservation:d82875fb-cf49-4a66-9dd3-03d5d91c86fc":{"leaseId":"020f10bf-6557-4adc-9971-94454d31a946","status":"completed","notBefore":1793647794354}}}
+2026-11-02T19:30:03.9509098Z ✔ twelve held panes share one block probe instead of retrying per pane (8398.480747ms)
+2026-11-02T19:31:07.4604242Z ✔ twelve panes preserve one runtime rate-limit block across the minute (63562.992948ms)
+2026-11-02T19:31:07.4606875Z ℹ core starts 1; probes 2; publication 1793647806663; registered 1793647806678; first horizon 1793647824372.75; first lane 9694.75; failure end 1793647809893; block observed 1793647809922; next probe 1793647866850; deadline 1793647911850; block rate-limit
+2026-11-02T19:31:07.4721224Z ℹ tests 251
+2026-11-02T19:31:07.4721821Z ℹ suites 0
+2026-11-02T19:31:07.4722126Z ℹ pass 249
+2026-11-02T19:31:07.4722471Z ℹ fail 2
+2026-11-02T19:31:07.4722780Z ℹ cancelled 0
+2026-11-02T19:31:07.4723170Z ℹ skipped 0
+2026-11-02T19:31:07.4723497Z ℹ todo 0
+2026-11-02T19:31:07.4723844Z ℹ duration_ms 2064970.901015
+2026-11-02T19:31:07.4738418Z 
+2026-11-02T19:31:07.4738678Z ✖ failing tests:
+2026-11-02T19:31:07.4738895Z 
+2026-11-02T19:31:07.4739323Z test at test/pty/actions-setup.test.mjs:60:3
+2026-11-02T19:31:07.4740336Z ✖ SET-01/02/07/11/12 manual setup is isolated and cached at 45x24 (22359.684486ms)
+2026-11-02T19:31:07.4741179Z   AssertionError [ERR_ASSERTION]: Error: UI barrier timed out: ()=>screen().includes("No workflows found")
+2026-11-02T19:31:07.4741776Z   [1(0)]  2   3   4   5
+2026-11-02T19:31:07.4742259Z   ────────────────────────────────────────────
+2026-11-02T19:31:07.4742764Z   ╭─ Actions · acme/widget ──────────────────╮
+2026-11-02T19:31:07.4743523Z   │ Setup check unavailable                  │
+2026-11-02T19:31:07.4744019Z   │ s Retry; g Actions; ? Details            │
+2026-11-02T19:31:07.4744469Z   │ Runs: Checked 18:56                      │
+2026-11-02T19:31:07.4744905Z   │ API budget paused until                  │
+2026-11-02T19:31:07.4745423Z   │ 2026-11-02T18:56:49.498Z                 │
+2026-11-02T19:31:07.4745860Z   │ Press s to retry after                   │
+2026-11-02T19:31:07.4747347Z   │ 2026-11-02T18:57:19.501Z.                │
+2026-11-02T19:31:07.4747979Z   │ Close help with ?, then press s for a    │
+2026-11-02T19:31:07.4748414Z   │ read-only setup check or g to open       │
+2026-11-02T19:31:07.4748911Z   │ Actions.                                 │
+2026-11-02T19:31:07.4749401Z   │ https://github.com/acme/widget/actions   │
+2026-11-02T19:31:07.4749869Z   │ Runs: No workflow runs found             │
+2026-11-02T19:31:07.4750302Z   │ Press r to refresh.                      │
+2026-11-02T19:31:07.4750781Z   │ Actions shows automated jobs. A push     │
+2026-11-02T19:31:07.4751279Z   │ starts a run only when a workflow has a  │
+2026-11-02T19:31:07.4751817Z   │ matching trigger.                        │
+2026-11-02T19:31:07.4752464Z   │                                          │
+2026-11-02T19:31:07.4752980Z   │                                          │
+2026-11-02T19:31:07.4753508Z   ╰──────────────────────────────────────────╯
+2026-11-02T19:31:07.4753998Z   · Watching               Refresh: r q ?
+2026-11-02T19:31:07.4754333Z   
+2026-11-02T19:31:07.4754671Z   true !== false
+2026-11-02T19:31:07.4755016Z   
+2026-11-02T19:31:07.4755584Z       at run (file:///home/runner/work/gh-glance/gh-glance/test/pty/actions-setup.test.mjs:49:10)
+2026-11-02T19:31:07.4757257Z       at TestContext.<anonymous> (file:///home/runner/work/gh-glance/gh-glance/test/pty/actions-setup.test.mjs:61:30)
+2026-11-02T19:31:07.4758201Z       at Test.runInAsyncScope (node:async_hooks:214:14)
+2026-11-02T19:31:07.4758826Z       at Test.run (node:internal/test_runner/test:1047:25)
+2026-11-02T19:31:07.4759612Z       at async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3) {
+2026-11-02T19:31:07.4760427Z     generatedMessage: false,
+2026-11-02T19:31:07.4760942Z     code: 'ERR_ASSERTION',
+2026-11-02T19:31:07.4761377Z     actual: true,
+2026-11-02T19:31:07.4761829Z     expected: false,
+2026-11-02T19:31:07.4762262Z     operator: 'strictEqual',
+2026-11-02T19:31:07.4762719Z     diff: 'simple'
+2026-11-02T19:31:07.4763123Z   }
+2026-11-02T19:31:07.4763283Z 
+2026-11-02T19:31:07.4763744Z test at test/pty/actions-setup.test.mjs:60:3
+2026-11-02T19:31:07.4764949Z ✖ SET-01/02/07/11/12 manual setup is isolated and cached at 24x10 (21031.09357ms)
+2026-11-02T19:31:07.4766366Z   AssertionError [ERR_ASSERTION]: Error: UI barrier timed out: ()=>screen().includes("No workflows found")
+2026-11-02T19:31:07.4767292Z   [1(0)]  2   3   4   5
+2026-11-02T19:31:07.4767860Z   ───────────────────────
+2026-11-02T19:31:07.4768503Z   ╭─ Actions ───────────╮
+2026-11-02T19:31:07.4769046Z   │ Setup check         │
+2026-11-02T19:31:07.4769610Z   │ unavailable         │
+2026-11-02T19:31:07.4770199Z   │ s Retry; g Actions; │
+2026-11-02T19:31:07.4770676Z   │ ? Details           │
+2026-11-02T19:31:07.4771264Z   ╰─────────────────────╯
+2026-11-02T19:31:07.4771867Z   · Watching  r Quit: q ?
+2026-11-02T19:31:07.4772372Z   
+2026-11-02T19:31:07.4772814Z   true !== false
+2026-11-02T19:31:07.4773488Z   
+2026-11-02T19:31:07.4774254Z       at run (file:///home/runner/work/gh-glance/gh-glance/test/pty/actions-setup.test.mjs:49:10)
+2026-11-02T19:31:07.4775743Z       at TestContext.<anonymous> (file:///home/runner/work/gh-glance/gh-glance/test/pty/actions-setup.test.mjs:61:30)
+2026-11-02T19:31:07.4777027Z       at Test.runInAsyncScope (node:async_hooks:214:14)
+2026-11-02T19:31:07.4777777Z       at Test.run (node:internal/test_runner/test:1047:25)
+2026-11-02T19:31:07.4778673Z       at async Test.processPendingSubtests (node:internal/test_runner/test:744:7) {
+2026-11-02T19:31:07.4779550Z     generatedMessage: false,
+2026-11-02T19:31:07.4780372Z     code: 'ERR_ASSERTION',
+2026-11-02T19:31:07.4780896Z     actual: true,
+2026-11-02T19:31:07.4781374Z     expected: false,
+2026-11-02T19:31:07.4781892Z     operator: 'strictEqual',
+2026-11-02T19:31:07.4782381Z     diff: 'simple'
+2026-11-02T19:31:07.4782812Z   }
+2026-11-02T19:31:07.4849449Z ## selection pty:rest: FAIL (exit 1) in 2065.0s
+2026-11-02T19:31:07.4849934Z 
+2026-11-02T19:31:07.4888275Z ##[error]Process completed with exit code 1.
+2026-11-02T19:31:07.5105304Z ##[group]Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+2026-11-02T19:31:07.5105843Z with:
+2026-11-02T19:31:07.5106269Z   name: pty-rest-evidence-1
+2026-11-02T19:31:07.5106559Z   path: /home/runner/work/_temp/evidence
+2026-11-02T19:31:07.5106843Z   retention-days: 7
+2026-11-02T19:31:07.5107064Z   if-no-files-found: ignore
+2026-11-02T19:31:07.5107304Z   compression-level: 6
+2026-11-02T19:31:07.5107867Z   overwrite: false
+2026-11-02T19:31:07.5108105Z   include-hidden-files: false
+2026-11-02T19:31:07.5108353Z   archive: true
+2026-11-02T19:31:07.5108562Z ##[endgroup]
+2026-11-02T19:31:07.6501373Z With the provided path, there will be 8 files uploaded
+2026-11-02T19:31:07.6506527Z Artifact name is valid!
+2026-11-02T19:31:07.6507025Z Root directory input is valid!
+2026-11-02T19:31:07.9296519Z Uploading artifact: pty-rest-evidence-1.zip
+2026-11-02T19:31:07.9329782Z Beginning upload of artifact content to blob storage
+2026-11-02T19:31:08.1353474Z Uploaded bytes 6287
+2026-11-02T19:31:08.1795244Z Finished uploading artifact content to blob storage!
+2026-11-02T19:31:08.1796834Z SHA256 digest of uploaded artifact is 3675cb9705068d270cef322ebec72f828006d82916ba191daf4ef0037af2bb77
+2026-11-02T19:31:08.1797895Z Finalizing artifact upload
+2026-11-02T19:31:08.7301938Z Artifact pty-rest-evidence-1 successfully finalized. Artifact ID 13172084491
+2026-11-02T19:31:08.7303054Z Artifact pty-rest-evidence-1 has been successfully uploaded! Final size is 6287 bytes. Artifact ID is 13172084491
+2026-11-02T19:31:08.7305342Z Artifact download URL: https://github.com/juan294/gh-glance/actions/runs/41505207571/artifacts/13172084491
+2026-11-02T19:31:08.7485933Z Post job cleanup.
+2026-11-02T19:31:08.8278014Z [command]/usr/bin/git version
+2026-11-02T19:31:08.8314150Z git version 2.56.0
+2026-11-02T19:31:08.8343151Z Temporarily overriding HOME='/home/runner/work/_temp/00e49a7b-078f-4420-b869-76ad242f8491' before making global git config changes
+2026-11-02T19:31:08.8344865Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T19:31:08.8348569Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/gh-glance/gh-glance
+2026-11-02T19:31:08.8377312Z Removing SSH command configuration
+2026-11-02T19:31:08.8382883Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T19:31:08.8413094Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T19:31:08.8599761Z Removing HTTP extra header
+2026-11-02T19:31:08.8603794Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T19:31:08.8633577Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T19:31:08.8811656Z Removing includeIf entries pointing to credentials config files
+2026-11-02T19:31:08.8816891Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T19:31:08.8842522Z includeif.gitdir:/home/runner/work/gh-glance/gh-glance/.git.path
+2026-11-02T19:31:08.8843144Z includeif.gitdir:/home/runner/work/gh-glance/gh-glance/.git/worktrees/*.path
+2026-11-02T19:31:08.8843635Z includeif.gitdir:/github/workspace/.git.path
+2026-11-02T19:31:08.8844202Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-11-02T19:31:08.8849798Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/gh-glance/gh-glance/.git.path
+2026-11-02T19:31:08.8869418Z /home/runner/work/_temp/git-credentials-debd8f53-94fc-4e3e-98e9-2fdd9669dc4a.config
+2026-11-02T19:31:08.8878301Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/gh-glance/gh-glance/.git.path \/home\/runner\/work\/_temp\/git\-credentials\-debd8f53\-94fc\-4e3e\-98e9\-2fdd9669dc4a\.config
+2026-11-02T19:31:08.8951694Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/gh-glance/gh-glance/.git/worktrees/*.path
+2026-11-02T19:31:08.8973474Z /home/runner/work/_temp/git-credentials-debd8f53-94fc-4e3e-98e9-2fdd9669dc4a.config
+2026-11-02T19:31:08.8982329Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/gh-glance/gh-glance/.git/worktrees/*.path \/home\/runner\/work\/_temp\/git\-credentials\-debd8f53\-94fc\-4e3e\-98e9\-2fdd9669dc4a\.config
+2026-11-02T19:31:08.9013745Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-11-02T19:31:08.9035170Z /github/runner_temp/git-credentials-debd8f53-94fc-4e3e-98e9-2fdd9669dc4a.config
+2026-11-02T19:31:08.9042193Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-debd8f53\-94fc\-4e3e\-98e9\-2fdd9669dc4a\.config
+2026-11-02T19:31:08.9075203Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-11-02T19:31:08.9096818Z /github/runner_temp/git-credentials-debd8f53-94fc-4e3e-98e9-2fdd9669dc4a.config
+2026-11-02T19:31:08.9105459Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-debd8f53\-94fc\-4e3e\-98e9\-2fdd9669dc4a\.config
+2026-11-02T19:31:08.9138026Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T19:31:08.9321524Z Removing credentials config '/home/runner/work/_temp/git-credentials-debd8f53-94fc-4e3e-98e9-2fdd9669dc4a.config'
+2026-11-02T19:31:08.9469538Z Cleaning up orphan processes

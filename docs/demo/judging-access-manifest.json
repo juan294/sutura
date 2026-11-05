@@ -1,0 +1,88 @@
+{
+  "schemaVersion": "sutura-judging-access-manifest-v1",
+  "judgingStartsAt": "2026-12-09T17:00:00Z",
+  "judgingEndsAt": "2026-12-23T20:00:00Z",
+  "fallbackArtifactName": "recorded-v0.4.1-benchmark",
+  "interpretation": "Anonymous reachability and declared byte identity only; no fresh execution, model quality, credential validity, funding continuity or video playback claim.",
+  "artifacts": [
+    {
+      "name": "release-readme",
+      "url": "https://raw.githubusercontent.com/juan294/sutura/ddab42eadc92801f97c4745ed10f7e467b9843c8/README.md",
+      "method": "GET",
+      "expectedResultHash": "f7b49879b5c07cfb1edd3469efe6babf8fe3f9f33c8957507ad854c2f67702a3",
+      "evidenceMode": "immutable-release-document"
+    },
+    {
+      "name": "installation-documentation",
+      "url": "https://raw.githubusercontent.com/juan294/sutura/ddab42eadc92801f97c4745ed10f7e467b9843c8/packages/cli/README.md",
+      "method": "GET",
+      "expectedResultHash": "2e3e0d40ea79114fbdc22102e3b9c22e8e25f0356515e4fd64ddb10145c4a5bd",
+      "evidenceMode": "immutable-release-document"
+    },
+    {
+      "name": "action-contract",
+      "url": "https://raw.githubusercontent.com/juan294/sutura/ddab42eadc92801f97c4745ed10f7e467b9843c8/action.yml",
+      "method": "GET",
+      "expectedResultHash": "c227b701e8f48ae3b44e2904e6769f210fcdb9ee958e5f362889bffd7ed34a6f",
+      "evidenceMode": "immutable-release-document"
+    },
+    {
+      "name": "recorded-v0.4.1-benchmark",
+      "url": "https://raw.githubusercontent.com/juan294/sutura/37107a26e06310ff4a8541d3ef5e282f0ad32a88/docs/demo/placebo-v0.4.1-live-2026-10-27.json",
+      "method": "GET",
+      "expectedPin": "3b6152d9d72beebd7dcbaaa4045c94d640456adb",
+      "pinField": "controllerSha",
+      "expectedResultHash": "ab6d77b05139316941fcbcaad4eea8f3b15e05faf064d7088e57d05da7148e63",
+      "evidenceMode": "recorded-fallback"
+    },
+    {
+      "name": "case-lab-home",
+      "url": "https://sutura-case-lab.vercel.app/",
+      "method": "GET",
+      "evidenceMode": "reachability-only"
+    },
+    {
+      "name": "case-lab-health",
+      "url": "https://sutura-case-lab.vercel.app/api/health",
+      "method": "GET",
+      "evidenceMode": "reachability-only"
+    },
+    {
+      "name": "javascript-repair",
+      "url": "https://sutura-case-lab.vercel.app/replay/javascript-repair",
+      "method": "GET",
+      "evidenceMode": "reachability-only"
+    },
+    {
+      "name": "python-repair",
+      "url": "https://sutura-case-lab.vercel.app/replay/python-repair",
+      "method": "GET",
+      "evidenceMode": "reachability-only"
+    },
+    {
+      "name": "flaky-failure",
+      "url": "https://sutura-case-lab.vercel.app/replay/flaky-failure",
+      "method": "GET",
+      "evidenceMode": "reachability-only"
+    },
+    {
+      "name": "greenwash-trap",
+      "url": "https://sutura-case-lab.vercel.app/replay/greenwash-trap",
+      "method": "GET",
+      "evidenceMode": "reachability-only"
+    },
+    {
+      "name": "upstream-incident",
+      "url": "https://sutura-case-lab.vercel.app/replay/upstream-incident",
+      "method": "GET",
+      "evidenceMode": "reachability-only"
+    },
+    {
+      "name": "historical-demo-video-page",
+      "url": "https://www.youtube.com/watch?v=5Pxpaa41fl8",
+      "method": "GET",
+      "evidenceMode": "page-reachability-only; historical-v0.3.9"
+    }
+  ],
+  "initialAnonymousCheckAt": "2026-10-30T06:41:23.315Z"
+}

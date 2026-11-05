@@ -57,7 +57,7 @@ describe('terminal failure evidence', () => {
         pullRequestNumber: 114,
       },
       packageIdentity: {
-        name: 'sutura', version: '0.5.1', actionSha: SHA,
+        name: 'sutura', version: '0.5.2', actionSha: SHA,
         actionShaSource: 'runner-action-path',
       },
       actionRunId: '88',

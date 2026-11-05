@@ -237,4 +237,40 @@ describe('pure Python dependency validation', () => {
       .toBe('uv sync --frozen --no-install-project --no-build');
     expect(() => validatePythonDependencyContents({ pyproject, uvLock: 'version=1\n[[package]]\nname="other"\nsource={editable="../other"}\n' })).toThrow(PythonDependencyError);
   });
+
+  it('refuses a URL source table and accepts a registry source table', () => {
+    const pyproject = '[project]\nname="fixture"\n';
+    const lock = (source: string) => `version=1\n[[package]]\nname="other"\n${source}\n`;
+    expect(() => validatePythonDependencyContents({ pyproject, uvLock: lock('source = { url = "https://example.invalid/other.whl" }') }))
+      .toThrow(PythonDependencyError);
+    expect(() => validatePythonDependencyContents({ pyproject, uvLock: lock('source = { registry = "https://pypi.org/simple" }') }))
+      .not.toThrow();
+    expect(() => validatePythonDependencyContents({ pyproject, uvLock: lock('source = { registry = "https://pypi.org/simple" }\nurl = "https://example.invalid"') }))
+      .not.toThrow();
+    // The previous regex let whitespace after a key, or inside a later opener, cross a line break.
+    expect(() => validatePythonDependencyContents({ pyproject, uvLock: lock('source = { url\n= "https://example.invalid/other.whl" }') }))
+      .toThrow(PythonDependencyError);
+    expect(() => validatePythonDependencyContents({ pyproject, uvLock: lock('source = { registry = "https://pypi.org/simple" source =\n{ url = "https://example.invalid/other.whl" }') }))
+      .toThrow(PythonDependencyError);
+    expect(() => validatePythonDependencyContents({ pyproject, uvLock: lock('source = { registry = "x" } source = { url = "https://example.invalid/o.whl" }') }))
+      .toThrow(PythonDependencyError);
+  });
+
+  // CodeQL js/polynomial-redos (alert 23): repeated source-table openers must not rescan the rest of the line.
+  it('validates repeated source-table openers in linear time within the input bound', () => {
+    const pyproject = '[project]\nname="fixture"\n';
+    const uvLock = `version=1\n[[package]]\nname="other"\n${'source={{'.repeat(25_000)}\n`;
+    const started = performance.now();
+    const result = validatePythonDependencyContents({ pyproject, uvLock });
+    expect(performance.now() - started).toBeLessThan(500);
+    expect(result.command).toBe('uv sync --frozen --no-install-project --no-build');
+    const closed = `version=1\n[[package]]\nname="other"\n${'source={}'.repeat(110_000)}\n`;
+    const closedStarted = performance.now();
+    expect(validatePythonDependencyContents({ pyproject, uvLock: closed }).command).toBe(result.command);
+    expect(performance.now() - closedStarted).toBeLessThan(500);
+    const lines = `version=1\n[[package]]\nname="other"\n${'source={ registry = "x"\n'.repeat(40_000)}`;
+    const linesStarted = performance.now();
+    expect(validatePythonDependencyContents({ pyproject, uvLock: lines }).command).toBe(result.command);
+    expect(performance.now() - linesStarted).toBeLessThan(500);
+  });
 });

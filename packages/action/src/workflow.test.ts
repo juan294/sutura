@@ -19,7 +19,7 @@ describe('trusted Sutura workflow', () => {
     expect(workflow).toContain('checks: write');
     expect(workflow).toContain('contents: write');
     expect(workflow).toContain('pull-requests: write');
-    expect(workflow).toContain('actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1');
+    expect(workflow).toContain('actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510');
     expect(workflow).toContain('client-id: ${{ vars.SUTURA_APP_CLIENT_ID }}');
     expect(workflow).toContain('private-key: ${{ secrets.SUTURA_APP_PRIVATE_KEY }}');
     expect(workflow).toContain('permission-actions: read');
