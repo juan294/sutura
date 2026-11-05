@@ -47,9 +47,9 @@
     "test:jev-decisions": "pnpm --filter @sutura/core build && pnpm --filter @sutura/evaluation build && node --test scripts/jev-decisions-journal.test.mjs scripts/jev-decisions-eval.test.mjs scripts/jev-controller-compare.test.mjs"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@vitest/coverage-v8": "4.1.12",
-    "eslint": "^10.13.0",
+    "eslint": "^10.14.0",
     "husky": "^9.1.7",
     "placebo": "workspace:*",
     "sutura": "workspace:*",
