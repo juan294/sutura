@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [0.5.2] - 2026-11-04
+## [0.5.2] - 2026-11-05
 
 ### Fixed
 
@@ -18,7 +18,7 @@
 
 Retired guidance: none.
 
-The signal-title fix does not repair consumer test flakiness or admit dependency-changing commits whose reproduction-profile hashes do not match. The Case Lab still labels its v0.4.1 evidence; its existing v0.5.1 refresh deferral does not authorize this release. Publication remains pending a valid disposition of that release gate.
+The signal-title fix does not repair consumer test flakiness or admit dependency-changing commits whose reproduction-profile hashes do not match. The Case Lab still labels its v0.4.1 evidence. The owner approved carrying its refresh deferral to v0.5.2 through 2026-11-05T13:02:35Z without extending the original expiry. This release has no new benchmark measurement.
 
 ## [0.5.1] - 2026-10-29
 
